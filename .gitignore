@@ -1,0 +1,9 @@
+/.vs/*
+/out
+/dependencies/hyper
+/dependencies/UltraProtocol
+/dependencies/include
+/dependencies/needs_download.cmake
+/isodir/
+/qemu_log.txt
+/CMakePresets.json
