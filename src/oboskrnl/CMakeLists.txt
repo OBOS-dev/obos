@@ -2,7 +2,9 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-set (oboskrnl_sources ${oboskrnl_sources} )
+set (oboskrnl_sources ${oboskrnl_sources}
+	"console.cpp" "locks/spinlock.cpp"
+ "klog.cpp")
 
 add_executable(oboskrnl ${oboskrnl_sources} ${obos})
 
@@ -31,7 +33,9 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-pedantic>
 	PRIVATE $<$<CONFIG:Debug>:-g>
 )
-
+target_compile_definitions(oboskrnl
+	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
+	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>)
 target_link_options(oboskrnl
 	PUBLIC "-T" PUBLIC "${LINKER_SCRIPT}"
 	PUBLIC "-nostdlib"

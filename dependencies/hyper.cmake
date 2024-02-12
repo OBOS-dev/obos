@@ -14,9 +14,9 @@ file(DOWNLOAD
 	${CMAKE_SOURCE_DIR}/dependencies/hyper/BOOTX64.efi
 )
 if (CMAKE_HOST_WIN32)
-	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-win64.exe)
+	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-win64.exe CACHE INTERNAL "The hyper install binary")
 elseif(CMAKE_HOST_LINUX)
-	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64)
+	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64 CACHE INTERNAL "The hyper install binary")
 else()
 	message(FATAL_ERROR "You must be on windows or linux to compile OBOS.")
 endif()

@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2024 Omar Berrow
 
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.7)
 
 project(OBOS C CXX ASM_NASM)
 

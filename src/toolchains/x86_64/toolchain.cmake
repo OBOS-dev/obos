@@ -43,7 +43,7 @@ set(TARGET_COMPILE_OPTIONS_C ${TARGET_COMPILE_OPTIONS_CPP})
 set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 
 set (oboskrnl_sources ${oboskrnl_sources} 
-	"arch/x86_64/entry.cpp" "arch/x86_64/bgdt.asm"
+	"arch/x86_64/entry.cpp" "arch/x86_64/bgdt.asm" "arch/x86_64/idt.cpp" "arch/x86_64/memmanip.asm"
 )
 
 set (OBOS_ARCHITECTURE "x86_64")

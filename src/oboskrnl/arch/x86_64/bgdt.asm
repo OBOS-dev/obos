@@ -83,15 +83,6 @@ InitBootGDT:
 	mov fs, ax
 	mov gs, ax
 
-	mov al, 'H'
-	out 0xE9, al
-	mov al, 'i'
-	out 0xE9, al
-	mov al, '!'
-	out 0xE9, al
-	mov al, 0xa
-	out 0xE9, al
-
 	leave
 	pop rax
 	push 0x8
