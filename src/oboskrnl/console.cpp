@@ -116,7 +116,7 @@ namespace obos
 		if (!m_drawBuffer)
 			return;
 		for (uint32_t i = 0; i < m_drawBuffer->height * m_drawBuffer->width * m_drawBuffer->bpp / 8; i += (m_drawBuffer->bpp / 8))
-			PlotPixel(bg, ((uint8_t*)m_drawBuffer->address) + 1, m_drawBuffer->format);
+			PlotPixel(bg, ((uint8_t*)m_drawBuffer->address) + i, m_drawBuffer->format);
 	}
 
 	void Console::__ImplOutputCharacter(char ch)

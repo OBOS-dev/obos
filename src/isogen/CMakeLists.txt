@@ -22,19 +22,25 @@ endif()
 if (NOT EXISTS ${ISODIR}/obos)
 	file (MAKE_DIRECTORY ${ISODIR}/obos)
 endif()
-if (NOT EXISTS ${CMAKE_SOURCE_DIR}/config/hyper.cfg)
+if (NOT EXISTS ${ISODIR}/limine)
+	file (MAKE_DIRECTORY ${ISODIR}/limine)
+endif()
+if (NOT EXISTS ${CMAKE_SOURCE_DIR}/config/limine.cfg)
 	message(FATAL_ERROR "No hyper configuration file detected!")
 endif()
 add_custom_target(isogen ALL
 	COMMAND ${OBJCOPY} -g ${OUTPUT_DIR}/oboskrnl ${ISODIR}/obos/oboskrnl
-	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}config${PS}hyper.cfg ${ISODIR}${PS}
-	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}hyper${PS}hyper_iso_boot ${ISODIR}
-	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}config${PS}hyper_uefi_boot.bin ${ISODIR}
-	COMMAND	xorriso -as mkisofs -b hyper_iso_boot -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot hyper_uefi_boot.bin -efi-boot-part --efi-boot-image --protective-msdos-label isodir -o ${OUTPUT_DIR}/obos.iso
-	COMMAND	${hyper_install} ${OUTPUT_DIR}${PS}obos.iso
-	SOURCES ${CMAKE_SOURCE_DIR}/config/hyper.cfg ${CMAKE_SOURCE_DIR}/config/hyper_uefi_boot.bin ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}config${PS}limine.cfg ${ISODIR}${PS}
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-uefi-cd.bin ${ISODIR}${PS}limine
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios-cd.bin ${ISODIR}${PS}limine
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios-pxe.bin ${ISODIR}${PS}limine
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios.sys ${ISODIR}${PS}limine
+	COMMAND	xorriso -as mkisofs -b limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image --protective-msdos-label isodir -o ${OUTPUT_DIR}/obos.iso
+	COMMAND	${limine_install} bios-install ${OUTPUT_DIR}${PS}obos.iso
+	SOURCES ${CMAKE_SOURCE_DIR}/config/limine.cfg ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-uefi-cd.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-cd.bin
+            ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-pxe.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios.sys
 	DEPENDS oboskrnl
-	BYPRODUCTS ${ISODIR}/hyper.cfg
+	BYPRODUCTS ${ISODIR}/limine.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
 	BYPRODUCTS ${ISODIR}/hyper_iso_boot
 	BYPRODUCTS ${ISODIR}/obos/oboskrnl

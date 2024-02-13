@@ -23,12 +23,12 @@ namespace obos
 	{
 		enum
 		{
-			GREY = 0xD3D3D3,
-			GREEN = 0x03D12B,
-			BLUE = 0x566F84,
-			YELLOW = 0xffcc00,
-			ERROR_RED = 0xcc3300,
-			PANIC_RED = 0xac1616,
+			GREY = 0x00D3D3D3,
+			GREEN = 0x0003D12B,
+			BLUE = 0x00566F84,
+			YELLOW = 0x00ffcc00,
+			ERROR_RED = 0x00cc3300,
+			PANIC_RED = 0x00ac1616,
 		};
 
 		size_t printf(const char* format, ...);

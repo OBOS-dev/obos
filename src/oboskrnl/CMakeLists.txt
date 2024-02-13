@@ -3,8 +3,7 @@
 # Copyright (c) 2024 Omar Berrow
 
 set (oboskrnl_sources ${oboskrnl_sources}
-	"console.cpp" "locks/spinlock.cpp"
- "klog.cpp")
+	"console.cpp" "locks/spinlock.cpp" "klog.cpp")
 
 add_executable(oboskrnl ${oboskrnl_sources} ${obos})
 

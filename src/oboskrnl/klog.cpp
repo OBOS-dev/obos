@@ -4,8 +4,6 @@
 	Copyright (c) 2023-2024 Omar Berrow
 */
 
-#pragma once
-
 #include <int.h>
 #include <klog.h>
 #include <console.h>
@@ -119,7 +117,22 @@ namespace obos
 			__impl_log(ERROR_RED, ERROR_PREFIX_MESSAGE, error_lock);
 
 		}
-		[[noreturn]] void panic(void* stackTraceParameter, const char* format, ...);
-		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
+		[[noreturn]] void panic(void* stackTraceParameter, const char* format, ...)
+		{
+			va_list list;
+			va_start(list, format);
+			panicVariadic(stackTraceParameter, format, list);
+			va_end(list);
+			while (1);
+		}
+		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
+		{
+			g_kernelConsole.SetColour(GREY, PANIC_RED);
+			g_kernelConsole.ClearConsole(PANIC_RED);
+			g_kernelConsole.SetPosition(0, 0);
+			vprintf(format, list);
+			stackTrace(stackTraceParameter);
+			while (1);
+		}
 	}
 }

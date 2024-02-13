@@ -17,7 +17,7 @@ set (OBOSKRNL_EXTERNAL_INCLUDES "${CMAKE_SOURCE_DIR}/dependencies/include")
 if (OBOS_REFRESH_DEPENDENCIES)
 	file(MAKE_DIRECTORY "dependencies/include")
 	if (OBOS_ARCHITECTURE STREQUAL "x86_64")
-		include("dependencies/hyper.cmake")
+		include("dependencies/limine.cmake")
 	endif()
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake" 
 		"# This file is auto-generated.\n# Set this variable to true to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"

@@ -38,7 +38,8 @@ namespace obos
 		Pixel() = default;
 		Pixel(uint32_t rgbx)
 		{
-			raw.rgbx = rgbx & 0xffffff00;
+			raw.rgbx = rgbx;
+			ele.x = 0;
 		}
 		Pixel(uint8_t r,
 			  uint8_t g,

@@ -13,7 +13,9 @@
 
 #include <arch/x86_64/font.h>
 
-#include <UltraProtocol/ultra_protocol.h>
+#include <arch/x86_64/irq/idt.h>
+
+#include <limine/limine.h>
 
 extern "C" void InitBootGDT();
 
@@ -30,62 +32,39 @@ struct gdtEntry
 
 namespace obos
 {
-	ultra_boot_context* g_bootContext;
-	uintptr_t g_higherHalfBase;
-	uintptr_t g_rsdp;
-	ultra_memory_map_entry* g_physMMAP;
-	size_t g_nPhysMMAPEntries;
+	void RegisterExceptionHandlers();
+	volatile limine_framebuffer_request framebuffer_request = {
+		.id = LIMINE_FRAMEBUFFER_REQUEST,
+		.revision = 0
+	};
 }
 
 using namespace obos;
 
-extern "C" void _start(ultra_boot_context* bcontext, uint32_t magic)
+LIMINE_BASE_REVISION(1);
+
+extern "C" void _start()
 {
-	if (magic != 0x554c5442)
-		return;
-	g_bootContext = bcontext;
 	g_consoleFont = (void*)font_bin;
 	Framebuffer initFB;
 	memzero(&initFB, sizeof(initFB));
-	for (size_t i = 0, off = 0; i < g_bootContext->attribute_count; i++)
+	if (framebuffer_request.response->framebuffer_count)
 	{
-		ultra_attribute_header* hdr = (ultra_attribute_header*)((uint8_t*)g_bootContext->attributes + off);
-		switch (hdr->type)
-		{
-		case ULTRA_ATTRIBUTE_PLATFORM_INFO:
-		{
-			ultra_platform_info_attribute* info = (ultra_platform_info_attribute*)hdr;
-			g_higherHalfBase = info->higher_half_base;
-			g_rsdp = info->acpi_rsdp_address;
-			break;
-		}
-		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO:
-		{
-			ultra_framebuffer_attribute* fb = (ultra_framebuffer_attribute*)hdr;
-			initFB.address = (void*)(fb->fb.physical_address + g_higherHalfBase);
-			initFB.format = (FramebufferFormat)fb->fb.format;
-			initFB.width = fb->fb.width;
-			initFB.height = fb->fb.height;
-			initFB.pitch = fb->fb.pitch;
-			initFB.bpp = fb->fb.bpp;
-			break;
-		}
-		case ULTRA_ATTRIBUTE_MEMORY_MAP:
-		{
-			ultra_memory_map_attribute* mmap = (ultra_memory_map_attribute*)hdr;
-			g_nPhysMMAPEntries = ULTRA_MEMORY_MAP_ENTRY_COUNT(*hdr);
-			g_physMMAP = mmap->entries;
-			break;
-		}
-		default:
-			break;
-		}
-		off += hdr->size;
+		initFB.address = framebuffer_request.response->framebuffers[0]->address;
+		initFB.bpp = framebuffer_request.response->framebuffers[0]->bpp;
+		initFB.height = framebuffer_request.response->framebuffers[0]->height;
+		initFB.width = framebuffer_request.response->framebuffers[0]->width;
+		initFB.pitch = framebuffer_request.response->framebuffers[0]->pitch;
+		initFB.format = FramebufferFormat::FB_FORMAT_RGBX8888;
 	}
 	new (&g_kernelConsole) Console{};
 	g_kernelConsole.Initialize(&initFB, nullptr, true);
 	logger::log("%s: Initializing boot GDT.\n", __func__);
 	InitBootGDT();
+	logger::log("%s: Initializing IDT.\n", __func__);
+	InitializeIDT();
+	logger::log("%s: Registering exception handlers.\n", __func__);
+	RegisterExceptionHandlers();
 	while (1);
 }
 
