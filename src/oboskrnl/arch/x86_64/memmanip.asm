@@ -50,8 +50,8 @@ _ZN4obos6memcmpEPKvS1_m:
 	mov rbp, rsp
 
 	mov rcx, rdx
-	repe cmpsb
-	setz al
+	repne cmpsb
+	setne al
 
 	leave
 	ret

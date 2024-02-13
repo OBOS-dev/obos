@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Omar Berrow
 
 set (oboskrnl_sources ${oboskrnl_sources}
-	"console.cpp" "locks/spinlock.cpp" "klog.cpp")
+	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp")
 
 add_executable(oboskrnl ${oboskrnl_sources} ${obos})
 
@@ -27,9 +27,10 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-nostdlib>
+# We don't enable -Werror in case future compiler versions introduce new warnings that oboskrnl triggers.
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wextra>
-	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-pedantic>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wno-missing-field-initializers>
 	PRIVATE $<$<CONFIG:Debug>:-g>
 )
 target_compile_definitions(oboskrnl

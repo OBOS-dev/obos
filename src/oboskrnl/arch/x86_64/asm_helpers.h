@@ -16,4 +16,9 @@ namespace obos
 	uintptr_t getCR4();
 	uintptr_t getCR8();
 	uintptr_t getEFER();
+
+	uint64_t rdmsr(uint32_t msr);
+	void wrmsr(uint32_t msr, uint64_t val);
+
+	void pause();
 }

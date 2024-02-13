@@ -142,3 +142,21 @@ int_handler_common:
 idtFlush:
 	lidt [rdi]
 	ret
+global _ZN4obos4arch7SetIRQLEh
+global _ZN4obos4arch7GetIRQLEv
+_ZN4obos4arch7GetIRQLEv:
+	push rbp
+	mov rbp, rsp
+	
+	mov rax, cr8
+	
+	leave
+	ret
+_ZN4obos4arch7SetIRQLEh:
+	push rbp
+	mov rbp, rsp
+	
+	mov cr8, rdi
+	
+	leave
+	ret

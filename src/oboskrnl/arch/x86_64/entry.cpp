@@ -14,21 +14,14 @@
 #include <arch/x86_64/font.h>
 
 #include <arch/x86_64/irq/idt.h>
+#include <arch/x86_64/irq/apic.h>
+#include <arch/x86_64/irq/madt.h>
+
+#include <irq/irql.h>
 
 #include <limine/limine.h>
 
 extern "C" void InitBootGDT();
-
-struct gdtEntry
-{
-	uint16_t limitLow;
-	uint16_t baseLow;
-	uint8_t  baseMiddle1;
-	uint8_t  access;
-	uint8_t  granularity;
-	uint8_t  baseMiddle2;
-	uint64_t baseHigh;
-} __attribute__((packed));
 
 namespace obos
 {
@@ -37,6 +30,8 @@ namespace obos
 		.id = LIMINE_FRAMEBUFFER_REQUEST,
 		.revision = 0
 	};
+	extern volatile limine_rsdp_request rsdp_request;
+	extern volatile limine_hhdm_request hhdm_offset;
 }
 
 using namespace obos;
@@ -65,6 +60,23 @@ extern "C" void _start()
 	InitializeIDT();
 	logger::log("%s: Registering exception handlers.\n", __func__);
 	RegisterExceptionHandlers();
+	logger::log("%s: Initializing LAPIC.\n", __func__);
+	InitializeLAPIC(GetLAPICAddress());
+	logger::log("%s: Initializing IOAPIC.\n", __func__);
+	uintptr_t ioapic = 0;
+	ACPISDTHeader* sdt = nullptr;
+	size_t nEntries = 0;
+	bool t32 = false;
+	GetSDTFromRSDP((ACPIRSDPHeader*)rsdp_request.response->address, &sdt, &t32, &nEntries);
+	char sign[4] = { 'M', 'A', 'D', 'T' };
+	auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
+	if (ParseMADTForIOAPICAddresses(madt, &ioapic, 1))
+		logger::warning("%s: There are multiple I/O APICs, but multiple I/O APICs are not supported by oboskrnl.\n", __func__);
+	InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
+	uint8_t oldIRQL = 0;
+	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
+	asm("sti");
+	// TODO: Implement.
 	while (1);
 }
 
