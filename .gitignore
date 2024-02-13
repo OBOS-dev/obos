@@ -1,7 +1,6 @@
 /.vs/*
 /out
-/dependencies/hyper
-/dependencies/UltraProtocol
+/dependencies/limine
 /dependencies/include
 /dependencies/needs_download.cmake
 /isodir/
