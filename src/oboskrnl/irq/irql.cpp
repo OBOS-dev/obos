@@ -16,7 +16,7 @@ namespace obos
 	{
 		OBOS_ASSERTP(arch::GetIRQL() == s_irql, "");
 		newIRQL &= 0xf;
-		if (newIRQL >= s_irql)
+		if (newIRQL > s_irql)
 			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is greater than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
 		s_irql = newIRQL;
 		arch::SetIRQL(s_irql);
@@ -25,7 +25,7 @@ namespace obos
 	{
 		newIRQL &= 0xf;
 		OBOS_ASSERTP(arch::GetIRQL() == s_irql, "");
-		if (newIRQL <= s_irql)
+		if (newIRQL < s_irql)
 			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is less than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
 		*oldIRQL = s_irql;
 		s_irql = newIRQL;

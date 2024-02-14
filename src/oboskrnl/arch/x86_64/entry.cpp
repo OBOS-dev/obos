@@ -17,6 +17,8 @@
 #include <arch/x86_64/irq/apic.h>
 #include <arch/x86_64/irq/madt.h>
 
+#include <arch/x86_64/pmm/alloc.h>
+
 #include <irq/irql.h>
 
 #include <limine/limine.h>
@@ -25,6 +27,7 @@ extern "C" void InitBootGDT();
 
 namespace obos
 {
+	void InitializePMM();
 	void RegisterExceptionHandlers();
 	volatile limine_framebuffer_request framebuffer_request = {
 		.id = LIMINE_FRAMEBUFFER_REQUEST,
@@ -76,7 +79,8 @@ extern "C" void _start()
 	uint8_t oldIRQL = 0;
 	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
 	asm("sti");
-	// TODO: Implement.
+	logger::log("%s: Initializing PMM.\n", __func__);
+	InitializePMM();
 	while (1);
 }
 
