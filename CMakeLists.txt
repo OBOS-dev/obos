@@ -24,5 +24,9 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	)
 endif()
 
+if (NOT DEFINED OUTPUT_DIR)
+	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
+endif()
+
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")
