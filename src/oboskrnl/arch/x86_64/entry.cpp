@@ -17,13 +17,19 @@
 #include <arch/x86_64/irq/apic.h>
 #include <arch/x86_64/irq/madt.h>
 
-#include <arch/x86_64/pmm/alloc.h>
+#include <arch/x86_64/mm/palloc.h>
+#include <arch/x86_64/mm/map.h>
+
+#include <arch/x86_64/asm_helpers.h>
+
+#include <vmm/prot.h>
 
 #include <irq/irql.h>
 
 #include <limine/limine.h>
 
 extern "C" void InitBootGDT();
+extern "C" void disablePIC();
 
 namespace obos
 {
@@ -63,6 +69,7 @@ extern "C" void _start()
 	InitializeIDT();
 	logger::log("%s: Registering exception handlers.\n", __func__);
 	RegisterExceptionHandlers();
+	disablePIC();
 	logger::log("%s: Initializing LAPIC.\n", __func__);
 	InitializeLAPIC(GetLAPICAddress());
 	logger::log("%s: Initializing IOAPIC.\n", __func__);
@@ -81,6 +88,8 @@ extern "C" void _start()
 	asm("sti");
 	logger::log("%s: Initializing PMM.\n", __func__);
 	InitializePMM();
+	logger::log("%s: Initializing page tables.\n", __func__);
+	arch::InitializePageTables();
 	while (1);
 }
 

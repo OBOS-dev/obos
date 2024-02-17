@@ -1,5 +1,5 @@
 /*
-	oboskrnl/locks/spinlock.h
+	oboskrnl/locks/spinlock.cpp
 
 	Copyright (c) 2024 Omar Berrow
 */

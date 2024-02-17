@@ -1,5 +1,5 @@
 /*
-	oboskrnl/arch/x86_64/pmm/alloc.h
+	oboskrnl/arch/x86_64/mm/palloc.cpp
 
 	Copyright (c) 2024 Omar Berrow
 */
@@ -9,7 +9,7 @@
 #include <int.h>
 #include <klog.h>
 
-#include <arch/x86_64/pmm/alloc.h>
+#include <arch/x86_64/mm/palloc.h>
 
 #include <limine/limine.h>
 
@@ -19,15 +19,16 @@
 
 namespace obos
 {
+#define MAP_TO_HHDM(addr) (hhdm_offset.response->offset + (uintptr_t)(addr))
 	volatile limine_memmap_request mmap_request = {
 		.id = LIMINE_MEMMAP_REQUEST,
 		.revision = 1
 	};
 	extern volatile limine_hhdm_request hhdm_offset;
-#define MAP_TO_HHDM(addr) (hhdm_offset.response->offset + (uintptr_t)(addr))
+	uintptr_t hhdm_limit = 0;
 	struct MemoryNode
 	{
-		MemoryNode* next, * prev;
+		MemoryNode *next, *prev;
 		size_t nPages;
 	};
 	MemoryNode* g_memoryHead, * g_memoryTail;
@@ -62,10 +63,14 @@ namespace obos
 			newNode->nPages = size / 0x1000;
 			g_memoryTail = newNodePhys;
 		}
+		auto& lastMMAPEntry =
+			mmap_request.response->entries[mmap_request.response->entry_count - 2]
+			;
+		hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
 		g_pmmLock.Unlock();
 	}
 
-	uintptr_t AllocatePhysicalPages(size_t nPages)
+	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
 	{
 		if (!g_nMemoryNodes)
 			logger::panic(nullptr, "No more available physical memory left.\n");
@@ -76,19 +81,30 @@ namespace obos
 		MemoryNode* node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)g_memoryHead);
 		MemoryNode* nodePhys = g_memoryHead;
 		uintptr_t ret = (uintptr_t)g_memoryHead;
-		while (node->nPages < nPages)
+		if (align2MIB && nPages & 0x1ff)
+			nPages = (nPages + 0x1ff) & ~0x1ff;
+		size_t nPagesRequired = nPages + (align2MIB ? (node->nPages & 0x1ff) : 0);
+		if (align2MIB && ((uintptr_t)nodePhys & 0x1f'ffff))
+			nPagesRequired += ((uintptr_t)nodePhys & 0x1f'ffff) / 4096;
+		while (node->nPages < nPagesRequired)
 		{
 			node = node->next;
 			if (!node)
 				return 0; // Not enough physical memory to satisfy request of nPages.
 			nodePhys = node;
 			node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)node);
+			nPagesRequired = nPages;
+			if (align2MIB)
+			{
+				nPagesRequired += (node->nPages & 0x1ff);
+				nPagesRequired += ((uintptr_t)nodePhys & 0x1f'ffff) / 4096;
+			}
 		}
-		node->nPages -= nPages;
+		node->nPages -= nPagesRequired;
 		if (!node->nPages)
 		{
 			// This node has no free pages after this allocation, so it should be removed.
-			MemoryNode* next = node->next, * prev = node->prev;
+			MemoryNode* next = node->next, *prev = node->prev;
 			if (next)
 				((MemoryNode*)MAP_TO_HHDM((uintptr_t*)next))->prev = prev;
 			if (prev)
@@ -100,7 +116,7 @@ namespace obos
 			node->next = nullptr;
 			node->prev = nullptr;
 		}
-		ret = ret + node->nPages * 4096;
+		ret = (uintptr_t)nodePhys + node->nPages * 4096;
 		if (oldIRQL != 0xff)
 			LowerIRQL(oldIRQL);
 		g_pmmLock.Unlock();
@@ -121,5 +137,10 @@ namespace obos
 		node->nPages = nPages;
 		g_nMemoryNodes++;
 		g_pmmLock.Unlock();
+	}
+
+	void* MapToHHDM(uintptr_t phys)
+	{
+		return (void*)MAP_TO_HHDM(phys);
 	}
 }

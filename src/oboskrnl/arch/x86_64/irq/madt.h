@@ -20,19 +20,19 @@ namespace obos
 		uint32_t lapicAddress;
 		uint32_t unwanted;
 		// There are more entries.
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryHeader
 	{
 		uint8_t type;
 		uint8_t length;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType0
 	{
 		MADT_EntryHeader entryHeader;
 		uint8_t processorID;
 		uint8_t apicID;
 		uint32_t flags;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType1
 	{
 		MADT_EntryHeader entryHeader;
@@ -40,7 +40,7 @@ namespace obos
 		uint8_t resv1;
 		uint32_t ioapicAddress;
 		uint32_t globalSystemInterruptBase;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType2
 	{
 		MADT_EntryHeader entryHeader;
@@ -48,7 +48,7 @@ namespace obos
 		uint8_t irqSource;
 		uint32_t globalSystemInterrupt;
 		uint16_t flags;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType3
 	{
 		MADT_EntryHeader entryHeader;
@@ -56,20 +56,20 @@ namespace obos
 		uint8_t resv;
 		uint16_t flags;
 		uint32_t globalSystemInterrupt;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType4
 	{
 		MADT_EntryHeader entryHeader;
 		uint8_t processorID;
 		uint16_t flags;
 		uint8_t lINT;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType5
 	{
 		MADT_EntryHeader entryHeader;
 		uint8_t resv1[2];
 		uintptr_t lapic_address;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct MADT_EntryType9
 	{
 		MADT_EntryHeader entryHeader;
@@ -77,7 +77,7 @@ namespace obos
 		uint32_t x2APIC_ID;
 		uint32_t flags;
 		uint32_t acpiID;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	/// <summary>
 	/// Parses the MADT for I/O APIC Addresses.
 	/// </summary>

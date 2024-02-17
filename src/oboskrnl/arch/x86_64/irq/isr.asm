@@ -160,3 +160,9 @@ _ZN4obos4arch7SetIRQLEh:
 	
 	leave
 	ret
+global disablePIC
+disablePIC:
+	mov al, 0xff
+	out 0x21, al
+	out 0xA1, al
+	ret

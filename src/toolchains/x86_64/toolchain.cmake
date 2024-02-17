@@ -45,7 +45,8 @@ set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set (oboskrnl_sources ${oboskrnl_sources} 
 	"arch/x86_64/entry.cpp" "arch/x86_64/bgdt.asm" "arch/x86_64/irq/idt.cpp" "arch/x86_64/memmanip.asm"
     "arch/x86_64/irq/isr.asm" "arch/x86_64/trace.cpp" "arch/x86_64/exception_handlers.cpp" "arch/x86_64/asm_helpers.asm"
-    "arch/x86_64/sdt.cpp" "arch/x86_64/irq/madt.cpp" "arch/x86_64/irq/apic.cpp" "arch/x86_64/pmm/alloc.cpp"
+    "arch/x86_64/sdt.cpp" "arch/x86_64/irq/madt.cpp" "arch/x86_64/irq/apic.cpp" "arch/x86_64/mm/palloc.cpp"
+    "arch/x86_64/mm/map.cpp" "arch/x86_64/mm/pmap_l4.cpp"
 )
 
 set (OBOS_ARCHITECTURE "x86_64")

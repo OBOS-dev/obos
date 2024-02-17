@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <struct_packing.h>
 
 namespace obos
 {
@@ -88,37 +89,37 @@ namespace obos
 			struct
 			{
 				uint8_t setOfProcessors;
-			} __attribute__((packed)) logical;
+			} OBOS_PACK logical;
 			struct
 			{
 				uint8_t resv1 : 4;
 				uint8_t lapicId : 4;
-			} __attribute__((packed)) physical;
-		} __attribute__((packed)) destination;
-	} __attribute__((packed));
+			} OBOS_PACK physical;
+		} OBOS_PACK destination;
+	} OBOS_PACK;
 	struct IOAPIC_Registers
 	{
 		struct {
 			const uint32_t resv1 : 24;
 			uint8_t ioapicID : 4;
 			const uint8_t resv2 : 4;
-		} __attribute__((packed)) ioapicId;
+		} OBOS_PACK ioapicId;
 		struct
 		{
 			const uint8_t version;
 			const uint8_t resv1;
 			const uint8_t maximumRedirectionEntries;
 			const uint8_t resv2;
-		} __attribute__((packed)) ioapicVersion;
+		} OBOS_PACK ioapicVersion;
 		struct
 		{
 			const uint32_t resv1 : 24;
 			const uint8_t ioapicID : 4;
 			const uint8_t resv2 : 4;
-		} __attribute__((packed)) ioapicArbitrationID;
+		} OBOS_PACK ioapicArbitrationID;
 		uint32_t resv1[13];
 		IOAPIC_RedirectionEntry redirectionEntries[];
-	} __attribute__((packed));
+	} OBOS_PACK;
 	struct IOAPIC_IRQRedirectionEntry
 	{
 		uint8_t source;

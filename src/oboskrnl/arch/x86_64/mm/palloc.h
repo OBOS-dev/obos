@@ -1,5 +1,5 @@
 /*
-	oboskrnl/arch/x86_64/pmm/alloc.h
+	oboskrnl/arch/x86_64/mm/palloc.h
 
 	Copyright (c) 2024 Omar Berrow
 */
@@ -10,6 +10,8 @@
 
 namespace obos
 {
-	uintptr_t AllocatePhysicalPages(size_t nPages);
+	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB = false);
 	void FreePhysicalPages(uintptr_t addr, size_t nPages);
+
+	void* MapToHHDM(uintptr_t phys);
 }
