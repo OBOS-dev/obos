@@ -20,6 +20,8 @@
 namespace obos
 {
 #define MAP_TO_HHDM(addr) (hhdm_offset.response->offset + (uintptr_t)(addr))
+#define CMAP_TO_HHDM(addr) reinterpret_cast<decltype(addr)>(hhdm_offset.response->offset + (uintptr_t)(addr))
+#define REMOVE_FROM_HHDM(addr) ((uintptr_t)(addr) - hhdm_offset.response->offset)
 	volatile limine_memmap_request mmap_request = {
 		.id = LIMINE_MEMMAP_REQUEST,
 		.revision = 1
@@ -31,7 +33,7 @@ namespace obos
 		MemoryNode *next, *prev;
 		size_t nPages;
 	};
-	MemoryNode* g_memoryHead, * g_memoryTail;
+	MemoryNode *g_memoryHead, *g_memoryTail;
 	size_t g_nMemoryNodes;
 	bool g_pmmInitialized = false;
 	locks::SpinLock g_pmmLock;
@@ -124,6 +126,8 @@ namespace obos
 	}
 	void FreePhysicalPages(uintptr_t addr, size_t nPages)
 	{
+		OBOS_ASSERTP(addr != 0, "Attempt free of physical address zero.\n");
+		addr &= ~0xfff;
 		g_pmmLock.Lock();
 		MemoryNode* node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)addr);
 		MemoryNode* nodePhys = (MemoryNode*)addr;
@@ -136,6 +140,80 @@ namespace obos
 		g_memoryTail = nodePhys;
 		node->nPages = nPages;
 		g_nMemoryNodes++;
+		g_pmmLock.Unlock();
+	}
+	void OptimizePMMFreeList()
+	{
+		g_pmmLock.Lock();
+		MemoryNode* currentNode = CMAP_TO_HHDM(g_memoryHead);
+		uintptr_t currentNodePhys = (uintptr_t)currentNode - hhdm_offset.response->offset;
+		MemoryNode* stepNode = nullptr;
+		uintptr_t stepNodePhys = 0;
+		bool swapped = false;
+		// Sort the nodes into lowest address to highest address using bubble sort.
+		do
+		{
+			swapped = false;
+			currentNode = CMAP_TO_HHDM(g_memoryHead);
+			currentNodePhys = (uintptr_t)currentNode - hhdm_offset.response->offset;
+			if (!currentNodePhys)
+				break;
+
+			while ((uintptr_t)currentNode->next != stepNodePhys)
+			{
+				if (!currentNodePhys)
+					break;
+				if (currentNodePhys > (uintptr_t)currentNode->next)
+				{
+					// Swap the nodes.
+					if (!currentNode->next)
+						break;
+					MemoryNode* nextNode = CMAP_TO_HHDM(currentNode->next);
+					MemoryNode temp = *currentNode;
+					currentNode->next = nextNode->next;
+					currentNode->prev = nextNode->prev;
+					currentNode->nPages = nextNode->nPages;
+					nextNode->next = temp.next;
+					nextNode->prev = temp.prev;
+					nextNode->nPages = temp.nPages;
+					swapped = true;
+				}
+				currentNode = (MemoryNode*)MAP_TO_HHDM(currentNodePhys = (uintptr_t)currentNode->next);
+			}
+
+			if (!currentNodePhys)
+				break;
+			stepNode = currentNode;
+			stepNodePhys = currentNodePhys;
+		} while (swapped);
+		currentNode = (MemoryNode*)MAP_TO_HHDM(((MemoryNode*)MAP_TO_HHDM(g_memoryHead))->next);
+		currentNodePhys = (uintptr_t)currentNode - hhdm_offset.response->offset;
+		while (currentNodePhys)
+		{
+			uintptr_t previousNodePhys = (uintptr_t)currentNode->prev;
+			MemoryNode* previousNode = (MemoryNode*)MAP_TO_HHDM(currentNode->prev);
+			OBOS_ASSERTP(previousNodePhys != 0, "");
+			uintptr_t nextNodePhys = (uintptr_t)currentNode->next;
+			MemoryNode* nextNode = (MemoryNode*)MAP_TO_HHDM(currentNode->next);
+			// Two blocks that are continuous but in seperate nodes.
+			if ((previousNodePhys + previousNode->nPages * 4096) == currentNodePhys)
+			{
+				// Combine them.
+				previousNode->nPages += currentNode->nPages;
+				if (nextNodePhys)
+					nextNode->prev = (MemoryNode*)previousNodePhys;
+				// It's guaranteed that previousNodePhys != 0
+				previousNode->next = (MemoryNode*)nextNodePhys;
+				// Because of that guarantee, currentNode cannot be equal to g_memoryHead
+				/*if (currentNode == g_memoryHead)
+					g_memoryHead = ;*/
+				if (currentNodePhys == (uintptr_t)g_memoryTail)
+					g_memoryTail = (MemoryNode*)previousNodePhys;
+				g_nMemoryNodes--;
+			}
+
+			currentNode = (MemoryNode*)MAP_TO_HHDM(currentNodePhys = (uintptr_t)currentNode->next);
+		}
 		g_pmmLock.Unlock();
 	}
 

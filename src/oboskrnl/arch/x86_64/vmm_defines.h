@@ -13,3 +13,5 @@
 #define OBOS_IS_VIRT_ADDR_CANONICAL(addr) (((uintptr_t)(addr) >> 47) == 0 || ((uintptr_t)(addr) >> 47) == 0x1ffff)
 #define OBOS_VIRT_ADDR_BITWIDTH (48)
 #define OBOS_ADDR_BITWIDTH (64)
+#define OBOS_ZERO_PAGE_PHYSICAL ((uintptr_t)0)
+#define OBOS_MAX_PAGE_FAULT_HANDLERS (32)

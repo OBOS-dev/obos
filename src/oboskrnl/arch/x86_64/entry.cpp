@@ -88,6 +88,8 @@ extern "C" void _start()
 	asm("sti");
 	logger::log("%s: Initializing PMM.\n", __func__);
 	InitializePMM();
+	logger::log("%s: Zeroing zero-page.\n", __func__);
+	memzero(MapToHHDM(0), 4096);
 	logger::log("%s: Initializing page tables.\n", __func__);
 	arch::InitializePageTables();
 	while (1);

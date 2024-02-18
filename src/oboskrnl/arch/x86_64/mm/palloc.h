@@ -12,6 +12,7 @@ namespace obos
 {
 	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB = false);
 	void FreePhysicalPages(uintptr_t addr, size_t nPages);
+	void OptimizePMMFreeList();
 
 	void* MapToHHDM(uintptr_t phys);
 }

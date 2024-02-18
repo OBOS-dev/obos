@@ -44,7 +44,10 @@ add_custom_target(isogen ALL
 	DEPENDS oboskrnl
 	BYPRODUCTS ${ISODIR}/limine.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
-	BYPRODUCTS ${ISODIR}/hyper_iso_boot
+	BYPRODUCTS ${ISODIR}/limine/limine-uefi-cd.bin
+	BYPRODUCTS ${ISODIR}/limine/limine-bios-cd.bin
+	BYPRODUCTS ${ISODIR}/limine/limine-bios-pxe.bin
+	BYPRODUCTS ${ISODIR}/limine/limine-bios.sys
 	BYPRODUCTS ${ISODIR}/obos/oboskrnl
 	BYPRODUCTS ${OUTPUT_DIR}/obos.iso
 	# DEPENDS oboskrnl

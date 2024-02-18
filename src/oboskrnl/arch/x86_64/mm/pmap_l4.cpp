@@ -50,6 +50,8 @@ namespace obos
 		}
 		uintptr_t PageMap::GetL1PageMapEntryAt(uintptr_t at)
 		{
+			if (GetL2PageMapEntryAt(at) & ((uintptr_t)1 << 7))
+				return 0;
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL2PageMapEntryAt(at)));
 			return GetEntryAt(arr, at, 0);
 		}
@@ -125,6 +127,8 @@ namespace obos
 				};
 			for (uint8_t i = (4 - maxDepth); i < 4; i++)
 			{
+				if (!MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, i + 1)))
+					continue;
 				uintptr_t* pageMap = (uintptr_t*)MapToHHDM((i + 1) == 4 ? GetPageMap() : MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, i + 1)));
 				if (!pageMap[AddressToIndex(at, i)])
 					continue;

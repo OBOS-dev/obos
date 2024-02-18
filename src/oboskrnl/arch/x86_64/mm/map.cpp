@@ -33,6 +33,10 @@ namespace obos
 		.id = LIMINE_KERNEL_FILE_REQUEST,
 		.revision=0
 	};
+	volatile limine_kernel_address_request kernel_addr = {
+		.id = LIMINE_KERNEL_ADDRESS_REQUEST,
+		.revision=0
+	};
 	namespace arch
 	{
 		uintptr_t DecodeProt(uintptr_t prot)
@@ -50,8 +54,45 @@ namespace obos
 				ret |= BIT(63);
 			return ret;
 		}
+		uintptr_t DecodeEntry(uintptr_t entry)
+		{
+			uintptr_t ret = 0, flags = entry;
+			flags &= ~((((uintptr_t)1 << GetPhysicalAddressBits()) - 1) << 12);
+			if (!(flags & BIT(1)))
+				ret |= vmm::PROT_READ_ONLY;
+			if (flags & BIT(2))
+				ret |= vmm::PROT_USER;
+			if (flags & BIT(4))
+				ret |= vmm::PROT_CACHE_DISABLE;
+			if (!(flags & BIT(63)))
+				ret |= vmm::PROT_EXECUTE;
+			return ret;
+		}
 
-		void* map_page_to(PageMap* pm, uintptr_t virt, uintptr_t phys, uintptr_t prot)
+		void* map_page_to(uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		{
+			return map_page_to(GetCurrentPageMap(), virt, phys, prot);
+		}
+		void* map_hugepage_to(uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		{
+			return map_hugepage_to(GetCurrentPageMap(), virt, phys, prot);
+		}
+
+		void unmap(void* addr)
+		{
+			unmap(GetCurrentPageMap(), addr);
+		}
+		uintptr_t get_page_phys(void* addr)
+		{
+			return get_page_phys(GetCurrentPageMap(), addr);
+		}
+
+		void get_page_descriptor(void* addr, vmm::page_descriptor& out)
+		{
+			get_page_descriptor(GetCurrentPageMap(), addr, out);
+		}
+
+		void* map_page_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(virt))
 				return nullptr;
@@ -65,7 +106,7 @@ namespace obos
 			invlpg(virt);
 			return (void*)virt;
 		}
-		void* map_hugepage_to(PageMap* pm, uintptr_t virt, uintptr_t phys, uintptr_t prot)
+		void* map_hugepage_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(virt))
 				return nullptr;
@@ -87,16 +128,44 @@ namespace obos
 			uintptr_t virt = (uintptr_t)addr;
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(addr))
 				return;
-			if (!pm->GetL1PageMapEntryAt(virt))
+			uintptr_t l2Entry = pm->GetL2PageMapEntryAt(virt);
+			uintptr_t l1Entry = pm->GetL1PageMapEntryAt(virt);
+			bool isHugePage = l2Entry & BIT(7);
+			if (!l2Entry)
 				return;
-			uintptr_t* pt = (uintptr_t*)MapToHHDM(PageMap::MaskPhysicalAddressFromEntry(pm->GetL2PageMapEntryAt(virt)));
-			pt[PageMap::AddressToIndex(virt, 0)] = 0;
-			pm->FreePageMapAt(virt, 3);
+			if (!l1Entry && !isHugePage)
+				return;
+			uintptr_t* pt = (uintptr_t*)MapToHHDM(PageMap::MaskPhysicalAddressFromEntry(isHugePage ? pm->GetL3PageMapEntryAt(virt) : l2Entry));
+			pt[PageMap::AddressToIndex(virt, (uint8_t)isHugePage)] = 0;
+			pm->FreePageMapAt(virt, 3 - (uint8_t)isHugePage);
 			invlpg(virt);
 		}
 		uintptr_t get_page_phys(PageMap* pm, void* addr)
 		{
 			return PageMap::MaskPhysicalAddressFromEntry(pm->GetL1PageMapEntryAt((uintptr_t)addr));
+		}
+		void get_page_descriptor(class PageMap* pm, void* addr, vmm::page_descriptor& out)
+		{
+			out.virt = (uintptr_t)addr;
+			uintptr_t l2Entry = pm->GetL2PageMapEntryAt(out.virt);
+			uintptr_t l1Entry = pm->GetL1PageMapEntryAt(out.virt);
+			if (l2Entry & (1 << 7))
+			{
+				out.isHugePage = true;
+				out.present = true;
+			}
+			else
+			{
+				out.isHugePage = false;
+				out.present = (bool)(l1Entry & 1);
+			}
+			if (!out.present)
+			{
+				out.phys = 0;
+				return;
+			}
+			out.protFlags = DecodeEntry(out.isHugePage ? l2Entry : l1Entry);
+			out.phys = PageMap::MaskPhysicalAddressFromEntry(out.isHugePage ? l2Entry : l1Entry);
 		}
 
 		uintptr_t AllocatePhysicalPages(size_t nPages)
@@ -108,7 +177,21 @@ namespace obos
 			base &= ~(OBOS_PAGE_SIZE-1);
 			::obos::FreePhysicalPages(base, nPages);
 		}
-
+		static void FreePageTables(uintptr_t* pm, uint8_t level, uint32_t beginIndex, uint32_t *indices)
+		{
+			if (!pm)
+				return;
+			pm = (uintptr_t*)MapToHHDM((uintptr_t)pm);
+			for (indices[level] = beginIndex; indices[level] < 512; indices[level]++)
+			{
+				if (!pm[indices[level]])
+					continue;
+				if (pm[indices[level]] & BIT(7) || level == 0)
+					continue;
+				FreePageTables((uintptr_t*)PageMap::MaskPhysicalAddressFromEntry(pm[indices[level]]), level - 1, 0, indices);
+				FreePhysicalPages(PageMap::MaskPhysicalAddressFromEntry(pm[indices[level]]), 1);
+			}
+		}
 		void InitializePageTables()
 		{
 			uintptr_t newPageMap = AllocatePhysicalPages(1);
@@ -120,6 +203,15 @@ namespace obos
 			[[maybe_unused]] size_t kfileSize = kernel_file.response->kernel_file->size;
 			elf::Elf64_Ehdr* ehdr = (elf::Elf64_Ehdr*)kfile;
 			elf::Elf64_Phdr* firstPhdr = (elf::Elf64_Phdr*)(kfile + ehdr->e_phoff);
+			uintptr_t kernelBase = 0, kernelTop = 0;
+			for (size_t i = 0; i < ehdr->e_phnum; i++)
+			{
+				if (firstPhdr[i].p_type != elf::PT_LOAD)
+					continue;
+				if (firstPhdr[i].p_vaddr < kernelBase || !kernelBase)
+					kernelBase = firstPhdr[i].p_vaddr;
+			}
+			kernelTop = kernelBase;
 			for (size_t i = 0; i < ehdr->e_phnum; i++)
 			{
 				if (firstPhdr[i].p_type != elf::PT_LOAD)
@@ -132,14 +224,20 @@ namespace obos
 				uint32_t nPages = firstPhdr[i].p_memsz >> 12;
 				if ((firstPhdr[i].p_memsz % 4096) != 0)
 					nPages++;
-				uintptr_t physPages = AllocatePhysicalPages(nPages);
-				uint8_t* pagesInHHDM = (uint8_t*)MapToHHDM(physPages);
-				memcpy(pagesInHHDM, kfile + firstPhdr[i].p_offset, firstPhdr[i].p_filesz);
+				uintptr_t physPages = kernel_addr.response->physical_base + (kernelTop - kernelBase);
 				uintptr_t base = firstPhdr[i].p_vaddr & ~0xfff;
-				for (size_t j = 0; j < nPages; j++)
-					map_page_to(pm, base + j * 4096, physPages + j * 4096, prot);
+				kernelTop = (firstPhdr[i].p_vaddr + firstPhdr[i].p_memsz + 0xfff) & ~0xfff;
+				for (uintptr_t kBase = base, j = 0; kBase <= kernelTop; kBase += 4096, j++)
+					map_page_to(pm, kBase, physPages + j * 4096, prot);
 			}
+			PageMap* oldPageMap = nullptr;
+			__asm__ __volatile__("mov %%cr3, %0" : "=r"(oldPageMap) : : "memory");
 			__asm__ __volatile__("mov %0, %%cr3" : :"r"(newPageMap) : "memory");
+			// Reclaim old page tables.
+			uint32_t indices[4] = {};
+			FreePageTables((uintptr_t*)oldPageMap, 3, PageMap::AddressToIndex(0xffff'8000'0000'0000, 3), indices);
+			FreePhysicalPages((uintptr_t)oldPageMap, 1);
+			OptimizePMMFreeList();
 		}
 	}
 }
