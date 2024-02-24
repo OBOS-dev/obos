@@ -65,11 +65,11 @@ namespace obos
 			newNode->nPages = size / 0x1000;
 			g_memoryTail = newNodePhys;
 		}
+		g_pmmLock.Unlock();
 		auto& lastMMAPEntry =
-			mmap_request.response->entries[mmap_request.response->entry_count - 2]
+			mmap_request.response->entries[mmap_request.response->entry_count - 1]
 			;
 		hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
-		g_pmmLock.Unlock();
 	}
 
 	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
@@ -128,11 +128,13 @@ namespace obos
 	{
 		OBOS_ASSERTP(addr != 0, "Attempt free of physical address zero.\n");
 		addr &= ~0xfff;
+		OBOS_ASSERTP((uintptr_t)addr != hhdm_limit, "");
 		g_pmmLock.Lock();
 		MemoryNode* node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)addr);
 		MemoryNode* nodePhys = (MemoryNode*)addr;
+		OBOS_ASSERTP((uintptr_t)g_memoryTail != hhdm_limit, "");
 		if (g_memoryTail)
-			((MemoryNode*)MAP_TO_HHDM((uintptr_t*)g_memoryTail))->next = nodePhys;
+			CMAP_TO_HHDM(g_memoryTail)->next = nodePhys;
 		if (!g_memoryHead)
 			g_memoryHead = nodePhys;
 		node->next = nullptr;

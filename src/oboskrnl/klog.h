@@ -17,6 +17,12 @@
 #define OBOS_ASSERT(expr, msg, ...)
 #endif
 
+#ifdef __GNUC__
+#define FORMAT(type, pFormat) __attribute__((format(type, pFormat, pFormat+1)))
+#else
+#define FORMAT(type, pFormat) 
+#endif
+
 namespace obos
 {
 	namespace logger
@@ -31,10 +37,10 @@ namespace obos
 			PANIC_RED = 0x00ac1616,
 		};
 
-		size_t printf(const char* format, ...);
+		FORMAT(printf, 1) size_t printf(const char* format, ...);
 		size_t vprintf(const char* format, va_list list);
 		size_t vsprintf(char* dest, const char* format, va_list list);
-		size_t sprintf(char* dest, const char* format, ...);
+		FORMAT(printf, 2) size_t sprintf(char* dest, const char* format, ...);
 
 		constexpr const char* DEBUG_PREFIX_MESSAGE = "[Debug] ";
 		constexpr const char* LOG_PREFIX_MESSAGE = "[Log] ";
@@ -42,12 +48,12 @@ namespace obos
 		constexpr const char* WARNING_PREFIX_MESSAGE = "[Warning] ";
 		constexpr const char* ERROR_PREFIX_MESSAGE = "[Error] ";
 
-		size_t debug(const char* format, ...);
-		size_t log(const char* format, ...);
-		size_t info(const char* format, ...);
-		size_t warning(const char* format, ...);
-		size_t error(const char* format, ...);
-		[[noreturn]] void panic(void* stackTraceParameter, const char* format, ...);
+		FORMAT(printf, 1) size_t debug(const char* format, ...);
+		FORMAT(printf, 1) size_t log(const char* format, ...);
+		FORMAT(printf, 1) size_t info(const char* format, ...);
+		FORMAT(printf, 1) size_t warning(const char* format, ...);
+		FORMAT(printf, 1) size_t error(const char* format, ...);
+		[[noreturn]] FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
 
 		void stackTrace(void* stackTraceParameter);

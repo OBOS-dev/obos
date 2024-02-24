@@ -8,7 +8,7 @@ qemu-system-x86_64 ^
 -device ahci,id=ahci1 ^
 -drive id=disk1,file=out/obos.iso,if=none,format=raw -device ide-hd,drive=disk1,bus=ahci1.0 ^
 -gdb tcp:0.0.0.0:1234 -S ^
--m 1G ^
+-m 128M ^
 -cpu qemu64,+nx,+pdpe1gb,+syscall,+fsgsbase,+smep,+smap,+sse,+sse2,+sse4.1,+sse4.2 ^
 -monitor stdio ^
 -debugcon file:CON ^

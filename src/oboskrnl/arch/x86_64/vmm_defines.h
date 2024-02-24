@@ -15,3 +15,14 @@
 #define OBOS_ADDR_BITWIDTH (64)
 #define OBOS_ZERO_PAGE_PHYSICAL ((uintptr_t)0)
 #define OBOS_MAX_PAGE_FAULT_HANDLERS (32)
+namespace obos
+{
+	namespace vmm
+	{
+		enum
+		{
+			PROT_x86_64_WRITE_COMBINING_CACHE = 0x0100'0000,
+			PROT_x86_64_WRITE_THROUGH_CACHE = 0x0200'0000,
+		};
+	}
+}

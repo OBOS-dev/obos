@@ -82,7 +82,10 @@ extern "C" void _start()
 	auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
 	if (ParseMADTForIOAPICAddresses(madt, &ioapic, 1))
 		logger::warning("%s: There are multiple I/O APICs, but multiple I/O APICs are not supported by oboskrnl.\n", __func__);
-	InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
+	if (ioapic)
+		InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
+	else
+		logger::warning("%s: Could not find an I/O APIC on this computer.\n", __func__);
 	uint8_t oldIRQL = 0;
 	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
 	asm("sti");
@@ -92,6 +95,7 @@ extern "C" void _start()
 	memzero(MapToHHDM(0), 4096);
 	logger::log("%s: Initializing page tables.\n", __func__);
 	arch::InitializePageTables();
+	//*(uint8_t*)nullptr = 0;
 	while (1);
 }
 

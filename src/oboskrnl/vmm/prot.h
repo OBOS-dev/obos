@@ -12,7 +12,7 @@ namespace obos
 {
 	namespace vmm
 	{
-		typedef uint32_t prot_t;
+		typedef uint64_t prot_t;
 		enum
 		{
 			/// <summary>
@@ -35,6 +35,14 @@ namespace obos
 			/// Disable demand paging for the allocated region. This should be used for tss/ist stacks to prevent triple faults.
 			/// </summary>
 			PROT_NO_DEMAND_PAGE = 0x10,
+			/// <summary>
+			/// The start of the range for platform-specific bits.
+			/// </summary>
+			PROT_PLATFORM_START = 0x0100'0000,
+			/// <summary>
+			/// The end of the range for platform-specific bits.
+			/// </summary>
+			PROT_PLATFORM_END = 0x8000'0000,
 		};
 		enum
 		{

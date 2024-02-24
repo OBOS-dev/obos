@@ -6,6 +6,8 @@
 
 #include <int.h>
 #include <memmanip.h>
+#include <fb.h>
+#include <console.h>
 
 #include <arch/x86_64/mm/map.h>
 #include <arch/x86_64/mm/palloc.h>
@@ -50,6 +52,10 @@ namespace obos
 				ret |= BIT(4);
 			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
 				ret |= BIT(9);
+			if (prot & vmm::PROT_x86_64_WRITE_COMBINING_CACHE)
+				ret |= BIT(3) | BIT(7) /* Use PAT5 */;
+			if (prot & vmm::PROT_x86_64_WRITE_THROUGH_CACHE)
+				ret |= BIT(3) /* Use PAT1 */;
 			if (!(prot & vmm::PROT_EXECUTE))
 				ret |= BIT(63);
 			return ret;
@@ -192,14 +198,26 @@ namespace obos
 				FreePhysicalPages(PageMap::MaskPhysicalAddressFromEntry(pm[indices[level]]), 1);
 			}
 		}
-		void InitializePageTables()
+		static void MapFramebuffer(PageMap* pm)
 		{
-			uintptr_t newPageMap = AllocatePhysicalPages(1);
-			memzero(MapToHHDM(newPageMap), 4096);
-			PageMap* pm = (PageMap*)newPageMap;
-			for (uintptr_t i = hhdm_offset.response->offset; i < hhdm_limit; i += 0x200000)
-				map_hugepage_to(pm, i, i - hhdm_offset.response->offset, vmm::PROT_NO_DEMAND_PAGE);
-			uint8_t *kfile = (uint8_t*)kernel_file.response->kernel_file->address;
+			Framebuffer fb{};
+			g_kernelConsole.GetFramebuffer(&fb, nullptr, nullptr);
+			uintptr_t fbPhys = (uintptr_t)fb.address - hhdm_offset.response->offset;
+			size_t fbSize = ((size_t)fb.height * (size_t)fb.pitch);
+			size_t nHugePagesInFB = fbSize / OBOS_HUGE_PAGE_SIZE;
+			size_t nLeftOverPagesInFb = (fbSize - nHugePagesInFB * OBOS_HUGE_PAGE_SIZE) / OBOS_PAGE_SIZE;
+			uintptr_t newFBAddr = 0xffff'ff00'0000'0000;
+			uintptr_t addr = newFBAddr;
+			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE)
+				map_hugepage_to(pm, addr, fbPhys + (addr - newFBAddr), vmm::PROT_x86_64_WRITE_COMBINING_CACHE);
+			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE + nLeftOverPagesInFb * OBOS_PAGE_SIZE); addr += OBOS_PAGE_SIZE)
+				map_page_to(pm, addr, fbPhys + (addr - newFBAddr), vmm::PROT_x86_64_WRITE_COMBINING_CACHE);
+			fb.address = (void*)newFBAddr;
+			g_kernelConsole.SetFramebuffer(&fb, nullptr, true);
+		}
+		static void MapKernel(PageMap* pm)
+		{
+			uint8_t* kfile = (uint8_t*)kernel_file.response->kernel_file->address;
 			[[maybe_unused]] size_t kfileSize = kernel_file.response->kernel_file->size;
 			elf::Elf64_Ehdr* ehdr = (elf::Elf64_Ehdr*)kfile;
 			elf::Elf64_Phdr* firstPhdr = (elf::Elf64_Phdr*)(kfile + ehdr->e_phoff);
@@ -230,6 +248,15 @@ namespace obos
 				for (uintptr_t kBase = base, j = 0; kBase <= kernelTop; kBase += 4096, j++)
 					map_page_to(pm, kBase, physPages + j * 4096, prot);
 			}
+		}
+		void InitializePageTables()
+		{
+			uintptr_t newPageMap = AllocatePhysicalPages(1);
+			memzero(MapToHHDM(newPageMap), 4096);
+			PageMap* pm = (PageMap*)newPageMap;
+			for (uintptr_t i = hhdm_offset.response->offset; i < hhdm_limit; i += 0x200000)
+				map_hugepage_to(pm, i, i - hhdm_offset.response->offset, vmm::PROT_NO_DEMAND_PAGE);
+			MapKernel(pm);
 			PageMap* oldPageMap = nullptr;
 			__asm__ __volatile__("mov %%cr3, %0" : "=r"(oldPageMap) : : "memory");
 			__asm__ __volatile__("mov %0, %%cr3" : :"r"(newPageMap) : "memory");
@@ -237,6 +264,7 @@ namespace obos
 			uint32_t indices[4] = {};
 			FreePageTables((uintptr_t*)oldPageMap, 3, PageMap::AddressToIndex(0xffff'8000'0000'0000, 3), indices);
 			FreePhysicalPages((uintptr_t)oldPageMap, 1);
+			MapFramebuffer(pm);
 			OptimizePMMFreeList();
 		}
 	}

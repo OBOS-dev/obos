@@ -37,13 +37,17 @@ add_custom_target(isogen ALL
 	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios-cd.bin ${ISODIR}${PS}limine ${SUPPRESS_OUTPUT}
 	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios-pxe.bin ${ISODIR}${PS}limine ${SUPPRESS_OUTPUT}
 	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}limine-bios.sys ${ISODIR}${PS}limine ${SUPPRESS_OUTPUT}
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}BOOTX64.EFI ${ISODIR}${PS}EFI${PS}BOOT ${SUPPRESS_OUTPUT}
+	COMMAND	${COPY_FILE_COMMAND} ${SOURCE_DIR}${PS}dependencies${PS}limine${PS}BOOTIA32.EFI ${ISODIR}${PS}EFI${PS}BOOT ${SUPPRESS_OUTPUT}
 	COMMAND	xorriso -as mkisofs -b limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image --protective-msdos-label isodir -o ${OUTPUT_DIR}/obos.iso ${SUPPRESS_OUTPUT}
 	COMMAND	${limine_install} bios-install ${OUTPUT_DIR}${PS}obos.iso ${SUPPRESS_OUTPUT}
 	SOURCES ${CMAKE_SOURCE_DIR}/config/limine.cfg ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-uefi-cd.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-cd.bin
-            ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-pxe.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios.sys
+            ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-pxe.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios.sys ${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTX64.EFI
+			${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTIA32.EFI
 	DEPENDS oboskrnl
 	BYPRODUCTS ${ISODIR}/limine.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
+	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTIA32.efi
 	BYPRODUCTS ${ISODIR}/limine/limine-uefi-cd.bin
 	BYPRODUCTS ${ISODIR}/limine/limine-bios-cd.bin
 	BYPRODUCTS ${ISODIR}/limine/limine-bios-pxe.bin

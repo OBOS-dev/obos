@@ -50,6 +50,16 @@ namespace obos
 		void GetColour(Pixel &fg, Pixel &bg) const;
 		void SetPosition(uint32_t x, uint32_t y);
 		void GetPosition(uint32_t* x, uint32_t* y) const;
+		/// <summary>
+		/// Sets the console's frame buffer.<para></para>
+		/// If both buffers are nullptr, the draw buffer is set to nullptr and all writes to the console are dropped.
+		/// </summary>
+		/// <param name="fb">The framebuffer to use.</param>
+		/// <param name="bb">The back buffer to use.</param>
+		/// <param name="drawToFB">Whether to set the draw buffer to the framebuffer (true) or the backbuffer (false). If the framebuffer is nullptr and this is set, 
+		/// the parameter is treated as if it were false. If the backbuffer is nullptr and this is false, the parameter is treated as if it were true.</param>
+		void SetFramebuffer(const Framebuffer* fb, const Framebuffer* bb, bool drawToFB);
+		void GetFramebuffer(Framebuffer* fb, Framebuffer* bb, bool* drawToFB);
 
 		void ClearConsole(Pixel bg);
 	private:

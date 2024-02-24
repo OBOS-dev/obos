@@ -66,6 +66,8 @@ namespace obos
 				m_physAddrMask = (((uint64_t)1 << GetPhysicalAddressBits()) - 1) << 12;
 			cpuFlags &= ~m_physAddrMask;
 			cpuFlags |= 1;
+			// Clear the caching flags.
+			cpuFlags &= ~(1<<3) & ~(1<<4) & ~(1<<7);
 			auto GetPageMapEntryForDepth = [&](uintptr_t addr, uint8_t depth)->uintptr_t
 				{
 					switch (depth)
