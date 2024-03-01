@@ -13,6 +13,7 @@ namespace obos
 	namespace vmm
 	{
 		typedef uint64_t prot_t;
+		typedef uint64_t allocflag_t;
 		enum
 		{
 			/// <summary>

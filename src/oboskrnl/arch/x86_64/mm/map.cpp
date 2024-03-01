@@ -16,6 +16,7 @@
 #include <arch/x86_64/asm_helpers.h>
 
 #include <arch/vmm_defines.h>
+#include <vmm/pg_context.h>
 
 #include <vmm/prot.h>
 
@@ -44,14 +45,21 @@ namespace obos
 		uintptr_t DecodeProt(uintptr_t prot)
 		{
 			uintptr_t ret = 0;
+			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
+			{
+				ret = BIT(9) | BIT(63);
+				if (prot & vmm::PROT_x86_64_WRITE_COMBINING_CACHE)
+					ret |= BIT(3) | BIT(7) /* Use PAT5 */;
+				if (prot & vmm::PROT_x86_64_WRITE_THROUGH_CACHE)
+					ret |= BIT(3) /* Use PAT1 */;
+				return ret;
+			}
 			if (!(prot & vmm::PROT_READ_ONLY))
 				ret |= BIT(1);
 			if (prot & vmm::PROT_USER)
 				ret |= BIT(2);
 			if (prot & vmm::PROT_CACHE_DISABLE)
 				ret |= BIT(4);
-			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
-				ret |= BIT(9);
 			if (prot & vmm::PROT_x86_64_WRITE_COMBINING_CACHE)
 				ret |= BIT(3) | BIT(7) /* Use PAT5 */;
 			if (prot & vmm::PROT_x86_64_WRITE_THROUGH_CACHE)
@@ -64,38 +72,47 @@ namespace obos
 		{
 			uintptr_t ret = 0, flags = entry;
 			flags &= ~((((uintptr_t)1 << GetPhysicalAddressBits()) - 1) << 12);
+			if (flags & BIT(9))
+			{
+				ret = (flags >> 52) & 0x7f;
+				if ((flags & BIT(3)) && (flags & BIT(7)) /* PAT5 */)
+					ret |= vmm::PROT_x86_64_WRITE_COMBINING_CACHE;
+				if ((flags & BIT(3)) /* PAT1 */)
+					ret |= vmm::PROT_x86_64_WRITE_THROUGH_CACHE;
+				return ret;
+			}
 			if (!(flags & BIT(1)))
 				ret |= vmm::PROT_READ_ONLY;
 			if (flags & BIT(2))
 				ret |= vmm::PROT_USER;
 			if (flags & BIT(4))
 				ret |= vmm::PROT_CACHE_DISABLE;
+			if ((flags & BIT(3)) && (flags & BIT(7)))
+				ret |= vmm::PROT_x86_64_WRITE_COMBINING_CACHE;
+			if ((flags & BIT(3)))
+				ret |= vmm::PROT_x86_64_WRITE_THROUGH_CACHE;
 			if (!(flags & BIT(63)))
 				ret |= vmm::PROT_EXECUTE;
 			return ret;
 		}
 
-		void* map_page_to(uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		void* map_page_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
-			return map_page_to(GetCurrentPageMap(), virt, phys, prot);
+			return map_page_to(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), virt, phys, prot);
 		}
-		void* map_hugepage_to(uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		void* map_hugepage_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
-			return map_hugepage_to(GetCurrentPageMap(), virt, phys, prot);
-		}
-
-		void unmap(void* addr)
-		{
-			unmap(GetCurrentPageMap(), addr);
-		}
-		uintptr_t get_page_phys(void* addr)
-		{
-			return get_page_phys(GetCurrentPageMap(), addr);
+			return map_hugepage_to(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), virt, phys, prot);
 		}
 
-		void get_page_descriptor(void* addr, vmm::page_descriptor& out)
+		void unmap(vmm::Context* ctx, void* addr)
 		{
-			get_page_descriptor(GetCurrentPageMap(), addr, out);
+			unmap(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), addr);
+		}
+
+		void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out)
+		{
+			get_page_descriptor(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), addr, out);
 		}
 
 		void* map_page_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
@@ -107,6 +124,8 @@ namespace obos
 			virt &= ~0xfff;
 			phys &= ~0xfff;
 			uintptr_t flags = DecodeProt(prot) | 1;
+			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
+				flags |= (((uintptr_t)prot & 0x7f) << 52);
 			uintptr_t* pt = pm->AllocatePageMapAt(virt, flags);
 			pt[PageMap::AddressToIndex(virt, 0)] = phys | flags;
 			invlpg(virt);
@@ -124,6 +143,8 @@ namespace obos
 			// No need to clear the flag, as it'll just get added again.
 			if (flags & ((uintptr_t)1 << 7))
 				flags |= ((uintptr_t)1<<12);
+			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
+				flags |= (((uintptr_t)prot & 0x7f) << 52);
 			uintptr_t* pt = pm->AllocatePageMapAt(virt, flags, 2);
 			pt[PageMap::AddressToIndex(virt, 1)] = phys | flags | ((uintptr_t)1<<7);
 			invlpg(virt);
@@ -146,16 +167,12 @@ namespace obos
 			pm->FreePageMapAt(virt, 3 - (uint8_t)isHugePage);
 			invlpg(virt);
 		}
-		uintptr_t get_page_phys(PageMap* pm, void* addr)
-		{
-			return PageMap::MaskPhysicalAddressFromEntry(pm->GetL1PageMapEntryAt((uintptr_t)addr));
-		}
 		void get_page_descriptor(class PageMap* pm, void* addr, vmm::page_descriptor& out)
 		{
 			out.virt = (uintptr_t)addr;
 			uintptr_t l2Entry = pm->GetL2PageMapEntryAt(out.virt);
 			uintptr_t l1Entry = pm->GetL1PageMapEntryAt(out.virt);
-			if (l2Entry & (1 << 7))
+			if (l2Entry & BIT(7))
 			{
 				out.isHugePage = true;
 				out.present = true;
@@ -170,13 +187,21 @@ namespace obos
 				out.phys = 0;
 				return;
 			}
+			if (out.isHugePage)
+			{
+				bool patFlag = (l2Entry & BIT(12));
+				if (!patFlag)
+					l2Entry &= ~BIT(7);
+				else
+					l2Entry &= ~BIT(12); // Bit 7 is already set, but bit 12 being set could cause some confusion, so we clear it.
+			}
 			out.protFlags = DecodeEntry(out.isHugePage ? l2Entry : l1Entry);
-			out.phys = PageMap::MaskPhysicalAddressFromEntry(out.isHugePage ? l2Entry : l1Entry);
+			out.phys = PageMap::MaskPhysicalAddressFromEntry(out.isHugePage ? l2Entry : l1Entry) + ((uintptr_t)addr & (out.isHugePage ? 0x1f'ffff : 0xfff));
 		}
 
-		uintptr_t AllocatePhysicalPages(size_t nPages)
+		uintptr_t AllocatePhysicalPages(size_t nPages, bool alignToHugePageSize)
 		{
-			return ::obos::AllocatePhysicalPages(nPages);
+			return ::obos::AllocatePhysicalPages(nPages, alignToHugePageSize);
 		}
 		void FreePhysicalPages(uintptr_t base, size_t nPages)
 		{
@@ -209,9 +234,9 @@ namespace obos
 			uintptr_t newFBAddr = 0xffff'ff00'0000'0000;
 			uintptr_t addr = newFBAddr;
 			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE)
-				map_hugepage_to(pm, addr, fbPhys + (addr - newFBAddr), vmm::PROT_x86_64_WRITE_COMBINING_CACHE);
+				map_hugepage_to(pm, addr, fbPhys + (addr - newFBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
 			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE + nLeftOverPagesInFb * OBOS_PAGE_SIZE); addr += OBOS_PAGE_SIZE)
-				map_page_to(pm, addr, fbPhys + (addr - newFBAddr), vmm::PROT_x86_64_WRITE_COMBINING_CACHE);
+				map_page_to(pm, addr, fbPhys + (addr - newFBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
 			fb.address = (void*)newFBAddr;
 			g_kernelConsole.SetFramebuffer(&fb, nullptr, true);
 		}
@@ -251,7 +276,7 @@ namespace obos
 		}
 		void InitializePageTables()
 		{
-			uintptr_t newPageMap = AllocatePhysicalPages(1);
+			uintptr_t newPageMap = obos::AllocatePhysicalPages(1);
 			memzero(MapToHHDM(newPageMap), 4096);
 			PageMap* pm = (PageMap*)newPageMap;
 			for (uintptr_t i = hhdm_offset.response->offset; i < hhdm_limit; i += 0x200000)

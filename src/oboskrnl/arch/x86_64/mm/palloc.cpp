@@ -197,7 +197,7 @@ namespace obos
 			OBOS_ASSERTP(previousNodePhys != 0, "");
 			uintptr_t nextNodePhys = (uintptr_t)currentNode->next;
 			MemoryNode* nextNode = (MemoryNode*)MAP_TO_HHDM(currentNode->next);
-			// Two blocks that are continuous but in seperate nodes.
+			// Two blocks that are continuous but in separate nodes.
 			if ((previousNodePhys + previousNode->nPages * 4096) == currentNodePhys)
 			{
 				// Combine them.
@@ -208,7 +208,7 @@ namespace obos
 				previousNode->next = (MemoryNode*)nextNodePhys;
 				// Because of that guarantee, currentNode cannot be equal to g_memoryHead
 				/*if (currentNode == g_memoryHead)
-					g_memoryHead = ;*/
+					g_memoryHead = currentNode->next;*/
 				if (currentNodePhys == (uintptr_t)g_memoryTail)
 					g_memoryTail = (MemoryNode*)previousNodePhys;
 				g_nMemoryNodes--;

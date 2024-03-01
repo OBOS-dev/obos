@@ -28,6 +28,7 @@
 // We can define some macros on our own if they're obvious.
 #ifdef OBOS_HUGE_PAGE_SIZE
 #define OBOS_HAS_HUGE_PAGE_SUPPORT 1
+static_assert(OBOS_HUGE_PAGE_SIZE > OBOS_PAGE_SIZE, "Huge page size is less than the normal page size.");
 #else
 #define OBOS_HAS_HUGE_PAGE_SUPPORT 0
 #endif

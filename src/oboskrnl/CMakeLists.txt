@@ -3,9 +3,10 @@
 # Copyright (c) 2024 Omar Berrow
 
 set (oboskrnl_sources ${oboskrnl_sources}
-	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp")
+	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp" 
+	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/slab.cpp")
 
-add_executable(oboskrnl ${oboskrnl_sources} ${obos})
+add_executable(oboskrnl ${oboskrnl_sources} ${obos} "vmm/mprot.h")
 
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD 20)
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD_REQUIRED 20)
@@ -27,7 +28,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-nostdlib>
-# We don't enable -Werror in case future compiler versions introduce new warnings that oboskrnl triggers.
+# We don't enable -Werror in case future compiler versions introduce new warnings that the kernel triggers.
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wno-missing-field-initializers>
@@ -41,3 +42,6 @@ target_link_options(oboskrnl
 	PUBLIC "-nostdlib"
 	PUBLIC ${TARGET_LINKER_OPTIONS}
 )
+if (DEFINED OBOS_INITIAL_SLAB_COUNT)
+	target_compile_definitions(PRIVATE OBOS_INITIAL_SLAB_COUNT=${OBOS_INITIAL_SLAB_COUNT})
+endif()

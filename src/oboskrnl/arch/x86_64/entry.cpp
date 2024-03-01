@@ -23,6 +23,9 @@
 #include <arch/x86_64/asm_helpers.h>
 
 #include <vmm/prot.h>
+#include <vmm/pg_context.h>
+
+#include <allocators/slab.h>
 
 #include <irq/irql.h>
 
@@ -95,7 +98,13 @@ extern "C" void _start()
 	memzero(MapToHHDM(0), 4096);
 	logger::log("%s: Initializing page tables.\n", __func__);
 	arch::InitializePageTables();
-	//*(uint8_t*)nullptr = 0;
+	allocators::SlabAllocator alloc;
+	allocators::g_kAllocator = &alloc;
+	alloc.Initialize((void*)0xffff'ffff'ffff'0000, 0x10, 1024);
+	void* ret = alloc.Allocate(5), *ret2 = alloc.Allocate(3);
+	alloc.Free(ret,5);
+	alloc.Free(ret2,3);
+	alloc.OptimizeAllocator();
 	while (1);
 }
 
