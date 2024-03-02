@@ -34,15 +34,16 @@ namespace obos
 
 			~SlabAllocator();
 		private:
-			void ImplOptimizeAllocator();
-			void* m_base = nullptr;
-			size_t m_regionSize = 0;
+			void ImplOptimizeList(SlabList& list);
+			SlabNode* LookForNode(SlabList& list, void* addr);
+			void CombineContinuousNodes(SlabList& list);
+			void* AllocateFromRegion(SlabRegionNode* region, size_t size);
+			SlabRegionList m_regionNodes;
 			size_t m_allocationSize = 0;
 			size_t m_stride = 0;
 			size_t m_padding = 0;
-			SlabList m_freeNodes = {};
-			SlabList m_allocatedNodes = {};
-			locks::SpinLock m_lock;
+			void* m_allocBase = nullptr;
+			static constexpr size_t m_maxEmptyRegionNodesAllowed = 8;
 		};
 	}
 }

@@ -80,3 +80,8 @@ void operator delete[](void* ptr, size_t size) noexcept
 		return;
 	operator delete(ptr, size);
 }
+
+[[nodiscard]] void* operator new(size_t, void* ptr) noexcept { return ptr; }
+[[nodiscard]] void* operator new[](size_t, void* ptr) noexcept { return ptr; }
+void operator delete(void*, void*) noexcept {}
+void operator delete[](void*, void*) noexcept {}

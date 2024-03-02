@@ -4,6 +4,8 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include <new>
+
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -12,7 +14,10 @@
 #include <allocators/slab_structs.h>
 
 #include <vmm/map.h>
-#include "slab_structs.h"
+#include <vmm/page_descriptor.h>
+
+#include <arch/vmm_defines.h>
+#include <arch/vmm_map.h>
 
 namespace obos
 {
@@ -20,76 +25,148 @@ namespace obos
 	{
 #define ROUND_UP(n, to) ((to) != 0 ? ((n) / (to) + 1) * (to) : (n))
 #define ROUND_UP_COND(n, to) ((to) != 0 ? ((n) / (to) + (((n) % (to)) != 0)) * (to) : (n))
+		SlabRegionNode* AllocateRegionNode(void* allocBase, size_t regionSize, size_t stride, size_t allocSize, size_t padding, size_t nodeCount)
+		{
+			regionSize += sizeof(SlabRegionNode);
+			void* base = vmm::RawAllocate((void*)allocBase, regionSize, 0, vmm::PROT_NO_DEMAND_PAGE);
+			if (!base)
+				return nullptr;
+			SlabRegionNode* ret = (SlabRegionNode*)base;
+			memzero(base, regionSize);
+			ret->base = ret;
+			ret->regionSize = regionSize;
+			ret->magic = SLAB_REGION_NODE_MAGIC;
+			SlabNode* firstNode = (SlabNode*)ROUND_UP_COND((uintptr_t)(ret + 1), stride);
+			new (firstNode) SlabNode{};
+			firstNode->magic = SLAB_NODE_MAGIC;
+			firstNode->size = allocSize * nodeCount;
+			firstNode->data = (char*)ROUND_UP(((uintptr_t)(firstNode + 1) - sizeof(uintptr_t)), padding);
+			ret->freeNodes.Append(firstNode);
+			return ret;
+		}
 		bool SlabAllocator::Initialize(void* allocBase, size_t allocSize, size_t initialNodeCount, size_t padding)
 		{
-			if (!allocBase)
+			if (!allocBase || !allocSize)
 				return false;
+			if (!OBOS_IS_VIRT_ADDR_CANONICAL(allocBase))
+				return false;
+			if ((uintptr_t)allocBase < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+				logger::warning("Allocation base 0x%p for slab allocator 0x%p, is less than the kernel address space base, 0x%016lx.\n", allocBase, this, OBOS_KERNEL_ADDRESS_SPACE_BASE);
+			if (!padding)
+				padding = 1;
 			if (!initialNodeCount)
 				initialNodeCount = OBOS_INITIAL_SLAB_COUNT;
 			allocSize = ROUND_UP_COND(allocSize, padding);
-			size_t sizeNeeded = allocSize + sizeof(SlabNode);
+			size_t sizeNeeded = ROUND_UP_COND(allocSize + sizeof(SlabNode), padding);
 			m_stride = ROUND_UP_COND(sizeNeeded, padding);
-			size_t regionSize = m_stride * initialNodeCount;
-			regionSize = ROUND_UP_COND(regionSize, padding);
-			m_base = vmm::RawAllocate((void*)allocBase, regionSize, 0, vmm::PROT_NO_DEMAND_PAGE);
-			if (!m_base)
-				return false;
-			memzero(m_base, regionSize);
-			m_regionSize = regionSize;
 			m_allocationSize = allocSize;
 			m_padding = padding;
-			// Register all free nodes.
-			size_t i = 0;
-			for (SlabNode* cur = (SlabNode*)m_base; i < initialNodeCount; cur = (SlabNode*)((uintptr_t)cur + m_stride), i++)
-			{
-				cur->size = allocSize;
-				cur->data = (char*)ROUND_UP(((uintptr_t)(cur + 1) - sizeof(uintptr_t)), padding);
-				m_freeNodes.Append(cur);
-			}
+			m_allocBase = allocBase;
+			size_t regionSize = m_stride * initialNodeCount;
+			regionSize = ROUND_UP_COND(regionSize, padding);
+			SlabRegionNode* node = AllocateRegionNode(allocBase, allocSize, m_stride, m_allocationSize, padding, initialNodeCount);
+			if (!node)
+				return false;
+			m_regionNodes.Append(node);
 			return true;
 		}
 
 		static void* AllocateNode(SlabList& freeList, SlabList& allocatedList, SlabNode* node, size_t sz, size_t padding)
 		{
 			size_t requiredSize = ROUND_UP_COND(sz + sizeof(SlabNode), padding);
+			if (node->size == sz)
+				requiredSize = sz;
 			if (node->size < requiredSize)
 				return nullptr;
 			node->size -= requiredSize;
 			if (!node->size)
 				freeList.Remove(node);
 			SlabNode* newNode = (SlabNode*)(node->data + node->size);
+			if (requiredSize == sz)
+				newNode = node;
 			memzero(newNode, sizeof(*newNode));
+			newNode->magic = SLAB_NODE_MAGIC;
 			newNode->size = sz;
 			newNode->data = (char*)ROUND_UP(((uintptr_t)(newNode + 1) - sizeof(uintptr_t)), padding);
 			allocatedList.Append(newNode);
 			return newNode->data;
 		}
+		void* SlabAllocator::AllocateFromRegion(SlabRegionNode* region, size_t size)
+		{
+			void* ret = nullptr;
+			region->lock.Lock();
+			if (!region->freeNodes.nNodes)
+			{
+				region->lock.Unlock();
+				return nullptr;
+			}
+			ImplOptimizeList(region->freeNodes);
+			for (SlabNode* node = region->freeNodes.tail; node;)
+			{
+				if (this == g_kAllocator)
+					OBOS_ASSERTP(node->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , node, node->size, node->data);
+				else
+					OBOS_ASSERT(node->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , node, node->size, node->data);
+
+				if ((ret = AllocateNode(region->freeNodes, region->allocatedNodes, node, size, m_padding)))
+					break;
+				node = node->prev;
+			}
+			region->lock.Unlock();
+			return ret;
+		}
+		static bool CanAllocatePages(void* base, size_t size)
+		{
+			size_t nPages = ROUND_UP_COND(size, OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE;
+			uintptr_t _base = (uintptr_t)base;
+			vmm::page_descriptor pd{};
+			for (uintptr_t addr = (uintptr_t)base; addr < (_base + (nPages * OBOS_PAGE_SIZE)); addr += OBOS_PAGE_SIZE)
+			{
+				arch::get_page_descriptor((vmm::Context*)nullptr, (void*)addr, pd);
+				if (pd.present)
+					return false;
+			}
+			return true;
+		}
 		void* SlabAllocator::Allocate(size_t size)
 		{
 			void* ret = nullptr;
 			size *= m_allocationSize;
-			size = ROUND_UP_COND(size, m_padding);
-			m_lock.Lock();
-			if (!m_freeNodes.nNodes)
+			// m_allocationSize is rounded to the padding.
+			//size = ROUND_UP_COND(size, m_padding);
+			for (SlabRegionNode* cregion = m_regionNodes.head; cregion;)
 			{
-				m_lock.Unlock();
-				return nullptr;
-			}
-			ImplOptimizeAllocator();
-			for (SlabNode* node = m_freeNodes.tail; node;)
-			{
-				if ((ret = AllocateNode(m_freeNodes, m_allocatedNodes, node, size, m_padding)))
+				if ((ret = AllocateFromRegion(cregion, size)))
 					break;
-				node = node->prev;
+
+				cregion = cregion->next;
 			}
-			m_lock.Unlock();
+			if (!ret)
+			{
+				// Allocate a new region.
+				size_t regionSize = ROUND_UP_COND(size + 0x200, m_allocationSize);
+				uintptr_t base = (uintptr_t)m_allocBase;
+				for (; OBOS_IS_VIRT_ADDR_CANONICAL(base) && base < OBOS_ADDRESS_SPACE_LIMIT; base += OBOS_PAGE_SIZE)
+				{
+					if (CanAllocatePages((void*)base, regionSize))
+						break;
+				}
+				SlabRegionNode* newRegion = AllocateRegionNode((void*)base, regionSize , m_stride, m_allocationSize, m_padding, regionSize / m_allocationSize);
+				m_regionNodes.Append(newRegion);
+				return AllocateFromRegion(newRegion, size);
+			}
 			return ret;
 		}
 
-		static SlabNode* LookForNode(SlabList& list, void* addr)
+		SlabNode* SlabAllocator::LookForNode(SlabList &list, void* addr)
 		{
 			for (SlabNode* node = list.head; node;)
 			{
+				if (this == g_kAllocator)
+					OBOS_ASSERTP(node->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.",, node, node->size, node->data);
+				else
+					OBOS_ASSERT(node->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , node, node->size, node->data);
+
 				if ((addr >= node->data) && (addr < (node->data + node->size)))
 					return node;
 				node = node->next;
@@ -106,23 +183,47 @@ namespace obos
 
 		void SlabAllocator::Free(void* base, size_t)
 		{
-			SlabNode* node = LookForNode(m_allocatedNodes, base);
-			if (!node)
+			SlabNode* node = nullptr;
+			SlabRegionNode* region = nullptr;
+			for (SlabRegionNode* cregion = m_regionNodes.head; cregion;)
+			{
+				if (base >= cregion->base && base < ((char*)cregion->base + cregion->regionSize))
+					goto bottom;
+				node = LookForNode(cregion->allocatedNodes, base);
+				if (node)
+				{
+					region = cregion;
+					break;
+				}
+
+			bottom:
+				cregion = cregion->next;
+			}
+			if (!node || !region)
 				return;
-			m_lock.Lock();
+			region->lock.Lock();
 			memzero(node->data, node->size);
-			m_allocatedNodes.Remove(node);
+			region->allocatedNodes.Remove(node);
 			node->next = nullptr;
 			node->prev = nullptr;
-			m_freeNodes.Append(node);
-			m_lock.Unlock();
+			region->freeNodes.Append(node);
+			region->lock.Unlock();
 		}
 
 		size_t SlabAllocator::QueryObjectSize(void* base)
 		{
-			if (base < m_base || base >= ((char*)m_base + m_regionSize))
-				return SIZE_MAX;
-			SlabNode* node = LookForNode(m_allocatedNodes, base);
+			SlabNode* node = nullptr;
+			for (SlabRegionNode* region = m_regionNodes.head; region;)
+			{
+				if (base < region->base || base >= ((char*)region->base + region->regionSize))
+					goto bottom;
+				node = LookForNode(region->allocatedNodes, base);
+				if (node)
+					break;
+
+			bottom:
+				region = region->next;
+			}
 			if (!node)
 				return SIZE_MAX;
 			return node->size / m_allocationSize;
@@ -177,22 +278,54 @@ namespace obos
 		}
 		void SlabAllocator::OptimizeAllocator()
 		{
-			m_lock.Lock();
-			ImplOptimizeAllocator();
-			m_lock.Unlock();
+			size_t nFreeRegionNodes = 0;
+			for (SlabRegionNode* node = m_regionNodes.head; node;)
+			{
+				nFreeRegionNodes += (node->allocatedNodes.nNodes == 0);
+
+				node = node->next;
+			}
+			for (SlabRegionNode* node = m_regionNodes.head; node;)
+			{
+				node->lock.Lock();
+				ImplOptimizeList(node->freeNodes);
+				if (nFreeRegionNodes >= m_maxEmptyRegionNodesAllowed && node->allocatedNodes.nNodes == 0)
+				{
+					node->lock.Lock();
+					node->base = nullptr;
+					node->regionSize = 0;
+					m_regionNodes.Remove(node);
+					memzero(node->base, node->regionSize);
+					vmm::RawFree(node->base, node->regionSize);
+					//node->lock.Unlock();
+					nFreeRegionNodes--;
+				}
+				node->lock.Unlock();
+
+				node = node->next;
+			}
 		}
 
 		SlabAllocator::~SlabAllocator()
 		{
-			if (!m_base)
-				return; // Uninitialized object.
-			m_lock.Lock();
-			vmm::RawFree(m_base, m_regionSize);
-			m_base = nullptr;
-			m_regionSize = 0;
+			for (SlabRegionNode* node = m_regionNodes.head; node;)
+			{
+				node->lock.Lock();
+				node->base = nullptr;
+				node->regionSize = 0;
+				node->lock.Unlock();
+
+				SlabRegionNode* temp = node;
+				node = node->next;
+				memzero(temp, sizeof(*temp)); // Nuke the node.
+				vmm::RawFree(temp->base, temp->regionSize);
+			}
+			// Nuke the region node list.
+			memzero(&m_regionNodes, sizeof(m_regionNodes));
+			
 			m_allocationSize = 0;
 			m_stride = 0;
-			m_lock.Unlock();
+			m_padding = 0;
 		}
 
 		// -1: heap corruption.
@@ -228,7 +361,7 @@ namespace obos
 			} while (swapped);
 			return 0;
 		}
-		static void CombineContinuousNodes(SlabList& list, size_t stride, size_t allocationSize)
+		void SlabAllocator::CombineContinuousNodes(SlabList& list)
 		{
 			if (!list.head)
 				return;
@@ -236,27 +369,36 @@ namespace obos
 			while (currentNode)
 			{
 				auto previousNode = currentNode->prev;
-				OBOS_ASSERTP(previousNode != 0, "");
+				if (this == g_kAllocator)
+				{
+					OBOS_ASSERTP(currentNode->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%lu, data=0x%p.", , currentNode, currentNode->size, currentNode->data);
+					OBOS_ASSERTP(previousNode != 0, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , currentNode, currentNode->size, currentNode->data);
+				}
+				else
+				{
+					OBOS_ASSERT(currentNode->magic == SLAB_NODE_MAGIC, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , currentNode, currentNode->size, currentNode->data);
+					OBOS_ASSERT(previousNode != 0, "Heap corruption detected for node 0x%p. size=%ld, data=0x%p.", , currentNode, currentNode->size, currentNode->data);
+				}
 				auto nextNode = currentNode->next;
 				// Two blocks that are continuous but in separate nodes.
 				if (((uintptr_t)previousNode->data + previousNode->size) == (uintptr_t)currentNode)
 				{
 					// Combine them.
-					previousNode->size += stride - allocationSize + currentNode->size /* Don't add the size, add the entire node + the size, as that's what's being reclaimed.*/;
+					previousNode->size += m_stride - m_allocationSize + currentNode->size /* Don't add the size, add the entire node + the size, as that's what's being reclaimed.*/;
 					list.Remove(currentNode);
 				}
 
 				currentNode = nextNode;
 			}
 		}
-		void SlabAllocator::ImplOptimizeAllocator()
+		void SlabAllocator::ImplOptimizeList(SlabList& list)
 		{
 			// Sort the list.
-			int res = SortList(m_freeNodes, true);
+			int res = SortList(list, true);
 			if (g_kAllocator == this)
 				OBOS_ASSERTP(res != -1, "Heap corruption detected.\n");
 			// Combine continuous nodes.
-			CombineContinuousNodes(m_freeNodes, m_stride, m_allocationSize);
+			CombineContinuousNodes(list);
 		}
 
 		void SlabList::Append(SlabNode* node)
@@ -270,6 +412,32 @@ namespace obos
 			nNodes++;
 		}
 		void SlabList::Remove(SlabNode* node)
+		{
+			if (!tail || !head)
+				return;
+			if (node->prev)
+				node->prev->next = node->next;
+			if (node->next)
+				node->next->prev = node->prev;
+			if (tail == node)
+				tail = node->prev;
+			if (head == node)
+				head = node->next;
+			node->next = nullptr;
+			node->prev = nullptr;
+			nNodes--;
+		}
+		void SlabRegionList::Append(SlabRegionNode* node)
+		{
+			if (tail)
+				tail->next = node;
+			if (!head)
+				head = node;
+			node->prev = tail;
+			tail = node;
+			nNodes++;
+		}
+		void SlabRegionList::Remove(SlabRegionNode* node)
 		{
 			if (!tail || !head)
 				return;

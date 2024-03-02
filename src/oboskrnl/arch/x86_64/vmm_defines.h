@@ -15,6 +15,9 @@
 #define OBOS_ADDR_BITWIDTH (64)
 #define OBOS_ZERO_PAGE_PHYSICAL ((uintptr_t)0)
 #define OBOS_MAX_PAGE_FAULT_HANDLERS (32)
+#define OBOS_ADDRESS_SPACE_LIMIT (0xffff'ffff'ffff'ffff)
+#define OBOS_KERNEL_ADDRESS_SPACE_BASE (0xffff'8000'0000'0000)
+#define OBOS_KERNEL_ADDRESS_SPACE_LIMIT OBOS_ADDRESS_SPACE_LIMIT
 namespace obos
 {
 	namespace vmm

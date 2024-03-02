@@ -10,6 +10,7 @@
 #include <klog.h>
 
 #include <arch/x86_64/mm/palloc.h>
+#include <arch/x86_64/mm/map.h>
 
 #include <limine/limine.h>
 
@@ -66,10 +67,22 @@ namespace obos
 			g_memoryTail = newNodePhys;
 		}
 		g_pmmLock.Unlock();
-		auto& lastMMAPEntry =
-			mmap_request.response->entries[mmap_request.response->entry_count - 1]
-			;
+		auto lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - 1];
 		hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
+		vmm::page_descriptor pd{};
+		arch::get_page_descriptor((vmm::Context*)nullptr, (void*)hhdm_limit, pd);
+		size_t i = 1;
+		while (!pd.present)
+		{
+			lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - ++i];
+			if (lastMMAPEntry < *mmap_request.response->entries)
+			{
+				hhdm_limit = hhdm_offset.response->offset;
+				break;
+			}
+			hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
+			arch::get_page_descriptor((vmm::Context*)nullptr, (void*)(hhdm_limit - 0x1000), pd);
+		}
 	}
 
 	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)

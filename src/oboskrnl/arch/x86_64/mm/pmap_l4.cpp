@@ -41,11 +41,15 @@ namespace obos
 		uintptr_t PageMap::GetL3PageMapEntryAt(uintptr_t at)
 		{
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL4PageMapEntryAt(at)));
+			if (arr == MapToHHDM(0))
+				return 0;
 			return GetEntryAt(arr, at, 2);
 		}
 		uintptr_t PageMap::GetL2PageMapEntryAt(uintptr_t at)
 		{
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL3PageMapEntryAt(at)));
+			if (arr == MapToHHDM(0))
+				return 0;
 			return GetEntryAt(arr, at, 1);
 		}
 		uintptr_t PageMap::GetL1PageMapEntryAt(uintptr_t at)
@@ -53,6 +57,8 @@ namespace obos
 			if (GetL2PageMapEntryAt(at) & ((uintptr_t)1 << 7))
 				return 0;
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL2PageMapEntryAt(at)));
+			if (arr == MapToHHDM(0))
+				return 0;
 			return GetEntryAt(arr, at, 0);
 		}
 

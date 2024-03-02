@@ -128,7 +128,8 @@ namespace obos
 				flags |= (((uintptr_t)prot & 0x7f) << 52);
 			uintptr_t* pt = pm->AllocatePageMapAt(virt, flags);
 			pt[PageMap::AddressToIndex(virt, 0)] = phys | flags;
-			invlpg(virt);
+			if (pm == GetCurrentPageMap())
+				invlpg(virt);
 			return (void*)virt;
 		}
 		void* map_hugepage_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
@@ -147,7 +148,8 @@ namespace obos
 				flags |= (((uintptr_t)prot & 0x7f) << 52);
 			uintptr_t* pt = pm->AllocatePageMapAt(virt, flags, 2);
 			pt[PageMap::AddressToIndex(virt, 1)] = phys | flags | ((uintptr_t)1<<7);
-			invlpg(virt);
+			if (pm == GetCurrentPageMap())
+				invlpg(virt);
 			return (void*)virt;
 		}
 		void unmap(PageMap* pm, void* addr)

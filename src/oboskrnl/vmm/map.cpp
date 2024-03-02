@@ -54,7 +54,7 @@ namespace obos
 			size_t pageSize = allocateHugePages ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
 			uintptr_t where = (uintptr_t)_where;
 			where -= (where % pageSize);
-			size += (size - (size % pageSize));
+			size += (pageSize - (size % pageSize));
 			if (!where || !size)
 				return nullptr;
 			// Loop through the pages, mapping them.
