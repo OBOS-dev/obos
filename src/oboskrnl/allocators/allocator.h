@@ -41,14 +41,14 @@ namespace obos
 			/// Frees a region of memory. It is undefined behaviour to use the region after it is freed, and should not be done at all.
 			/// </summary>
 			/// <param name="base">The base of the region to free.</param>
-			/// <param name="size">The size of the region to free. Refer to Allocate() for more information. This can be zero if the allocator doesn't need the size to free objects.</param>
+			/// <param name="size">The size of the region to free. Refer to Allocate() for more information. This can be zero if the allocator doesn't need the size to free objects, but it would be better if you always pass in the size. If you don't know the size, use QueryObjectSize.</param>
 			virtual void Free(void* base, size_t size) = 0;
 
 			/// <summary>
 			/// Queries the size of an object. This does not need to be the same size passed to Allocate, as the allocator might add padding.
 			/// </summary>
 			/// <param name="base">The object.</param>
-			/// <returns>See the size parameter of Allocate() for information on the return value, on success. On failure, it returns SIZE_MAX.</returns>
+			/// <returns>On success, see the size parameter of Allocate() for information on the return value. On failure, it returns SIZE_MAX.</returns>
 			virtual size_t QueryObjectSize(void* base) = 0;
 
 			/// <summary>

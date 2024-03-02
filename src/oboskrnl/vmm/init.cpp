@@ -20,7 +20,6 @@ namespace obos
 		void InitializeVMM()
 		{
 			new (&g_pgNodeAllocator) allocators::SlabAllocator{};
-			TODO();
 		}
 	}
 }
