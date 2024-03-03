@@ -7,6 +7,7 @@
 #include <new>
 
 #include <int.h>
+#include <todo.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -15,6 +16,7 @@
 
 #include <vmm/map.h>
 #include <vmm/page_descriptor.h>
+#include <vmm/init.h>
 
 #include <arch/vmm_defines.h>
 #include <arch/vmm_map.h>
@@ -25,10 +27,10 @@ namespace obos
 	{
 #define ROUND_UP(n, to) ((to) != 0 ? ((n) / (to) + 1) * (to) : (n))
 #define ROUND_UP_COND(n, to) ((to) != 0 ? ((n) / (to) + (((n) % (to)) != 0)) * (to) : (n))
-		SlabRegionNode* AllocateRegionNode(void* allocBase, size_t regionSize, size_t stride, size_t allocSize, size_t padding, size_t nodeCount)
+		SlabRegionNode* AllocateRegionNode(void* allocBase, size_t regionSize, size_t stride, size_t allocSize, size_t padding, size_t nodeCount, uintptr_t mapFlags = 0)
 		{
 			regionSize += sizeof(SlabRegionNode);
-			void* base = vmm::RawAllocate((void*)allocBase, regionSize, 0, vmm::PROT_NO_DEMAND_PAGE);
+			void* base = vmm::Allocate(&vmm::g_kernelContext, allocBase, regionSize, mapFlags, 0);
 			if (!base)
 				return nullptr;
 			SlabRegionNode* ret = (SlabRegionNode*)base;
@@ -44,9 +46,20 @@ namespace obos
 			ret->freeNodes.Append(firstNode);
 			return ret;
 		}
-		bool SlabAllocator::Initialize(void* allocBase, size_t allocSize, size_t initialNodeCount, size_t padding)
+		static bool CanAllocatePages(void* base, size_t size);
+		static void* FindUsableAddress(void* _base, size_t size)
 		{
-			if (!allocBase || !allocSize)
+			uintptr_t base = (uintptr_t)_base;
+			for (; OBOS_IS_VIRT_ADDR_CANONICAL(base) && base < OBOS_ADDRESS_SPACE_LIMIT; base += OBOS_PAGE_SIZE)
+			{
+				if (CanAllocatePages((void*)base, size))
+					break;
+			}
+			return (void*)base;
+		}
+		bool SlabAllocator::Initialize(void* allocBase, size_t allocSize, bool findAddress, size_t initialNodeCount, size_t padding, uintptr_t mapFlags)
+		{
+			if (!allocSize)
 				return false;
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(allocBase))
 				return false;
@@ -58,15 +71,39 @@ namespace obos
 				initialNodeCount = OBOS_INITIAL_SLAB_COUNT;
 			allocSize = ROUND_UP_COND(allocSize, padding);
 			size_t sizeNeeded = ROUND_UP_COND(allocSize + sizeof(SlabNode), padding);
-			m_stride = ROUND_UP_COND(sizeNeeded, padding);
+			m_stride = sizeNeeded;
 			m_allocationSize = allocSize;
 			m_padding = padding;
-			m_allocBase = allocBase;
-			size_t regionSize = m_stride * initialNodeCount;
-			regionSize = ROUND_UP_COND(regionSize, padding);
-			SlabRegionNode* node = AllocateRegionNode(allocBase, allocSize, m_stride, m_allocationSize, padding, initialNodeCount);
-			if (!node)
+			if (m_allocBase || findAddress)
+			{
+				size_t regionSize = m_stride * initialNodeCount;
+				regionSize = ROUND_UP_COND(regionSize, padding);
+				m_allocBase = FindUsableAddress(allocBase, regionSize);
+				SlabRegionNode* node = AllocateRegionNode(findAddress ? nullptr : m_allocBase, regionSize, m_stride, m_allocationSize, padding, initialNodeCount, mapFlags);
+				if (!node)
+					return false;
+				m_regionNodes.Append(node);
+			}
+			return true;
+		}
+
+		bool SlabAllocator::AddRegion(void* base, size_t regionSize)
+		{
+			if (regionSize < sizeof(SlabRegionNode))
 				return false;
+			if ((regionSize - sizeof(SlabRegionNode)) < m_stride)
+				return false;
+			SlabRegionNode* node = (SlabRegionNode*)base;
+			new (node) SlabRegionNode{};
+			node->magic = SLAB_REGION_NODE_MAGIC;
+			node->base = base;
+			node->regionSize = regionSize;
+			SlabNode* firstNode = (SlabNode*)(node + 1);
+			new (firstNode) SlabNode{};
+			firstNode->magic = SLAB_NODE_MAGIC;
+			firstNode->size = regionSize - sizeof(SlabNode) - sizeof(SlabRegionNode);
+			firstNode->data = (char*)ROUND_UP(((uintptr_t)(firstNode + 1) - sizeof(uintptr_t)), m_padding);
+			node->freeNodes.Append(firstNode);
 			m_regionNodes.Append(node);
 			return true;
 		}
@@ -144,14 +181,8 @@ namespace obos
 			if (!ret)
 			{
 				// Allocate a new region.
-				size_t regionSize = ROUND_UP_COND(size + 0x200, m_allocationSize);
-				uintptr_t base = (uintptr_t)m_allocBase;
-				for (; OBOS_IS_VIRT_ADDR_CANONICAL(base) && base < OBOS_ADDRESS_SPACE_LIMIT; base += OBOS_PAGE_SIZE)
-				{
-					if (CanAllocatePages((void*)base, regionSize))
-						break;
-				}
-				SlabRegionNode* newRegion = AllocateRegionNode((void*)base, regionSize , m_stride, m_allocationSize, m_padding, regionSize / m_allocationSize);
+				size_t regionSize = ROUND_UP_COND(size + m_allocationSize * OBOS_INITIAL_SLAB_COUNT, m_allocationSize);
+				SlabRegionNode* newRegion = AllocateRegionNode(nullptr, regionSize, m_stride, m_allocationSize, m_padding, regionSize / m_allocationSize);
 				m_regionNodes.Append(newRegion);
 				return AllocateFromRegion(newRegion, size);
 			}
@@ -187,7 +218,7 @@ namespace obos
 			SlabRegionNode* region = nullptr;
 			for (SlabRegionNode* cregion = m_regionNodes.head; cregion;)
 			{
-				if (base >= cregion->base && base < ((char*)cregion->base + cregion->regionSize))
+				if (!(base >= cregion->base && base < ((char*)cregion->base + cregion->regionSize)))
 					goto bottom;
 				node = LookForNode(cregion->allocatedNodes, base);
 				if (node)
@@ -215,7 +246,7 @@ namespace obos
 			SlabNode* node = nullptr;
 			for (SlabRegionNode* region = m_regionNodes.head; region;)
 			{
-				if (base < region->base || base >= ((char*)region->base + region->regionSize))
+				if (!(base >= region->base && base < ((char*)region->base + region->regionSize)))
 					goto bottom;
 				node = LookForNode(region->allocatedNodes, base);
 				if (node)
@@ -296,7 +327,7 @@ namespace obos
 					node->regionSize = 0;
 					m_regionNodes.Remove(node);
 					memzero(node->base, node->regionSize);
-					vmm::RawFree(node->base, node->regionSize);
+					vmm::Free(&vmm::g_kernelContext, node->base, node->regionSize);
 					//node->lock.Unlock();
 					nFreeRegionNodes--;
 				}
@@ -318,7 +349,7 @@ namespace obos
 				SlabRegionNode* temp = node;
 				node = node->next;
 				memzero(temp, sizeof(*temp)); // Nuke the node.
-				vmm::RawFree(temp->base, temp->regionSize);
+				vmm::Free(&vmm::g_kernelContext, node->base, node->regionSize);
 			}
 			// Nuke the region node list.
 			memzero(&m_regionNodes, sizeof(m_regionNodes));

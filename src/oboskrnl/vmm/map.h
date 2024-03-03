@@ -43,6 +43,15 @@ namespace obos
 		/// If context == nullptr, and OBOS_RELEASE is defined, the function returns false.</returns>
 		bool MapPageDescriptor(Context* ctx, const page_descriptor& pd);
 		/// <summary>
+		/// Finds a base address that has 'size' bytes (rounded up to the page size), that is within startRange and endRegion.
+		/// </summary>
+		/// <param name="ctx">The context. This cannot be nullptr.</param>
+		/// <param name="startRange">The beginning of the range to search in. This cannot be zero.</param>
+		/// <param name="endRange">The end of the range. This cannot be zero. If (endRegion-startRegion) &lt; size, the function fails.</param>
+		/// <param name="size">The amount of bytes that should be free.</param>
+		/// <returns>The found base address, or zero on failure to find a free region.</returns>
+		uintptr_t FindBase(Context* ctx, uintptr_t startRange, uintptr_t endRange, size_t size);
+		/// <summary>
 		/// Allocates and maps pages at 'base'.
 		/// </summary>
 		/// <param name="ctx">The context to allocate as. This cannot be nullptr.<para></para></param>

@@ -68,9 +68,17 @@ namespace obos
 			/// </summary>
 			FLAGS_DISABLE_HUGEPAGE_OPTIMIZATION = 0x10,
 			/// <summary>
-			/// Adds a guard page to the right side of the allocate pages.
+			/// Adds a guard page to the right side of the allocated pages.
 			/// </summary>
 			FLAGS_GUARD_PAGE_RIGHT = 0x20,
+			/// <summary>
+			/// Reserves the range of memory so that the range cannot be allocated.
+			/// </summary>
+			FLAGS_RESERVE = 0x40,
+			/// <summary>
+			/// Allocates the range of memory that was reserved by FLAGS_RESERVE.
+			/// </summary>
+			FLAGS_COMMIT = 0x80,
 		};
 	}
 }

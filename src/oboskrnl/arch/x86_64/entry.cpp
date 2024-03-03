@@ -22,18 +22,33 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
+#include <arch/vmm_defines.h>
+
 #include <vmm/init.h>
 #include <vmm/prot.h>
+#include <vmm/map.h>
 #include <vmm/pg_context.h>
 
 #include <allocators/slab.h>
 
 #include <irq/irql.h>
 
+#ifdef __INTELLISENSE__
+#	if defined(_WIN64)
+#		define __x86_64__ 1
+#	elif defined(_WIN32)
+#		define __i386__ 1
+#	endif
+#endif
+
 #include <limine/limine.h>
 
 extern "C" void InitBootGDT();
 extern "C" void disablePIC();
+extern "C" void enableSSE();
+extern "C" void enableXSAVE();
+extern "C" void enableAVX();
+extern "C" void enableAVX512();
 
 namespace obos
 {
@@ -95,18 +110,26 @@ extern "C" void _start()
 	asm("sti");
 	logger::log("%s: Initializing PMM.\n", __func__);
 	InitializePMM();
+	logger::log("%s: Enabling SSE.\n", __func__);
+	enableSSE();
+	logger::log("%s: Enabling XSAVE (if supported).\n", __func__);
+	enableXSAVE();
+	logger::log("%s: Enabling AVX (if supported).\n", __func__);
+	enableAVX();
+	logger::log("%s: Enabling AVX-512 (if supported).\n", __func__);
+	enableAVX512();
 	logger::log("%s: Zeroing zero-page.\n", __func__);
 	memzero(MapToHHDM(0), 4096);
 	logger::log("%s: Initializing page tables.\n", __func__);
 	arch::InitializePageTables();
 	logger::log("%s: Initializing VMM.\n", __func__);
 	vmm::InitializeVMM();
-	allocators::SlabAllocator alloc;
-	allocators::g_kAllocator = &alloc;
-	alloc.Initialize((void*)0xffff'ffff'ffff'0000, 0x10, 5);
-	void *ret = alloc.Allocate(5), *ret2 = alloc.Allocate(3);
-	alloc.Free(ret, 5);
-	alloc.Free(ret2, 3);
-	alloc.OptimizeAllocator();
+	char* mem1 = new char[15];
+	char* mem2 = new char[17];
+	memcpy(mem1, "Hello, world!\n", 14);
+	memcpy(mem2, "Goodbye, world!\n", 16);
+	logger::printf("%s%s", mem1, mem2);
+	delete[] mem1;
+	delete[] mem2;
 	while (1);
 }

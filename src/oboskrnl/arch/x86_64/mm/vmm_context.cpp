@@ -16,7 +16,9 @@ namespace obos
     {
         bool pg_context::alloc()
         {
-            TODO("Implement obos::arch::pg_context::alloc().")
+            m_context = new internal_context{};
+            m_context->cr3 = (PageMap*)AllocatePhysicalPages(1, false);
+            m_context->references = 1;
             return false;
         }
         bool pg_context::free()
@@ -26,8 +28,7 @@ namespace obos
             if (!(--m_context->references))
             { 
                 FreePhysicalPages((uintptr_t)m_context->cr3, 1);
-                TODO("Uncomment \"delete m_context\" when operator delete is implemented.");
-                // delete m_context;
+                delete m_context;
             }
             m_context = nullptr;
             return true;

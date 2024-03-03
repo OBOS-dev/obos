@@ -62,9 +62,9 @@ void operator delete[](void* ptr) noexcept
 	if (!g_kAllocator)
 		return;
 	const size_t size = g_kAllocator->QueryObjectSize(ptr);
-	if (!size)
+	if (size == SIZE_MAX)
 		return;
-	operator delete(ptr, size);
+	g_kAllocator->Free(ptr, size);
 }
 void operator delete (void* ptr, size_t count) noexcept
 {

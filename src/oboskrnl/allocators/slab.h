@@ -20,7 +20,8 @@ namespace obos
 		public:
 			SlabAllocator() = default;
 
-			bool Initialize(void* allocBase, size_t allocSize, size_t initialNodeCount = 0, size_t padding = 0x10);
+			bool Initialize(void* allocBase, size_t allocSize, bool findAddress = true, size_t initialNodeCount = 0, size_t padding = 0x10, uintptr_t mapFlags = 0);
+			bool AddRegion(void* base, size_t regionSize);
 
 			void* Allocate(size_t size) override;
 			void* ReAllocate(void* base, size_t newSize) override;
@@ -31,6 +32,8 @@ namespace obos
 			size_t QueryObjectSize(void* base) override;
 
 			void OptimizeAllocator() override;
+
+			const SlabRegionList& GetRegionList() const { return m_regionNodes; }
 
 			~SlabAllocator();
 		private:
@@ -43,7 +46,7 @@ namespace obos
 			size_t m_stride = 0;
 			size_t m_padding = 0;
 			void* m_allocBase = nullptr;
-			static constexpr size_t m_maxEmptyRegionNodesAllowed = 8;
+			static constexpr size_t m_maxEmptyRegionNodesAllowed = 4;
 		};
 	}
 }

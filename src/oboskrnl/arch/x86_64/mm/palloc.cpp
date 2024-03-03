@@ -38,6 +38,38 @@ namespace obos
 	size_t g_nMemoryNodes;
 	bool g_pmmInitialized = false;
 	locks::SpinLock g_pmmLock;
+	static uintptr_t CalculateHHDMLimit()
+	{
+		auto lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - 1];
+		uintptr_t limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
+		vmm::page_descriptor pd{};
+		arch::get_page_descriptor((vmm::Context*)nullptr, (void*)limit, pd);
+		size_t i = 1;
+		while (!pd.present)
+		{
+			lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - ++i];
+			if (lastMMAPEntry < *mmap_request.response->entries)
+			{
+				limit = hhdm_offset.response->offset;
+				break;
+			}
+			limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
+			arch::get_page_descriptor((vmm::Context*)nullptr, (void*)(limit - 0x1000), pd);
+		}
+		// Round the limit up.
+		limit += 0x200000;
+		limit &= ~(0x200000 - 1);
+		return limit;
+	}
+	namespace arch
+	{
+		uintptr_t getHHDMLimit()
+		{
+			if (g_pmmInitialized)
+				return hhdm_limit;
+			return CalculateHHDMLimit();
+		}
+	}
 	void InitializePMM()
 	{
 		if (g_pmmInitialized)
@@ -67,22 +99,8 @@ namespace obos
 			g_memoryTail = newNodePhys;
 		}
 		g_pmmLock.Unlock();
-		auto lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - 1];
-		hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
-		vmm::page_descriptor pd{};
-		arch::get_page_descriptor((vmm::Context*)nullptr, (void*)hhdm_limit, pd);
-		size_t i = 1;
-		while (!pd.present)
-		{
-			lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - ++i];
-			if (lastMMAPEntry < *mmap_request.response->entries)
-			{
-				hhdm_limit = hhdm_offset.response->offset;
-				break;
-			}
-			hhdm_limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
-			arch::get_page_descriptor((vmm::Context*)nullptr, (void*)(hhdm_limit - 0x1000), pd);
-		}
+		hhdm_limit = CalculateHHDMLimit();
+		g_pmmInitialized = true;
 	}
 
 	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
@@ -157,12 +175,59 @@ namespace obos
 		g_nMemoryNodes++;
 		g_pmmLock.Unlock();
 	}
+	static void swapNodes(MemoryNode* node, MemoryNode* nodePhys, MemoryNode* with, MemoryNode* withPhys)
+	{
+		if (!node || !with)
+			return;
+		struct MemoryNode* aPrev = node->prev;
+		struct MemoryNode* aNext = node->next;
+		struct MemoryNode* bPrev = with->prev;
+		struct MemoryNode* bNext = with->next;
+		if (aPrev == withPhys)
+		{
+			// Assuming the nodes are valid, bNext == node
+			node->prev = bPrev;
+			node->next = withPhys;
+			with->prev = nodePhys;
+			with->next = aNext;
+			if (bPrev) CMAP_TO_HHDM(bPrev)->next = nodePhys;
+			if (aNext) CMAP_TO_HHDM(aNext)->prev = withPhys;
+		}
+		else if (aNext == withPhys)
+		{
+			// Assuming the nodes are valid, bPrev == node
+			node->prev = withPhys;
+			node->next = bNext;
+			with->prev = aPrev;
+			with->next = nodePhys;
+			if (bNext) CMAP_TO_HHDM(bNext)->prev = nodePhys;
+			if (aPrev) CMAP_TO_HHDM(aPrev)->next = withPhys;
+		}
+		else
+		{
+			node->prev = bPrev;
+			node->next = bNext;
+			with->prev = aPrev;
+			with->next = aNext;
+			if (aPrev) CMAP_TO_HHDM(aPrev)->next = withPhys;
+			if (aNext) CMAP_TO_HHDM(aPrev)->prev = withPhys;
+			if (bPrev) CMAP_TO_HHDM(bPrev)->next = nodePhys;
+			if (bNext) CMAP_TO_HHDM(bNext)->prev = nodePhys;
+		}
+		if (g_memoryHead == withPhys)
+			g_memoryHead = nodePhys;
+		else if (g_memoryHead == nodePhys)
+			g_memoryHead = withPhys;
+		if (g_memoryTail == withPhys)
+			g_memoryTail = nodePhys;
+		else if (g_memoryTail == nodePhys)
+			g_memoryTail = withPhys;
+	}
 	void OptimizePMMFreeList()
 	{
 		g_pmmLock.Lock();
 		MemoryNode* currentNode = CMAP_TO_HHDM(g_memoryHead);
 		uintptr_t currentNodePhys = (uintptr_t)currentNode - hhdm_offset.response->offset;
-		MemoryNode* stepNode = nullptr;
 		uintptr_t stepNodePhys = 0;
 		bool swapped = false;
 		// Sort the nodes into lowest address to highest address using bubble sort.
@@ -184,13 +249,7 @@ namespace obos
 					if (!currentNode->next)
 						break;
 					MemoryNode* nextNode = CMAP_TO_HHDM(currentNode->next);
-					MemoryNode temp = *currentNode;
-					currentNode->next = nextNode->next;
-					currentNode->prev = nextNode->prev;
-					currentNode->nPages = nextNode->nPages;
-					nextNode->next = temp.next;
-					nextNode->prev = temp.prev;
-					nextNode->nPages = temp.nPages;
+					swapNodes(currentNode, (MemoryNode*)currentNodePhys, nextNode, currentNode->next);
 					swapped = true;
 				}
 				currentNode = (MemoryNode*)MAP_TO_HHDM(currentNodePhys = (uintptr_t)currentNode->next);
@@ -198,7 +257,6 @@ namespace obos
 
 			if (!currentNodePhys)
 				break;
-			stepNode = currentNode;
 			stepNodePhys = currentNodePhys;
 		} while (swapped);
 		currentNode = (MemoryNode*)MAP_TO_HHDM(((MemoryNode*)MAP_TO_HHDM(g_memoryHead))->next);

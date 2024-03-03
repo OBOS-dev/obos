@@ -15,6 +15,8 @@ namespace obos
 	namespace vmm
 	{
 		extern allocators::SlabAllocator g_pgNodeAllocator;
+		extern allocators::SlabAllocator g_pdAllocator;
+		extern class Context g_kernelContext;
 		void InitializeVMM();
 	}
 }

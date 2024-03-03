@@ -4,6 +4,8 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include <new>
+
 #include <int.h>
 #include <memmanip.h>
 #include <fb.h>
@@ -16,8 +18,9 @@
 #include <arch/x86_64/asm_helpers.h>
 
 #include <arch/vmm_defines.h>
-#include <vmm/pg_context.h>
 
+#include <vmm/pg_context.h>
+#include <vmm/init.h>
 #include <vmm/prot.h>
 
 #include <limine/limine.h>
@@ -40,8 +43,18 @@ namespace obos
 		.id = LIMINE_KERNEL_ADDRESS_REQUEST,
 		.revision=0
 	};
+	uintptr_t g_kernelBase = 0;
+	uintptr_t g_kernelTop  = 0;
 	namespace arch
 	{
+		uintptr_t getKernelBase()
+		{
+			return g_kernelBase;
+		}
+		uintptr_t getKernelTop()
+		{
+			return g_kernelTop;
+		}
 		uintptr_t DecodeProt(uintptr_t prot)
 		{
 			uintptr_t ret = 0;
@@ -52,6 +65,7 @@ namespace obos
 					ret |= BIT(3) | BIT(7) /* Use PAT5 */;
 				if (prot & vmm::PROT_x86_64_WRITE_THROUGH_CACHE)
 					ret |= BIT(3) /* Use PAT1 */;
+				ret |= (prot & 0x7f) << 52;
 				return ret;
 			}
 			if (!(prot & vmm::PROT_READ_ONLY))
@@ -275,7 +289,11 @@ namespace obos
 				for (uintptr_t kBase = base, j = 0; kBase <= kernelTop; kBase += 4096, j++)
 					map_page_to(pm, kBase, physPages + j * 4096, prot);
 			}
+			g_kernelBase = kernelBase;
+			g_kernelTop = kernelTop;
 		}
+		static pg_context s_internalKernelContext;
+		static internal_context s_kernelCr3;
 		void InitializePageTables()
 		{
 			uintptr_t newPageMap = obos::AllocatePhysicalPages(1);
@@ -293,6 +311,12 @@ namespace obos
 			FreePhysicalPages((uintptr_t)oldPageMap, 1);
 			MapFramebuffer(pm);
 			OptimizePMMFreeList();
+			new (&s_internalKernelContext) pg_context{};
+			new (&s_kernelCr3) internal_context{};
+			s_kernelCr3.cr3 = pm;
+			s_kernelCr3.references = 1;
+			s_internalKernelContext.set(&s_kernelCr3);
+			new (&vmm::g_kernelContext) vmm::Context{ &s_internalKernelContext };
 		}
 	}
 }
