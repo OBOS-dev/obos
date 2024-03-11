@@ -189,7 +189,7 @@ namespace obos
 			return ret;
 		}
 
-		SlabNode* SlabAllocator::LookForNode(SlabList &list, void* addr)
+		SlabNode* SlabAllocator::LookForNode(SlabList &list, const void* addr)
 		{
 			for (SlabNode* node = list.head; node;)
 			{
@@ -241,7 +241,7 @@ namespace obos
 			region->lock.Unlock();
 		}
 
-		size_t SlabAllocator::QueryObjectSize(void* base)
+		size_t SlabAllocator::QueryObjectSize(const void* base)
 		{
 			SlabNode* node = nullptr;
 			for (SlabRegionNode* region = m_regionNodes.head; region;)

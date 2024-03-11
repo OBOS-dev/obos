@@ -37,10 +37,10 @@ namespace obos
 			/// </summary>
 			/// <param name="addr">The virtual address that the node represents.</param>
 			/// <returns>The page node, or nullptr on failure.</returns>
-			const struct page_node* GetPageNode(void* addr) const;
+			struct page_node* GetPageNode(void* addr) const;
 			
-			const struct page_node* GetHead() const { return m_head; }
-			const struct page_node* GetTail() const { return m_tail; }
+			struct page_node* GetHead() const { return m_head; }
+			struct page_node* GetTail() const { return m_tail; }
 
 			~Context() noexcept;
 

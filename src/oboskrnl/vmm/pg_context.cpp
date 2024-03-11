@@ -58,7 +58,7 @@ namespace obos
 			g_pdAllocator.Free(node->pageDescriptors, node->nPageDescriptors);
 			g_pgNodeAllocator.Free(node, 1);
 		}
-		const page_node* Context::GetPageNode(void* addr) const
+		page_node* Context::GetPageNode(void* addr) const
 		{
 			return ImplGetNode(addr);
 		}

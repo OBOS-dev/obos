@@ -49,7 +49,7 @@ namespace obos
 			/// </summary>
 			/// <param name="base">The object.</param>
 			/// <returns>On success, see the size parameter of Allocate() for information on the return value. On failure, it returns SIZE_MAX.</returns>
-			virtual size_t QueryObjectSize(void* base) = 0;
+			virtual size_t QueryObjectSize(const void* base) = 0;
 
 			/// <summary>
 			/// Gets the allocation size of the allocator.

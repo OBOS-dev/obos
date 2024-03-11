@@ -123,28 +123,36 @@ namespace obos
 	void defaultExceptionHandler(interrupt_frame* frame)
 	{
 		uint32_t cpuId = 0, pid = -1, tid = -1;
+		bool whileInScheduler = false;
 		logger::panic(
 			nullptr,
-			"Exception %d at 0x%016lx (cpu %d, pid %d, tid %d). Error code: %ld.\nDumping registers:\n"
+			"Exception %ld in %s-mode at 0x%016lx (cpu %d, pid %d, tid %d). IRQL: %d. Error code: %ld. whileInScheduler = %s\nDumping registers:\n"
 			"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
 			"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
 			"\tRCX: 0x%016lx, RAX: 0x%016lx, RIP: 0x%016lx\n"
 			"\t R8: 0x%016lx,  R9: 0x%016lx, R10: 0x%016lx\n"
 			"\tR11: 0x%016lx, R12: 0x%016lx, R13: 0x%016lx\n"
 			"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
-			"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n",
-			(int)frame->intNumber,
+			"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
+			"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
+			"\tCR4: 0x%016lx, CR8: 0x%016lx, EFER: 0x%016lx\n",
+			frame->intNumber,
+			(frame->cs != 0x8) ? "user" : "kernel",
 			frame->rip,
 			cpuId,
 			pid, tid,
+			GetIRQL(),
 			frame->errorCode,
+			whileInScheduler ? "true" : "false",
 			frame->rdi, frame->rsi, frame->rbp,
 			frame->rsp, frame->rbx, frame->rdx,
 			frame->rcx, frame->rax, frame->rip,
 			frame->r8, frame->r9, frame->r10,
 			frame->r11, frame->r12, frame->r13,
 			frame->r14, frame->r15, frame->rflags,
-			frame->ss, frame->ds, frame->cs
+			frame->ss, frame->ds, frame->cs,
+			getCR0(), getCR2(), getCR3(),
+			getCR4(), getCR8(), getEFER()
 		);
 	}
 	bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
@@ -202,7 +210,10 @@ namespace obos
 			uint32_t ec = DecodePFErrorCode(frame->errorCode);
 			ec |= vmm::PageFault_DemandPage;
 			if (!callPageFaultHandlers(vmm::PageFaultReason::PageFault_DemandPaging, at, pd, ec))
+			{
+				LowerIRQL(oldIRQL);
 				return;
+			}
 		}
 	fault:
 		
@@ -211,7 +222,10 @@ namespace obos
 		arch::get_page_descriptor(pm, (void*)at, pd);
 		uint32_t ec = DecodePFErrorCode(frame->errorCode);
 		if (!callPageFaultHandlers(vmm::PageFaultReason::PageFault_AccessViolation, at, pd, ec))
+		{
+			LowerIRQL(oldIRQL);
 			return;
+		}
 
 		uint32_t cpuId = 0, pid = -1, tid = -1;
 		bool whileInScheduler = false;

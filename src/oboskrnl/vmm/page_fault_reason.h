@@ -19,7 +19,7 @@ namespace obos
 			/// </summary>
 			PageFault_DemandPaging,
 			/// <summary>
-			/// A plain page fault happened, ie one that has was caused by an invalid address being accessed.
+			/// A plain page fault happened; one that has was caused by an invalid address being accessed.
 			/// </summary>
 			PageFault_AccessViolation,
 		};

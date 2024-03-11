@@ -192,15 +192,20 @@ namespace obos
 			{
 				out.isHugePage = true;
 				out.present = true;
+				out.awaitingDemandPagingFault = (l2Entry & BIT(9));
 			}
 			else
 			{
 				out.isHugePage = false;
 				out.present = (bool)(l1Entry & 1);
+				out.awaitingDemandPagingFault = (l2Entry & BIT(9));
 			}
 			if (!out.present)
 			{
 				out.phys = 0;
+				out.awaitingDemandPagingFault = false;
+				out.protFlags = 0;
+				out.isHugePage = false;
 				return;
 			}
 			if (out.isHugePage)

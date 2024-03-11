@@ -22,6 +22,7 @@ namespace obos
 			prot_t protFlags;
 			bool isHugePage : 1;
 			bool present : 1;
+			bool awaitingDemandPagingFault : 1;
 		} OBOS_ALIGN(4);
 	}
 }

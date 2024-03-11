@@ -25,6 +25,7 @@ namespace obos
 			page_descriptor *pageDescriptors = nullptr;
 			size_t nPageDescriptors = 0;
 			Context* ctx = nullptr;
+			allocflag_t allocFlags = 0;
 		};
 	}
 }

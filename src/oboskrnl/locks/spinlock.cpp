@@ -26,7 +26,7 @@ namespace obos
 		bool SpinLock::Lock()
 		{
 			uint8_t oldIRQL = 0;
-			RaiseIRQL(0xf, &oldIRQL);
+			RaiseIRQL(0xF, &oldIRQL);
 			const bool excepted = false;
 			while (__atomic_load_n(&m_locked, __ATOMIC_SEQ_CST));
 			while (__atomic_compare_exchange_n(&m_locked, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));

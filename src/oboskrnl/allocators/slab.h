@@ -29,7 +29,7 @@ namespace obos
 
 			size_t GetAllocationSize() override { return m_allocationSize; }
 
-			size_t QueryObjectSize(void* base) override;
+			size_t QueryObjectSize(const void* base) override;
 
 			void OptimizeAllocator() override;
 
@@ -38,7 +38,7 @@ namespace obos
 			~SlabAllocator();
 		private:
 			void ImplOptimizeList(SlabList& list);
-			SlabNode* LookForNode(SlabList& list, void* addr);
+			SlabNode* LookForNode(SlabList& list, const void* addr);
 			void CombineContinuousNodes(SlabList& list);
 			void* AllocateFromRegion(SlabRegionNode* region, size_t size);
 			SlabRegionList m_regionNodes;
