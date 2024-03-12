@@ -7,7 +7,8 @@
 global _ZN4obos6memsetEPvjm
 global _ZN4obos7memzeroEPvm
 global _ZN4obos6memcpyEPvPKvm
-global _ZN4obos6memcmpEPKvS1_m
+global _ZN4obos6memcmpEPKvS1_m ; blk1,blk2,size
+global _ZN4obos6memcmpEPKvim ; blk1, against, size
 global _ZN4obos6strcmpEPKcS1_
 global _ZN4obos6strlenEPKc
 
@@ -29,7 +30,7 @@ _ZN4obos7memzeroEPvm:
 
 	push rdi
 	xor rax, rax
-	mov rcx, rdx
+	mov rcx, rsi
 	rep stosb
 	pop rax
 
@@ -54,6 +55,17 @@ _ZN4obos6memcmpEPKvS1_m:
 	setne al
 
 	leave
+	ret
+_ZN4obos6memcmpEPKvim:
+	push rbp
+	mov rbp, rsp
+
+	mov al, dil
+	mov rcx, rdx
+	repne scasb
+	cmp rcx, 0
+	sete al
+
 	ret
 _ZN4obos6strcmpEPKcS1_:
 	push rbp

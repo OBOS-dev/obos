@@ -43,11 +43,11 @@ namespace obos
 	void GetSDTFromRSDP(ACPIRSDPHeader* rsdp, ACPISDTHeader** oHeader, bool* oT32, size_t* oNEntries)
 	{
 		bool is32BitTables = false;
-		ACPISDTHeader* xsdt = (ACPISDTHeader*)rsdp->XsdtAddress;
-		if ((is32BitTables = !xsdt))
+		ACPISDTHeader* xsdt = nullptr;
+		if ((is32BitTables = (rsdp->Revision == 0)))
 			xsdt = mapToHHDM((ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress);
 		else
-			xsdt = mapToHHDM(xsdt);
+			xsdt = mapToHHDM((ACPISDTHeader*)(uintptr_t)rsdp->XsdtAddress);
 		if (oHeader)
 			*oHeader = xsdt;
 		if (oT32)

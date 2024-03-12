@@ -17,13 +17,38 @@
 #include <arch/x86_64/irq/apic.h>
 #include <arch/x86_64/irq/madt.h>
 
-#include <arch/x86_64/pmm/alloc.h>
+#include <arch/x86_64/mm/palloc.h>
+#include <arch/x86_64/mm/map.h>
+
+#include <arch/x86_64/asm_helpers.h>
+
+#include <arch/vmm_defines.h>
+
+#include <vmm/init.h>
+#include <vmm/prot.h>
+#include <vmm/map.h>
+#include <vmm/pg_context.h>
+
+#include <allocators/slab.h>
 
 #include <irq/irql.h>
+
+#ifdef __INTELLISENSE__
+#	if defined(_WIN64)
+#		define __x86_64__ 1
+#	elif defined(_WIN32)
+#		define __i386__ 1
+#	endif
+#endif
 
 #include <limine/limine.h>
 
 extern "C" void InitBootGDT();
+extern "C" void disablePIC();
+extern "C" void enableSSE();
+extern "C" void enableXSAVE();
+extern "C" void enableAVX();
+extern "C" void enableAVX512();
 
 namespace obos
 {
@@ -63,6 +88,7 @@ extern "C" void _start()
 	InitializeIDT();
 	logger::log("%s: Registering exception handlers.\n", __func__);
 	RegisterExceptionHandlers();
+	disablePIC();
 	logger::log("%s: Initializing LAPIC.\n", __func__);
 	InitializeLAPIC(GetLAPICAddress());
 	logger::log("%s: Initializing IOAPIC.\n", __func__);
@@ -75,16 +101,28 @@ extern "C" void _start()
 	auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
 	if (ParseMADTForIOAPICAddresses(madt, &ioapic, 1))
 		logger::warning("%s: There are multiple I/O APICs, but multiple I/O APICs are not supported by oboskrnl.\n", __func__);
-	InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
+	if (ioapic)
+		InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
+	else
+		logger::warning("%s: Could not find an I/O APIC on this computer.\n", __func__);
 	uint8_t oldIRQL = 0;
 	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
 	asm("sti");
 	logger::log("%s: Initializing PMM.\n", __func__);
 	InitializePMM();
+	logger::log("%s: Enabling SSE.\n", __func__);
+	enableSSE();
+	logger::log("%s: Enabling XSAVE (if supported).\n", __func__);
+	enableXSAVE();
+	logger::log("%s: Enabling AVX (if supported).\n", __func__);
+	enableAVX();
+	logger::log("%s: Enabling AVX-512 (if supported).\n", __func__);
+	enableAVX512();
+	logger::log("%s: Zeroing zero-page.\n", __func__);
+	memzero(MapToHHDM(0), 4096);
+	logger::log("%s: Initializing page tables.\n", __func__);
+	arch::InitializePageTables();
+	logger::log("%s: Initializing VMM.\n", __func__);
+	vmm::InitializeVMM();
 	while (1);
 }
-
-[[nodiscard]] void* operator new(size_t, void* ptr) noexcept { return ptr; }
-[[nodiscard]] void* operator new[](size_t, void* ptr) noexcept { return ptr; }
-void operator delete(void*, void*) noexcept {}
-void operator delete[](void*, void*) noexcept {}
