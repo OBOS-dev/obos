@@ -13,6 +13,7 @@
 
 #include <vmm/pg_context.h>
 #include <vmm/page_node.h>
+#include <vmm/page_descriptor.h>
 #include <vmm/init.h>
 
 namespace obos

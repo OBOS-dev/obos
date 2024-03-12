@@ -124,12 +124,5 @@ extern "C" void _start()
 	arch::InitializePageTables();
 	logger::log("%s: Initializing VMM.\n", __func__);
 	vmm::InitializeVMM();
-	char* mem1 = new char[15];
-	char* mem2 = new char[17];
-	memcpy(mem1, "Hello, world!\n", 14);
-	memcpy(mem2, "Goodbye, world!\n", 16);
-	logger::printf("%s%s", mem1, mem2);
-	delete[] mem1;
-	delete[] mem2;
 	while (1);
 }

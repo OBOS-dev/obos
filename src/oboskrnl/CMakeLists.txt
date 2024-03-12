@@ -5,7 +5,7 @@
 set (oboskrnl_sources ${oboskrnl_sources}
 	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp" 
 	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/slab.cpp"
-	"vmm/init.cpp" "vmm/demand_paging.cpp")
+	"vmm/init.cpp" "vmm/demand_paging.cpp" "vmm/mprot.cpp")
 
 add_executable(oboskrnl ${oboskrnl_sources})
 

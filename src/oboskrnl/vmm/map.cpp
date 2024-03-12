@@ -215,7 +215,8 @@ namespace obos
 			}
 			return true;
 		}
-		static bool IsAllocated(Context* ctx, void* base, size_t size)
+		// Referenced in mprot.cpp
+		bool IsAllocated(Context* ctx, void* base, size_t size)
 		{
 #if !OBOS_HAS_HUGE_PAGE_SUPPORT
 			// Temporarily define OBOS_HUGE_PAGE_SIZE because I'm lazy.
@@ -388,14 +389,7 @@ namespace obos
 				if ((node->allocFlags & FLAGS_DISABLE_HUGEPAGE_OPTIMIZATION) && !(node->allocFlags & FLAGS_USE_HUGE_PAGES))
 					ImplAllocateSmallPages(ctx, where, size, *node, present, protection);
 				else
-				{
-					size_t nHugePages = size / OBOS_HUGE_PAGE_SIZE;
-					size_t nPagesInitial = 0;
-					if (nHugePages)
-						nPagesInitial = (where % OBOS_HUGE_PAGE_SIZE) / OBOS_PAGE_SIZE;
-					size_t nPagesLeftOver = (size - (nHugePages * OBOS_HUGE_PAGE_SIZE)) / OBOS_PAGE_SIZE;
 					ImplAllocateHugePages(ctx, where, size, *node, protection, flags, present, i);
-				}
 				return true;
 			}
 			page_node node;

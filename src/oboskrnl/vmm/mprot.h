@@ -18,7 +18,7 @@ namespace obos
 	{
 		/// <summary>
 		/// Sets the protection of a region of pages.<para></para>
-		/// The region must be mapped.
+		/// The region must be at least reserved.
 		/// </summary>
 		/// <param name="ctx">The context to set the protection as. This cannot be nullptr.</param>
 		/// <param name="base">The base of the region.</param>
@@ -33,8 +33,8 @@ namespace obos
 		/// <param name="base">The base of the region.</param>
 		/// <param name="size">The size of the region. This is rounded up to the nearest page size.<para></para></param>
 		/// <param name="oArr">[out] The array of page descriptors.</param>
-		/// <param name="maxElements">The maximum number of page descriptors that can be stored in the array. If this threshold is reached, the function aborts.</param>
-		/// <returns>The number of elements required to fill the region.</returns>
+		/// <param name="maxElements">The maximum number of page descriptors that can be stored in the array. If this threshold is reached, the function stops filling oArr.</param>
+		/// <returns>How much more entries are needed for all pages, or SIZE_MAX on failure.</returns>
 		size_t GetPageDescriptor(Context* ctx, void* base, size_t size, page_descriptor* oArr, size_t maxElements);
 	}
 }
