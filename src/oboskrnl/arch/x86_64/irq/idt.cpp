@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <struct_packing.h>
 
 #include <arch/x86_64/irq/idt.h>
 
@@ -27,7 +28,7 @@ namespace obos
 	{
 		uint16_t size;
 		uintptr_t idt;
-	} __attribute__((packed));
+	} OBOS_PACK;
 	enum
 	{
 		// Present, Trap Gate

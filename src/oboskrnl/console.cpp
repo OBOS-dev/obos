@@ -14,23 +14,7 @@ namespace obos
 	static void PlotPixel(Pixel colour, uint8_t* fb, FramebufferFormat fbFmt);
 	bool Console::Initialize(const Framebuffer* fb, const Framebuffer* bb, bool drawToFB)
 	{
-		if (fb)
-			m_framebuffer = *fb;
-		if (bb)
-			m_backbuffer = *bb;
-		if (drawToFB && !fb)
-			drawToFB = false;
-		if (!drawToFB && !bb)
-			drawToFB = true;
-		if (drawToFB)
-			m_drawBuffer = &m_framebuffer;
-		else
-			m_drawBuffer = &m_backbuffer;
-		if (m_drawBuffer)
-		{
-			m_maxX = m_drawBuffer->width / 8;
-			m_maxY = m_drawBuffer->height / 16;
-		}
+		SetFramebuffer(fb, bb, drawToFB);
 		return true;
 	}
 
@@ -110,12 +94,41 @@ namespace obos
 		if (y)
 			*y = m_y;
 	}
+	void Console::SetFramebuffer(const Framebuffer* fb, const Framebuffer* bb, bool drawToFB)
+	{
+		if (fb)
+			m_framebuffer = *fb;
+		if (bb)
+			m_backbuffer = *bb;
+		if (drawToFB && !fb)
+			drawToFB = false;
+		if (!drawToFB && !bb)
+			drawToFB = true;
+		if (drawToFB)
+			m_drawBuffer = &m_framebuffer;
+		else
+			m_drawBuffer = &m_backbuffer;
+		if (m_drawBuffer)
+		{
+			m_maxX = m_drawBuffer->width / 8;
+			m_maxY = m_drawBuffer->height / 16;
+		}
+	}
+	void Console::GetFramebuffer(Framebuffer* fb, Framebuffer* bb, bool* drawToFB)
+	{
+		if (fb)
+			*fb = m_framebuffer;
+		if (bb)
+			*bb = m_backbuffer;
+		if (drawToFB)
+			*drawToFB = (m_drawBuffer == &m_framebuffer);
+	}
 
 	void Console::ClearConsole(Pixel bg)
 	{
 		if (!m_drawBuffer)
 			return;
-		for (uint32_t i = 0; i < m_drawBuffer->height * m_drawBuffer->width * m_drawBuffer->bpp / 8; i += (m_drawBuffer->bpp / 8))
+		for (uint32_t i = 0; i < m_drawBuffer->height * m_drawBuffer->pitch; i += (m_drawBuffer->bpp / 8))
 			PlotPixel(bg, ((uint8_t*)m_drawBuffer->address) + i, m_drawBuffer->format);
 	}
 

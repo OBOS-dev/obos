@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 
 #include <arch/x86_64/sdt.h>
 
@@ -16,7 +17,7 @@ namespace obos
 	{
 		MADT_EntryHeader* entryHeader = (MADT_EntryHeader*)(madt + 1);
 		void* end = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(madt) + madt->sdtHeader.Length);
-		for (; entryHeader != end; entryHeader = reinterpret_cast<MADT_EntryHeader*>(reinterpret_cast<uintptr_t>(entryHeader) + entryHeader->length))
+		for (; entryHeader < end; entryHeader = reinterpret_cast<MADT_EntryHeader*>(reinterpret_cast<uintptr_t>(entryHeader) + entryHeader->length))
 			if (entryHeader->type == entryType)
 				callback(entryHeader, userdata);
 	}
