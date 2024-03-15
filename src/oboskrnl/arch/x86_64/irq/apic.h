@@ -126,6 +126,7 @@ namespace obos
 		uint32_t globalSystemInterrupt;
 	};
 	extern LAPIC* g_localAPICAddress;
+	extern IOAPIC* g_IOAPICAddress;
 	LAPIC* GetLAPICAddress();
 	void InitializeLAPIC(LAPIC* lapicAddress);
 	void InitializeIOAPIC(IOAPIC* ioapicAddress);

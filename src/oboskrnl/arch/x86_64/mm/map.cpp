@@ -185,7 +185,7 @@ namespace obos
 		}
 		void get_page_descriptor(class PageMap* pm, void* addr, vmm::page_descriptor& out)
 		{
-			out.virt = (uintptr_t)addr;
+			out.virt = ((uintptr_t)addr) & ~0xfff;
 			uintptr_t l2Entry = pm->GetL2PageMapEntryAt(out.virt);
 			uintptr_t l1Entry = pm->GetL1PageMapEntryAt(out.virt);
 			if (l2Entry & BIT(7))
@@ -193,12 +193,13 @@ namespace obos
 				out.isHugePage = true;
 				out.present = true;
 				out.awaitingDemandPagingFault = (l2Entry & BIT(9));
+				out.virt = ((uintptr_t)addr) & ~0x1f'ffff;
 			}
 			else
 			{
 				out.isHugePage = false;
 				out.present = (bool)(l1Entry & 1);
-				out.awaitingDemandPagingFault = (l2Entry & BIT(9));
+				out.awaitingDemandPagingFault = (l1Entry & BIT(9));
 			}
 			if (!out.present)
 			{
@@ -290,8 +291,10 @@ namespace obos
 					nPages++;
 				uintptr_t physPages = kernel_addr.response->physical_base + (kernelTop - kernelBase);
 				uintptr_t base = firstPhdr[i].p_vaddr & ~0xfff;
+					if (((firstPhdr[i - 1].p_paddr + firstPhdr[i - 1].p_memsz) & ~0xfff) == base)
+						base += 0x1000;
 				kernelTop = (firstPhdr[i].p_vaddr + firstPhdr[i].p_memsz + 0xfff) & ~0xfff;
-				for (uintptr_t kBase = base, j = 0; kBase <= kernelTop; kBase += 4096, j++)
+				for (uintptr_t kBase = base, j = 0; kBase < kernelTop; kBase += 4096, j++)
 					map_page_to(pm, kBase, physPages + j * 4096, prot);
 			}
 			g_kernelBase = kernelBase;

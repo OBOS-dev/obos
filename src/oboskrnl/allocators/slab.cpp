@@ -34,7 +34,8 @@ namespace obos
 			if (!base)
 				return nullptr;
 			SlabRegionNode* ret = (SlabRegionNode*)base;
-			memzero(base, regionSize);
+			if (mapFlags & vmm::PROT_NO_DEMAND_PAGE)
+				memzero(base, regionSize);
 			ret->base = ret;
 			ret->regionSize = regionSize;
 			ret->magic = SLAB_REGION_NODE_MAGIC;
@@ -46,24 +47,13 @@ namespace obos
 			ret->freeNodes.Append(firstNode);
 			return ret;
 		}
-		static bool CanAllocatePages(void* base, size_t size);
-		static void* FindUsableAddress(void* _base, size_t size)
-		{
-			uintptr_t base = (uintptr_t)_base;
-			for (; OBOS_IS_VIRT_ADDR_CANONICAL(base) && base < OBOS_ADDRESS_SPACE_LIMIT; base += OBOS_PAGE_SIZE)
-			{
-				if (CanAllocatePages((void*)base, size))
-					break;
-			}
-			return (void*)base;
-		}
 		bool SlabAllocator::Initialize(void* allocBase, size_t allocSize, bool findAddress, size_t initialNodeCount, size_t padding, uintptr_t mapFlags)
 		{
 			if (!allocSize)
 				return false;
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(allocBase))
 				return false;
-			if ((uintptr_t)allocBase < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+			if ((uintptr_t)allocBase < OBOS_KERNEL_ADDRESS_SPACE_BASE && allocBase != nullptr)
 				logger::warning("Allocation base 0x%p for slab allocator 0x%p, is less than the kernel address space base, 0x%016lx.\n", allocBase, this, OBOS_KERNEL_ADDRESS_SPACE_BASE);
 			if (!padding)
 				padding = 1;
@@ -78,7 +68,6 @@ namespace obos
 			{
 				size_t regionSize = m_stride * initialNodeCount;
 				regionSize = ROUND_UP_COND(regionSize, padding);
-				m_allocBase = FindUsableAddress(allocBase, regionSize);
 				SlabRegionNode* node = AllocateRegionNode(findAddress ? nullptr : m_allocBase, regionSize, m_stride, m_allocationSize, padding, initialNodeCount, mapFlags);
 				if (!node)
 					return false;
@@ -151,19 +140,6 @@ namespace obos
 			}
 			region->lock.Unlock();
 			return ret;
-		}
-		static bool CanAllocatePages(void* base, size_t size)
-		{
-			size_t nPages = ROUND_UP_COND(size, OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE;
-			uintptr_t _base = (uintptr_t)base;
-			vmm::page_descriptor pd{};
-			for (uintptr_t addr = (uintptr_t)base; addr < (_base + (nPages * OBOS_PAGE_SIZE)); addr += OBOS_PAGE_SIZE)
-			{
-				arch::get_page_descriptor((vmm::Context*)nullptr, (void*)addr, pd);
-				if (pd.present)
-					return false;
-			}
-			return true;
 		}
 		void* SlabAllocator::Allocate(size_t size)
 		{

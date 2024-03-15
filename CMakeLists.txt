@@ -20,7 +20,7 @@ if (OBOS_REFRESH_DEPENDENCIES)
 		include("dependencies/limine.cmake")
 	endif()
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake" 
-		"# This file is auto-generated.\n# Set this variable to true to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
+		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
 endif()
 

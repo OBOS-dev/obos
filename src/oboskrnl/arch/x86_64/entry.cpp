@@ -23,6 +23,7 @@
 #include <arch/x86_64/asm_helpers.h>
 
 #include <arch/vmm_defines.h>
+#include <arch/smp_cpu_func.h>
 
 #include <vmm/init.h>
 #include <vmm/prot.h>
@@ -32,14 +33,6 @@
 #include <allocators/slab.h>
 
 #include <irq/irql.h>
-
-#ifdef __INTELLISENSE__
-#	if defined(_WIN64)
-#		define __x86_64__ 1
-#	elif defined(_WIN32)
-#		define __i386__ 1
-#	endif
-#endif
 
 #include <limine/limine.h>
 
@@ -97,8 +90,10 @@ extern "C" void _start()
 	size_t nEntries = 0;
 	bool t32 = false;
 	GetSDTFromRSDP((ACPIRSDPHeader*)rsdp_request.response->address, &sdt, &t32, &nEntries);
-	char sign[4] = { 'M', 'A', 'D', 'T' };
+	char sign[4] = { 'A', 'P', 'I', 'C' };
 	auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
+	if (!madt)
+		logger::panic(nullptr, "Could not find MADT table in the system.\n");
 	if (ParseMADTForIOAPICAddresses(madt, &ioapic, 1))
 		logger::warning("%s: There are multiple I/O APICs, but multiple I/O APICs are not supported by oboskrnl.\n", __func__);
 	if (ioapic)
@@ -124,5 +119,29 @@ extern "C" void _start()
 	arch::InitializePageTables();
 	logger::log("%s: Initializing VMM.\n", __func__);
 	vmm::InitializeVMM();
-	while (1);
+	{
+		vmm::page_descriptor lapicPD{};
+		lapicPD.virt = 0xffff'ffff'ffff'f000;
+		lapicPD.phys = (uintptr_t)g_localAPICAddress - hhdm_offset.response->offset;
+		lapicPD.protFlags = vmm::PROT_CACHE_DISABLE | vmm::PROT_NO_DEMAND_PAGE;
+		lapicPD.present = true;
+		lapicPD.isHugePage = false;
+		vmm::MapPageDescriptor(&vmm::g_kernelContext, lapicPD);
+		g_localAPICAddress = (LAPIC*)lapicPD.virt;
+		vmm::page_descriptor ioapicPD{};
+		ioapicPD.virt = lapicPD.virt - 0x1000;
+		ioapicPD.phys = (uintptr_t)g_IOAPICAddress - hhdm_offset.response->offset;
+		ioapicPD.protFlags = vmm::PROT_CACHE_DISABLE | vmm::PROT_NO_DEMAND_PAGE;
+		ioapicPD.present = true;
+		ioapicPD.isHugePage = false;
+		vmm::MapPageDescriptor(&vmm::g_kernelContext, ioapicPD);
+		g_IOAPICAddress = (IOAPIC*)ioapicPD.virt;
+	}
+	logger::log("%s: Starting processors.\n", __func__);
+	size_t nCpus = arch::StartProcessors();
+	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
+	LowerIRQL(oldIRQL);
+	// Hang waiting for an interrupt.
+	while(1) 
+		asm volatile("hlt");
 }

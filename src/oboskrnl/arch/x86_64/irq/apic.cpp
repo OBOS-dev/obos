@@ -56,21 +56,20 @@ namespace obos
 	{
 		if (!g_localAPICAddress)
 			g_localAPICAddress = lapicAddress;
-		logger::debug("%s: Initializing LAPIC at address 0x%p.\n", __func__, lapicAddress);
-		lapicAddress->errorStatus = 0;
 		wrmsr(IA32_APIC_BASE, rdmsr(IA32_APIC_BASE) | (1 << 11));
-		g_localAPICAddress->lvtLINT0 |= 0xf8;
-		g_localAPICAddress->lvtLINT1 |= 0xf9;
-		g_localAPICAddress->lvtError = 0xfa;
-		g_localAPICAddress->lvtCMCI = 0xfb;
-		g_localAPICAddress->lvtPerformanceMonitoringCounters = 0xfc;
-		g_localAPICAddress->lvtThermalSensor = 0xfd;
-		g_localAPICAddress->lvtTimer = 0xfe;
-		g_localAPICAddress->spuriousInterruptVector = 0xff;
+		lapicAddress->errorStatus = 0;
+		lapicAddress->lvtLINT0 |= 0xf8;
+		lapicAddress->lvtLINT1 |= 0xf9;
+		lapicAddress->lvtError = 0xfa;
+		lapicAddress->lvtCMCI = 0xfb;
+		lapicAddress->lvtPerformanceMonitoringCounters = 0xfc;
+		lapicAddress->lvtThermalSensor = 0xfd;
+		lapicAddress->lvtTimer = 0xfe;
+		lapicAddress->spuriousInterruptVector = 0xff;
 
 		for (uint8_t i = 0xf8; i > 0; i++)
 			RawRegisterInterrupt(i, (uintptr_t)DefaultInterruptHandler);
-		g_localAPICAddress->spuriousInterruptVector |= (1 << 8);
+		lapicAddress->spuriousInterruptVector |= (1 << 8);
 	}
 	void InitializeIOAPIC(IOAPIC* ioapicAddress)
 	{
@@ -85,7 +84,7 @@ namespace obos
 			size_t nEntries = 0;
 			bool t32 = false;
 			GetSDTFromRSDP((ACPIRSDPHeader*)rsdp_request.response->address, &sdt, &t32, &nEntries);
-			char sign[4] = { 'M', 'A', 'D', 'T' };
+			char sign[4] = { 'A', 'P', 'I', 'C' };
 			auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
 			ParseMADTForIOAPICRedirectionEntries(madt, g_ioapicRedirectionEntries, sizeof(g_ioapicRedirectionEntries) / sizeof(*g_ioapicRedirectionEntries));
 			s_initializedIOAPICRedirectionEntries = true;

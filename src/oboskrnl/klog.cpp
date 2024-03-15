@@ -11,10 +11,16 @@
 
 #include <locks/spinlock.h>
 
+#include <arch/smp_cpu_func.h>
+
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 1
 #include <external/stb_sprintf.h>
+
+#if __x86_64__
+#include <arch/x86_64/asm_helpers.h>
+#endif
 
 namespace obos
 {
@@ -23,7 +29,12 @@ namespace obos
 		static char* consoleOutputCallback(const char* buf, void*, int len)
 		{
 			for (size_t i = 0; i < (size_t)len; i++)
+			{
 				g_kernelConsole.ConsoleOutput(buf[i]);
+#if __x86_64__
+				outb(0xe9, buf[i]);
+#endif
+			}
 			return (char*)buf;
 		}
 		static locks::SpinLock printf_lock;
@@ -127,6 +138,7 @@ namespace obos
 		}
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
 		{
+			arch::StopCPUs(false);
 			g_kernelConsole.SetColour(GREY, PANIC_RED);
 			g_kernelConsole.ClearConsole(PANIC_RED);
 			g_kernelConsole.SetPosition(0, 0);

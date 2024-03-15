@@ -253,6 +253,8 @@ namespace obos
 					swapped = true;
 				}
 				currentNode = (MemoryNode*)MAP_TO_HHDM(currentNodePhys = (uintptr_t)currentNode->next);
+				if (!currentNodePhys)
+					break;
 			}
 
 			if (!currentNodePhys)

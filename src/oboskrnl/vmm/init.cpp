@@ -25,6 +25,7 @@ namespace obos
 		allocators::SlabAllocator g_pdAllocator;
 		allocators::SlabAllocator g_generalKernelAllocator;
 		Context g_kernelContext;
+		bool g_initialized;
 		static char s_allocatorBootstrapper[0x8'0000];
 		void DemandPageHandler(void* on, vmm::PageFaultErrorCode errorCode, const vmm::page_descriptor& pd);
 		void InitializeVMM()
@@ -52,6 +53,7 @@ namespace obos
 			new (&g_generalKernelAllocator) allocators::SlabAllocator{};
 			g_generalKernelAllocator.Initialize(nullptr, 0x10, true, 0x1000, 16);
 			allocators::g_kAllocator = &g_generalKernelAllocator;
+			g_initialized = true;
 		}
 	}
 }

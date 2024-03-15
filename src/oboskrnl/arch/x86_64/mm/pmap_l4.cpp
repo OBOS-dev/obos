@@ -74,6 +74,8 @@ namespace obos
 			cpuFlags |= 1;
 			// Clear the caching flags.
 			cpuFlags &= ~(1<<3) & ~(1<<4) & ~(1<<7);
+			// Clear the avaliable bits in the flags.
+			cpuFlags &= ~0x07F0'0000'0000'0E00;
 			auto GetPageMapEntryForDepth = [&](uintptr_t addr, uint8_t depth)->uintptr_t
 				{
 					switch (depth)
