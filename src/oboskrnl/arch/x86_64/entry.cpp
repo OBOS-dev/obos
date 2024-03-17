@@ -36,6 +36,8 @@
 
 #include <limine/limine.h>
 
+#include <arch/thr_context_info.h>
+
 extern "C" void InitBootGDT();
 extern "C" void disablePIC();
 extern "C" void enableSSE();
@@ -53,13 +55,17 @@ namespace obos
 	};
 	extern volatile limine_rsdp_request rsdp_request;
 	extern volatile limine_hhdm_request hhdm_offset;
+	namespace arch
+	{
+		size_t ThreadContextInfo::xsave_size = 0;
+	}
 }
 
 using namespace obos;
 
 LIMINE_BASE_REVISION(1);
 
-extern "C" void _start()
+extern "C" void KernelArchInit()
 {
 	g_consoleFont = (void*)font_bin;
 	Framebuffer initFB;
@@ -141,6 +147,7 @@ extern "C" void _start()
 	size_t nCpus = arch::StartProcessors();
 	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
 	LowerIRQL(oldIRQL);
+	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	// Hang waiting for an interrupt.
 	while(1) 
 		asm volatile("hlt");
