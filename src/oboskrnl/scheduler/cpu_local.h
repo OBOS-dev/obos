@@ -9,6 +9,7 @@
 #include <int.h>
 
 #include <scheduler/stack.h>
+#include <scheduler/thread.h>
 
 #include <arch/smp_cpu_local.h>
 
@@ -27,6 +28,8 @@ namespace obos
 			bool initialized{};
 			arch::cpu_local_arch archSpecific{};
 			uint8_t irql{};
+			Thread* volatile currentThread;
+			ThreadList dpcList;
 		};
 		cpu_local* GetCPUPtr();
 		extern cpu_local* g_cpuInfo;

@@ -151,6 +151,10 @@ namespace obos
 
 		uintptr_t PageMap::GetEntryAt(uintptr_t* arr, uintptr_t virt, uint8_t level)
 		{
+			if (!OBOS_IS_VIRT_ADDR_CANONICAL(arr))
+				return 0;
+			if (!OBOS_IS_VIRT_ADDR_CANONICAL(&arr[AddressToIndex(virt, level)]))
+				return 0;
 			return arr[AddressToIndex(virt, level)];
 		}
 	}

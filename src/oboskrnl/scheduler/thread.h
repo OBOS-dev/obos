@@ -27,16 +27,18 @@ namespace obos
 		};
 		enum class ThreadFlags : uint32_t
 		{
-			IsDead = 0x0001,
+			IsDead                  = 0x0001,
+			IsDeferredProcedureCall = 0x0002,
 		};
 		enum class ThreadPriority : uint32_t
 		{
-			Idle
+			Idle,
 			Low,
 			Normal,
 			High,
 		};
 		using ThrAffinity = __uint128_t;
+		extern uint32_t g_nextTID;
 		struct Thread
 		{
 			// Thread information
@@ -64,6 +66,9 @@ namespace obos
 		{
 			ThreadNode *head, *tail;
 			size_t nNodes;
+			void Append(Thread* thr);
+			void Remove(Thread* thr);
+			ThreadNode* Find(Thread* thr);
 		};
 	}
 }

@@ -41,7 +41,7 @@ namespace obos
 			SlabNode* LookForNode(SlabList& list, const void* addr);
 			void CombineContinuousNodes(SlabList& list);
 			void* AllocateFromRegion(SlabRegionNode* region, size_t size);
-			SlabRegionList m_regionNodes;
+			SlabRegionList m_regionNodes{};
 			size_t m_allocationSize = 0;
 			size_t m_stride = 0;
 			size_t m_padding = 0;

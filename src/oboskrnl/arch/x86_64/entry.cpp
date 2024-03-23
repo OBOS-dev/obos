@@ -33,8 +33,11 @@
 #include <allocators/slab.h>
 
 #include <irq/irql.h>
+#include <irq/irq.h>
 
 #include <limine/limine.h>
+
+#include <scheduler/init.h>
 
 #include <arch/thr_context_info.h>
 
@@ -146,9 +149,19 @@ extern "C" void KernelArchInit()
 	logger::log("%s: Starting processors.\n", __func__);
 	size_t nCpus = arch::StartProcessors();
 	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
-	LowerIRQL(oldIRQL);
+	logger::log("%s: Initializing scheduler.\n", __func__);
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
+	scheduler::InitializeScheduler();
+	LowerIRQL(oldIRQL);
+	Irq irq{ 2, false };
+	irq.SetIRQChecker([](const Irq*, const IrqVector*, void*) { return true; }, nullptr);
+	irq.SetHandler([](const Irq*, const IrqVector* vector, void* udata) {
+		logger::debug("Received IRQ %d. Our user data: 0x%p", vector->vector, udata);
+	}, (void*)0xdeadbeefdeadbeef);
+	g_localAPICAddress->divideConfig = 0b1101;
+	g_localAPICAddress->lvtTimer = (irq.GetVector() + 0x20);
+	g_localAPICAddress->initialCount = 15000000*5;
 	// Hang waiting for an interrupt.
-	while(1) 
+	while(1)
 		asm volatile("hlt");
 }

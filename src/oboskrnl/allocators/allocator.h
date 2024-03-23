@@ -63,6 +63,8 @@ namespace obos
 			/// </summary>
 			virtual void OptimizeAllocator() {};
 
+			virtual void* operator()(size_t size = 1) { return Allocate(size); }
+
 			virtual ~Allocator();
 		};
 		extern Allocator* g_kAllocator;
