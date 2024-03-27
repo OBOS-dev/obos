@@ -68,7 +68,7 @@ namespace obos
 		: m_allowDefferedWorkSchedule{ allowDefferedWorkSchedule }
 	{		
 		OBOS_ASSERTP(vmm::g_initialized, "Abstract IRQ interface cannot be used without the VMM initialized.");
-		OBOS_ASSERTP(requiredIRQL >= 2, "IRQL for Irq must be less than 2, as IRQLs 0 and 1 are invalid.");
+		OBOS_ASSERTP(requiredIRQL >= 2, "IRQL for Irq must be less than 2, as IRQLs 0 and 1 are invalid in this case.");
 		if (!g_irqVectorAllocator.GetAllocationSize())
 		{
 			// The allocator is uninitialized.
@@ -106,7 +106,7 @@ namespace obos
 		m_irqCheckerCallback.callback = callback;
 		m_irqCheckerCallback.userdata = userdata;
 	}
-	void Irq::SetHandler(void(*handler)(const Irq* irq, const IrqVector* vector, void* userdata), void* userdata)
+	void Irq::SetHandler(void(*handler)(const Irq* irq, const IrqVector* vector, void* userdata, interrupt_frame* frame), void* userdata)
 	{
 		m_irqHandler.callback = (decltype(m_irqHandler.callback))handler;
 		m_irqHandler.userdata = userdata;
@@ -146,7 +146,8 @@ namespace obos
 			{
 				TODO("Run deffered work scheduling")
 				if (!cur->m_allowDefferedWorkSchedule || !scheduler::g_initialized)
-					cur->m_irqHandler.callback(cur, vector, cur->m_irqHandler.userdata);
+					((void(*)(const Irq* irq, const IrqVector* vector, void* userdata, interrupt_frame* frame))cur->m_irqHandler.callback)
+						(cur, vector, cur->m_irqHandler.userdata, frame);
 				else
 				{
 					scheduler::Thread* dpcObject = (scheduler::Thread*)scheduler::g_threadAllocator();
@@ -158,7 +159,7 @@ namespace obos
 					dpcObject->addressSpace = &vmm::g_kernelContext;
 					arch::SetupThreadContext(&dpcObject->context, /* The thread's context */
 											 &dpcObject->thread_stack,  /* The thread's stack info */
-											 (uintptr_t)(void(*)(Irq*))[](Irq* cur) { cur->m_irqHandler.callback(cur, cur->m_vector, cur->m_irqHandler.userdata); while(1); }, /* The thread's entry */
+											 (uintptr_t)(void(*)(Irq*))[](Irq* cur) { ((void(*)(const Irq* irq, const IrqVector* vector, void* userdata, interrupt_frame* frame))cur->m_irqHandler.callback)(cur, cur->m_vector, cur->m_irqHandler.userdata, nullptr); while(1); }, /* The thread's entry */
 											 (uintptr_t)cur, /* The thread's first parameter */
 											 false, /* The thread's ring level */
 											 0x8000, /* The thread's stack size */
@@ -170,6 +171,10 @@ namespace obos
 		
 			node = node->next;
 		}
+#if OBOS_NO_EOI_ON_SPURIOUS_INTERRUPT
+		if (!arch::IsSpuriousInterrupt(frame))
+#endif
+		arch::SendEOI(frame);
 	}
 	void IrqVector::Register(void(*handler)(interrupt_frame* frame))
 	{
@@ -210,8 +215,10 @@ namespace obos
 		}
 		if (!n)
 			return;
-		n->prev->next = n->next;
-		n->next->prev = n->prev;
+		if (n->prev)
+			n->prev->next = n->next;
+		if (n->next)
+			n->next->prev = n->prev;
 		if (head == n)
 			head = n->next;
 		if (tail == n)

@@ -27,9 +27,10 @@ namespace obos
 		void SetIRQChecker(bool(*callback)(const Irq* irq, const struct IrqVector* vector, void* userdata), void* userdata);
 		/// <summary>
 		/// Sets the IRQ handler for this Irq object.
+		/// <br>The passed frame parameter will be nullptr if the handler is called from a DPC.
 		/// <summary>
 		/// <param name="handler">The handler.</param>
-		void SetHandler(void(*handler)(const Irq* irq, const IrqVector* vector, void* userdata), void* userdata);
+		void SetHandler(void(*handler)(const Irq* irq, const IrqVector* vector, void* userdata, struct interrupt_frame* frame), void* userdata);
 		auto GetHandler() const { return m_irqHandler.callback; };
 		auto GetIRQChecker() const { return m_irqCheckerCallback.callback; };
 		uint8_t GetVector() const;

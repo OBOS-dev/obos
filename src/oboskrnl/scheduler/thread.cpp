@@ -31,8 +31,10 @@ namespace obos
 			ThreadNode* node = Find(thr);
 			if (!node)
 				return;
-			node->next->prev = node->prev;
-			node->prev->next = node->next;
+			if (node->next)
+				node->next->prev = node->prev;
+			if (node->prev)
+				node->prev->next = node->next;
 			if (head == node)
 				head = node->next;
 			if (tail == node)

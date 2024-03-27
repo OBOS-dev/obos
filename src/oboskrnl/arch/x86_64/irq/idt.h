@@ -13,6 +13,7 @@
 #define OBOS_MAX_INTERRUPT_VECTORS (224)
 #define OBOS_MAX_INTERRUPT_VECTORS_PER_IRQL (0x10)
 #define OBOS_IRQL_TO_VECTOR(irql) ((irql) >= 2 ? ((irql) * 0x10 - 0x20) : 0)
+#define OBOS_NO_EOI_ON_SPURIOUS_INTERRUPT (true)
 
 namespace obos
 {

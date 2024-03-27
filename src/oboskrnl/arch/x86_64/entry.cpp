@@ -16,6 +16,7 @@
 #include <arch/x86_64/irq/idt.h>
 #include <arch/x86_64/irq/apic.h>
 #include <arch/x86_64/irq/madt.h>
+#include <arch/x86_64/hpet_table.h>
 
 #include <arch/x86_64/mm/palloc.h>
 #include <arch/x86_64/mm/map.h>
@@ -41,6 +42,8 @@
 
 #include <arch/thr_context_info.h>
 
+#include <arch/sched_timer.h>
+
 extern "C" void InitBootGDT();
 extern "C" void disablePIC();
 extern "C" void enableSSE();
@@ -61,6 +64,7 @@ namespace obos
 	namespace arch
 	{
 		size_t ThreadContextInfo::xsave_size = 0;
+		HPET* g_hpetAddress;
 	}
 }
 
@@ -109,6 +113,12 @@ extern "C" void KernelArchInit()
 		InitializeIOAPIC((IOAPIC*)(hhdm_offset.response->offset + ioapic));
 	else
 		logger::warning("%s: Could not find an I/O APIC on this computer.\n", __func__);
+	sign[0] = 'H';
+	sign[1] = 'P';
+	sign[2] = 'E';
+	sign[3] = 'T';
+	auto hpet_table = (arch::HPET_Table*)GetTableWithSignature(sdt, t32, nEntries, &sign);
+	arch::g_hpetAddress = (arch::HPET*)(hhdm_offset.response->offset + hpet_table->baseAddress.address);
 	uint8_t oldIRQL = 0;
 	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
 	asm("sti");
@@ -145,22 +155,31 @@ extern "C" void KernelArchInit()
 		ioapicPD.isHugePage = false;
 		vmm::MapPageDescriptor(&vmm::g_kernelContext, ioapicPD);
 		g_IOAPICAddress = (IOAPIC*)ioapicPD.virt;
+		vmm::page_descriptor hpetPD{};
+		hpetPD.virt = ioapicPD.virt - 0x1000;
+		hpetPD.phys = (uintptr_t)arch::g_hpetAddress - hhdm_offset.response->offset;
+		hpetPD.protFlags = vmm::PROT_CACHE_DISABLE | vmm::PROT_NO_DEMAND_PAGE;
+		hpetPD.present = true;
+		hpetPD.isHugePage = false;
+		vmm::MapPageDescriptor(&vmm::g_kernelContext, hpetPD);
+		arch::g_hpetAddress = (arch::HPET*)hpetPD.virt;
 	}
 	logger::log("%s: Starting processors.\n", __func__);
 	size_t nCpus = arch::StartProcessors();
 	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
+	logger::log("%s: Registering IPI handler", __func__);
+	arch::RegisterIPIHandler();
 	logger::log("%s: Initializing scheduler.\n", __func__);
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	scheduler::InitializeScheduler();
 	LowerIRQL(oldIRQL);
 	Irq irq{ 2, false };
-	irq.SetIRQChecker([](const Irq*, const IrqVector*, void*) { return true; }, nullptr);
-	irq.SetHandler([](const Irq*, const IrqVector* vector, void* udata) {
-		logger::debug("Received IRQ %d. Our user data: 0x%p", vector->vector, udata);
-	}, (void*)0xdeadbeefdeadbeef);
-	g_localAPICAddress->divideConfig = 0b1101;
-	g_localAPICAddress->lvtTimer = (irq.GetVector() + 0x20);
-	g_localAPICAddress->initialCount = 15000000*5;
+	size_t i = 0;
+	irq.SetHandler([](const Irq*, const IrqVector* vector, void* udata, interrupt_frame* frame) {
+		if (++(*(size_t*)udata) < 26)
+			logger::debug("Received IRQ %d, intNumber: %d. Iteration: %lu\n", vector->vector, (uint8_t)frame->intNumber, (*(size_t*)udata));
+	}, &i);
+	arch::StartTimerOnCPU(scheduler::GetCPUPtr(), 1000, irq);
 	// Hang waiting for an interrupt.
 	while(1)
 		asm volatile("hlt");

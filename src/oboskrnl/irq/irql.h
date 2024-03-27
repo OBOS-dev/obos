@@ -26,4 +26,11 @@ namespace obos
 	/// </summary>
 	/// <returns>The IRQL of the current processor.</returns>
 	uint8_t GetIRQL();
+	// IRQL table:
+	// 0: All IRQs are allowed to run. You cannot use this to initialize an Irq object.
+	// 1: Invalid.
+	// 2: The timer for the scheduler is disallowed to run at this IRQL and higher.
+	// 3: IPIs aren't processed at this level or higher, the IRQL must be lowered.
+	// 4-14: Unused by the kernel or drivers.
+	// 15: All IRQs are masked. Otherwise unused by drivers and the kernel.
 }

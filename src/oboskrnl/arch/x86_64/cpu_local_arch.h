@@ -9,10 +9,62 @@
 #include <int.h>
 #include <struct_packing.h>
 
+#include <arch/x86_64/mm/pmap_l4.h>
+
 namespace obos
 {
+	class Irq;
+	struct interrupt_frame;
 	namespace arch
 	{
+		struct base_ipi
+		{
+			base_ipi() = default;
+			base_ipi(void(*hnd)(base_ipi*, interrupt_frame*)) : handler {hnd} {};
+			virtual ~base_ipi() {}
+			void(*handler)(base_ipi* _this, interrupt_frame*);
+		};
+		// IPI to start the LAPIC timer.
+		struct timer_ipi : public base_ipi
+		{
+		private:
+			static void _handler(base_ipi* _this, interrupt_frame*);
+		public:
+			timer_ipi() : base_ipi{ _handler } {}
+			const Irq* irq = nullptr;
+			uint64_t freq = 0;
+			bool singleShoot = false;
+			virtual ~timer_ipi() {}
+		};
+		// TLB Shootdown
+		struct shootdown_ipi : public base_ipi
+		{
+		private:
+			static void _handler(base_ipi* _this, interrupt_frame*);
+		public:
+			shootdown_ipi() : base_ipi{ _handler } {}
+			// If the current PageMap (cr3) is the same as the specified page map, then the address at 'virt' will 'invlpg'ed by the IPI handler.
+			const PageMap* pm;
+			uintptr_t virt;
+			virtual ~shootdown_ipi() {}
+		};
+		struct ipi final
+		{
+			enum
+			{
+				IPI_INVALID = 0,
+				IPI_TIMER,
+				IPI_SHOOTDOWN,
+			} type = IPI_INVALID;
+			union
+			{
+				base_ipi* base;
+				timer_ipi* timer;
+				shootdown_ipi* tlb_shootdown;
+			} data{};
+			bool processed = false;
+			ipi *next, *prev;
+		};
 		struct cpu_local_arch
 		{
 			cpu_local_arch()
@@ -61,6 +113,34 @@ namespace obos
 				uint16_t rsv4;
 				uint16_t iopb;
 			} OBOS_PACK tss;
+			struct
+			{
+				ipi *head, *tail;
+				size_t nNodes;
+				ipi *pop()
+				{
+					if (!head)
+						return nullptr;
+					ipi* ret = head;
+					if (tail == ret)
+						tail = ret->prev;
+					if (ret->next)
+						ret->next->prev = nullptr;
+					head = head->next;
+					nNodes--;
+					return ret;
+				}
+				void push(ipi* i)
+				{
+					if (!head)
+						head = i;
+					if (tail)
+						tail->next = i;
+					i->prev = tail;
+					tail = i;
+					nNodes++;
+				}
+			} ipi_queue;
 		};
 	}
 }
