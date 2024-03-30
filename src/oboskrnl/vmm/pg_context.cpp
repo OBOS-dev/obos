@@ -78,9 +78,11 @@ namespace obos
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(virt))
 				return nullptr;
-			for (page_node* cur = nullptr; cur;)
+			for (page_node* cur = m_head; cur;)
 			{
-				if (cur->pageDescriptors[0].virt >= (uintptr_t)virt && (uintptr_t)virt < (cur->pageDescriptors[cur->nPageDescriptors - 1].virt + (cur->pageDescriptors[cur->nPageDescriptors - 1].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)))
+				if ((uintptr_t)virt >= cur->pageDescriptors[0].virt &&
+					(uintptr_t)virt < (cur->pageDescriptors[cur->nPageDescriptors - 1].virt + 
+						(cur->pageDescriptors[cur->nPageDescriptors - 1].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)))
 					return cur;
 
 				cur = cur->next;
@@ -109,12 +111,13 @@ namespace obos
 					bool swap = ascendingOrder ?
 						currentNode->pageDescriptors[0].virt > currentNode->next->pageDescriptors[0].virt : 
 						currentNode->pageDescriptors[0].virt < currentNode->next->pageDescriptors[0].virt;
+					const auto next = currentNode->next;
 					if (swap)
 					{
 						swapNodes(currentNode, currentNode->next);
 						swapped = true;
 					}
-					currentNode = currentNode->next;
+					currentNode = next;
 					if (!currentNode)
 						break;
 				}

@@ -51,8 +51,8 @@ _ZN4obos6memcmpEPKvS1_m:
 	mov rbp, rsp
 
 	mov rcx, rdx
-	repne cmpsb
-	setne al
+	repe cmpsb
+	sete al
 
 	leave
 	ret
@@ -62,8 +62,7 @@ _ZN4obos6memcmpEPKvim:
 
 	mov al, dil
 	mov rcx, rdx
-	repne scasb
-	cmp rcx, 0
+	repe scasb
 	sete al
 
 	ret
@@ -72,14 +71,16 @@ _ZN4obos6strcmpEPKcS1_:
 	mov rbp, rsp
 	sub rsp, 0x8
 
+	push rdi
+	push rsi
 	call _ZN4obos6strlenEPKc
 	mov [rbp-8], rax
-	push rdi
-	mov rdi, rsp
+	mov rdi, rsi
 	call _ZN4obos6strlenEPKc
+	pop rsi
 	pop rdi
 	cmp rax, [rbp-8]
-	setne al
+	sete al
 	jne .end
 
 	mov rdx, [rbp-8]

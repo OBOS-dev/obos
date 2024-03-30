@@ -6,3 +6,5 @@
 /isodir/
 /qemu_log.txt
 /CMakePresets.json
+/.vscode/
+/gdb_config

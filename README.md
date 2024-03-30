@@ -2,7 +2,7 @@
 ## Building
 ### Prerequisites
 - xorriso
-- An x86_64-elf gcc toolchain. Preferably the latest version
+- An x86_64-elf gcc toolchain. Preferably version 13.2.0 for GCC and 2.41 for binutils.
 - Nasm
 - CMake
 - Git (Not optional, even if you download the repository)

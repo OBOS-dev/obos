@@ -22,6 +22,7 @@ global _ZN4obos3indEt
 global _ZN4obos9__cpuid__EmmPjS0_S0_S0_
 global _ZN4obos6invlpgEm
 global _ZN4obos6wbinvdEv
+global _ZN4obos5xsaveEPv
 
 _ZN4obos6getCR0Ev:
 	push rbp
@@ -169,4 +170,9 @@ _ZN4obos6wbinvdEv:
 	ret
 _ZN4obos6invlpgEm:
 	invlpg [rdi]
+	ret
+_ZN4obos5xsaveEPv:
+	xor rcx,rcx
+	xgetbv
+	xsave [rdi]
 	ret

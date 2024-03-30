@@ -126,6 +126,7 @@ namespace obos
 		uint32_t globalSystemInterrupt;
 	};
 	extern LAPIC* g_localAPICAddress;
+	extern IOAPIC* g_IOAPICAddress;
 	LAPIC* GetLAPICAddress();
 	void InitializeLAPIC(LAPIC* lapicAddress);
 	void InitializeIOAPIC(IOAPIC* ioapicAddress);
@@ -150,4 +151,8 @@ namespace obos
 	void LAPIC_SendIPI(DestinationShorthand shorthand, DeliveryMode deliveryMode, uint8_t vector = 0, uint8_t _destination = 0);
 	bool IOAPIC_MaskIRQ(uint8_t irq, bool mask = false);
 	bool IOAPIC_MapIRQToVector(uint8_t irq, uint8_t vector);
+	namespace arch
+	{
+		void RegisterIPIHandler();
+	}
 }

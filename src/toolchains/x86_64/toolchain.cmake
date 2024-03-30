@@ -47,6 +47,8 @@ set (oboskrnl_sources ${oboskrnl_sources}
     "arch/x86_64/irq/isr.asm" "arch/x86_64/trace.cpp" "arch/x86_64/exception_handlers.cpp" "arch/x86_64/asm_helpers.asm"
     "arch/x86_64/sdt.cpp" "arch/x86_64/irq/madt.cpp" "arch/x86_64/irq/apic.cpp" "arch/x86_64/mm/palloc.cpp"
     "arch/x86_64/mm/map.cpp" "arch/x86_64/mm/pmap_l4.cpp" "arch/x86_64/mm/vmm_context.cpp" "arch/x86_64/sse.asm"
+	"arch/x86_64/smp.cpp" "arch/x86_64/smp_trampoline.asm" "arch/x86_64/thr_context_info.cpp" "arch/x86_64/lapic_timer_calibration.asm"
+	"arch/x86_64/sched_timer.cpp" "arch/x86_64/irq/ipi.cpp" "arch/x86_64/thr_context_save.asm"
 )
 
 set (OBOS_ARCHITECTURE "x86_64")

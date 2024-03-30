@@ -23,18 +23,29 @@ namespace obos
 {
 	namespace locks
 	{
+#if defined(__i386__) || defined(__x86_64__)
+#	define spinlock_delay() asm volatile("pause")
+#else
+#	error Unknown arch.
+#endif
 		bool SpinLock::Lock()
 		{
-			uint8_t oldIRQL = 0;
-			RaiseIRQL(0xF, &oldIRQL);
+			m_oldIRQL = 0xff;
+			if (GetIRQL() < m_minimumIRQL)
+				RaiseIRQL(m_minimumIRQL, &m_oldIRQL);
 			const bool excepted = false;
-			while (__atomic_load_n(&m_locked, __ATOMIC_SEQ_CST));
-			while (__atomic_compare_exchange_n(&m_locked, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
-			LowerIRQL(oldIRQL);
+			while (__atomic_load_n(&m_locked, __ATOMIC_SEQ_CST))
+				spinlock_delay();
+			while (__atomic_compare_exchange_n(&m_locked, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+				spinlock_delay();
 			return m_locked;
 		}
 		bool SpinLock::Unlock()
 		{
+			if (!Locked())
+				return false; // We shouldn't be lowering the IRQL to an undefined value.
+			if (m_oldIRQL != 0xff)
+				LowerIRQL(m_oldIRQL);
 			__atomic_store_n(&m_locked, false, __ATOMIC_SEQ_CST);
 			return Locked();
 		}

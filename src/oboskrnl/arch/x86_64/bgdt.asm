@@ -24,8 +24,8 @@ TSS:
 	.ist6: dq 0
 	.ist7: dq 0
 	.rsv3: dq 0
-	.rsv4: dd 0
-	.iopb: dd 0
+	.rsv4: dw 0
+	.iopb: dw 103
 .end:
 TSS_Len equ TSS.end-TSS
 global GDT
@@ -36,8 +36,8 @@ GDT:
 	.tss_limitLow: dw 0
 	.tss_baseLow: dw 0
 	.tss_baseMiddle1: db 0
-	.tss_access: db 0
-	.tss_gran: db 0
+	.tss_access: db 0x89
+	.tss_gran: db 0x40
 	.tss_baseMiddle2: db 0
 	.tss_baseHigh: dd 0
 	.tss_resv1: dd 0
@@ -60,14 +60,11 @@ InitBootGDT:
 	mov rdx, rax
 	shr rdx, 16
 	mov [GDT.tss_baseMiddle1], dl
-	mov byte [GDT.tss_access], 0x89
-	mov byte [GDT.tss_gran], 0x40
 	shr rdx, 8
 	mov [GDT.tss_baseMiddle2], dl
 	shr rdx, 8
 	mov [GDT.tss_baseHigh], edx
 
-	mov word [TSS.iopb], 103
 	lea rax, [initial_ist+0x4000]
 	mov [TSS.ist0], rax
 

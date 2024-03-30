@@ -15,6 +15,7 @@ isr%1:
 	cld
 	push 0
 	push %1
+	push %1-0x20
 	jmp int_handler_common
 %endmacro
 %macro isr_handler_ec 1
@@ -22,6 +23,7 @@ align 0x20
 isr%1:
 	cld
 	push %1
+	push %1-0x20
 	jmp int_handler_common
 %endmacro
 isr_handler_no_ec  0
@@ -117,7 +119,7 @@ int_handler_common:
 	mov rax, ds
 	push rax
 
-	mov rax, [rsp+0x90]
+	mov rax, [rsp+0x98]
 	cmp rax, 255
 	ja .finished
 	mov rax, [_ZN4obos10g_handlersE+rax*8]
@@ -135,7 +137,7 @@ int_handler_common:
 	mov rsp, rbp
 	popaq
 
-	add rsp, 16
+	add rsp, 0x18
 
 	iretq
 

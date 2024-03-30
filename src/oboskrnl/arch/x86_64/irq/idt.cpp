@@ -67,4 +67,15 @@ namespace obos
 	{
 		g_handlers[vec] = f;
 	}
+	namespace arch
+	{
+		void RegisterInterrupt(uint8_t vec, void(*f)(interrupt_frame*))
+		{
+			RawRegisterInterrupt(vec + 0x20, (uintptr_t)f);
+		}
+		bool InterruptRegistered(uint8_t vec)
+		{
+			return g_handlers[vec + 0x20] == 0;
+		}
+	}
 }

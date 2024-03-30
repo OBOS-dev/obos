@@ -14,6 +14,7 @@
 #include <vmm/mprot.h>
 #include <vmm/page_node.h>
 #include <vmm/page_descriptor.h>
+#include <vmm/init.h>
 
 #include <arch/vmm_defines.h>
 #include <arch/vmm_map.h>
@@ -32,10 +33,6 @@ namespace obos
 		TODO("Test SetProtection and GetPageDescriptors.")
 		bool SetProtection(Context* ctx, void* base, size_t size, prot_t protection)
 		{
-			// Overview of what this function does:
-			// 1. It verifies all these pages are at least reserved.
-			// 2. If so, it iterates over all of the pages, and for each page, it sets the protection in the page node and in the page tables.
-			// 3. Then it returns.
 			if (!IsAllocated(ctx, base, size) || !ctx)
 				return false;
 			if ((uintptr_t)base % OBOS_PAGE_SIZE)
@@ -84,6 +81,14 @@ namespace obos
 		{
 			if (!ctx)
 				return SIZE_MAX;
+			// We need to account for the page boundary, which may not be respected by the user. An example of this is in stackTrace() on x86_64.
+			// Because of this, the user should make room for at least one more element in the array.
+			if (OBOS_CROSSES_PAGE_BOUNDARY(base, size))
+				size += OBOS_PAGE_SIZE; 
+			if (size % OBOS_PAGE_SIZE)
+				size += (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
+			if ((uintptr_t)base % OBOS_PAGE_SIZE)
+				base = (void*)((uintptr_t)base - ((uintptr_t)base % OBOS_PAGE_SIZE));
 			page_node* node = ctx->GetPageNode(base);
 			if (!node)
 			{

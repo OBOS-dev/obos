@@ -25,6 +25,7 @@ namespace obos
 		allocators::SlabAllocator g_pdAllocator;
 		allocators::SlabAllocator g_generalKernelAllocator;
 		Context g_kernelContext;
+		bool g_initialized;
 		static char s_allocatorBootstrapper[0x8'0000];
 		void DemandPageHandler(void* on, vmm::PageFaultErrorCode errorCode, const vmm::page_descriptor& pd);
 		void InitializeVMM()
@@ -46,12 +47,14 @@ namespace obos
 			for (uintptr_t addr = OBOS_KERNEL_BASE; addr < OBOS_KERNEL_TOP; addr += OBOS_PAGE_SIZE, i++)
 				arch::get_page_descriptor(&g_kernelContext, (void*)addr, node.pageDescriptors[i]);
 			g_kernelContext.AppendPageNode(node);
+			arch::register_allocated_pages_in_context(&g_kernelContext);
 			logger::debug("%s: Registering demand page fault handler.\n", __func__);
 			arch::register_page_fault_handler(PageFaultReason::PageFault_DemandPaging, false, DemandPageHandler);
 			logger::debug("%s: Initializing general kernel allocator.\n", __func__);
 			new (&g_generalKernelAllocator) allocators::SlabAllocator{};
 			g_generalKernelAllocator.Initialize(nullptr, 0x10, true, 0x1000, 16);
 			allocators::g_kAllocator = &g_generalKernelAllocator;
+			g_initialized = true;
 		}
 	}
 }

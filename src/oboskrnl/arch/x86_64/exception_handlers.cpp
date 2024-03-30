@@ -25,6 +25,8 @@
 
 #include <arch/vmm_defines.h>
 
+#include <scheduler/cpu_local.h>
+
 namespace obos
 {
 	namespace arch
@@ -119,10 +121,17 @@ namespace obos
 			s_pfHandlers.nHandlers++;
 			return true;
 		}
+		extern bool g_halt;
+	}
+	uint32_t getCPUId()
+	{
+		if (!scheduler::GetCPUPtr())
+			return 0; // We're on the BSP
+		return scheduler::GetCPUPtr()->cpuId;
 	}
 	void defaultExceptionHandler(interrupt_frame* frame)
 	{
-		uint32_t cpuId = 0, pid = -1, tid = -1;
+		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
 		bool whileInScheduler = false;
 		logger::panic(
 			nullptr,
@@ -154,6 +163,7 @@ namespace obos
 			getCR0(), getCR2(), getCR3(),
 			getCR4(), getCR8(), getEFER()
 		);
+		asm volatile("nop");
 	}
 	bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
 	{
@@ -227,7 +237,7 @@ namespace obos
 			return;
 		}
 
-		uint32_t cpuId = 0, pid = -1, tid = -1;
+		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
 		bool whileInScheduler = false;
 		const char* action = (frame->errorCode & ((uintptr_t)1 << 1)) ? "write" : "read";
 		if (frame->errorCode & ((uintptr_t)1 << 4))
@@ -264,11 +274,25 @@ namespace obos
 			getCR0(), getCR2(), getCR3(),
 			getCR4(), oldIRQL , getEFER()
 		);
+		asm volatile("nop");
+	}
+	void nmiHandler(interrupt_frame*)
+	{
+		uint8_t oldIrql = 0;
+		asm("cli");
+		RaiseIRQL(0xf, &oldIrql);
+		if (arch::g_halt)
+			while (1)
+				asm volatile("hlt");
+		logger::panic(nullptr, "NMI thrown by hardware! System Control Port: 0x%x.\n", (uint16_t)inb(0x92) | ((uint16_t)inb(0x61) << 8));
 	}
 	
 	void RegisterExceptionHandlers()
 	{
-		for (uint8_t vec = 0; vec < 14; vec++)
+		RawRegisterInterrupt(0, (uintptr_t)defaultExceptionHandler);
+		RawRegisterInterrupt(1, (uintptr_t)defaultExceptionHandler);
+		RawRegisterInterrupt(2, (uintptr_t)nmiHandler);
+		for (uint8_t vec = 3; vec < 14; vec++)
 			RawRegisterInterrupt(vec, (uintptr_t)defaultExceptionHandler);
 		RawRegisterInterrupt(14, (uintptr_t)pageFaultHandler);
 		for (uint8_t vec = 15; vec < 32; vec++)

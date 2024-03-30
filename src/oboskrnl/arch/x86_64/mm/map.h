@@ -51,7 +51,14 @@ namespace obos
 		/// <param name="addr">The virtual address to make a page descriptor from.</param>
 		/// <param name="out">[out] The page descriptor to store the result in.</param>
 		void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out);
-		
+
+		/// <summary>
+		/// Registers any allocated pages that InitializeVMM() might not know about in the kernel context.<br>
+		/// This is probably only to be called once in InitializeVMM().
+		/// </summary>
+		/// <param name="ctx">The context.</param>
+		void register_allocated_pages_in_context(vmm::Context* ctx);
+
 		/// <summary>
 		/// Registers a page fault handler.
 		/// </summary>

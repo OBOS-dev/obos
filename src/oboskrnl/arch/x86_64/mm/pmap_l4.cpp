@@ -74,6 +74,8 @@ namespace obos
 			cpuFlags |= 1;
 			// Clear the caching flags.
 			cpuFlags &= ~(1<<3) & ~(1<<4) & ~(1<<7);
+			// Clear the avaliable bits in the flags.
+			cpuFlags &= ~0x07F0'0000'0000'0E00;
 			auto GetPageMapEntryForDepth = [&](uintptr_t addr, uint8_t depth)->uintptr_t
 				{
 					switch (depth)
@@ -149,6 +151,10 @@ namespace obos
 
 		uintptr_t PageMap::GetEntryAt(uintptr_t* arr, uintptr_t virt, uint8_t level)
 		{
+			if (!OBOS_IS_VIRT_ADDR_CANONICAL(arr))
+				return 0;
+			if (!OBOS_IS_VIRT_ADDR_CANONICAL(&arr[AddressToIndex(virt, level)]))
+				return 0;
 			return arr[AddressToIndex(virt, level)];
 		}
 	}

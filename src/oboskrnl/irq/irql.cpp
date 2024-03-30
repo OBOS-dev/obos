@@ -9,31 +9,51 @@
 
 #include <irq/irql_arch.h>
 
+#include <scheduler/cpu_local.h>
+
 namespace obos
 {
 	static uint8_t s_irql = 0;
-	void LowerIRQL(uint8_t newIRQL)
+	uint8_t& getIRQLVar()
 	{
-		OBOS_ASSERTP(arch::GetIRQL() == s_irql, "");
-		newIRQL &= 0xf;
-		if (newIRQL > s_irql)
-			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is greater than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
-		s_irql = newIRQL;
-		arch::SetIRQL(s_irql);
+		if (scheduler::GetCPUPtr())
+			return scheduler::GetCPUPtr()->irql;
+		return s_irql;
 	}
-	void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL)
+	static void setCurThreadIRQL(uint8_t to)
+	{
+		if (scheduler::GetCPUPtr() && scheduler::GetCPUPtr()->currentThread)
+			scheduler::GetCPUPtr()->currentThread->context.irql = to;
+	}
+	void LowerIRQL(uint8_t newIRQL, bool setThrIRQL)
+	{
+		if (arch::GetIRQL() != getIRQLVar())
+			arch::SetIRQL(getIRQLVar());
+		newIRQL &= 0xf;
+		if (newIRQL > getIRQLVar())
+			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is greater than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
+		getIRQLVar() = newIRQL;
+		if (setThrIRQL)
+			setCurThreadIRQL(newIRQL);
+		arch::SetIRQL(getIRQLVar());
+	}
+	void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL, bool setThrIRQL)
 	{
 		newIRQL &= 0xf;
-		OBOS_ASSERTP(arch::GetIRQL() == s_irql, "");
-		if (newIRQL < s_irql)
+		if (arch::GetIRQL() != getIRQLVar())
+			arch::SetIRQL(getIRQLVar());
+		if (newIRQL < getIRQLVar())
 			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is less than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
-		*oldIRQL = s_irql;
-		s_irql = newIRQL;
-		arch::SetIRQL(s_irql);
+		*oldIRQL = getIRQLVar();
+		getIRQLVar() = newIRQL;
+		if (setThrIRQL)
+			setCurThreadIRQL(newIRQL);
+		arch::SetIRQL(getIRQLVar());
 	}
 	uint8_t GetIRQL()
 	{
-		OBOS_ASSERTP(arch::GetIRQL() == s_irql, "");
-		return s_irql;
+		if (arch::GetIRQL() != getIRQLVar())
+			arch::SetIRQL(getIRQLVar());
+		return getIRQLVar();
 	}
 }
