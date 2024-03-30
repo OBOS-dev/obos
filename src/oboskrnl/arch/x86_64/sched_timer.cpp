@@ -25,6 +25,16 @@ namespace obos
 	{
 		extern Irq g_ipiIrq;
 		uint64_t g_hpetFrequency = 0;
+		extern "C" uint64_t calibrateHPET(uint64_t freq)
+		{
+			if (!g_hpetFrequency)
+				g_hpetFrequency = 1000000000000000/g_hpetAddress->generalCapabilitiesAndID.counterCLKPeriod;
+			g_hpetAddress->generalConfig &= ~(1<<0);
+			uint64_t compValue = g_hpetAddress->mainCounterValue + (g_hpetFrequency/freq);
+			g_hpetAddress->timer0.timerConfigAndCapabilities &= ~(1<<2);
+			g_hpetAddress->timer0.timerConfigAndCapabilities &= ~(1<<3);
+			return compValue;
+		}
 		bool LAPICTimerIRQChecker(const Irq*, const struct IrqVector*, void* _udata)
 		{
 			uintptr_t* udata = (uintptr_t*)_udata;

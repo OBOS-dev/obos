@@ -113,6 +113,8 @@ namespace obos
 			enableAVX512();
 			InitializeLAPIC(g_localAPICAddress);
 			info->initialized = true;
+			// Enable interrupt.
+			asm("sti");
 			// Ensure the IRQL of the current processor is zero.
 			LowerIRQL(0);
 			// Hang waiting for an interrupt.

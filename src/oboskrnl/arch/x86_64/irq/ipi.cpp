@@ -43,18 +43,28 @@ namespace obos
 		// Required IRQL: 0x3
 		void IpiHandler(const Irq*, const IrqVector*, void*, interrupt_frame* frame)
 		{
-			uint8_t oldIRQL = 0;
-			RaiseIRQL(0xf, &oldIRQL);
+			uint8_t oldIRQL = 0xff;
+			if (GetIRQL() < 3)
+				RaiseIRQL(0x3, &oldIRQL);
 			ipi* cur = scheduler::GetCPUPtr()->archSpecific.ipi_queue.pop();
 			OBOS_ASSERTP(cur->type != ipi::IPI_INVALID, "IPI called with invalid index.");
 			OBOS_ASSERTP(cur->data.base->handler != nullptr, "IPI called with null handler.\n");
 			if (cur->data.base->handler == nullptr)
+			{
+				if (oldIRQL != 0xff)
+					LowerIRQL(oldIRQL);
 				return;
+			}
 			if (cur->type == ipi::IPI_INVALID)
+			{
+				if (oldIRQL != 0xff)
+					LowerIRQL(oldIRQL);
 				return;
+			}
 			cur->data.base->handler(cur->data.base, frame);
 			cur->processed = true;
-			LowerIRQL(oldIRQL);
+			if (oldIRQL != 0xff)
+				LowerIRQL(oldIRQL);
 		}
 		bool IpiChecker(const Irq*, const struct IrqVector*, void*)
 		{

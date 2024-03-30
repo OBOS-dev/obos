@@ -51,6 +51,8 @@ namespace obos
 	{
 		if (frame->intNumber != 0xff)
 			LAPIC_SendEOI();
+		else
+			logger::debug("Spurious interrupt received!\n");
 	}
 	void InitializeLAPIC(LAPIC* lapicAddress)
 	{
@@ -93,6 +95,13 @@ namespace obos
 	void LAPIC_SendEOI()
 	{
 		g_localAPICAddress->eoi = 0;
+	}
+	namespace arch
+	{
+		void SendEOI(interrupt_frame*)
+		{
+			g_localAPICAddress->eoi = 0;
+		}
 	}
 	void LAPIC_SendIPI(DestinationShorthand shorthand, DeliveryMode deliveryMode, uint8_t vector, uint8_t _destination)
 	{

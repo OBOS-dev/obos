@@ -13,6 +13,18 @@ namespace obos
 {
 	namespace scheduler
 	{
+		template <typename T>
+		concept tCtxInfo = requires (T x) {
+			{ x.irql };
+		};
+		template<tCtxInfo T>
+		void impl_verify_concept()
+		{}
+		void verify_concept()
+		{
+			impl_verify_concept<arch::ThreadContextInfo>();
+		}
+
 		void ThreadList::Append(Thread* thr)
 		{
 			OBOS_ASSERTP(thr, "thr is nullptr.");

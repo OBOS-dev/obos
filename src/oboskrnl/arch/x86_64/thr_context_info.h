@@ -18,16 +18,21 @@
 
 namespace obos
 {
+	namespace scheduler
+	{
+		struct Thread;
+	}
 	namespace arch
 	{
 		struct ThreadContextInfo
 		{
 			static size_t xsave_size;
-			interrupt_frame frame;
-			PageMap *pm;
 			// Must be at least 576 bytes and aligned to 64 bytes, or nullptr for kernel-mode threads.
 			uint8_t* xsave_context;
+			PageMap *pm;
+			uint8_t irql;
 			uintptr_t gs_base, fs_base;
+			interrupt_frame frame;
 		};
 		[[noreturn]] void SwitchToThrContext(ThreadContextInfo* info);
 		void SetupThreadContext(ThreadContextInfo* info, 
@@ -36,5 +41,8 @@ namespace obos
 								bool isUsermode, 
 								size_t stackSize, 
 								vmm::Context* ctx);
+		void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame, bool saveIRQL = true);
+		// Saves the thread context with the current context CPU and calls the scheduler.
+		void YieldThread(scheduler::Thread *thr);
 	}
 }

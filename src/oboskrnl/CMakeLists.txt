@@ -6,7 +6,7 @@ set (oboskrnl_sources ${oboskrnl_sources}
 	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp" 
 	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/slab.cpp"
 	"vmm/init.cpp" "vmm/demand_paging.cpp" "vmm/mprot.cpp" "irq/irq.cpp"
-	"scheduler/init.cpp" "scheduler/thread.cpp"
+	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
 )
 
 add_executable(oboskrnl ${oboskrnl_sources})
@@ -32,6 +32,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-ffreestanding>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fstack-protector-strong>
 # PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-nostdlib>
 # We don't enable -Werror in case future compiler versions introduce new warnings that the kernel triggers.
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wall>

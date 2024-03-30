@@ -11,6 +11,7 @@
 #include <todo.h>
 
 #include <irq/irq.h>
+#include <irq/irql.h>
 
 #include <arch/irq_register.h>
 
@@ -33,13 +34,6 @@ namespace obos
 	concept iframe = requires (T x) {
 		{ x.vector };
 	};
-	IrqVectorList g_irqVectors;
-	allocators::SlabAllocator g_irqVectorAllocator;
-	static size_t s_irqlCapacities[14 /* The first two IRQLs are invalid for IrqVector.*/] = {
-		8,8,8,8,8,
-		8,8,8,8,8,
-		8,8,8,8,
-	};
 	template<iframe T>
 	void impl_verify_concept()
 	{}
@@ -47,6 +41,13 @@ namespace obos
 	{
 		impl_verify_concept<interrupt_frame>();
 	}
+	IrqVectorList g_irqVectors;
+	allocators::SlabAllocator g_irqVectorAllocator;
+	static size_t s_irqlCapacities[14 /* The first two IRQLs are invalid for IrqVector.*/] = {
+		8,8,8,8,8,
+		8,8,8,8,8,
+		8,8,8,8,
+	};
 	IrqVector* look_for_irql_in_list(uint8_t irql, size_t* nIrqVectorsForIRQL)
 	{
 		IrqVector *vector = nullptr;
@@ -121,6 +122,10 @@ namespace obos
 	}
 	void Irq::IrqDispatcher(interrupt_frame* frame)
 	{
+		uint8_t oldIRQL = 0;
+		RaiseIRQL(0xf, &oldIRQL, false);
+		if (!(arch::IsSpuriousInterrupt(frame) && OBOS_NO_EOI_ON_SPURIOUS_INTERRUPT))
+			arch::SendEOI(frame);
 		IrqVector *vector = nullptr;
 		for (auto c = g_irqVectors.head; c;)
 		{
@@ -144,10 +149,13 @@ namespace obos
 				continue;
 			if (cur->m_irqCheckerCallback.callback(cur, vector, cur->m_irqCheckerCallback.userdata))
 			{
-				TODO("Run deffered work scheduling")
 				if (!cur->m_allowDefferedWorkSchedule || !scheduler::g_initialized)
+				{
+					LowerIRQL(oldIRQL, false);
+					oldIRQL = 0xff;
 					((void(*)(const Irq* irq, const IrqVector* vector, void* userdata, interrupt_frame* frame))cur->m_irqHandler.callback)
 						(cur, vector, cur->m_irqHandler.userdata, frame);
+				}
 				else
 				{
 					scheduler::Thread* dpcObject = (scheduler::Thread*)scheduler::g_threadAllocator();
@@ -166,15 +174,17 @@ namespace obos
 											 dpcObject->addressSpace /* The thread's address space */
 											);
 					scheduler::GetCPUPtr()->dpcList.Append(dpcObject);
+					oldIRQL = 0xff;
+					LowerIRQL(oldIRQL, false);
+					break;
 				}
 			}
 		
-			node = node->next;
+			if (node)
+				node = node->next;
 		}
-#if OBOS_NO_EOI_ON_SPURIOUS_INTERRUPT
-		if (!arch::IsSpuriousInterrupt(frame))
-#endif
-		arch::SendEOI(frame);
+		if (oldIRQL != 0xff)
+			LowerIRQL(oldIRQL, false);
 	}
 	void IrqVector::Register(void(*handler)(interrupt_frame* frame))
 	{

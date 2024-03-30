@@ -47,6 +47,7 @@ namespace obos
 			for (uintptr_t addr = OBOS_KERNEL_BASE; addr < OBOS_KERNEL_TOP; addr += OBOS_PAGE_SIZE, i++)
 				arch::get_page_descriptor(&g_kernelContext, (void*)addr, node.pageDescriptors[i]);
 			g_kernelContext.AppendPageNode(node);
+			arch::register_allocated_pages_in_context(&g_kernelContext);
 			logger::debug("%s: Registering demand page fault handler.\n", __func__);
 			arch::register_page_fault_handler(PageFaultReason::PageFault_DemandPaging, false, DemandPageHandler);
 			logger::debug("%s: Initializing general kernel allocator.\n", __func__);

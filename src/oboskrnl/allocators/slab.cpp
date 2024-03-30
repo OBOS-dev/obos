@@ -342,7 +342,7 @@ namespace obos
 		{
 			bool swapped = false;
 
-			SlabNode* currentNode = list.head, * stepNode = nullptr;
+			SlabNode* currentNode = list.head, *stepNode = nullptr;
 			do
 			{
 				swapped = false;
@@ -363,6 +363,8 @@ namespace obos
 						swapped = true;
 					}
 					currentNode = currentNode->next;
+					if (!currentNode)
+						break;
 				}
 				stepNode = currentNode;
 			} while (swapped);

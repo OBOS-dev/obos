@@ -33,4 +33,6 @@ namespace obos
 	
 	void invlpg(uintptr_t addr);
 	void wbinvd();
+	
+	void xsave(void* region);
 }

@@ -9,10 +9,13 @@
 #include <int.h>
 
 #include <scheduler/stack.h>
+#include <scheduler/ticks.h>
 
 #include <arch/thr_context_info.h>
 
 #include <vmm/pg_context.h>
+
+#include <locks/spinlock.h>
 
 namespace obos
 {
@@ -42,8 +45,8 @@ namespace obos
 		struct Thread
 		{
 			// Thread information
-			uint32_t tid;
-			uint32_t referenceCount;
+			uint32_t                tid;
+			uint32_t                referenceCount;
 			
 			// Scheduler information
 			ThreadStatus            status;
@@ -51,6 +54,7 @@ namespace obos
 			ThreadPriority          priority;
 			ThrAffinity             affinity;
 			ThrAffinity             ogAffinity;
+			SchedulerTime           lastPreemptTime;
 			
 			// Thread context
 			thr_stack               thread_stack;
@@ -66,9 +70,11 @@ namespace obos
 		{
 			ThreadNode *head, *tail;
 			size_t nNodes;
+			locks::SpinLock lock;
 			void Append(Thread* thr);
 			void Remove(Thread* thr);
 			ThreadNode* Find(Thread* thr);
 		};
+		extern ThreadList g_threadPriorities[4];
 	}
 }

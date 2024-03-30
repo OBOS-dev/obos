@@ -30,7 +30,9 @@ namespace obos
 #endif
 		bool SpinLock::Lock()
 		{
-			RaiseIRQL(0xf, &m_oldIRQL);
+			m_oldIRQL = 0xff;
+			if (GetIRQL() < m_minimumIRQL)
+				RaiseIRQL(m_minimumIRQL, &m_oldIRQL);
 			const bool excepted = false;
 			while (__atomic_load_n(&m_locked, __ATOMIC_SEQ_CST))
 				spinlock_delay();
@@ -42,7 +44,8 @@ namespace obos
 		{
 			if (!Locked())
 				return false; // We shouldn't be lowering the IRQL to an undefined value.
-			LowerIRQL(m_oldIRQL);
+			if (m_oldIRQL != 0xff)
+				LowerIRQL(m_oldIRQL);
 			__atomic_store_n(&m_locked, false, __ATOMIC_SEQ_CST);
 			return Locked();
 		}

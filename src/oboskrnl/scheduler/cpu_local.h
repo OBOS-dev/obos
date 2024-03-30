@@ -29,6 +29,7 @@ namespace obos
 			arch::cpu_local_arch archSpecific{};
 			uint8_t irql{};
 			Thread* volatile currentThread;
+			Thread* idleThread;
 			ThreadList dpcList;
 		};
 		cpu_local* GetCPUPtr();

@@ -88,17 +88,18 @@ namespace obos
 					if (!pd[i].present)
 					{
 						frame = nullptr;
-						nFrames--;
 						break;
 					}
 				}
-
+				
+				if (!frame)
+					break;
 				frame = frame->down;
 				nFrames++;
 			} while (frame);
 			frame = parameter ? (stack_frame*)parameter : (stack_frame*)__builtin_frame_address(0);
 			printf("Stack trace:\n");
-			while (--nFrames)
+			while (nFrames--)
 			{
 				const char* functionName = nullptr;
 				uintptr_t functionStart = 0;

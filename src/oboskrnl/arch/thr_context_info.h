@@ -1,6 +1,7 @@
 #pragma once
 
 // This must define (at least) one structure: obos::arch::ThreadContextInfo.
+// This structure must contain at least a member called 'irql' that it uint8_t.
 // It must contain any information to restore the state of a thread after it gets preempted.
 // It must also define a function called obos::arch::SwitchToThrContext() that takes in a pointer to that structure, and switches to that context. 
 // This function must not return.

@@ -123,7 +123,11 @@ namespace obos
 		{
 			node = node->next;
 			if (!node)
+			{
+				if (oldIRQL != 0xff)
+					LowerIRQL(oldIRQL);
 				return 0; // Not enough physical memory to satisfy request of nPages.
+			}
 			nodePhys = node;
 			node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)node);
 			nPagesRequired = nPages;

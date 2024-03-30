@@ -163,6 +163,7 @@ namespace obos
 			getCR0(), getCR2(), getCR3(),
 			getCR4(), getCR8(), getEFER()
 		);
+		asm volatile("nop");
 	}
 	bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
 	{
@@ -273,6 +274,7 @@ namespace obos
 			getCR0(), getCR2(), getCR3(),
 			getCR4(), oldIRQL , getEFER()
 		);
+		asm volatile("nop");
 	}
 	void nmiHandler(interrupt_frame*)
 	{

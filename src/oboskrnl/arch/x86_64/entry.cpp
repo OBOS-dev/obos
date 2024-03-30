@@ -39,6 +39,7 @@
 #include <limine/limine.h>
 
 #include <scheduler/init.h>
+#include <scheduler/scheduler.h>
 
 #include <arch/thr_context_info.h>
 
@@ -66,11 +67,14 @@ namespace obos
 		size_t ThreadContextInfo::xsave_size = 0;
 		HPET* g_hpetAddress;
 	}
+	extern void kmain();
 }
 
 using namespace obos;
 
 LIMINE_BASE_REVISION(1);
+
+extern "C" uint64_t calibrateHPET(uint64_t freq);
 
 extern "C" void KernelArchInit()
 {
@@ -167,19 +171,30 @@ extern "C" void KernelArchInit()
 	logger::log("%s: Starting processors.\n", __func__);
 	size_t nCpus = arch::StartProcessors();
 	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
-	logger::log("%s: Registering IPI handler", __func__);
+	logger::log("%s: Registering IPI handler\n", __func__);
 	arch::RegisterIPIHandler();
 	logger::log("%s: Initializing scheduler.\n", __func__);
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	scheduler::InitializeScheduler();
+	scheduler::StartKernelMainThread(kmain);
 	LowerIRQL(oldIRQL);
-	Irq irq{ 2, false };
-	size_t i = 0;
-	irq.SetHandler([](const Irq*, const IrqVector* vector, void* udata, interrupt_frame* frame) {
-		if (++(*(size_t*)udata) < 26)
-			logger::debug("Received IRQ %d, intNumber: %d. Iteration: %lu\n", vector->vector, (uint8_t)frame->intNumber, (*(size_t*)udata));
-	}, &i);
-	arch::StartTimerOnCPU(scheduler::GetCPUPtr(), 1000, irq);
+	// Configure watchdog timer to wait for the LAPIC timer for one second.
+	// If it fails, assume something messed up and forgot to send an EOI.
+	uint64_t timer = calibrateHPET(scheduler::g_schedulerFrequency/2);
+	arch::g_hpetAddress->generalConfig |= 1;
+	while (arch::g_hpetAddress->mainCounterValue < timer)
+		pause();
+	logger::warning("Watchdog timer ran out!\n");
+	LAPIC_SendEOI();
+	asm("sti");
+	LowerIRQL(0);
+	// Spin for a couple iterations.
+	timer = calibrateHPET(scheduler::g_schedulerFrequency/2);
+	arch::g_hpetAddress->generalConfig |= 1;
+	while (arch::g_hpetAddress->mainCounterValue < timer)
+		pause();
+	// We're still here. Panic.
+	logger::panic(nullptr, "Watchdog timer ran out while waiting for LAPIC timer for CPU %d!\n", scheduler::GetCPUPtr()->cpuId);
 	// Hang waiting for an interrupt.
 	while(1)
 		asm volatile("hlt");

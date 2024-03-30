@@ -5,10 +5,9 @@
 #include <arch/x86_64/irq/interrupt_frame.h>
 namespace obos
 {
-	extern void LAPIC_SendEOI();
 	namespace arch
 	{
-		inline void SendEOI(interrupt_frame*) { LAPIC_SendEOI(); };
+		extern void SendEOI(interrupt_frame*);
 		inline bool IsSpuriousInterrupt(interrupt_frame*) { return false; } // We can assume no, as spurious interrupts are sent through the spurious interrupt vector of the LAPIC.
 	}
 }

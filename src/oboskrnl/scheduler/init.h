@@ -8,12 +8,15 @@
 
 #include <int.h>
 
+#include <scheduler/thread.h>
+
 namespace obos
 {
 	namespace scheduler
 	{
 		extern bool g_initialized;
+		extern ThrAffinity g_defaultAffinity;
 		bool InitializeScheduler();
-		bool StartKernelMainThread();
+		bool StartKernelMainThread(void(*entry)());
 	}
 }

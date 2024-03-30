@@ -22,6 +22,7 @@
 #include <vmm/pg_context.h>
 #include <vmm/init.h>
 #include <vmm/prot.h>
+#include <vmm/page_node.h>
 
 #include <limine/limine.h>
 
@@ -289,13 +290,16 @@ namespace obos
 				uint32_t nPages = firstPhdr[i].p_memsz >> 12;
 				if ((firstPhdr[i].p_memsz % 4096) != 0)
 					nPages++;
-				uintptr_t physPages = kernel_addr.response->physical_base + (kernelTop - kernelBase);
 				uintptr_t base = firstPhdr[i].p_vaddr & ~0xfff;
-					if (((firstPhdr[i - 1].p_paddr + firstPhdr[i - 1].p_memsz) & ~0xfff) == base)
-						base += 0x1000;
+				if (((firstPhdr[i - 1].p_paddr + firstPhdr[i - 1].p_memsz) & ~0xfff) == base)
+					base += 0x1000;
 				kernelTop = (firstPhdr[i].p_vaddr + firstPhdr[i].p_memsz + 0xfff) & ~0xfff;
-				for (uintptr_t kBase = base, j = 0; kBase < kernelTop; kBase += 4096, j++)
-					map_page_to(pm, kBase, physPages + j * 4096, prot);
+				vmm::page_descriptor pd;
+				for (uintptr_t kBase = base; kBase < kernelTop; kBase += 4096)
+				{
+					get_page_descriptor((PageMap*)getCR3(), (void*)kBase, pd);
+					map_page_to(pm, kBase, pd.phys, prot);
+				}
 			}
 			g_kernelBase = kernelBase;
 			g_kernelTop = kernelTop;
@@ -325,6 +329,18 @@ namespace obos
 			s_kernelCr3.references = 1;
 			s_internalKernelContext.set(&s_kernelCr3);
 			new (&vmm::g_kernelContext) vmm::Context{ &s_internalKernelContext };
+		}
+		void register_allocated_pages_in_context(vmm::Context* ctx)
+		{
+			// Register the HHDM in the context.
+			vmm::page_node node{};
+			node.ctx = ctx;
+			node.nPageDescriptors = (hhdm_limit - hhdm_offset.response->offset) / OBOS_HUGE_PAGE_SIZE;
+			node.pageDescriptors = (vmm::page_descriptor*)vmm::g_pdAllocator.Allocate(node.nPageDescriptors);
+			size_t i = 0;
+			for (uintptr_t addr = hhdm_offset.response->offset; addr < hhdm_limit; addr += OBOS_HUGE_PAGE_SIZE, i++)
+				get_page_descriptor(ctx, (void*)addr, node.pageDescriptors[i]);
+			ctx->AppendPageNode(node);
 		}
 	}
 }
