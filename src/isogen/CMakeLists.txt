@@ -46,6 +46,7 @@ add_custom_target(isogen ALL
             ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-pxe.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios.sys ${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTX64.EFI
 			${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTIA32.EFI
 	DEPENDS oboskrnl
+	DEPENDS uacpi
 	BYPRODUCTS ${ISODIR}/limine.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTIA32.efi

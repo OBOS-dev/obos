@@ -19,6 +19,7 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 		include("dependencies/limine.cmake")
 	endif()
+	include ("dependencies/uacpi.cmake")
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake" 
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -28,5 +29,8 @@ if (NOT DEFINED OUTPUT_DIR)
 	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
 endif()
 
+set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+
+add_subdirectory("src/libs/uacpi")
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")

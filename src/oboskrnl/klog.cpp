@@ -79,6 +79,18 @@ namespace obos
 			va_end(list);
 			return ret;
 		}
+		size_t snprintf(char* dest, size_t cnt, const char* format, ...)
+		{
+			va_list list;
+			va_start(list, format);
+			size_t ret = stbsp_vsnprintf(dest, cnt, format, list);
+			va_end(list);
+			return ret;
+		}
+		size_t vsnprintf(char* dest, size_t cnt, const char* format, va_list list)
+		{
+			return stbsp_vsnprintf(dest, cnt, format, list);
+		}
 
 		locks::SpinLock debug_lock;
 		locks::SpinLock log_lock;

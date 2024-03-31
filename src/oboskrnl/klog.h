@@ -41,6 +41,8 @@ namespace obos
 		size_t vprintf(const char* format, va_list list);
 		size_t vsprintf(char* dest, const char* format, va_list list);
 		FORMAT(printf, 2) size_t sprintf(char* dest, const char* format, ...);
+		FORMAT(printf, 3) size_t snprintf(char* dest, size_t cnt, const char* format, ...);
+		size_t vsnprintf(char* dest, size_t cnt, const char* format, va_list list);
 
 		constexpr const char* DEBUG_PREFIX_MESSAGE = "[Debug] ";
 		constexpr const char* LOG_PREFIX_MESSAGE = "[Log] ";

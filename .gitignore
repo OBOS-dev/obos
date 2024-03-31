@@ -1,10 +1,16 @@
+# Misc
 /.vs/*
 /out
-/dependencies/limine
-/dependencies/include
-/dependencies/needs_download.cmake
-/isodir/
 /qemu_log.txt
-/CMakePresets.json
 /.vscode/
 /gdb_config
+
+# Dependencies
+/dependencies/include
+/dependencies/needs_download.cmake
+/dependencies/limine
+/dependencies/uacpi
+
+# Build-related
+/isodir/
+/CMakePresets.json
