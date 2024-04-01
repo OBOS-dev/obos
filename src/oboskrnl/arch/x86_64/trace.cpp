@@ -88,6 +88,7 @@ namespace obos
 					if (!pd[i].present)
 					{
 						frame = nullptr;
+						nFrames--;
 						break;
 					}
 				}

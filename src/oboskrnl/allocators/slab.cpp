@@ -37,13 +37,13 @@ namespace obos
 			if (mapFlags & vmm::PROT_NO_DEMAND_PAGE)
 				memzero(base, regionSize);
 			ret->base = ret;
-			ret->regionSize = regionSize;
+			ret->regionSize = ROUND_UP_COND(regionSize, OBOS_PAGE_SIZE);
 			ret->magic = SLAB_REGION_NODE_MAGIC;
 			SlabNode* firstNode = (SlabNode*)ROUND_UP_COND((uintptr_t)(ret + 1), stride);
 			new (firstNode) SlabNode{};
 			firstNode->magic = SLAB_NODE_MAGIC;
-			firstNode->size = allocSize * nodeCount;
-			firstNode->data = (char*)ROUND_UP(((uintptr_t)(firstNode + 1) - sizeof(uintptr_t)), padding);
+			firstNode->size = regionSize - sizeof(SlabRegionNode);
+			firstNode->data = (char*)ROUND_UP_COND((uintptr_t)(firstNode + 1), padding);
 			ret->freeNodes.Append(firstNode);
 			return ret;
 		}
@@ -66,8 +66,7 @@ namespace obos
 			m_padding = padding;
 			if (m_allocBase || findAddress)
 			{
-				size_t regionSize = m_stride * initialNodeCount;
-				regionSize = ROUND_UP_COND(regionSize, padding);
+				size_t regionSize = ROUND_UP_COND(m_stride * initialNodeCount, padding);
 				SlabRegionNode* node = AllocateRegionNode(findAddress ? nullptr : m_allocBase, regionSize, m_stride, m_allocationSize, padding, initialNodeCount, mapFlags);
 				if (!node)
 					return false;
@@ -91,7 +90,7 @@ namespace obos
 			new (firstNode) SlabNode{};
 			firstNode->magic = SLAB_NODE_MAGIC;
 			firstNode->size = regionSize - sizeof(SlabNode) - sizeof(SlabRegionNode);
-			firstNode->data = (char*)ROUND_UP(((uintptr_t)(firstNode + 1) - sizeof(uintptr_t)), m_padding);
+			firstNode->data = (char*)ROUND_UP_COND((uintptr_t)(firstNode + 1), m_padding);
 			node->freeNodes.Append(firstNode);
 			m_regionNodes.Append(node);
 			return true;
@@ -100,8 +99,6 @@ namespace obos
 		static void* AllocateNode(SlabList& freeList, SlabList& allocatedList, SlabNode* node, size_t sz, size_t padding)
 		{
 			size_t requiredSize = ROUND_UP_COND(sz + sizeof(SlabNode), padding);
-			if (node->size == sz)
-				requiredSize = sz;
 			if (node->size < requiredSize)
 				return nullptr;
 			node->size -= requiredSize;
@@ -113,7 +110,7 @@ namespace obos
 			memzero(newNode, sizeof(*newNode));
 			newNode->magic = SLAB_NODE_MAGIC;
 			newNode->size = sz;
-			newNode->data = (char*)ROUND_UP(((uintptr_t)(newNode + 1) - sizeof(uintptr_t)), padding);
+			newNode->data = (char*)ROUND_UP_COND((uintptr_t)(newNode + 1), padding);
 			allocatedList.Append(newNode);
 			return newNode->data;
 		}
@@ -157,7 +154,7 @@ namespace obos
 			if (!ret)
 			{
 				// Allocate a new region.
-				size_t regionSize = ROUND_UP_COND(size + m_allocationSize * OBOS_INITIAL_SLAB_COUNT, m_allocationSize);
+				size_t regionSize = ROUND_UP_COND(size + (m_allocationSize + sizeof(SlabNode)) * OBOS_INITIAL_SLAB_COUNT, m_allocationSize);
 				SlabRegionNode* newRegion = AllocateRegionNode(nullptr, regionSize, m_stride, m_allocationSize, m_padding, regionSize / m_allocationSize);
 				m_regionNodes.Append(newRegion);
 				return AllocateFromRegion(newRegion, size);

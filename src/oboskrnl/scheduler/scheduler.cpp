@@ -79,10 +79,13 @@ namespace obos
 				end:
 				curNode = curNode->next;
 			}
-			if (dpc)
-			{ arch::SwitchToThrContext(&dpc->context); }
-			// We got past the DPC stage, choose a thread to run.
 			Thread* chosenThread = nullptr;
+			if (dpc)
+			{ 
+				chosenThread = dpc;
+				goto found;
+			}
+			// We got past the DPC stage, choose a thread to run.
 			for (int i = sizeof(g_threadPriorities) / sizeof(g_threadPriorities[0]) - 1; i >= 0; i--)
 			{
 				// Make sure no one else chooses the same thread as us.
@@ -107,6 +110,7 @@ namespace obos
 				if (!chosenThread)
 					logger::panic(nullptr, "%s, cpu %d: Could not find a thread to run, the idle thread doesn't exist, and the current thread cannot be run.\n", __func__, GetCPUPtr()->cpuId);
 			}
+			found:
 			chosenThread->status = ThreadStatus::Running;
 			chosenThread->affinity = (1<<GetCPUPtr()->cpuId);
 			GetCPUPtr()->currentThread = chosenThread;

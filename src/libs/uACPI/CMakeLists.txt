@@ -35,6 +35,8 @@ target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
 target_include_directories(uacpi PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 target_include_directories(uacpi PUBLIC "${CMAKE_SOURCE_DIR}/src/libs/uACPI")
 
+target_link_libraries(uacpi PRIVATE ${LIBGCC})
+
 target_compile_definitions(uacpi
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
 	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
@@ -42,5 +44,4 @@ target_compile_definitions(uacpi
 	PUBLIC UACPI_OVERRIDE_ARCH_HELPERS=1)
 target_link_options(uacpi
 	PRIVATE "-nostdlib"
-	PRIVATE "-lgcc"
 )

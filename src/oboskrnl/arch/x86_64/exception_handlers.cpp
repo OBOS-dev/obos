@@ -129,9 +129,19 @@ namespace obos
 			return 0; // We're on the BSP
 		return scheduler::GetCPUPtr()->cpuId;
 	}
+	uint32_t getTID()
+	{
+		if (scheduler::GetCPUPtr() && scheduler::GetCPUPtr()->currentThread)
+			return scheduler::GetCPUPtr()->currentThread->tid;
+		return (uint32_t)-1;
+	}
+	uint32_t getPID()
+	{
+		return 0;
+	}
 	void defaultExceptionHandler(interrupt_frame* frame)
 	{
-		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
+		uint32_t cpuId = getCPUId(), pid = getPID(), tid = getTID();
 		bool whileInScheduler = false;
 		logger::panic(
 			nullptr,
@@ -237,7 +247,7 @@ namespace obos
 			return;
 		}
 
-		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
+		uint32_t cpuId = getCPUId(), pid = getPID(), tid = getTID();
 		bool whileInScheduler = false;
 		const char* action = (frame->errorCode & ((uintptr_t)1 << 1)) ? "write" : "read";
 		if (frame->errorCode & ((uintptr_t)1 << 4))

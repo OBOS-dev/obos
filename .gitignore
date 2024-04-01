@@ -1,6 +1,5 @@
 # Misc
 /.vs/*
-/out
 /qemu_log.txt
 /.vscode/
 /gdb_config
@@ -14,3 +13,5 @@
 # Build-related
 /isodir/
 /CMakePresets.json
+/out
+/CMakeFiles

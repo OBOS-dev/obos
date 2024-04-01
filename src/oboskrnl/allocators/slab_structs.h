@@ -29,7 +29,7 @@ namespace obos
 			SlabNode *next = nullptr, *prev = nullptr;
 			size_t size = 0;
 			char* data = nullptr;
-		} OBOS_ALIGN(8);
+		};
 		struct SlabList
 		{
 			SlabNode *head, *tail;

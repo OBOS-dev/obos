@@ -16,7 +16,7 @@ namespace obos
 	{
 	public:
 		Irq() = delete;
-		Irq(uint8_t requiredIRQL, bool allowDefferedWorkSchedule = true);
+		Irq(uint8_t vec, bool allowDefferedWorkSchedule = true, bool isVecIRQL = true /* whether the 'vec' parameter is an IRQL level or a specific vector. */);
 		
 		/// <summary>
 		/// Sets the callback that checks whether this irq object is really the IRQ handler that should run.<br>
@@ -35,6 +35,9 @@ namespace obos
 		auto GetIRQChecker() const { return m_irqCheckerCallback.callback; };
 		uint8_t GetVector() const;
 		uint8_t GetIRQL() const;
+		
+		void* GetIrqCheckerUserdata() const { return m_irqCheckerCallback.userdata; }
+		void* GetHandlerUserdata() const { return m_irqHandler.userdata; }
 	
 		friend struct IrqVector;
 		~Irq();
