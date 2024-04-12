@@ -8,7 +8,9 @@ global _ZN4obos6getCR0Ev
 global _ZN4obos6getCR2Ev
 global _ZN4obos6getCR3Ev
 global _ZN4obos6getCR4Ev
+global _ZN4obos6getCR4Ev
 global _ZN4obos6getCR8Ev
+global _ZN4obos6getDR6Ev
 global _ZN4obos5pauseEv
 global _ZN4obos7getEFEREv
 global _ZN4obos5rdmsrEj
@@ -61,6 +63,14 @@ _ZN4obos6getCR8Ev:
 	mov rbp, rsp
 
 	mov rax, cr8
+
+	leave
+	ret
+_ZN4obos6getDR6Ev:
+	push rbp
+	mov rbp, rsp
+
+	mov rax, dr6
 
 	leave
 	ret

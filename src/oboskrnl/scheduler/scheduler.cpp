@@ -7,8 +7,6 @@
 #include <int.h>
 #include <klog.h>
 
-#include <allocators/slab.h>
-
 #include <arch/thr_context_info.h>
 
 #include <scheduler/init.h>

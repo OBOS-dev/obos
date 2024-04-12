@@ -31,11 +31,12 @@ namespace obos
 			/// <returns>A pointer to the block of memory allocated, or nullptr on failure.</returns>
 			virtual void* ZeroAllocate(size_t size);
 			/// <summary>
-			/// Reallocates a region of memory. The allocator is not required to support this. 
+			/// Reallocates a region of memory. The allocator is not required to support this.
+			/// If base == nullptr, the allocator shall Allocate() the region.
 			/// </summary>
 			/// <param name="base">The base of the region.</param>
 			/// <param name="newSize">The new size. Refer to Allocate() for more information.</param>
-			/// <returns>A pointer to the new block. The function returns nullptr on failure, any other pointer should be assumed to be the new block, even if it is the same passed to the function.</returns>
+			/// <returns>A pointer to the new block. The function returns nullptr on failure, UINTPTR_MAX if ReAllocate is unsupported. Any other pointer should be assumed to be the new block, even if it is the same passed to the function.</returns>
 			virtual void* ReAllocate(void* base, size_t newSize) { (base = base); (newSize = newSize); return nullptr; };
 			/// <summary>
 			/// Frees a region of memory. It is undefined behaviour to use the region after it is freed, and should not be done at all.

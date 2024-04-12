@@ -30,7 +30,7 @@ namespace obos
 			// Must be at least 576 bytes and aligned to 64 bytes, or nullptr for kernel-mode threads.
 			uint8_t* xsave_context;
 			PageMap *pm;
-			uint8_t irql;
+			uint64_t irql;
 			uintptr_t gs_base, fs_base;
 			interrupt_frame frame;
 		};

@@ -121,6 +121,20 @@ namespace obos
 			while(1) 
 				asm volatile("hlt");
 		}
+		template<typename T>
+		bool hasDuplicateEntry(T* arr, size_t szArr, signed long at, bool direction = false /* back */)
+		{
+			if (at > szArr)
+				return false;
+			// arr (uint8_t*): 0, 1, 2, 3, 0, 0, 0, 0
+			// szArr: 8
+			// at: 1
+			// direction: false (back)
+			for (signed long i = at + (direction ? 1 : -1); direction ? i < szArr : i >= 0; direction ? i++ : i--)
+				if (arr[i] == arr[at])
+					return true;
+			return false;
+		}
 		size_t StartProcessors()
 		{
 			// Get all CPU ids.
@@ -131,28 +145,27 @@ namespace obos
 			char sign[4] = { 'A', 'P', 'I', 'C' };
 			auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
 			size_t nCPUs = ParseMADTForLAPICIds(madt, g_lapicIDs, 0);
-			ParseMADTForLAPICIds(madt, g_lapicIDs, sizeof(g_lapicIDs) / sizeof(*g_lapicIDs));
+			ParseMADTForLAPICIds(madt, g_lapicIDs, sizeof(g_lapicIDs) / sizeof(*g_lapicIDs), true, false);
 			if (nCPUs > sizeof(g_lapicIDs) / sizeof(*g_lapicIDs))
 				nCPUs = sizeof(g_lapicIDs) / sizeof(*g_lapicIDs);
 			g_nCPUs = nCPUs;
 			g_cpuInfo = new cpu_local[g_nCPUs];
 			OBOS_ASSERTP(g_cpuInfo, "Could not allocate cpu info array.");
 			// Copy the trampoline to physical address zero.
-			vmm::page_descriptor zeroPd{};
-			zeroPd.phys = 0;
-			zeroPd.virt = 0;
-			zeroPd.isHugePage = false;
-			zeroPd.present = true;
-			zeroPd.protFlags = vmm::PROT_EXECUTE | vmm::PROT_NO_DEMAND_PAGE;
-			zeroPd.awaitingDemandPagingFault = false;
-			if (!vmm::MapPageDescriptor(&vmm::g_kernelContext, zeroPd))
-				logger::panic(nullptr, "Could not map page descriptor at virtual address 0x%016lx, physical address 0x%016lx.\n", zeroPd.virt, zeroPd.phys);
+			arch::map_page_to(&vmm::g_kernelContext, 0,0, vmm::PROT_EXECUTE | vmm::PROT_NO_DEMAND_PAGE);
 			smp_trampoline_cr3_loc = getCR3();
 			smp_trampoline_pat = rdmsr(IA32_PAT);
 			memcpy(nullptr, smp_trampoline_start, smp_trampoline_end - smp_trampoline_start);
+			size_t nCPUsStarted = 0;
 			for (size_t i = 0; i < nCPUs; i++)
 			{
 				uint8_t lAPIC = g_lapicIDs[i];
+				if (hasDuplicateEntry(g_lapicIDs, g_nCPUs, i, false))
+				{
+					logger::warning("%s: CPU %d is a duplicate in the LAPIC ID list. Possibly a Hyper-Thread on the CPU?\n", __func__, lAPIC);
+					logger::info("%s: Skipping CPU...\n", __func__);
+					continue;
+				}
 				g_cpuInfo[i].tempStack.size = 0x1'0000;
 				g_cpuInfo[i].tempStack.base = (uintptr_t)vmm::Allocate(
 					&vmm::g_kernelContext, 
@@ -186,19 +199,21 @@ namespace obos
 				LAPIC_SendIPI(DestinationShorthand::None, DeliveryMode::SIPI, 0, lAPIC);
 				while (!jumped_to_bootstrap);
 				jumped_to_bootstrap = false;
+				nCPUsStarted++;
 			}
+			g_nCPUs = nCPUsStarted + 1;
 			bool allInitialized = false;
 			while (!allInitialized)
 			{
 				allInitialized = true;
-				for (size_t i = 0; i < nCPUs; i++)
+				for (size_t i = 0; i < g_nCPUs; i++)
 					if (!g_cpuInfo[i].initialized)
 						allInitialized = false;
 			}
 			g_initializedAllCPUs = true;
 			memzero(0, 0x1000);
-			vmm::Free(&vmm::g_kernelContext, nullptr, 0x1000);
-			return nCPUs;
+			arch::unmap(&vmm::g_kernelContext, 0);
+			return nCPUsStarted;
 		}
 		bool g_halt;
 		static void StopAllInitializedCPUs(bool includingSelf)

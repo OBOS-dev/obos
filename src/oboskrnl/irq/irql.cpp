@@ -31,7 +31,7 @@ namespace obos
 			arch::SetIRQL(getIRQLVar());
 		newIRQL &= 0xf;
 		if (newIRQL > getIRQLVar())
-			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is greater than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
+			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is greater than the current IRQL, %d.\n", __func__, newIRQL, getIRQLVar());
 		getIRQLVar() = newIRQL;
 		if (setThrIRQL)
 			setCurThreadIRQL(newIRQL);
@@ -43,7 +43,7 @@ namespace obos
 		if (arch::GetIRQL() != getIRQLVar())
 			arch::SetIRQL(getIRQLVar());
 		if (newIRQL < getIRQLVar())
-			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is less than the current IRQL, %d.\n", __func__, newIRQL, s_irql);
+			logger::panic(nullptr, "Attempt to call %s() with the irql %d, which is less than the current IRQL, %d.\n", __func__, newIRQL, getIRQLVar());
 		*oldIRQL = getIRQLVar();
 		getIRQLVar() = newIRQL;
 		if (setThrIRQL)

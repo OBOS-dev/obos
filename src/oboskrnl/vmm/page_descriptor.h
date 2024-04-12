@@ -23,6 +23,8 @@ namespace obos
 			bool isHugePage : 1;
 			bool present : 1;
 			bool awaitingDemandPagingFault : 1;
+			void* operator new(size_t count);
+			void* operator new[](size_t count);
 		} OBOS_ALIGN(4);
 	}
 }

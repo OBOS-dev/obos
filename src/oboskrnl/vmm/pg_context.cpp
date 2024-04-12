@@ -28,23 +28,88 @@ namespace obos
 		}
 		void Context::AppendPageNode(const page_node& node)
 		{
-			page_node* newNode = (page_node*)g_pgNodeAllocator.Allocate(1);
+			page_node* newNode = new page_node{};
+			OBOS_ASSERTP(newNode, "Could not allocate a page node.\n");
 			newNode->ctx = this;
 			newNode->pageDescriptors = node.pageDescriptors;
 			newNode->nPageDescriptors = node.nPageDescriptors;
-			if (m_tail)
-				m_tail->next = newNode;
-			if(!m_head)
+			newNode->allocFlags = node.allocFlags;
+			// Make sure to insert this node in order.
+			// Find the node that goes behind this and append the node of that.
+			if (m_tail && m_tail->pageDescriptors[0].virt < node.pageDescriptors[0].virt)
+			{
+				// Append it
+				Lock();
+				if (m_tail)
+					m_tail->next = newNode;
+				if(!m_head)
+					m_head = newNode;
+				newNode->prev = m_tail;
+				m_tail = newNode;
+				m_nNodes++;
+				Unlock();
+				return;
+			}
+			else if (m_head && m_head->pageDescriptors[0].virt > node.pageDescriptors[0].virt)
+			{
+				// Prepend it
+				Lock();
+				if (m_head)
+					m_head->prev = newNode;
+				if(!m_tail)
+					m_tail = newNode;
+				newNode->next = m_head;
 				m_head = newNode;
-			newNode->prev = m_tail;
-			m_tail = newNode;
-			m_nNodes++;
+				m_nNodes++;
+				Unlock();
+				return;
+			}
+			else
+			{
+				// Find the node that this node should go after.
+				Lock();
+				page_node *found = nullptr, *n = m_head;
+				while(n && n->next)
+				{
+					if (n->pageDescriptors[0].virt < node.pageDescriptors[0].virt &&
+						n->next->pageDescriptors[0].virt > node.pageDescriptors[0].virt)
+					{
+						found = n;
+						break;
+					}
+					
+					n = n->next;
+				}
+				if (!found)
+				{
+					// Append it
+					if (m_tail)
+						m_tail->next = newNode;
+					if(!m_head)
+						m_head = newNode;
+					newNode->prev = m_tail;
+					m_tail = newNode;
+					m_nNodes++;
+					Unlock();
+					return;
+				}
+				if (found->next)
+					found->next->prev = newNode;
+				if (m_tail == found)
+					m_tail = newNode;
+				newNode->next = found->next;
+				found->next = newNode;
+				newNode->prev = found;
+				m_nNodes++;
+				Unlock();
+			}
 		}
 		void Context::RemovePageNode(void* virt)
 		{
 			page_node* node = ImplGetNode(virt);
 			if (!node)
 				return;
+			Lock();
 			if (node->next)
 				node->next->prev = node->prev;
 			if (node->prev)
@@ -54,10 +119,11 @@ namespace obos
 			if (m_tail == node)
 				m_tail = node->prev;
 			m_nNodes--;
+			Unlock();
 			node->prev = nullptr;
 			node->next = nullptr;
-			g_pdAllocator.Free(node->pageDescriptors, node->nPageDescriptors);
-			g_pgNodeAllocator.Free(node, 1);
+			delete[] node->pageDescriptors;
+			delete node;
 		}
 		page_node* Context::GetPageNode(void* addr) const
 		{

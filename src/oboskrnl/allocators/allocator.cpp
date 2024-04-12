@@ -71,6 +71,11 @@ void operator delete (void* ptr, size_t count) noexcept
 	if (!g_kAllocator)
 		return;
 	const size_t allocSize = g_kAllocator->GetAllocationSize();
+	if (!allocSize)
+	{
+		g_kAllocator->Free(ptr, count);
+		return;
+	}
 	count = (count / allocSize) + ((count % allocSize) != 0);
 	g_kAllocator->Free(ptr, count);
 }

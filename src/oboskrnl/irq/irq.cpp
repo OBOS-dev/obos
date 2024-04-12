@@ -17,8 +17,6 @@
 
 #include <arch/thr_context_info.h>
 
-#include <allocators/slab.h>
-
 #include <vmm/init.h>
 
 #include <locks/spinlock.h>
@@ -42,7 +40,6 @@ namespace obos
 		impl_verify_concept<interrupt_frame>();
 	}
 	IrqVectorList g_irqVectors;
-	allocators::SlabAllocator g_irqVectorAllocator;
 	static size_t s_irqlCapacities[14 /* The first two IRQLs are invalid for IrqVector.*/] = {
 		8,8,8,8,8,
 		8,8,8,8,8,
@@ -93,7 +90,7 @@ namespace obos
 			else
 			{
 				// We should allocate a new IrqVector.
-				vector = (IrqVector*)g_irqVectorAllocator.Allocate(1);
+				vector = new IrqVector{};
 				vector->vector = OBOS_IRQL_TO_VECTOR(requiredIRQL) + nIrqVectorsForIRQL;
 			}
 		}
@@ -105,7 +102,7 @@ namespace obos
 		if (!vector)
 		{
 			// We should allocate a new IrqVector.
-			vector = (IrqVector*)g_irqVectorAllocator.Allocate(1);
+			vector = new IrqVector{};
 			vector->vector = vec;
 		}
 		return vector;
@@ -116,12 +113,6 @@ namespace obos
 		OBOS_ASSERTP(vmm::g_initialized, "Abstract IRQ interface cannot be used without the VMM initialized.");
 		if (isVecIRQL)
 			OBOS_ASSERTP(vec >= 2, "IRQL for Irq must be less than 2, as IRQLs 0 and 1 are invalid in this case.");
-		if (!g_irqVectorAllocator.GetAllocationSize())
-		{
-			// The allocator is uninitialized.
-			new (&g_irqVectorAllocator) allocators::SlabAllocator{};
-			g_irqVectorAllocator.Initialize(nullptr, sizeof(IrqVector));
-		}
 		IrqVector *vector = isVecIRQL ? IrqlHandler(vec) : IrqHandler(vec);
 		vector->references.Append(this);
 		vector->Register(IrqDispatcher);
@@ -186,7 +177,7 @@ namespace obos
 				}
 				else
 				{
-					scheduler::Thread* dpcObject = (scheduler::Thread*)scheduler::g_threadAllocator();
+					scheduler::Thread* dpcObject = new scheduler::Thread{};
 					dpcObject->tid = scheduler::g_nextTID++;
 					dpcObject->status = scheduler::ThreadStatus::CanRun;
 					dpcObject->flags = scheduler::ThreadFlags::IsDeferredProcedureCall;

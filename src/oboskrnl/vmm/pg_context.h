@@ -10,6 +10,8 @@
 
 #include <arch/vmm_context.h>
 
+#include <locks/spinlock.h>
+
 namespace obos
 {
 	namespace vmm
@@ -41,6 +43,10 @@ namespace obos
 			
 			struct page_node* GetHead() const { return m_head; }
 			struct page_node* GetTail() const { return m_tail; }
+			
+			bool Lock() { return m_lock.Lock(); }
+			bool Unlock() { return m_lock.Unlock(); }
+			bool Locked() const { return m_lock.Locked(); }
 
 			~Context() noexcept;
 
@@ -56,6 +62,7 @@ namespace obos
 			bool m_owns = true;
 			struct page_node *m_head, *m_tail;
 			size_t m_nNodes;
+			locks::SpinLock m_lock;
 		};
 	}
 }

@@ -25,7 +25,7 @@
 #include <vmm/init.h>
 #include <vmm/map.h>
 
-#include <allocators/slab.h>
+#include <allocators/basic_allocator.h>
 
 #ifdef __x86_64__
 #include <arch/x86_64/mm/palloc.h>
@@ -276,19 +276,24 @@ extern "C"
 		}
 		return UACPI_STATUS_OK;
 	}
-	static allocators::SlabAllocator s_uACPIAllocator;
-	static bool s_uACPIAllocatorInitialized = false;
+	// static allocators::BasicAllocator s_uACPIAllocator;
+	// static bool s_uACPIAllocatorInitialized = false;
 	void* uacpi_kernel_alloc(uacpi_size size)
 	{
-		if (!s_uACPIAllocatorInitialized)
-		{
-			new (&s_uACPIAllocator) allocators::SlabAllocator{};
-			s_uACPIAllocator.Initialize(nullptr, 0x10, true, 0x100, 0x10);
-			s_uACPIAllocatorInitialized = true;
-		}
-		size_t sz = (size / 0x10) + ((size % 0x10) != 0);
-		void* ret = s_uACPIAllocator.Allocate(sz);
-		// logger::debug("Allocated 0x%p for uACPI\n", ret);
+		static size_t nAllocationsSinceLastFree = 0;
+		// logger::debug("Attempting allocation of %lu bytes.\n", size);
+		// if (!s_uACPIAllocatorInitialized)
+		// {
+			// new (&s_uACPIAllocator) allocators::BasicAllocator{};
+			// s_uACPIAllocatorInitialized = true;
+		// }
+		void* ret = new uint8_t[size];
+		if (!ret)
+			logger::warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
+		else
+			logger::debug("Allocated %lu bytes at 0x%p\n", size, ret);
+		if (ret == (void*)0xffff8000fee800f0)
+			asm volatile("nop");
 		return ret;
 	}
 	void* uacpi_kernel_calloc(uacpi_size count, uacpi_size size)
@@ -299,15 +304,19 @@ extern "C"
 	{
 		if (!mem)
 			return;
-		if (!s_uACPIAllocatorInitialized)
-			logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
-			__func__, __LINE__);
-		size_t sz = s_uACPIAllocator.QueryObjectSize(mem);
+		if (mem == (void*)0xffff8000feed50f0)
+			asm volatile("nop");
+		// logger::debug("Attempt free of 0x%p\n", mem);
+		// if (!s_uACPIAllocatorInitialized)
+			// logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
+			// __func__, __LINE__);
+		size_t sz = allocators::g_kAllocator->QueryObjectSize(mem);
 		if (sz == SIZE_MAX)
 			logger::panic(nullptr, "Function %s, line %d: free of object by uACPI not allocated by uACPI allocator. This is a bug, please report in some way.\n", 
 			__func__, __LINE__);
-		s_uACPIAllocator.Free(mem, sz);
-		// logger::debug("Freed 0x%p for uACPI\n", mem);
+		delete[] (uint8_t*)mem;
+		// s_uACPIAllocator.Free(mem, sz);
+		logger::debug("Freed 0x%p.\n", mem);
 	}
 	void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 	{
@@ -342,7 +351,7 @@ extern "C"
 	// 2500
 	uacpi_u64 uacpi_kernel_get_ticks(void)
 	{
-		return 2500; // 4000 hz -> 250000 ns = 2500 ticks.
+		return scheduler::g_ticks * 2500; // 4000 hz -> 250000 ns = 2500 ticks.
 	}
 	void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
 	{
@@ -362,6 +371,7 @@ extern "C"
 	}
 	uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle hnd)
 	{
+		logger::debug("Attempting lock of %p.\n", hnd);
 		bool* lock = (bool*)hnd;
 		uacpi_cpu_flags irql = 0;
 		RaiseIRQL(0xf, &irql);
@@ -370,6 +380,7 @@ extern "C"
 			spinlock_delay();
 		while (__atomic_compare_exchange_n(lock, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 			spinlock_delay();
+		logger::debug("Locked %p.\n", hnd);
 		return irql;
 	}
 	void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
@@ -377,6 +388,7 @@ extern "C"
 		bool* lock = (bool*)hnd;
 		__atomic_store_n(&lock, false, __ATOMIC_SEQ_CST);
 		LowerIRQL(oldIrql);
+		logger::debug("Unlocked %p.\n", hnd);
 	}
 	uacpi_handle uacpi_kernel_create_event(void)
 	{
@@ -465,6 +477,7 @@ extern "C"
 	}
 	uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 	{
+		logger::debug("Attempting lock of mutex %p.\n", hnd);
 		mutex *mut = (mutex*)hnd;
 		uint64_t wakeTime = 0;
 		if (t != 0xffff)
@@ -477,14 +490,20 @@ extern "C"
 		while (__atomic_compare_exchange_n(&mut->locked, (bool*)&expected, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) && scheduler::g_ticks < wakeTime)
 			spinlock_delay();
 		mut->owner = scheduler::GetCPUPtr()->currentThread;
+		logger::debug("Locked mutex %p.\n", hnd);
 		return UACPI_TRUE;
 	}
 	void uacpi_kernel_release_mutex(uacpi_handle hnd)
 	{
+		logger::debug("Attempting release of mutex %p.\n", hnd);
 		mutex *mut = (mutex*)hnd;
 		if (mut->owner != scheduler::GetCPUPtr()->currentThread)
+		{
+			logger::debug("Failed release of mutex %p. Owner != currentThread\n", hnd);
 			return;
+		}
 		mut->locked = false;
+		logger::debug("Release of mutex %p success.\n", hnd);
 	}
 	uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
 	{
@@ -508,6 +527,7 @@ extern "C"
 	uint64_t calibrateHPET(uint64_t freq);
 	void uacpi_kernel_stall(uacpi_u8 usec)
 	{
+		logger::debug("Attempting stall for %d us.\n", usec);
 		// This (hopefully) should be enough context saved.
 		uint8_t fpuState[512] = {};
 		asm volatile("fxsave (%0)" : : "r"(fpuState):);
@@ -517,6 +537,7 @@ extern "C"
 	}
 	void uacpi_kernel_sleep(uacpi_u64 msec)
 	{
+		logger::debug("Attempting stall for %lu ms.\n", msec);
 		// This (hopefully) should be enough context saved.
 		uint8_t fpuState[512] = {};
 		asm volatile("fxsave (%0)" : : "r"(fpuState):);
@@ -533,6 +554,7 @@ extern "C"
 		uacpi_handle *out_irq_handle
 	)
 	{
+		logger::debug("Installing irq handler %d.\n", irq);
 		Irq *irqHnd = new Irq{ irq, false, false };
 		irqHnd->SetIRQChecker([](const Irq* , const struct IrqVector* , void* )->bool { return true; }, nullptr);
 		uintptr_t *udata = new uintptr_t[2];
@@ -551,6 +573,7 @@ extern "C"
 	)
 	{
 		Irq* irqHnd = (Irq*)irq_handle;
+		logger::debug("Uninstalling irq handler %d.\n", irqHnd->GetVector());
 		delete[] (uintptr_t*)irqHnd->GetHandlerUserdata();
 		delete irqHnd;
 		return UACPI_STATUS_OK;
@@ -570,6 +593,7 @@ extern "C"
 	static bool s_isWorkQueueLockInit = false;
 	uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
 	{
+		logger::debug("Scheduling DPC.\n");
 		if (!s_isWorkQueueLockInit)
 			new (&s_workQueueLock) locks::SpinLock{};
 		// Make the work object.
@@ -595,7 +619,7 @@ extern "C"
 		}
 		else
 			on = scheduler::GetCPUPtr();
-		Thread* dpc = (Thread*)scheduler::g_threadAllocator.Allocate(1);
+		Thread* dpc = new Thread{};
 		work->dpc = dpc;
 		dpc->tid = scheduler::g_nextTID++;
 		dpc->status = scheduler::ThreadStatus::CanRun;
@@ -642,6 +666,7 @@ extern "C"
 	}
 	uacpi_status uacpi_kernel_wait_for_work_completion(void)
 	{
+		logger::debug("Waiting for DPC queue completion...\n");
 		while (s_nWork > 0)
 			spinlock_delay();
 		return UACPI_STATUS_OK;

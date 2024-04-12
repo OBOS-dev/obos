@@ -34,7 +34,15 @@ namespace obos
 	// 0: All IRQs are allowed to run. You cannot use this to initialize an Irq object.
 	// 1: Invalid.
 	// 2: The timer for the scheduler is disallowed to run at this IRQL and higher.
-	// 3: IPIs aren't processed at this level or higher, the IRQL must be lowered.
+	// 3: IPIs aren't processed at this level or higher, the IRQL must be lowered to handle IPIs.
 	// 4-14: Unused by the kernel or drivers.
 	// 15: All IRQs are masked. Otherwise unused by drivers and the kernel.
+	enum
+	{
+		IRQL_PASSIVE = 0,
+		IRQL_DISPATCH = 2,
+		IRQL_IPI_DISPATCH,
+		IRQL_MASK_ALL = 15,
+		IRQL_INVALID = 0xff,
+	};
 }

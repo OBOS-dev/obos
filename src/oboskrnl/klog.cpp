@@ -15,11 +15,14 @@
 
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
-#define STB_SPRINTF_MIN 1
+#define STB_SPRINTF_MIN 8
 #include <external/stb_sprintf.h>
 
 #if __x86_64__
 #include <arch/x86_64/asm_helpers.h>
+
+#include <arch/x86_64/kdbg/init.h>
+#include <arch/x86_64/kdbg/io.h>
 #endif
 
 namespace obos
@@ -30,9 +33,12 @@ namespace obos
 		{
 			for (size_t i = 0; i < (size_t)len; i++)
 			{
-				g_kernelConsole.ConsoleOutput(buf[i]);
+				// g_kernelConsole.ConsoleOutput(buf[i]);
 #if __x86_64__
 				outb(0xe9, buf[i]);
+#	if OBOS_KDBG_ENABLED
+				kdbg::putchar(buf[i]);
+#	endif
 #endif
 			}
 			return (char*)buf;
@@ -43,8 +49,8 @@ namespace obos
 			printf_lock.Lock();
 			va_list list;
 			va_start(list, format);
-			char ch = 0;
-			size_t ret = stbsp_vsprintfcb(consoleOutputCallback, nullptr, &ch, format, list);
+			char ch[8];
+			size_t ret = stbsp_vsprintfcb(consoleOutputCallback, nullptr, ch, format, list);
 			va_end(list);
 			printf_lock.Unlock();
 			return ret;
@@ -52,8 +58,8 @@ namespace obos
 		size_t vprintf(const char* format, va_list list)
 		{
 			printf_lock.Lock();
-			char ch = 0;
-			size_t ret = stbsp_vsprintfcb(consoleOutputCallback, nullptr, &ch, format, list);
+			char ch[8];
+			size_t ret = stbsp_vsprintfcb(consoleOutputCallback, nullptr, ch, format, list);
 			printf_lock.Unlock();
 			return ret;
 		}
@@ -150,12 +156,16 @@ namespace obos
 		}
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
 		{
+#if defined(__x86_64__) && OBOS_KDBG_ENABLED
+			breakpoint();
+#endif
 			arch::StopCPUs(false);
 			g_kernelConsole.SetColour(GREY, PANIC_RED);
 			g_kernelConsole.ClearConsole(PANIC_RED);
 			g_kernelConsole.SetPosition(0, 0);
 			vprintf(format, list);
-			stackTrace(stackTraceParameter);
+			printf("Stack trace:\n");
+			stackTrace(stackTraceParameter, "\t");
 			while (1);
 		}
 	}

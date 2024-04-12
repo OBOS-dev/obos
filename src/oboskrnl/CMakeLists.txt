@@ -4,7 +4,7 @@
 
 set (oboskrnl_sources ${oboskrnl_sources}
 	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp" 
-	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/slab.cpp"
+	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/basic_allocator.cpp"
 	"vmm/init.cpp" "vmm/demand_paging.cpp" "vmm/mprot.cpp" "irq/irq.cpp"
 	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
 )
@@ -32,6 +32,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fstack-protector-strong>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wstack-usage=65536>
 # PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-nostdlib>
 # We don't enable -Werror in case future compiler versions introduce new warnings that the kernel triggers.
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wall>
@@ -44,14 +45,22 @@ target_compile_definitions(oboskrnl
 	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>)
 target_link_options(oboskrnl
 	PUBLIC "-T" PUBLIC "${LINKER_SCRIPT}"
-	PUBLIC "-lgcc"
 	PUBLIC "-nostdlib"
-	# PUBLIC "-flto"
 	PUBLIC ${TARGET_LINKER_OPTIONS}
 )
 
-target_link_libraries(oboskrnl PRIVATE uacpi)
+target_link_libraries(oboskrnl PRIVATE uacpi PRIVATE ${LIBGCC})
 
 if (DEFINED OBOS_INITIAL_SLAB_COUNT)
 	target_compile_definitions(PRIVATE OBOS_INITIAL_SLAB_COUNT=${OBOS_INITIAL_SLAB_COUNT})
+endif()
+if (DEFINED OBOS_SLOW_ARTHIMETRIC)
+	target_compile_definitions(oboskrnl PUBLIC OBOS_SLOW_ARTHIMETRIC=1)
+endif()
+if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+	if (DEFINED OBOS_ENABLE_KDBG)
+		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=1)
+	else()
+		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=0)
+	endif()
 endif()

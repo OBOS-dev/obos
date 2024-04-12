@@ -41,7 +41,8 @@ target_compile_definitions(uacpi
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
 	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
 	PUBLIC UACPI_OVERRIDE_STDLIB=1
-	PUBLIC UACPI_OVERRIDE_ARCH_HELPERS=1)
+	PUBLIC UACPI_OVERRIDE_ARCH_HELPERS=1
+	)
 target_link_options(uacpi
 	PRIVATE "-nostdlib"
 )

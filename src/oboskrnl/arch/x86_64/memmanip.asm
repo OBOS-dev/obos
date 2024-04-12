@@ -65,6 +65,7 @@ _ZN4obos6memcmpEPKvim:
 	repe scasb
 	sete al
 
+	leave
 	ret
 _ZN4obos6strcmpEPKcS1_:
 	push rbp

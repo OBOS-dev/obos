@@ -31,8 +31,6 @@
 #include <vmm/map.h>
 #include <vmm/pg_context.h>
 
-#include <allocators/slab.h>
-
 #include <irq/irql.h>
 #include <irq/irq.h>
 
@@ -44,6 +42,9 @@
 #include <arch/thr_context_info.h>
 
 #include <arch/sched_timer.h>
+
+#include <arch/x86_64/kdbg/init.h>
+#include <arch/x86_64/kdbg/io.h>
 
 extern "C" void InitBootGDT();
 extern "C" void disablePIC();
@@ -122,7 +123,10 @@ extern "C" void KernelArchInit()
 	sign[2] = 'E';
 	sign[3] = 'T';
 	auto hpet_table = (arch::HPET_Table*)GetTableWithSignature(sdt, t32, nEntries, &sign);
-	arch::g_hpetAddress = (arch::HPET*)(hhdm_offset.response->offset + hpet_table->baseAddress.address);
+	if (hpet_table->baseAddress.address)
+		arch::g_hpetAddress = (arch::HPET*)(hhdm_offset.response->offset + hpet_table->baseAddress.address);
+	else
+		logger::panic(nullptr, "%s: No HPET Table provided by the firmware.\n", __func__);
 	uint8_t oldIRQL = 0;
 	RaiseIRQL(0xf /* Mask All. */, &oldIRQL);
 	asm("sti");
@@ -173,6 +177,10 @@ extern "C" void KernelArchInit()
 	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
 	logger::log("%s: Registering IPI handler\n", __func__);
 	arch::RegisterIPIHandler();
+#if OBOS_KDBG_ENABLED
+	logger::log("%s: Enabling kernel debugger.\n", __func__);
+	kdbg::init_kdbg(kdbg::input_format::PS2_KEYBOARD, kdbg::output_format::CONSOLE);
+#endif
 	logger::log("%s: Initializing scheduler.\n", __func__);
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	scheduler::InitializeScheduler();

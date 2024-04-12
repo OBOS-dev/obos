@@ -336,7 +336,7 @@ namespace obos
 			vmm::page_node node{};
 			node.ctx = ctx;
 			node.nPageDescriptors = (hhdm_limit - hhdm_offset.response->offset) / OBOS_HUGE_PAGE_SIZE;
-			node.pageDescriptors = (vmm::page_descriptor*)vmm::g_pdAllocator.Allocate(node.nPageDescriptors);
+			node.pageDescriptors = new vmm::page_descriptor[node.nPageDescriptors];
 			size_t i = 0;
 			for (uintptr_t addr = hhdm_offset.response->offset; addr < hhdm_limit; addr += OBOS_HUGE_PAGE_SIZE, i++)
 				get_page_descriptor(ctx, (void*)addr, node.pageDescriptors[i]);
