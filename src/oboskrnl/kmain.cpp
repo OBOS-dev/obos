@@ -79,23 +79,23 @@ namespace obos
 		// constexpr size_t passes = 1'000'000;
 		// size_t passesFinished = runAllocatorTests(*allocators::g_kAllocator, passes);
 		// OBOS_ASSERTP(passesFinished == passes, "Allocator tests failed. Passes finished: %lu",, passesFinished);
-		// logger::log("%s: Initializing uACPI\n", __func__);
-		// uintptr_t rsdp = 0;
-// #ifdef __x86_64__
-		// rsdp = ((uintptr_t)rsdp_request.response->address - hhdm_offset.response->offset);
-// #endif
-		// uacpi_init_params params = {
-			// rsdp,
-			// { UACPI_LOG_TRACE, 0 }
-		// };
-		// uacpi_status st = uacpi_initialize(&params);
-		// verify_status(st, uacpi_initialize);
+		logger::log("%s: Initializing uACPI\n", __func__);
+		uintptr_t rsdp = 0;
+#ifdef __x86_64__
+		rsdp = ((uintptr_t)rsdp_request.response->address - hhdm_offset.response->offset);
+#endif
+		uacpi_init_params params = {
+			rsdp,
+			{ UACPI_LOG_TRACE, 0 }
+		};
+		uacpi_status st = uacpi_initialize(&params);
+		verify_status(st, uacpi_initialize);
 	
-		// st = uacpi_namespace_load();
-		// verify_status(st, uacpi_namespace_load);
+		st = uacpi_namespace_load();
+		verify_status(st, uacpi_namespace_load);
 	
-		// st = uacpi_namespace_initialize();
-		// verify_status(st, uacpi_namespace_initialize);
+		st = uacpi_namespace_initialize();
+		verify_status(st, uacpi_namespace_initialize);
 		
 		while(1);
 	}

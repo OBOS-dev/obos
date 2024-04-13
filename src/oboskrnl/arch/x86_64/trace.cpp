@@ -89,7 +89,7 @@ namespace obos
 				frame = frame->down;
 			}
 		}
-		void stackTrace(void* parameter, const char* prefix)
+		void stackTrace(void* parameter, const char* prefix, size_t(*outputCallback)(const char* format, ...))
 		{
 			stack_frame* frame = parameter ? (stack_frame*)parameter : (stack_frame*)__builtin_frame_address(0);
 			if (!vmm::g_initialized)
@@ -122,6 +122,7 @@ namespace obos
 				frame = frame->down;
 				nFrames++;
 			} while (frame);
+			nFrames--;
 			frame = parameter ? (stack_frame*)parameter : (stack_frame*)__builtin_frame_address(0);
 			while (nFrames-- > 0)
 			{
@@ -129,9 +130,9 @@ namespace obos
 				uintptr_t functionStart = 0;
 				addr2sym(frame->rip, &functionName, &functionStart, elf::STT_FUNC);
 				if (functionName)
-					printf("%s0x%016lx: %s+%ld\n", prefix, frame->rip, functionName, (uintptr_t)frame->rip - functionStart);
+					outputCallback("%s0x%016lx: %s+%ld\n", prefix, frame->rip, functionName, (uintptr_t)frame->rip - functionStart);
 				else
-					printf("%s0x%016lx: External Code\n", prefix, frame->rip);
+					outputCallback("%s0x%016lx: External Code\n", prefix, frame->rip);
 				frame = frame->down;
 			}
 		}

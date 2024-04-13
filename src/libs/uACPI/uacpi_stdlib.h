@@ -8,9 +8,9 @@
 
 #include <int.h>
 
-#define UACPI_PRIx64 "%lx"
-#define UACPI_PRIX64 "%lX"
-#define UACPI_PRIu64 "%lu"
+#define UACPI_PRIx64 "lx"
+#define UACPI_PRIX64 "lX"
+#define UACPI_PRIu64 "lu"
 
 #define PRIx64 UACPI_PRIx64
 #define PRIX64 UACPI_PRIX64

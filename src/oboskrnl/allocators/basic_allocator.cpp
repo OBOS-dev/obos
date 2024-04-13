@@ -194,8 +194,7 @@ namespace obos
 			if (newSize < objSize)
 			{
 				BasicAllocator::node* n = ((node*)base - 1);
-				if (n->size < newSize)
-					memzero((char*)base + n->size, newSize-objSize);
+				memzero((char*)base + n->size, newSize-objSize);
 				n->size = newSize;
 				return base;
 			}

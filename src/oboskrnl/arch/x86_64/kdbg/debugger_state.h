@@ -12,6 +12,8 @@
 
 #include <arch/x86_64/thr_context_info.h>
 
+#include <irq/irq.h>
+
 namespace obos
 {
 	namespace kdbg
@@ -21,6 +23,10 @@ namespace obos
 			bp* breakpoints[4];
 			size_t nBreakpointsInUse;
 			size_t nextBpIndex = 0;
+			// bool watchdogSet = false;
+			// size_t nSecondsForWatchdog = 0;
+			// Irq watchdogIRQ{0,0,0};
+			// bool watchdogIRQInitialized = false;
 		};
 		extern debugger_state g_kdbgState;
 		struct cpu_local_debugger_state

@@ -35,6 +35,11 @@ namespace obos
 			g_hpetAddress->timer0.timerConfigAndCapabilities &= ~(1<<3);
 			return compValue;
 		}
+		// Userdata format:
+		// uint64_t[3]:
+		// [0]: Frequency in hertz
+		// [1]: The initial hpet counter value.
+		// [2]: The expected hpet counter value.
 		bool LAPICTimerIRQChecker(const Irq*, const struct IrqVector*, void* _udata)
 		{
 			uintptr_t* udata = (uintptr_t*)_udata;

@@ -37,7 +37,8 @@ namespace obos
 #if __x86_64__
 				outb(0xe9, buf[i]);
 #	if OBOS_KDBG_ENABLED
-				kdbg::putchar(buf[i]);
+				if (kdbg::g_echoKernelLogsToDbgConsole)
+					kdbg::putchar(buf[i]);
 #	endif
 #endif
 			}

@@ -9,9 +9,11 @@
 /dependencies/needs_download.cmake
 /dependencies/limine
 /dependencies/uacpi
+/dependencies/ZyDis
 
 # Build-related
 /isodir/
 /CMakePresets.json
 /out
 /CMakeFiles
+*nppBackup*

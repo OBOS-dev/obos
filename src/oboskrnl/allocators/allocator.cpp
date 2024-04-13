@@ -52,6 +52,8 @@ void operator delete (void* ptr) noexcept
 {
 	if (!g_kAllocator)
 		return;
+	if (!ptr)
+		return;
 	const size_t count = g_kAllocator->QueryObjectSize(ptr);
 	if (!count)
 		return;
@@ -60,6 +62,8 @@ void operator delete (void* ptr) noexcept
 void operator delete[](void* ptr) noexcept
 {
 	if (!g_kAllocator)
+		return;
+	if (!ptr)
 		return;
 	const size_t size = g_kAllocator->QueryObjectSize(ptr);
 	if (size == SIZE_MAX)

@@ -9,6 +9,10 @@ set (oboskrnl_sources ${oboskrnl_sources}
 	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
 )
 
+if (DEFINED OBOS_ENABLE_KDBG)
+	list (APPEND oboskrnl_sources ${zydis_c})
+endif()
+
 add_executable(oboskrnl ${oboskrnl_sources})
 
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD 20)
@@ -59,7 +63,7 @@ if (DEFINED OBOS_SLOW_ARTHIMETRIC)
 endif()
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	if (DEFINED OBOS_ENABLE_KDBG)
-		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=1)
+		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=1 PUBLIC ZYAN_NO_LIBC=1)
 	else()
 		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=0)
 	endif()

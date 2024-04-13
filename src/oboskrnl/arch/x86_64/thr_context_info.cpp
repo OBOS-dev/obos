@@ -61,19 +61,16 @@ namespace obos
 			info->frame.rip = entry;
 			info->frame.rdi = arg1;
 			info->frame.rflags = RFLAGS_INTERRUPT_ENABLE | RFLAGS_CPUID | (isUsermode ? RFLAGS_IOPL_3 : 0) | (1<<1);
-#if OBOS_KDBG_ENABLED
-			if (kdbg::g_initialized)
-				info->frame.rflags |= RFLAGS_TRAP;
-#endif
 			info->frame.cs = isUsermode ? 0x20 : 0x08;
 			info->frame.ss = info->frame.ds = isUsermode ? 0x18 : 0x10;
+			info->frame.rbp = 0;
 			info->pm = ctx->GetContext()->getCR3();
 			info->xsave_context = !isUsermode ? nullptr : new uint8_t[info->xsave_size];
 			info->fs_base = 0;
 			info->gs_base = isUsermode ? 0 : rdmsr(GS_BASE);
 			stack->base = (uintptr_t)vmm::Allocate(ctx, nullptr, stackSize, vmm::FLAGS_GUARD_PAGE_LEFT | vmm::FLAGS_RESERVE | vmm::FLAGS_COMMIT, isUsermode ? vmm::PROT_USER : 0);
 			stack->size = stackSize;
-			info->frame.rsp = stack->base + stack->size;
+			info->frame.rsp = stack->base + stack->size - 8;
 			info->irql = 0;
 		}
 		void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame)

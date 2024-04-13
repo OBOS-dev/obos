@@ -58,6 +58,6 @@ namespace obos
 		[[noreturn]] FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
 
-		void stackTrace(void* stackTraceParameter, const char* prefix = "\t");
+		void stackTrace(void* stackTraceParameter, const char* prefix = "\t", size_t(*outputCallback)(const char* format, ...) = printf);
 	}
 }

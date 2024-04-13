@@ -28,6 +28,7 @@ namespace obos
 		constexpr char EOF = -1;
 		extern input_format g_inputDev;
 		extern output_format g_outputDev;
+		extern bool g_echoKernelLogsToDbgConsole;
 		// Returns EOF when no character was inputted, and async is true.
 		char getchar(bool async = false, bool echo = true);
 		bool putchar(char ch, bool async = false);

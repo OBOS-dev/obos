@@ -35,7 +35,7 @@ namespace obos
 			newNode->nPageDescriptors = node.nPageDescriptors;
 			newNode->allocFlags = node.allocFlags;
 			// Make sure to insert this node in order.
-			// Find the node that goes behind this and append the node of that.
+			// Find the node that goes behind this and append the node off that.
 			if (m_tail && m_tail->pageDescriptors[0].virt < node.pageDescriptors[0].virt)
 			{
 				// Append it

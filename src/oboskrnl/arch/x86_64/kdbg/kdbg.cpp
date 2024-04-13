@@ -4,8 +4,12 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include <new>
+
 #include <int.h>
+#include <klog.h>
 #include <memmanip.h>
+#include <console.h>
 
 #include <arch/x86_64/kdbg/io.h>
 #include <arch/x86_64/kdbg/bp.h>
@@ -14,6 +18,8 @@
 
 #include <arch/x86_64/irq/interrupt_frame.h>
 #include <arch/x86_64/irq/apic.h>
+
+#include <arch/x86_64/hpet_table.h>
 
 #include <arch/x86_64/asm_helpers.h>
 
@@ -42,10 +48,17 @@ namespace obos
 	namespace arch
 	{
 		extern Irq g_ipiIrq;
+		bool LAPICTimerIRQChecker(const Irq*, const struct IrqVector*, void* _udata);
+	}
+	namespace scheduler
+	{
+		extern Irq g_schedulerIRQ;
 	}
 	namespace kdbg
 	{
 		debugger_state g_kdbgState;
+		bool g_echoKernelLogsToDbgConsole = false;
+#if OBOS_KDBG_ENABLED
 		bp::bp(uintptr_t rip)
 		{
 			this->rip = rip;
@@ -177,12 +190,24 @@ namespace obos
 			"where\n"
 			"\tConverts a symbol to it's respective address.\n"
 			"\tReturns the symbol name's address in hexadecimal.\n"
+			// "watchdog seconds\n"
+			// "\tSets a watchdog timer to go off after 'seconds' if no debug event happens. This implicitly continues.\n"
+			// "\tReturns nothing.\n"
 			"stack_trace\n"
 			"\tPrints a stack trace.\n"
 			"\tReturns the stack trace.\n"
 			"ping\n"
 			"\tPrints pong.\n"
 			"\tReturns 'pong'\n"
+			"echo on/off"
+			"\tChanges whether kernel logs should be outputted on the debug console.\n"
+			"\tReturns nothing\n"
+			"echo ..."
+			"\tEchoes a message onto the debug console.\n"
+			"\tReturns the message\n"
+			"echo"
+			"\tPrints whether echoing kernel logs onto the debug console is enabled or not.\n"
+			"\tReturns whether echoing kernel logs onto the debug console is enabled or not\n"
 			"help\n"
 			"\tPrints this help message.\n";
 		bool step(cpu_local_debugger_state& dbg_state)
@@ -630,13 +655,15 @@ namespace obos
 			{
 				if (!g_kdbgState.breakpoints[i])
 					continue;
-				printf("Breakpoint %d: 0x%p (%s+%ld)\n",
+				printf("Breakpoint %d: 0x%p (%s+%ld)\nHit %d times\n",
 					g_kdbgState.breakpoints[i]->idx, 
 					(void*)g_kdbgState.breakpoints[i]->rip,
-					g_kdbgState.breakpoints[i]->funcInfo.name, g_kdbgState.breakpoints[i]->rip-g_kdbgState.breakpoints[i]->funcInfo.base
+					g_kdbgState.breakpoints[i]->funcInfo.name, g_kdbgState.breakpoints[i]->rip-g_kdbgState.breakpoints[i]->funcInfo.base,
+					g_kdbgState.breakpoints[i]->hitCount
 				);
 				// Example output:
 				// Breakpoint 0: 0xffffffff80000000 (KernelArchInit+0)
+				// Hit 0 times.
 			}
 			return true;
 		}
@@ -711,11 +738,93 @@ namespace obos
 			addr2sym(dbg_state.context.frame.rip, &fName, &fBase, elf::STT_FUNC);
 			printf("Stack trace:\n");
 			printf("\t0x%016lx: %s+%ld\n", dbg_state.context.frame.rip, fName ? fName : "External code", fBase ? dbg_state.context.frame.rip - fBase : 0);
-			logger::stackTrace((void*)dbg_state.context.frame.rbp, "\t");
+			logger::stackTrace((void*)dbg_state.context.frame.rbp, "\t", printf);
 			return true;
 		}
+		bool dbg_terminal();
+		// TODO: Fix
+		// void watchdog_irq_handler(const Irq*, const IrqVector*, void* udata, interrupt_frame* frame)
+		// {
+			// uint64_t *userdata = (uint64_t*)udata;
+			// const uint64_t& nSeconds = userdata[0];
+			// uint64_t& nSecondsPassed = userdata[1];
+			// cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
+			// dbg_state.context.frame = *frame;
+			// if (++nSecondsPassed >= nSeconds)
+			// {
+				// // The watchdog timer went off!
+				// uint8_t oldIRQL = 0;
+				// RaiseIRQL(0xf, &oldIRQL);
+				// printf("Watchdog timer went off!\nCalling debug terminal...\n");
+				// bool ret = dbg_terminal();
+				// *frame = dbg_state.context.frame;
+				// LowerIRQL(oldIRQL);
+				// return;
+			// }
+		// }
+		// bool set_watchdog(cpu_local_debugger_state& dbg_state, uint64_t nSeconds)
+		// {
+			// if (!g_kdbgState.watchdogIRQInitialized)
+			// {
+				// new (&g_kdbgState.watchdogIRQ) Irq{ scheduler::g_schedulerIRQ.GetVector(), false, false };
+				// g_kdbgState.watchdogIRQInitialized = true;
+			// }
+			// constexpr uint64_t freqHz = 1;
+			// if (g_kdbgState.watchdogIRQ.GetHandlerUserdata())
+				// delete[] (uint64_t*)g_kdbgState.watchdogIRQ.GetHandlerUserdata();
+			// if (g_kdbgState.watchdogIRQ.GetIrqCheckerUserdata())
+				// delete[] (uint64_t*)g_kdbgState.watchdogIRQ.GetIrqCheckerUserdata();
+			// auto udata = new uint64_t[3];
+			// arch::g_hpetAddress->generalConfig &= ~(1<<0);
+			// udata[0] = freqHz;
+			// udata[1] = arch::g_hpetAddress->mainCounterValue;
+			// udata[2] = udata[1] + (arch::g_hpetFrequency/freqHz);
+			// arch::g_hpetAddress->generalConfig |= (1<<0);
+			// g_kdbgState.watchdogIRQ.SetIRQChecker(arch::LAPICTimerIRQChecker, udata);
+			// udata = new uint64_t[2];
+			// udata[0] = nSeconds;
+			// udata[1] = 0;
+			// g_kdbgState.watchdogIRQ.SetHandler(watchdog_irq_handler, udata);
+			// dbg_state.shouldStopAtNextInst = false;
+			// dbg_state.isFinishingFunction = false;
+			// return false;
+		// }
+		bool disasm(void* at, size_t nInstructions);
+		struct colour_changer
+		{
+			colour_changer() = default;
+			colour_changer(Pixel fore)
+			{
+				g_kernelConsole.GetColour(oldForeground, oldBackground);
+				g_kernelConsole.SetColour(fore, oldBackground);
+			}	
+			~colour_changer()
+			{
+				g_kernelConsole.SetColour(oldForeground, oldBackground);
+			}
+			Pixel oldForeground, oldBackground;
+		};
+		struct unique_ptr
+		{
+			unique_ptr() = delete;
+			unique_ptr(colour_changer* ptr)
+				:obj{ptr}
+			{}
+			~unique_ptr() 
+			{
+				if (obj)
+					delete obj;
+			}
+			colour_changer* obj;
+		};
 		bool dbg_terminal()
 		{
+			colour_changer *c;
+			if (g_outputDev == output_format::CONSOLE)
+				c = new colour_changer{ logger::GREY };
+			else
+				c = new colour_changer{};
+			unique_ptr pC = c;
 			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
 			bool shouldRun = true;
 			while(shouldRun)
@@ -760,6 +869,20 @@ namespace obos
 					shouldRun = _break(dbg_state, cmdline);
 				else if (strcmp(command, "stack_trace"))
 					shouldRun = stack_trace(dbg_state);
+				else if (strcmp(command, "echo"))
+				{
+					if (!(*cmdline))
+					{
+						printf("Echo is %s\n", g_echoKernelLogsToDbgConsole ? "on" : "off");
+						goto end;
+					}
+					if (strcmp(cmdline, "on"))
+						g_echoKernelLogsToDbgConsole = true;
+					else if (strcmp(cmdline, "off"))
+						g_echoKernelLogsToDbgConsole = false;
+					else
+						printf("%s\n", cmdline);
+				}
 				else if (strcmp(command, "print"))
 				{
 					if (!(*cmdline))
@@ -769,6 +892,15 @@ namespace obos
 					}					
 					shouldRun = print_reg(dbg_state, cmdline);
 				}
+				// else if (strcmp(command, "watchdog"))
+				// {
+					// if (!(*cmdline))
+					// {
+						// printf("Insufficient parameters to %s.\n", command);
+						// goto end;
+					// }					
+					// shouldRun = set_watchdog(dbg_state, strtoull(cmdline, nullptr, 0));
+				// }
 				else if (strcmp(command, "break_at"))
 				{
 					if (!(*cmdline))
@@ -863,6 +995,33 @@ namespace obos
 					nBytes = strtoull(endptr, nullptr, 0);
 					shouldRun = examine_memory(false, at, nBytes);
 				}
+				else if (strcmp(command, "x/i"))
+				{
+					if (!(*cmdline))
+					{
+						printf("Insufficient parameters to %s.\n", command);
+						goto end;
+					}
+					void* at = nullptr;
+					size_t nInstructions = 0;
+					char* cmdline = input + commandSz + 1;
+					if (!(*cmdline))
+					{
+						printf("Insufficient parameters to %s.\n", command);
+						goto end;
+					}
+					char* endptr = nullptr;
+					nInstructions = strtoull(cmdline, &endptr, 0);
+					if (!(*endptr))
+					{
+						at = (void*)dbg_state.context.frame.rip;
+						goto disassemble;
+					}
+					endptr++;
+					at = (void*)strtoull(endptr, nullptr, 0);
+					disassemble:
+					shouldRun = disasm(at, nInstructions);
+				}
 				else if (strcmp(command, "set"))
 				{
 					if (!(*cmdline))
@@ -923,12 +1082,15 @@ namespace obos
 		bool processDebugException(interrupt_frame* frame, bool isBpInstruction)
 		{
 			if (!g_initialized)
-				return true; // We shouldn't be handling anything.
+				return false; // We shouldn't be handling anything.
 			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
 			dbg_state.context.frame = *frame;
 			if (isBpInstruction)
 			{
-				printf("Trap instruction into kernel debugger.\n");
+				const char* funcName = nullptr;
+				uintptr_t funcBase = 0;
+				addr2sym(frame->rip, &funcName, &funcBase, elf::STT_FUNC);
+				printf("Trap instruction into kernel debugger at rip %p (%s+%d).\n", frame->rip, funcName ? funcName : "External Code", funcBase ? frame->rip-funcBase : funcBase);
 				bool ret = dbg_terminal();
 				*frame = dbg_state.context.frame;
 				return ret;
@@ -995,22 +1157,30 @@ namespace obos
 				for (uint32_t idx = __builtin_ctzll(dr6); dr6 != 0b10000; )
 				{
 					if (!g_kdbgState.breakpoints[idx])
-						continue;
-					printf("Hit breakpoint %d.\n", idx);
-					g_kdbgState.breakpoints[idx]->hitCount++;
+						goto end;
+					{
+						const char* funcName = nullptr;
+						uintptr_t funcBase = 0;
+						addr2sym(frame->rip, &funcName, &funcBase, elf::STT_FUNC);
+						printf("Hit breakpoint %d at rip 0x%p (%s+%d).\n", idx, (void*)frame->rip, funcName ? funcName : "External Code", funcBase ? frame->rip-funcBase : funcBase);
+						g_kdbgState.breakpoints[idx]->hitCount++;
+					}
+					end:
 					dr6 &= ~(1<<idx);
 					idx = __builtin_ctzll(dr6);
 				}
 				printf("Opening debug terminal...\n");
-				bool ret = dbg_terminal();
+				bool ret =   dbg_terminal();
 				dbg_state.context.frame.rflags |= RFLAGS_RESUME;
 				*frame = dbg_state.context.frame;
-				return ret;
+				return false;
 			}
 			return false;
 		}
 		bool exceptionHandler(interrupt_frame* frame)
 		{
+			if (!g_initialized)
+				return false; // We shouldn't be handling anything.
 			uint8_t oldIRQL = 0;
 			RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
 			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
@@ -1057,14 +1227,22 @@ namespace obos
 				LowerIRQL(oldIRQL);
 				return ret;
 			}
+			const char* funcName = nullptr;
+			uintptr_t funcBase = 0;
+			addr2sym(frame->rip, &funcName, &funcBase, elf::STT_FUNC);
 			printf("** EXCEPTION **\n"
-				   "%s (%ld) exception occurred.\n"
+				   "%s (%ld) exception occurred at rip 0x%p (%s+%d).\n"
 				   "Opening debug terminal...\n", 
-				   exception_messages[frame->intNumber], frame->intNumber);
+				   exception_messages[frame->intNumber], frame->intNumber, 
+				   (void*)frame->rip, funcName ? funcName : "External Code", funcBase ? frame->rip-funcBase : funcBase);
 			bool ret = dbg_terminal();
 			*frame = dbg_state.context.frame;
 			LowerIRQL(oldIRQL);
 			return ret;
-		}			
+		}
+#else
+		bool exceptionHandler(interrupt_frame* )
+		{ return false; }
+#endif
 	}
 }

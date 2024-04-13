@@ -520,7 +520,7 @@ namespace obos
 					arch::FreePhysicalPages(pd.phys, pageSize / OBOS_PAGE_SIZE);
 				arch::unmap(ctx, (void*)addr);
 			}
-			endPd = i;
+			endPd = i - 1;
 			if (basePd == expectedBasePdForBeginning && endPd == expectedEndPdForEnding)
 			{
 				ctx->RemovePageNode((void*)node->pageDescriptors[0].virt);

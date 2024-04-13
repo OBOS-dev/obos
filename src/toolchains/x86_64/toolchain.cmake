@@ -53,7 +53,7 @@ set (oboskrnl_sources ${oboskrnl_sources}
     "arch/x86_64/mm/map.cpp" "arch/x86_64/mm/pmap_l4.cpp" "arch/x86_64/mm/vmm_context.cpp" "arch/x86_64/sse.asm"
 	"arch/x86_64/smp.cpp" "arch/x86_64/smp_trampoline.asm" "arch/x86_64/thr_context_info.cpp" "arch/x86_64/lapic_timer_calibration.asm"
 	"arch/x86_64/sched_timer.cpp" "arch/x86_64/irq/ipi.cpp" "arch/x86_64/thr_context_save.asm" "arch/x86_64/kdbg/io.cpp"
-	"arch/x86_64/kdbg/init.cpp" "arch/x86_64/kdbg/kdbg.cpp"
+	"arch/x86_64/kdbg/init.cpp" "arch/x86_64/kdbg/kdbg.cpp" "arch/x86_64/kdbg/disasm.cpp"
 )
 
 set (OBOS_ARCHITECTURE "x86_64")
