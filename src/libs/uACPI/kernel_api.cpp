@@ -31,6 +31,7 @@
 #include <arch/x86_64/mm/palloc.h>
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/hpet_table.h>
+#include <arch/x86_64/irq/apic.h>
 #endif
 
 using namespace obos;
@@ -544,8 +545,12 @@ extern "C"
 		uacpi_handle *out_irq_handle
 	)
 	{
-		Irq *irqHnd = new Irq{ irq, false, false };
-		irqHnd->SetIRQChecker([](const Irq* , const struct IrqVector* , void* )->bool { return true; }, nullptr);
+		Irq *irqHnd = new Irq{ IRQL_GPE, false, true };
+		// Ask the IOAPIC (nicely) to register the irq to our vector.
+#if defined(__x86_64__) || 1
+		if (!IOAPIC_MapIRQToVector(irq, irqHnd->GetVector() + 0x20, true, triggerMode::LevelSensitive))
+			return UACPI_STATUS_INVALID_ARGUMENT;
+#endif
 		uintptr_t *udata = new uintptr_t[2];
 		udata[0] = (uintptr_t)ctx;
 		udata[1] = (uintptr_t)handler;
@@ -554,6 +559,7 @@ extern "C"
 			uacpi_interrupt_handler handler = (uacpi_interrupt_handler)((void**)udata)[1];
 			handler(ctx);
 		}, udata);
+		irqHnd->SetIRQChecker([](const Irq*, const struct IrqVector*, void*) { return true; /* Assume this is a GPE (see comment for IRQL_GPE in irql.h */ }, nullptr);
 		*out_irq_handle = irqHnd;
 		return UACPI_STATUS_OK;
 	}

@@ -164,7 +164,7 @@ namespace obos
 		g_IOAPICAddress->WriteRegister(redirectionEntryOffset + 1, _entry >> 32);
 		return true;
 	}
-	bool IOAPIC_MapIRQToVector(uint8_t irq, uint8_t vector)
+	bool IOAPIC_MapIRQToVector(uint8_t irq, uint8_t vector, bool activeLow, triggerMode tm)
 	{
 		if (!g_IOAPICAddress)
 			return false;
@@ -179,6 +179,8 @@ namespace obos
 		redirectionEntry->delMod = 0b000 /* Fixed */;
 		redirectionEntry->destMode = false /* Physical Mode */;
 		redirectionEntry->mask = false /* Unmasked */;
+		redirectionEntry->intPol = activeLow;
+		redirectionEntry->triggerMode = (bool)tm;
 		redirectionEntry->vector = vector;
 		redirectionEntry->destination.physical.lapicId = 0;
 		g_IOAPICAddress->WriteRegister(redirectionEntryOffset, _entry);
