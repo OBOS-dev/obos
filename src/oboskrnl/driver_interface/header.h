@@ -42,7 +42,7 @@ namespace obos
 			// Bit 1: Whether the specified ACPI table exists
 			uint32_t howToIdentify = 0;
 			// PNP
-			struct
+			struct __acpi_pnp
 			{
 				static constexpr size_t maxHIDs = 4;
 				static constexpr size_t maxCIDs = 16;
