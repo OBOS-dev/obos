@@ -5,7 +5,7 @@
 */
 
 #include <int.h>
-#include <todo.h>
+#include <klog.h>
 
 #include <scheduler/cpu_local.h>
 
@@ -35,6 +35,11 @@ namespace obos
 			g_hpetAddress->timer0.timerConfigAndCapabilities &= ~(1<<3);
 			return compValue;
 		}
+		// Userdata format:
+		// uint64_t[3]:
+		// [0]: Frequency in hertz
+		// [1]: The initial hpet counter value.
+		// [2]: The expected hpet counter value.
 		bool LAPICTimerIRQChecker(const Irq*, const struct IrqVector*, void* _udata)
 		{
 			uintptr_t* udata = (uintptr_t*)_udata;
@@ -78,19 +83,19 @@ namespace obos
 			payload->singleShoot = false;
 			// Add the IPI to the queue and call it.
 			cpu->archSpecific.ipi_queue.push(tIPI);
-			uint8_t oldIRQL = 0xff;
-			if (cpu == scheduler::GetCPUPtr() && GetIRQL() >= 3)
+			uint8_t oldIRQL = IRQL_INVALID;
+			if (cpu == scheduler::GetCPUPtr() && GetIRQL() >= IRQL_IPI_DISPATCH)
 			{
 				// We need to temporarily lower the IRQL for self-ipis, as otherwise we would deadlock while waiting.
 				oldIRQL = GetIRQL();
-				LowerIRQL(2);
+				LowerIRQL(IRQL_DISPATCH);
 			}
 			LAPIC_SendIPI(DestinationShorthand::None, DeliveryMode::Fixed, g_ipiIrq.GetVector() + 0x20, cpu->cpuId);
 			// Wait for the IPI to be processed.
 			// We do this as we need to free the structures, and we don't want to cause a race condition.
 			while(!tIPI->processed)
 				pause();
-			if (oldIRQL != 0xff)			
+			if (oldIRQL != IRQL_INVALID)			
 			{
 				uint8_t _oldIRQL = 0;
 				RaiseIRQL(oldIRQL, &_oldIRQL);

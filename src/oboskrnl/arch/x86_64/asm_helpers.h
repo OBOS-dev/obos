@@ -23,6 +23,8 @@ namespace obos
 	uintptr_t getCR4();
 	uintptr_t getCR8();
 	uintptr_t getEFER();
+	
+	uintptr_t getDR6();
 
 	void __cpuid__(uint64_t initialEax, uint64_t initialEcx, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx);
 

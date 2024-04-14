@@ -14,8 +14,6 @@
 #include <scheduler/thread.h>
 #include <scheduler/cpu_local.h>
 
-#include <allocators/slab.h>
-
 #include <vmm/init.h>
 
 #include <irq/irq.h>
@@ -30,7 +28,6 @@ namespace obos
 	{
 		extern "C" void idleTask(cpu_local* cpu);
 		bool g_initialized;
-		allocators::SlabAllocator g_threadAllocator;
 		uint32_t g_nextTID = 1;
 		ThrAffinity g_defaultAffinity = 0;
 		Irq g_schedulerIRQ{ 2, false };
@@ -49,15 +46,15 @@ namespace obos
 		{
 			if (g_initialized)
 				return false;
-			new (&g_threadAllocator) allocators::SlabAllocator{};
 			new (&g_schedulerIRQ) Irq{ 2, false };
-			g_threadAllocator.Initialize(nullptr, sizeof(Thread), true);
 			g_schedulerIRQ.SetHandler(sched_timer_int, nullptr);
+			logger::debug("%s: Starting idle threads and the timer IRQ on all CPUs.\n", __func__);
 			// Start the idle threads and the timer on all CPUs.
 			for (size_t i = 0; i < g_nCPUs; i++)
 			{
 				g_defaultAffinity |= (1<<g_cpuInfo[i].cpuId);
-				Thread* thr = (Thread*)g_threadAllocator.Allocate(1);
+				logger::debug("%s: Starting idle thread for CPU %d.\n", __func__, g_cpuInfo[i].cpuId);
+				Thread* thr = new Thread{};
 				thr->tid = g_nextTID++;
 				thr->referenceCount = 0;
 				
@@ -69,6 +66,7 @@ namespace obos
 				thr->addressSpace = &vmm::g_kernelContext;
 				arch::SetupThreadContext(&thr->context, &thr->thread_stack, (uintptr_t)idleTask, (uintptr_t)&g_cpuInfo[i], false, 0x4000, thr->addressSpace);
 				g_cpuInfo[i].idleThread = thr;
+				logger::debug("%s: Starting timer for CPU %d.\n", __func__, g_cpuInfo[i].cpuId);
 				arch::StartTimerOnCPU(&g_cpuInfo[i], g_schedulerFrequency, g_schedulerIRQ);
 			}
 			g_initialized = true;
@@ -78,7 +76,7 @@ namespace obos
 		{
 			if (!g_initialized)
 				return false;
-			Thread* thr = (Thread*)g_threadAllocator.Allocate(1);
+			Thread* thr = new Thread{};
 			thr->tid = 0;
 			thr->referenceCount = 0;
 			

@@ -64,5 +64,6 @@ namespace obos
 			// 0x160-0x400 are for timers 0-31
 		};
 		extern HPET* g_hpetAddress;
+		extern uint64_t g_hpetFrequency;
 	}
 }

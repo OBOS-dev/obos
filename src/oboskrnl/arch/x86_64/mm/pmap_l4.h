@@ -7,13 +7,14 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 namespace obos
 {
 	namespace arch
 	{
-		size_t GetPhysicalAddressBits();
-		size_t GetVirtualAddressBits();
+		OBOS_EXPORT size_t GetPhysicalAddressBits();
+		OBOS_EXPORT size_t GetVirtualAddressBits();
 
 		class PageMap
 		{

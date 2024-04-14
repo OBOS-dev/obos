@@ -17,8 +17,6 @@
 
 #include <arch/thr_context_info.h>
 
-#include <allocators/slab.h>
-
 #include <vmm/init.h>
 
 #include <locks/spinlock.h>
@@ -42,7 +40,6 @@ namespace obos
 		impl_verify_concept<interrupt_frame>();
 	}
 	IrqVectorList g_irqVectors;
-	allocators::SlabAllocator g_irqVectorAllocator;
 	static size_t s_irqlCapacities[14 /* The first two IRQLs are invalid for IrqVector.*/] = {
 		8,8,8,8,8,
 		8,8,8,8,8,
@@ -65,17 +62,19 @@ namespace obos
 		}
 		return vector;
 	}
-	Irq::Irq(uint8_t requiredIRQL, bool allowDefferedWorkSchedule)
-		: m_allowDefferedWorkSchedule{ allowDefferedWorkSchedule }
-	{		
-		OBOS_ASSERTP(vmm::g_initialized, "Abstract IRQ interface cannot be used without the VMM initialized.");
-		OBOS_ASSERTP(requiredIRQL >= 2, "IRQL for Irq must be less than 2, as IRQLs 0 and 1 are invalid in this case.");
-		if (!g_irqVectorAllocator.GetAllocationSize())
+	IrqVector* look_for_irq_in_list(uint8_t vec)
+	{
+		IrqVector *vector = nullptr;
+		for (auto c = g_irqVectors.head; c;)
 		{
-			// The allocator is uninitialized.
-			new (&g_irqVectorAllocator) allocators::SlabAllocator{};
-			g_irqVectorAllocator.Initialize(nullptr, sizeof(IrqVector));
+			if (c->vector == vec)
+				return c;
+			c = c->next;
 		}
+		return nullptr;
+	}
+	static IrqVector* IrqlHandler(uint8_t requiredIRQL)
+	{
 		// Look for a IrqVector node in the list that matches the required IRQL.
 		size_t nIrqVectorsForIRQL = 0;
 		IrqVector *vector = look_for_irql_in_list(requiredIRQL, &nIrqVectorsForIRQL);
@@ -91,10 +90,30 @@ namespace obos
 			else
 			{
 				// We should allocate a new IrqVector.
-				vector = (IrqVector*)g_irqVectorAllocator.Allocate(1);
+				vector = new IrqVector{};
 				vector->vector = OBOS_IRQL_TO_VECTOR(requiredIRQL) + nIrqVectorsForIRQL;
 			}
 		}
+		return vector;
+	}
+	static IrqVector* IrqHandler(uint8_t vec)
+	{
+		IrqVector *vector = look_for_irq_in_list(vec);
+		if (!vector)
+		{
+			// We should allocate a new IrqVector.
+			vector = new IrqVector{};
+			vector->vector = vec;
+		}
+		return vector;
+	}
+	Irq::Irq(uint8_t vec, bool allowDefferedWorkSchedule, bool isVecIRQL)
+		: m_allowDefferedWorkSchedule{ allowDefferedWorkSchedule }
+	{		
+		OBOS_ASSERTP(vmm::g_initialized, "Abstract IRQ interface cannot be used without the VMM initialized.");
+		if (isVecIRQL)
+			OBOS_ASSERTP(vec >= 2, "IRQL for Irq must be less than 2, as IRQLs 0 and 1 are invalid in this case.");
+		IrqVector *vector = isVecIRQL ? IrqlHandler(vec) : IrqHandler(vec);
 		vector->references.Append(this);
 		vector->Register(IrqDispatcher);
 		g_irqVectors.Append(vector);
@@ -158,7 +177,7 @@ namespace obos
 				}
 				else
 				{
-					scheduler::Thread* dpcObject = (scheduler::Thread*)scheduler::g_threadAllocator();
+					scheduler::Thread* dpcObject = new scheduler::Thread{};
 					dpcObject->tid = scheduler::g_nextTID++;
 					dpcObject->status = scheduler::ThreadStatus::CanRun;
 					dpcObject->flags = scheduler::ThreadFlags::IsDeferredProcedureCall;

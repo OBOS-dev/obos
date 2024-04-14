@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <int.h>
+#include <export.h>
+
 namespace obos
 {
 	namespace vmm
@@ -18,9 +21,9 @@ namespace obos
 	}
 	namespace arch
 	{
-		extern uintptr_t getHHDMLimit();
-		extern uintptr_t getKernelBase();
-		extern uintptr_t getKernelTop();
+		OBOS_EXPORT extern uintptr_t getHHDMLimit();
+		OBOS_EXPORT extern uintptr_t getKernelBase();
+		OBOS_EXPORT extern uintptr_t getKernelTop();
 	}
 }
 #define OBOS_LEVELS_PER_PAGEMAP (4)

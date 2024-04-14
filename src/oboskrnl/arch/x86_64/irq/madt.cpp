@@ -56,17 +56,19 @@ namespace obos
 			maxEntries = userdata[2];
 		return userdata[2] - maxEntries;
 	}
-	size_t ParseMADTForLAPICIds(MADTTable* madt, uint8_t* lapicIds, size_t maxEntries)
+	size_t ParseMADTForLAPICIds(MADTTable* madt, uint8_t* lapicIds, size_t maxEntries, bool cpuEnabled, bool onlineCapable)
 	{
-		uintptr_t userdata[] = { (uintptr_t)lapicIds, (uintptr_t)maxEntries, 0 };
+		uintptr_t userdata[] = { (uintptr_t)lapicIds, (uintptr_t)maxEntries, 0, (((uintptr_t)cpuEnabled)<<0)|(((uintptr_t)onlineCapable)<<1) };
 		ScanMADT(madt, [](MADT_EntryHeader* _header, void* udata)
 			{
 				uintptr_t* userdata = (uintptr_t*)udata;
 				MADT_EntryType0* header = (MADT_EntryType0*)_header;
 				uint8_t* addresses = (uint8_t*)userdata[0];
 				size_t maxEntries = (size_t)userdata[1];
-				if (userdata[2]++ < maxEntries)
-					addresses[userdata[2] - 1] = header->apicID;
+				uintptr_t requiredFlags = userdata[2];
+				if ((header->flags & requiredFlags) == requiredFlags)
+					if (userdata[2]++ < maxEntries)
+						addresses[userdata[2] - 1] = header->apicID;
 			}, userdata, 0);
 		if (maxEntries > userdata[2])
 			maxEntries = userdata[2];

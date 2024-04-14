@@ -14,14 +14,14 @@ qemu-system-x86_64 ^
 -monitor stdio ^
 -debugcon file:CON ^
 -serial tcp:0.0.0.0:1534,server,nowait ^
--smp cores=8,threads=1,sockets=1 ^
+-smp cores=2,threads=1,sockets=1 ^
 -d int ^
 -D qemu_log.txt
 rem -drive if=pflash,format=raw,unit=1,file=ovmf/OVMF_VARS_4M.fd ^
 rem -drive if=pflash,format=raw,unit=0,file=ovmf/OVMF_CODE_4M.fd,readonly=on ^
 rem -drive id=disk2,file=disk.img,if=none,format=raw -device ide-hd,drive=disk2,bus=ahci1.1 ^
 rem -M smm=off ^
-rem -no-reboot
-rem -no-shutdown
+REM -no-shutdown ^
+REM -no-reboot ^
 
 cd scripts

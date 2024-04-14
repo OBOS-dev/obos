@@ -24,7 +24,7 @@
 
 #include <arch/x86_64/thr_context_info.h>
 
-#include <allocators/slab.h>
+#include <arch/x86_64/kdbg/init.h>
 
 #include <irq/irql.h>
 
@@ -51,8 +51,6 @@ namespace obos
 {
 	namespace arch
 	{
-		allocators::SlabAllocator g_xstateContextAllocator;
-		static bool s_initializedXstateAllocator = false;
 		void SetupThreadContext(ThreadContextInfo* info, 
 								scheduler::thr_stack* stack,
 								uintptr_t entry, uintptr_t arg1, 
@@ -60,23 +58,19 @@ namespace obos
 								size_t stackSize, 
 								vmm::Context* ctx)
 		{
-			if (!s_initializedXstateAllocator)
-			{
-				new (&g_xstateContextAllocator) allocators::SlabAllocator{};
-				g_xstateContextAllocator.Initialize(nullptr, ThreadContextInfo::xsave_size, true, 0, 64 /* padding=64 */);
-			}
 			info->frame.rip = entry;
 			info->frame.rdi = arg1;
 			info->frame.rflags = RFLAGS_INTERRUPT_ENABLE | RFLAGS_CPUID | (isUsermode ? RFLAGS_IOPL_3 : 0) | (1<<1);
 			info->frame.cs = isUsermode ? 0x20 : 0x08;
 			info->frame.ss = info->frame.ds = isUsermode ? 0x18 : 0x10;
+			info->frame.rbp = 0;
 			info->pm = ctx->GetContext()->getCR3();
-			info->xsave_context = !isUsermode ? nullptr : (uint8_t*)g_xstateContextAllocator.Allocate(1);
+			info->xsave_context = !isUsermode ? nullptr : new uint8_t[info->xsave_size];
 			info->fs_base = 0;
 			info->gs_base = isUsermode ? 0 : rdmsr(GS_BASE);
 			stack->base = (uintptr_t)vmm::Allocate(ctx, nullptr, stackSize, vmm::FLAGS_GUARD_PAGE_LEFT | vmm::FLAGS_RESERVE | vmm::FLAGS_COMMIT, isUsermode ? vmm::PROT_USER : 0);
 			stack->size = stackSize;
-			info->frame.rsp = stack->base + stack->size;
+			info->frame.rsp = stack->base + stack->size - 8;
 			info->irql = 0;
 		}
 		void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame)

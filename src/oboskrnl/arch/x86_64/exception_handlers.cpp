@@ -27,6 +27,10 @@
 
 #include <scheduler/cpu_local.h>
 
+#if OBOS_KDBG_ENABLED
+#	include <arch/x86_64/kdbg/exception_handlers.h>
+#endif
+
 namespace obos
 {
 	namespace arch
@@ -129,10 +133,29 @@ namespace obos
 			return 0; // We're on the BSP
 		return scheduler::GetCPUPtr()->cpuId;
 	}
+	uint32_t getTID()
+	{
+		if (scheduler::GetCPUPtr() && scheduler::GetCPUPtr()->currentThread)
+			return scheduler::GetCPUPtr()->currentThread->tid;
+		return (uint32_t)-1;
+	}
+	uint32_t getPID()
+	{
+		return 0;
+	}
 	void defaultExceptionHandler(interrupt_frame* frame)
 	{
-		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
+		uint8_t oldIRQL = 0;
+		RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
+		uint32_t cpuId = getCPUId(), pid = getPID(), tid = getTID();
 		bool whileInScheduler = false;
+#if OBOS_KDBG_ENABLED
+		if (!kdbg::exceptionHandler(frame))
+		{
+			LowerIRQL(oldIRQL);
+			return;
+		}
+#endif
 		logger::panic(
 			nullptr,
 			"Exception %ld in %s-mode at 0x%016lx (cpu %d, pid %d, tid %d). IRQL: %d. Error code: %ld. whileInScheduler = %s\nDumping registers:\n"
@@ -161,7 +184,7 @@ namespace obos
 			frame->r14, frame->r15, frame->rflags,
 			frame->ss, frame->ds, frame->cs,
 			getCR0(), getCR2(), getCR3(),
-			getCR4(), getCR8(), getEFER()
+			getCR4(), oldIRQL , getEFER()
 		);
 		asm volatile("nop");
 	}
@@ -236,8 +259,14 @@ namespace obos
 			LowerIRQL(oldIRQL);
 			return;
 		}
-
-		uint32_t cpuId = getCPUId(), pid = -1, tid = -1;
+#if OBOS_KDBG_ENABLED
+		if (!kdbg::exceptionHandler(frame))
+		{
+			LowerIRQL(oldIRQL);
+			return;
+		}
+#endif
+		uint32_t cpuId = getCPUId(), pid = getPID(), tid = getTID();
 		bool whileInScheduler = false;
 		const char* action = (frame->errorCode & ((uintptr_t)1 << 1)) ? "write" : "read";
 		if (frame->errorCode & ((uintptr_t)1 << 4))
@@ -276,11 +305,13 @@ namespace obos
 		);
 		asm volatile("nop");
 	}
-	void nmiHandler(interrupt_frame*)
+	void nmiHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIrql = 0;
-		asm("cli");
 		RaiseIRQL(0xf, &oldIrql);
+#if OBOS_KDBG_ENABLED
+		kdbg::exceptionHandler(frame);
+#endif
 		if (arch::g_halt)
 			while (1)
 				asm volatile("hlt");

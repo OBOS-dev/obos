@@ -8,6 +8,7 @@
 global _ZN4obos4arch18SwitchToThrContextEPNS0_17ThreadContextInfoE
 global _ZN4obos4arch11YieldThreadEPNS_9scheduler6ThreadE
 global idleTask
+global _ZN4obos4arch30JumpToFunctionWithCPUTempStackEPFvmEm
 ; Exported variables
 
 ; External functions
@@ -159,3 +160,14 @@ _ZN4obos4arch11YieldThreadEPNS_9scheduler6ThreadE:
 idleTask:
 	hlt
 	jmp idleTask
+_ZN4obos4arch30JumpToFunctionWithCPUTempStackEPFvmEm:
+	push rbp
+	mov rbp, rsp
+
+	mov rsp, [gs:0x30]
+	add rsp, [gs:0x40]
+	xchg rdi, rsi
+	call rsi
+	
+	leave
+	ret

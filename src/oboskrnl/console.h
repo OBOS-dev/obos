@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 #include <fb.h>
 
 #include <locks/spinlock.h>
@@ -27,29 +28,29 @@ namespace obos
 		/// <param name="drawToFB">Whether to set the draw buffer to the framebuffer (true) or the backbuffer (false). If the framebuffer is nullptr and this is set, 
 		/// the parameter is treated as if it were false. If the backbuffer is nullptr and this is false, the parameter is treated as if it were true.</param>
 		/// <returns></returns>
-		bool Initialize(const Framebuffer *fb, const Framebuffer *bb, bool drawToFB);
+		OBOS_EXPORT bool Initialize(const Framebuffer *fb, const Framebuffer *bb, bool drawToFB);
 
 		/// <summary>
 		/// Prints a string.
 		/// </summary>
 		/// <param name="string">The string to print.</param>
-		void ConsoleOutput(const char* string);
+		OBOS_EXPORT void ConsoleOutput(const char* string);
 		/// <summary>
 		/// Prints a string.
 		/// </summary>
 		/// <param name="string">The string to print.</param>
 		/// <param name="size">The amount of characters to print.</param>
-		void ConsoleOutput(const char* string, size_t size);
+		OBOS_EXPORT void ConsoleOutput(const char* string, size_t size);
 		/// <summary>
 		/// Prints a single character.
 		/// </summary>
 		/// <param name="ch">The character to print.</param>
-		void ConsoleOutput(char ch);
+		OBOS_EXPORT void ConsoleOutput(char ch);
 
-		void SetColour(Pixel fg, Pixel bg, bool fillBg = false);
-		void GetColour(Pixel &fg, Pixel &bg) const;
-		void SetPosition(uint32_t x, uint32_t y);
-		void GetPosition(uint32_t* x, uint32_t* y) const;
+		OBOS_EXPORT void SetColour(Pixel fg, Pixel bg, bool fillBg = false);
+		OBOS_EXPORT void GetColour(Pixel &fg, Pixel &bg) const;
+		OBOS_EXPORT void SetPosition(uint32_t x, uint32_t y);
+		OBOS_EXPORT void GetPosition(uint32_t* x, uint32_t* y) const;
 		/// <summary>
 		/// Sets the console's frame buffer.<para></para>
 		/// If both buffers are nullptr, the draw buffer is set to nullptr and all writes to the console are dropped.
@@ -58,10 +59,10 @@ namespace obos
 		/// <param name="bb">The back buffer to use.</param>
 		/// <param name="drawToFB">Whether to set the draw buffer to the framebuffer (true) or the backbuffer (false). If the framebuffer is nullptr and this is set, 
 		/// the parameter is treated as if it were false. If the backbuffer is nullptr and this is false, the parameter is treated as if it were true.</param>
-		void SetFramebuffer(const Framebuffer* fb, const Framebuffer* bb, bool drawToFB);
-		void GetFramebuffer(Framebuffer* fb, Framebuffer* bb, bool* drawToFB);
+		OBOS_EXPORT void SetFramebuffer(const Framebuffer* fb, const Framebuffer* bb, bool drawToFB);
+		OBOS_EXPORT void GetFramebuffer(Framebuffer* fb, Framebuffer* bb, bool* drawToFB);
 
-		void ClearConsole(Pixel bg);
+		OBOS_EXPORT void ClearConsole(Pixel bg);
 	private:
 		void __ImplPutChar(char ch, uint32_t x, uint32_t y, Pixel fc, Pixel bc);
 		void __ImplOutputCharacter(char ch);

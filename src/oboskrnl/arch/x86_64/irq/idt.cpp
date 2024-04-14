@@ -54,7 +54,7 @@ namespace obos
 			return 0;
 		if (i == 8)
 			return 2;
-		return (i == 14 || i == 2 || i == 8 || i == 1 || i == 18 || i == 13 || i == 3) ? 1 : 0;
+		return (i == 14 || i == 2 || i == 8 || i == 18 || i == 13) ? 1 : 0;
 	}
 	void InitializeIDT()
 	{

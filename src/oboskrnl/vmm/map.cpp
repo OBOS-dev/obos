@@ -46,7 +46,7 @@ namespace obos
 		{
 #if OBOS_HAS_HUGE_PAGE_SUPPORT == 0
 			COMPILE_MESSAGE("OBOS_HAS_HUGE_PAGE_SUPPORT being zero hasn't tested, remove this on the first architecture (after fixing any bugs) that doesn't implement huge pages.\n");
-			if (allocateHugePages)
+			if ((flags & FLAGS_USE_HUGE_PAGES))
 				return nullptr;
 #endif
 			protection |= PROT_NO_DEMAND_PAGE;
@@ -99,8 +99,10 @@ namespace obos
 #else
 			constexpr size_t pageSize = OBOS_PAGE_SIZE;
 #endif
-			where -= (where % pageSize);
-			size += (size - (size % pageSize));
+			if (where % pageSize)
+				where -= (where % pageSize);
+			if (size % pageSize)
+				size += (pageSize - (size % pageSize));
 			if (!where || !size)
 				return false;
 			// Loop through the pages, un-mapping and freeing them.
@@ -140,7 +142,7 @@ namespace obos
 			memzero(&node, sizeof(node));
 			node.ctx = ctx;
 			node.nPageDescriptors = 1;
-			node.pageDescriptors = (page_descriptor*)g_pdAllocator.Allocate(1);
+			node.pageDescriptors = new page_descriptor{};
 			node.pageDescriptors[0].isHugePage = pd.isHugePage;
 			node.pageDescriptors[0].protFlags = pd.protFlags;
 			node.pageDescriptors[0].present = pd.present;
@@ -168,7 +170,6 @@ namespace obos
 			if ((limit - base) < size)
 				return 0;
 			uintptr_t lastAddress = base;
-			ctx->Sort();
 			for (const page_node* node = ctx->m_head; node;)
 			{
 				bool exitedGracefully = true;
@@ -179,7 +180,7 @@ namespace obos
 						continue;
 					if (virt >= limit)
 						return 0;
-					if ((virt - lastAddress) >= (size + 0x1000))
+					if ((virt - lastAddress) >= (size + OBOS_PAGE_SIZE))
 						return lastAddress;
 					lastAddress = virt;
 				}
@@ -230,7 +231,7 @@ namespace obos
 					base) &&
 				   InRange(node->pageDescriptors[0].virt, 
 					node->pageDescriptors[node->nPageDescriptors - 1].virt + (node->pageDescriptors[node->nPageDescriptors - 1].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE), 
-					(uintptr_t)base + size-1))
+					(uintptr_t)base + size))
 					return true;
 				node = node->next;
 #if !OBOS_HAS_HUGE_PAGE_SUPPORT
@@ -285,15 +286,16 @@ namespace obos
 			for (uintptr_t addr = where; addr < (where + size); addr += OBOS_PAGE_SIZE)
 			{
 				node.pageDescriptors[i].isHugePage = false;
-				if (protection & PROT_NO_DEMAND_PAGE)
+				node.pageDescriptors[i].present = (isFirstPage && flags & FLAGS_GUARD_PAGE_LEFT) ? false : present;
+				if (protection & PROT_NO_DEMAND_PAGE && node.pageDescriptors[i].present)
 					node.pageDescriptors[i].phys = arch::AllocatePhysicalPages(1, false);
 				else
 					node.pageDescriptors[i].phys = 0;
 				node.pageDescriptors[i].virt = addr;
-				node.pageDescriptors[i].present = (isFirstPage && flags & FLAGS_GUARD_PAGE_LEFT) ? false : present;
 				node.pageDescriptors[i].protFlags = protection;
 				if (node.pageDescriptors[i].present)
 					arch::map_page_to(ctx, addr, node.pageDescriptors[i].phys, protection);
+				isFirstPage = false;
 			}
 		}
 		static void ImplAllocateHugePages(Context* ctx, uintptr_t where, size_t size, page_node& node, prot_t protection, allocflag_t flags, bool present, size_t j = 0)
@@ -308,15 +310,15 @@ namespace obos
 			for (size_t i = 0; i < nPagesInitial; i++, j++, addr += OBOS_PAGE_SIZE)
 			{
 				node.pageDescriptors[j].isHugePage = false;
-				if (protection & PROT_NO_DEMAND_PAGE)
-					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(1, false);
-				else
-					node.pageDescriptors[i].phys = 0;
-				node.pageDescriptors[j].virt = addr;
 				if (isFirstPage && (flags & FLAGS_GUARD_PAGE_LEFT))
 					node.pageDescriptors[j].present = false;
 				else
 					node.pageDescriptors[j].present = present;
+				if (protection & PROT_NO_DEMAND_PAGE && node.pageDescriptors[j].present)
+					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(1, false);
+				else
+					node.pageDescriptors[j].phys = 0;
+				node.pageDescriptors[j].virt = addr;
 				if ((i == (nPagesInitial - 1) && !nPagesLeftOver && !nHugePages) && (flags & FLAGS_GUARD_PAGE_RIGHT))
 					node.pageDescriptors[j].present = false;
 				node.pageDescriptors[j].protFlags = protection;
@@ -327,38 +329,38 @@ namespace obos
 			for (size_t i = 0; i < nHugePages; i++, j++, addr += OBOS_HUGE_PAGE_SIZE)
 			{
 				node.pageDescriptors[j].isHugePage = true;
-				if (protection & PROT_NO_DEMAND_PAGE)
-					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(OBOS_HUGE_PAGE_SIZE / OBOS_PAGE_SIZE, true);
-				else
-					node.pageDescriptors[i].phys = 0;
-				node.pageDescriptors[j].virt = addr;
 				if (isFirstPage && (flags & FLAGS_GUARD_PAGE_LEFT))
 					node.pageDescriptors[j].present = false;
 				else
 					node.pageDescriptors[j].present = present;
+				if (protection & PROT_NO_DEMAND_PAGE && node.pageDescriptors[j].present)
+					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(OBOS_HUGE_PAGE_SIZE / OBOS_PAGE_SIZE, true);
+				else
+					node.pageDescriptors[j].phys = 0;
+				node.pageDescriptors[j].virt = addr;
 				if ((i == (nHugePages - 1) && !nPagesLeftOver) && (flags & FLAGS_GUARD_PAGE_RIGHT))
 					node.pageDescriptors[j].present = false;
 				node.pageDescriptors[j].protFlags = protection;
-				if (node.pageDescriptors[i].present)
+				if (node.pageDescriptors[j].present)
 					arch::map_hugepage_to(ctx, addr, node.pageDescriptors[j].phys, protection);
 				isFirstPage = false;
 			}
 			for (size_t i = 0; i < nPagesLeftOver; i++, j++, addr += OBOS_PAGE_SIZE)
 			{
 				node.pageDescriptors[j].isHugePage = false;
-				if (protection & PROT_NO_DEMAND_PAGE)
-					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(1, false);
-				else
-					node.pageDescriptors[i].phys = 0;
-				node.pageDescriptors[j].virt = addr;
 				if (isFirstPage && (flags & FLAGS_GUARD_PAGE_LEFT))
 					node.pageDescriptors[j].present = false;
 				else
 					node.pageDescriptors[j].present = present;
+				if (protection & PROT_NO_DEMAND_PAGE && node.pageDescriptors[j].present)
+					node.pageDescriptors[j].phys = arch::AllocatePhysicalPages(1, false);
+				else
+					node.pageDescriptors[j].phys = 0;
+				node.pageDescriptors[j].virt = addr;
 				if ((i == (nPagesLeftOver - 1)) && (flags & FLAGS_GUARD_PAGE_RIGHT))
 					node.pageDescriptors[j].present = false;
 				node.pageDescriptors[j].protFlags = protection;
-				if (node.pageDescriptors[i].present)
+				if (node.pageDescriptors[j].present)
 					arch::map_page_to(ctx, addr, node.pageDescriptors[j].phys, protection);
 				isFirstPage = false;
 			}
@@ -391,10 +393,12 @@ namespace obos
 						_base
 					))
 						break;
+				ctx->Lock();
 				if ((node->allocFlags & FLAGS_DISABLE_HUGEPAGE_OPTIMIZATION) && !(node->allocFlags & FLAGS_USE_HUGE_PAGES))
 					ImplAllocateSmallPages(ctx, where, size, *node, present, protection, flags, i);
 				else
 					ImplAllocateHugePages(ctx, where, size, *node, protection, flags, present, i);
+				ctx->Unlock();
 				return true;
 			}
 			page_node node;
@@ -405,7 +409,7 @@ namespace obos
 			if ((flags & FLAGS_DISABLE_HUGEPAGE_OPTIMIZATION) && !allocateHugePages)
 			{
 				node.nPageDescriptors = size / pageSize;
-				node.pageDescriptors = (page_descriptor*)g_pdAllocator.Allocate(node.nPageDescriptors);
+				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
 				
 				ImplAllocateSmallPages(ctx, where, size, node, present, protection, flags);
 			}
@@ -420,7 +424,7 @@ namespace obos
 				size_t nPagesLeftOver = (size - (nHugePages * OBOS_HUGE_PAGE_SIZE)) / OBOS_PAGE_SIZE;
 
 				node.nPageDescriptors = nHugePages + nPagesInitial + nPagesLeftOver;
-				node.pageDescriptors = (page_descriptor*)g_pdAllocator.Allocate(node.nPageDescriptors);
+				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
 				ImplAllocateHugePages(ctx, where, size, node, protection, flags, present);
 			}
 #endif
@@ -449,14 +453,15 @@ namespace obos
 			if (!base)
 			{
 				flags &= ~FLAGS_ADDR_IS_HINT;
-				base = FindBase(ctx, (flags & FLAGS_32BIT) ? 0x1000 : OBOS_KERNEL_ADDRESS_SPACE_USABLE_BASE, (flags & FLAGS_32BIT) ? 0xffff'ffff : OBOS_KERNEL_ADDRESS_SPACE_LIMIT, size);
+				base = FindBase(ctx, (flags & FLAGS_32BIT) ?  OBOS_PAGE_SIZE : OBOS_KERNEL_ADDRESS_SPACE_USABLE_BASE, (flags & FLAGS_32BIT) ? 0xffff'ffff : OBOS_KERNEL_ADDRESS_SPACE_LIMIT, size);
 			}
 			if (!CanAllocate(ctx, (void*)base, size))
 			{
 				if (flags & FLAGS_ADDR_IS_HINT)
 				{
-					base = FindBase(ctx, (flags & FLAGS_32BIT) ? 0x1000 : OBOS_KERNEL_ADDRESS_SPACE_USABLE_BASE, (flags & FLAGS_32BIT) ? 0xffff'ffff : OBOS_KERNEL_ADDRESS_SPACE_LIMIT, size);
-					goto success;
+					base = FindBase(ctx, (flags & FLAGS_32BIT) ? OBOS_PAGE_SIZE : OBOS_KERNEL_ADDRESS_SPACE_USABLE_BASE, (flags & FLAGS_32BIT) ? 0xffff'ffff : OBOS_KERNEL_ADDRESS_SPACE_LIMIT, size);
+					if (base)
+						goto success;
 				}
 				return nullptr;
 			}
@@ -476,14 +481,16 @@ namespace obos
 				return false;
 			uintptr_t where = (uintptr_t)base;
 			page_descriptor pd = {};
-			arch::get_page_descriptor((Context*)nullptr, (void*)where, pd);
+			arch::get_page_descriptor(ctx, (void*)where, pd);
 #if OBOS_HAS_HUGE_PAGE_SUPPORT
 			size_t pageSize = pd.isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
 #else
 			constexpr size_t pageSize = OBOS_PAGE_SIZE;
 #endif
-			where -= (where % pageSize);
-			size += (size - (size % pageSize));
+			if (where % pageSize)
+				where -= (where % pageSize);
+			if (size % pageSize)
+				size += (pageSize - (size % pageSize));
 			if (!size)
 				return false;
 			// Loop through the pages, un-mapping and freeing them.
@@ -499,11 +506,13 @@ namespace obos
 				node->pageDescriptors[i].virt + (node->pageDescriptors[i].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE),
 				base), "Could not find base in page descriptor table of node.\n");
 			size_t basePd = i, endPd = 0;
+			size_t expectedBasePdForBeginning = node->allocFlags & FLAGS_GUARD_PAGE_LEFT ? 1 : 0;
+			size_t expectedEndPdForEnding = node->allocFlags & FLAGS_GUARD_PAGE_RIGHT ? node->nPageDescriptors - 2 : node->nPageDescriptors - 1;
 			for (uintptr_t addr = where; addr < (where + size); addr += pageSize, i++)
 			{
-				arch::get_page_descriptor((Context*)nullptr, (void*)addr, pd);
+				arch::get_page_descriptor(ctx, (void*)addr, pd);
 				if (!pd.present)
-					break;
+					continue;
 #if OBOS_HAS_HUGE_PAGE_SUPPORT
 				pageSize = pd.isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
 #endif
@@ -511,18 +520,18 @@ namespace obos
 					arch::FreePhysicalPages(pd.phys, pageSize / OBOS_PAGE_SIZE);
 				arch::unmap(ctx, (void*)addr);
 			}
-			endPd = i;
-			if (basePd == 0 && endPd == (node->nPageDescriptors - 1))
+			endPd = i - 1;
+			if (basePd == expectedBasePdForBeginning && endPd == expectedEndPdForEnding)
 			{
 				ctx->RemovePageNode((void*)node->pageDescriptors[0].virt);
 				return true;
 			}
-			page_descriptor* newPageDescriptors = (page_descriptor*)g_pdAllocator.Allocate(node->nPageDescriptors-(endPd-basePd));
+			page_descriptor* newPageDescriptors = new page_descriptor[node->nPageDescriptors-(endPd-basePd)];
 			for (size_t i = 0; i < basePd; i++)
 				newPageDescriptors[i] = node->pageDescriptors[i];
 			for (size_t i = endPd; i < basePd; i++)
 				newPageDescriptors[i - endPd] = node->pageDescriptors[i];
-			g_pdAllocator.Free((void*)node->pageDescriptors, g_pdAllocator.QueryObjectSize(node->pageDescriptors));
+			delete[] node->pageDescriptors;
 			node->pageDescriptors = newPageDescriptors;
 			node->nPageDescriptors = (endPd - basePd);
 			return true;

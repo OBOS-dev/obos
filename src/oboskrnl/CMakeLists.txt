@@ -4,18 +4,17 @@
 
 set (oboskrnl_sources ${oboskrnl_sources}
 	"console.cpp" "locks/spinlock.cpp" "klog.cpp" "irq/irql.cpp" 
-	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/slab.cpp"
+	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/basic_allocator.cpp"
 	"vmm/init.cpp" "vmm/demand_paging.cpp" "vmm/mprot.cpp" "irq/irq.cpp"
 	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
 )
 
-add_executable(oboskrnl ${oboskrnl_sources})
+add_executable(oboskrnl)
 
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD 20)
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD_REQUIRED 20)
 
 set_target_properties(oboskrnl PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}")
-set_target_properties(oboskrnl PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OUTPUT_DIR}")
 
 target_include_directories(oboskrnl PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
 target_include_directories(oboskrnl PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
@@ -27,12 +26,13 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fno-stack-protector>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fno-stack-check>
-	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-flto>
+	# PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-flto>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fstack-protector-strong>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wstack-usage=65536>
 # PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-nostdlib>
 # We don't enable -Werror in case future compiler versions introduce new warnings that the kernel triggers.
 	PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-Wall>
@@ -46,9 +46,31 @@ target_compile_definitions(oboskrnl
 target_link_options(oboskrnl
 	PUBLIC "-T" PUBLIC "${LINKER_SCRIPT}"
 	PUBLIC "-nostdlib"
-	PUBLIC "-flto"
 	PUBLIC ${TARGET_LINKER_OPTIONS}
 )
-if (DEFINED OBOS_INITIAL_SLAB_COUNT)
-	target_compile_definitions(PRIVATE OBOS_INITIAL_SLAB_COUNT=${OBOS_INITIAL_SLAB_COUNT})
+
+target_link_libraries(oboskrnl PRIVATE uacpi PRIVATE ${LIBGCC})
+
+if (DEFINED OBOS_SLOW_ARTHIMETRIC)
+	target_compile_definitions(oboskrnl PUBLIC OBOS_SLOW_ARTHIMETRIC=1)
 endif()
+if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+	if (DEFINED OBOS_ENABLE_KDBG)
+		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=1 PUBLIC ZYAN_NO_LIBC=1)
+		if (DEFINED OBOS_KDBG_ENABLE_ZYDIS)
+			list (APPEND oboskrnl_sources ${zydis_c})
+			target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLE_ZYDIS=1)
+		else()
+			target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLE_ZYDIS=0)
+		endif()
+	else()
+		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=0)
+	endif()
+endif()
+if (OBOS_ARCHITECTURE_BITS EQUAL 64)
+	list(APPEND oboskrnl_sources "driver_interface/loader64.cpp")
+else()
+	message(SEND_ERROR "Unimplemented: OBOS_ARCHITECTURE_BITS=32")
+endif()
+
+target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

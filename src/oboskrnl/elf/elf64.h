@@ -117,6 +117,12 @@ namespace obos
 			STT_HIPROC,
 		};
 
+		enum
+		{
+			EM_X86_64 = 62,
+			// TODO: Add more machine types.
+		};
+
 		struct Elf64_Ehdr
 		{
 			unsigned char e_ident[EI_NIDENT];
@@ -227,6 +233,7 @@ namespace obos
 			DT_PREINIT_ARRAY,
 		};
 
+#ifdef __x86_64__
 		enum
 		{
 			R_AMD64_NONE,
@@ -251,5 +258,6 @@ namespace obos
 			R_AMD64_SIZE32 = 32,
 			R_AMD64_SIZE64 = 33,
 		};
+#endif
 	}
 }

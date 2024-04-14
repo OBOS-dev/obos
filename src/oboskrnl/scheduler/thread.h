@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 #include <scheduler/stack.h>
 #include <scheduler/ticks.h>
@@ -76,5 +77,8 @@ namespace obos
 			ThreadNode* Find(Thread* thr);
 		};
 		extern ThreadList g_threadPriorities[4];
+		// Helper functions.
+		OBOS_EXPORT [[noreturn]] void ExitCurrentThread();
+		OBOS_EXPORT uint32_t GetCurrentTid();
 	}
 }

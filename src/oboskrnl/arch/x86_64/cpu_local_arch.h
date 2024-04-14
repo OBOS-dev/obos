@@ -11,6 +11,10 @@
 
 #include <arch/x86_64/mm/pmap_l4.h>
 
+#if OBOS_KDBG_ENABLED
+#	include <arch/x86_64/kdbg/debugger_state.h>
+#endif
+
 namespace obos
 {
 	class Irq;
@@ -48,6 +52,19 @@ namespace obos
 			uintptr_t virt;
 			virtual ~shootdown_ipi() {}
 		};
+		// IPI to set the debug registers.
+		struct dbg_reg_ipi : public base_ipi
+		{
+			private:
+			static void _handler(base_ipi* _this, interrupt_frame*);
+		public:
+			dbg_reg_ipi() : base_ipi{ _handler } {}
+			uint8_t regIdx;
+			uint64_t* val;
+			// false to read from DRn into *val, true to write the value at *val into DRn. 
+			bool rw; 
+			virtual ~dbg_reg_ipi() {}
+		};
 		struct ipi final
 		{
 			enum
@@ -55,12 +72,14 @@ namespace obos
 				IPI_INVALID = 0,
 				IPI_TIMER,
 				IPI_SHOOTDOWN,
+				IPI_DEBUG_REGISTER,
 			} type = IPI_INVALID;
 			union
 			{
 				base_ipi* base;
 				timer_ipi* timer;
 				shootdown_ipi* tlb_shootdown;
+				dbg_reg_ipi* dbg_reg;
 			} data{};
 			bool processed = false;
 			ipi *next, *prev;
@@ -119,7 +138,7 @@ namespace obos
 				size_t nNodes;
 				ipi *pop()
 				{
-					if (!head)
+					if (!nNodes)
 						return nullptr;
 					ipi* ret = head;
 					if (tail == ret)
@@ -141,6 +160,9 @@ namespace obos
 					nNodes++;
 				}
 			} ipi_queue;
+#if OBOS_KDBG_ENABLED
+			kdbg::cpu_local_debugger_state debugger_state;
+#endif
 		};
 	}
 }

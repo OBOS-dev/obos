@@ -40,6 +40,46 @@ namespace obos
 			if (getCR3() == (uintptr_t)obj->pm)
 				invlpg(obj->virt);
 		}
+		void dbg_reg_ipi::_handler(base_ipi* _this, interrupt_frame*)
+		{
+			// uint8_t regIdx;
+			// uint64_t* val;
+			// // false to read from DRn into *val, true to write the value at *val into DRn. 
+			// bool rw; 
+			dbg_reg_ipi* obj = (dbg_reg_ipi*)_this;
+			if (!obj->rw)
+			{
+				uint64_t ret = 0;
+				switch (obj->regIdx)
+				{
+				case 0: asm volatile("mov %%dr0, %0" :"=r"(ret)::); break;
+				case 1: asm volatile("mov %%dr1, %0" :"=r"(ret)::); break;
+				case 2: asm volatile("mov %%dr2, %0" :"=r"(ret)::); break;
+				case 3: asm volatile("mov %%dr3, %0" :"=r"(ret)::); break;
+				case 6:
+				[[fallthrough]]; case 4: asm volatile("mov %%dr6, %0" :"=r"(ret)::); break;
+				case 7:
+				[[fallthrough]]; case 5: asm volatile("mov %%dr7, %0" :"=r"(ret)::); break;
+				default: ret = 0xffff'ffff'ffff'ffff;
+				}
+				*obj->val = ret;
+			}
+			else
+			{
+				uint64_t val = *obj->val;
+				switch (obj->regIdx)
+				{
+				case 0: asm volatile("mov %0, %%dr0" ::"r"(val):); break;
+				case 1: asm volatile("mov %0, %%dr1" ::"r"(val):); break;
+				case 2: asm volatile("mov %0, %%dr2" ::"r"(val):); break;
+				case 3: asm volatile("mov %0, %%dr3" ::"r"(val):); break;
+				case 6:
+				[[fallthrough]]; case 4: asm volatile("mov %0, %%dr6" ::"r"(val):); break;
+				case 7:
+				[[fallthrough]]; case 5: asm volatile("mov %0, %%dr7" ::"r"(val):); break;
+				}
+			}
+		}
 		// Required IRQL: 0x3
 		void IpiHandler(const Irq*, const IrqVector*, void*, interrupt_frame* frame)
 		{
@@ -47,7 +87,9 @@ namespace obos
 			if (GetIRQL() < 3)
 				RaiseIRQL(0x3, &oldIRQL);
 			ipi* cur = scheduler::GetCPUPtr()->archSpecific.ipi_queue.pop();
-			OBOS_ASSERTP(cur->type != ipi::IPI_INVALID, "IPI called with invalid index.");
+			if (!cur)
+				return; // No IPI to handle.
+			OBOS_ASSERTP(cur->type != ipi::IPI_INVALID, "IPI called with invalid type.");
 			OBOS_ASSERTP(cur->data.base->handler != nullptr, "IPI called with null handler.\n");
 			if (cur->data.base->handler == nullptr)
 			{

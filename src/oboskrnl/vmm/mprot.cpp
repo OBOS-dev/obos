@@ -44,6 +44,7 @@ namespace obos
 #else
 			constexpr size_t ps = OBOS_PAGE_SIZE;
 #endif
+			ctx->Lock();
 			page_node* node = ctx->GetPageNode(base);
 			size_t pdI = 0;
 			for (; pdI < node->nPageDescriptors; pdI++)
@@ -75,6 +76,7 @@ namespace obos
 				ps = pd.isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
 #endif
 			}
+			ctx->Unlock();
 			return true;
 		}
 		size_t GetPageDescriptor(Context* ctx, void* base, size_t size, page_descriptor* oArr, size_t maxElements)

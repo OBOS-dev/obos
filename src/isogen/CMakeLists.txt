@@ -33,6 +33,7 @@ if (NOT EXISTS ${CMAKE_SOURCE_DIR}/config/limine.cfg)
 endif()
 add_custom_target(isogen ALL
 	COMMAND ${OBJCOPY} -g ${OUTPUT_DIR}/oboskrnl ${ISODIR}/obos/oboskrnl
+	COMMAND ${OBJCOPY} -g ${OUTPUT_DIR}/testDriver ${ISODIR}/obos/testDriver
 	COMMAND	${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/config/limine.cfg ${ISODIR}/ ${SUPPRESS_OUTPUT}
 	COMMAND	${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-uefi-cd.bin ${ISODIR}/limine ${SUPPRESS_OUTPUT}
 	COMMAND	${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-cd.bin ${ISODIR}/limine ${SUPPRESS_OUTPUT}
@@ -46,6 +47,8 @@ add_custom_target(isogen ALL
             ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios-pxe.bin ${CMAKE_SOURCE_DIR}/dependencies/limine/limine-bios.sys ${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTX64.EFI
 			${CMAKE_SOURCE_DIR}/dependencies/limine/BOOTIA32.EFI
 	DEPENDS oboskrnl
+	DEPENDS uacpi
+	DEPENDS testDriver
 	BYPRODUCTS ${ISODIR}/limine.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTIA32.efi
@@ -54,6 +57,7 @@ add_custom_target(isogen ALL
 	BYPRODUCTS ${ISODIR}/limine/limine-bios-pxe.bin
 	BYPRODUCTS ${ISODIR}/limine/limine-bios.sys
 	BYPRODUCTS ${ISODIR}/obos/oboskrnl
+	BYPRODUCTS ${ISODIR}/obos/testDriver
 	BYPRODUCTS ${OUTPUT_DIR}/obos.iso
 	# DEPENDS oboskrnl
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

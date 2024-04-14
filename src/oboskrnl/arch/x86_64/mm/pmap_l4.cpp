@@ -130,6 +130,8 @@ namespace obos
 						return GetL3PageMapEntryAt(addr);
 					case 3:
 						return GetL4PageMapEntryAt(addr);
+					case 4:
+						return GetPageMap();
 					default:
 						break;
 					}
@@ -137,14 +139,17 @@ namespace obos
 				};
 			for (uint8_t i = (4 - maxDepth); i < 4; i++)
 			{
-				if (!MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, i + 1)))
+				if (!(GetPageMapEntryForDepth(at, i + 1) & 1))
 					continue;
-				uintptr_t* pageMap = (uintptr_t*)MapToHHDM((i + 1) == 4 ? GetPageMap() : MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, i + 1)));
-				if (!pageMap[AddressToIndex(at, i)])
-					continue;
+				uintptr_t* pageMap = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, i + 1)));
 				uintptr_t phys = MaskPhysicalAddressFromEntry(pageMap[AddressToIndex(at, i)]);
-				FreePhysicalPages(phys, 1);
-				pageMap[AddressToIndex(at, i)] = 0;
+				uintptr_t* subPageMap = (uintptr_t*)MapToHHDM(phys);
+				if (memcmp(subPageMap, (int)0, 4096))
+				{
+					pageMap[AddressToIndex(at, i)] = 0;
+					FreePhysicalPages(phys, 1);
+					continue;
+				}	
 			}
 			return true;
 		}

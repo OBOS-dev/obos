@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 
 #include <irq/irql.h>
 
@@ -34,19 +35,45 @@ namespace obos
 			if (GetIRQL() < m_minimumIRQL)
 				RaiseIRQL(m_minimumIRQL, &m_oldIRQL);
 			const bool excepted = false;
+			size_t spin = 0;
+			bool shouldPrint = true;
 			while (__atomic_load_n(&m_locked, __ATOMIC_SEQ_CST))
+			{
+#ifdef OBOS_DEBUG
+				if (spin++ >= 100000000 && shouldPrint)
+				{
+					logger::debug("Spin lock is hanging. Possible recursive lock or forgotten unlock.\n");
+					logger::stackTrace(nullptr);
+					shouldPrint = false;
+					spin = 0;
+				}
+#endif
 				spinlock_delay();
+			}
+					shouldPrint = false;
+			spin = 0;
 			while (__atomic_compare_exchange_n(&m_locked, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			{
+#ifdef OBOS_DEBUG
+				if (spin++ >= 100000000 && shouldPrint)
+				{
+					logger::debug("Spin lock is hanging. Possible recursive lock or forgotten unlock.\n");
+					logger::stackTrace(nullptr);
+					shouldPrint = false;
+					spin = 0;
+				}
+#endif
 				spinlock_delay();
+			}
 			return m_locked;
 		}
 		bool SpinLock::Unlock()
 		{
 			if (!Locked())
 				return false; // We shouldn't be lowering the IRQL to an undefined value.
+			__atomic_store_n(&m_locked, false, __ATOMIC_SEQ_CST);
 			if (m_oldIRQL != 0xff)
 				LowerIRQL(m_oldIRQL);
-			__atomic_store_n(&m_locked, false, __ATOMIC_SEQ_CST);
 			return Locked();
 		}
 		bool SpinLock::Locked() const
