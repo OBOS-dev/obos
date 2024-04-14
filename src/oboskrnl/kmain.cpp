@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <memmanip.h>
 
 #include <uacpi/uacpi.h>
 #include <uacpi/sleep.h>
@@ -13,6 +14,8 @@
 #include <irq/irql.h>
 
 #include <allocators/allocator.h>
+
+#include <driver_interface/loader.h>
 
 #ifdef __x86_64__
 #include <limine/limine.h>
@@ -27,6 +30,10 @@ namespace obos
 #ifdef __x86_64__
 	extern volatile limine_rsdp_request rsdp_request;
 	extern volatile limine_hhdm_request hhdm_offset;
+	volatile limine_module_request module_request = {
+		.id = LIMINE_MODULE_REQUEST,
+		.revision = 0
+	};
 	uint64_t random_number()
 	{
 		uint64_t rand = 0;
@@ -97,6 +104,19 @@ namespace obos
 		st = uacpi_namespace_initialize();
 		verify_status(st, uacpi_namespace_initialize);
 		
+		uint8_t* procExecutable = nullptr;
+		size_t procExecutableSize = 0;
+		for (size_t i = 0; i < module_request.response->module_count; i++)
+		{
+			if (strcmp(module_request.response->modules[i]->path, "/obos/testDriver"))
+			{
+				procExecutable = (uint8_t*)module_request.response->modules[i]->address;
+				procExecutableSize = module_request.response->modules[i]->size;
+				break;
+			}
+		}
+		driverInterface::LoadDriver(procExecutable, procExecutableSize);
+
 		while(1);
 	}
 }

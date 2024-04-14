@@ -26,39 +26,39 @@ namespace obos
 		public:
 			Vector()
 			{
-				m_allocator = g_kernelAllocator;
+				m_allocator = allocators::g_kAllocator;
 			}
 			Vector(allocators::Allocator* allocator)
-				: m_allocator{ g_kernelAllocator }
+				: m_allocator{ allocators::g_kAllocator }
 			{}
 			
 			void push_back(const T& obj)
 			{
-				if (++m_sz > m_capacity)
+				if (++m_len > m_capacity)
 					reserve(m_capacity + 4);
-				new (&m_array + m_sz - 1) T{ obj };
+				new (m_array + m_len - 1) T{ obj };
 			}
 			void push_back(T&& obj)
 			{
-				if (++m_sz > m_capacity)
+				if (++m_len > m_capacity)
 					reserve(m_capacity + 4);
-				new (&m_array + m_sz - 1) T{ obj };
+				new (m_array + m_len - 1) T{ obj };
 			}
 			void pop_back()
 			{
-				auto& back = m_array[--m_sz];
+				auto& back = m_array[--m_len];
 				operator delete(m_array, &back);
-				if (m_sz < (m_capacity - 4))
+				if (m_len < (m_capacity - 4))
 				{
 					m_capacity -= 4;
-					T* newArray = (T*)m_allocator.ReAllocate(m_array, byteSizeToAllocatorSize(m_capacity * sizeof(T)));
+					T* newArray = (T*)m_allocator->ReAllocate(m_array, byteSizeToAllocatorSize(m_capacity * sizeof(T)));
 					if (newArray == (void*)UINTPTR_MAX)
 					{
 						// The allocator doesn't support ReAllocate.
 						// Do it ourself.
-						newArray = (T*)m_allocator.Allocate(byteSizeToAllocatorSize(m_capacity * sizeof(T)));
-						memcpy(newArray, m_array, m_sz * sizeof(T));
-						m_allocator.Free(m_array, m_allocator.QueryObjectSize(m_array));
+						newArray = (T*)m_allocator->Allocate(byteSizeToAllocatorSize(m_capacity * sizeof(T)));
+						memcpy(newArray, m_array, m_len * sizeof(T));
+						m_allocator->Free(m_array, m_allocator->QueryObjectSize(m_array));
 					}
 					if (!newArray)
 						return;
@@ -68,7 +68,7 @@ namespace obos
 			T& at(size_t i) const
 			{
 #ifdef OBOS_DEBUG
-				OBOS_ASSERTP(i < m_sz, "Out of bounds vector access. Length: %lu. Index: %lu.\n",, m_sz, i);
+				OBOS_ASSERTP(i < m_len, "Out of bounds vector access. Length: %lu. Index: %lu.\n",, m_len, i);
 #endif	
 				return m_array[i];
 			}
@@ -78,34 +78,34 @@ namespace obos
 				if (capacity <= m_capacity)
 					return; // Nothing to do.
 				m_capacity = capacity;
-				T* newArray = (T*)m_allocator.ReAllocate(m_array, byteSizeToAllocatorSize(m_capacity * sizeof(T)));
+				T* newArray = (T*)m_allocator->ReAllocate(m_array, byteSizeToAllocatorSize(m_capacity * sizeof(T)));
 				if (newArray == (void*)UINTPTR_MAX)
 				{
 					// The allocator doesn't support ReAllocate.
 					// Do it ourself.
-					newArray = (T*)m_allocator.Allocate(byteSizeToAllocatorSize(m_capacity * sizeof(T)));
-					memcpy(newArray, m_array, m_sz * sizeof(T));
-					m_allocator.Free(m_array, m_allocator.QueryObjectSize(m_array));
+					newArray = (T*)m_allocator->Allocate(byteSizeToAllocatorSize(m_capacity * sizeof(T)));
+					memcpy(newArray, m_array, m_len * sizeof(T));
+					m_allocator->Free(m_array, m_allocator->QueryObjectSize(m_array));
 				}
 				if (!newArray)
 					return;
 				m_array = newArray;
 			}
 			T* data() const { return m_array; }
-			size_t length() const { return m_sz; }
-			size_t capacity const { return m_capacity; }
+			size_t length() const { return m_len; }
+			size_t capacity() const { return m_capacity; }
 		private:
 			size_t byteSizeToAllocatorSize(size_t nBytes)
 			{
-				size_t blockSize = m_allocator.GetAllocationSize();
+				size_t blockSize = m_allocator->GetAllocationSize();
 				if (!blockSize || blockSize == 1)
 					return nBytes;
 				return nBytes / blockSize + ((nBytes % blockSize) != 0);
 			}
-			allocators::Allocator* m_allocator;
-			T *m_array;
-			size_t m_len;
-			size_t m_capacity;
+			allocators::Allocator* m_allocator = nullptr;
+			T *m_array = nullptr;
+			size_t m_len = 0;
+			size_t m_capacity = 0;
 		};
 	}
 }

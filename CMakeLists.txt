@@ -35,8 +35,23 @@ if (NOT DEFINED OUTPUT_DIR)
 	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
 endif()
 
+if (DEFINED OBOS_SLOW_ARTHIMETRIC)
+	add_compile_definitions(OBOS_SLOW_ARTHIMETRIC=1)
+endif()
+
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+
+add_compile_definitions(OBOS_ARCHITECTURE_BITS=${OBOS_ARCHITECTURE_BITS})
+
+if (OBOS_ARCHITECTURE_ENDIANNESS STREQUAL "Little-Endian")
+	add_compile_definitions("OBOS_ARCHITECTURE_ENDIANNESS=obos::arch::endianness::LittleEndian")
+elseif (OBOS_ARCHITECTURE_ENDIANNESS STREQUAL "Big-Endian")
+	add_compile_definitions("OBOS_ARCHITECTURE_ENDIANNESS=obos::arch::endianness::BigEndian")
+else()
+	add_compile_definitions("OBOS_ARCHITECTURE_ENDIANNESS=obos::arch::endianness::MixedEndian")
+endif()
 
 add_subdirectory("src/libs/uacpi")
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")
+add_subdirectory("src/drivers/testDriver")

@@ -9,11 +9,7 @@ set (oboskrnl_sources ${oboskrnl_sources}
 	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
 )
 
-if (DEFINED OBOS_ENABLE_KDBG)
-	list (APPEND oboskrnl_sources ${zydis_c})
-endif()
-
-add_executable(oboskrnl ${oboskrnl_sources})
+add_executable(oboskrnl)
 
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD 20)
 set_target_properties(oboskrnl PROPERTIES CXX_STANDARD_REQUIRED 20)
@@ -55,16 +51,26 @@ target_link_options(oboskrnl
 
 target_link_libraries(oboskrnl PRIVATE uacpi PRIVATE ${LIBGCC})
 
-if (DEFINED OBOS_INITIAL_SLAB_COUNT)
-	target_compile_definitions(PRIVATE OBOS_INITIAL_SLAB_COUNT=${OBOS_INITIAL_SLAB_COUNT})
-endif()
 if (DEFINED OBOS_SLOW_ARTHIMETRIC)
 	target_compile_definitions(oboskrnl PUBLIC OBOS_SLOW_ARTHIMETRIC=1)
 endif()
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	if (DEFINED OBOS_ENABLE_KDBG)
 		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=1 PUBLIC ZYAN_NO_LIBC=1)
+		if (DEFINED OBOS_KDBG_ENABLE_ZYDIS)
+			list (APPEND oboskrnl_sources ${zydis_c})
+			target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLE_ZYDIS=1)
+		else()
+			target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLE_ZYDIS=0)
+		endif()
 	else()
 		target_compile_definitions(oboskrnl PUBLIC OBOS_KDBG_ENABLED=0)
 	endif()
 endif()
+if (OBOS_ARCHITECTURE_BITS EQUAL 64)
+	list(APPEND oboskrnl_sources "driver_interface/loader64.cpp")
+else()
+	message(SEND_ERROR "Unimplemented: OBOS_ARCHITECTURE_BITS=32")
+endif()
+
+target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

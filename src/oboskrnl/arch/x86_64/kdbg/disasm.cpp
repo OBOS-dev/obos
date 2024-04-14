@@ -28,6 +28,7 @@ namespace obos
 	extern volatile limine_kernel_address_request kernel_addr;
 	namespace kdbg
 	{
+#if OBOS_KDBG_ENABLE_ZYDIS
 		static void addr2sym(uintptr_t rip, const char** const symbolName, uintptr_t* symbolBase, size_t* symbolSize, uint8_t symType)
 		{
 			if (rip < kernel_addr.response->virtual_base)
@@ -119,6 +120,13 @@ namespace obos
 			}
 			return true;
 		}
+#else
+		bool disasm(void* at, size_t nInstructions)
+		{
+			printf("Disassembly is disabled in kernel configuration (OBOS_KDBG_ENABLE_ZYDIS=0).\n");
+			return true;
+		}
+#endif
 	}
 }
 #else

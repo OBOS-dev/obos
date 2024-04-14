@@ -3,6 +3,22 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if defined(__cplusplus)
+namespace obos
+{
+	namespace arch
+	{
+		enum class endianness
+		{
+			LittleEndian = 0,
+			BigEndian = 1,
+			MixedEndian = 2,
+		};
+		constexpr endianness g_endianness = OBOS_ARCHITECTURE_ENDIANNESS;
+	}
+}
+#endif
+
 #if defined(__cplusplus) && defined(OBOS_SLOW_ARTHIMETRIC)
 // Don't even ask why this exists.
 // - @oberrow, 8:30 PM on the 6th of april, 2024.

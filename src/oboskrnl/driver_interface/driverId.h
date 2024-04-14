@@ -10,21 +10,27 @@
 
 #include <driver_interface/header.h>
 
+#include <utils/vector.h>
+
 namespace obos
 {
 	namespace driverInterface
 	{
 		struct driverSymbol
 		{
-			char* name;
+			const char* name;
 			uintptr_t address;
-			bool isFunction;
+			enum
+			{
+				SYMBOL_FUNC,
+				SYMBOL_VARIABLE,
+			} type;
 		};
 		struct driverId
 		{
 			uint32_t id;
-			driverHeader* header;
-			// TODO: Add symbol list.
+			const driverHeader* header;
+			utils::Vector<driverSymbol> symbols;
 		};
 	}
 }

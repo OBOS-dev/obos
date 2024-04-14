@@ -12,6 +12,8 @@ namespace obos
 {
 	namespace driverInterface
 	{
-		
+		const struct driverHeader* VerifyDriver(const void* data, size_t size);
+		struct driverId* LoadDriver(const void* data, size_t size);
+		bool UnloadDriver(struct driverId* driver);
 	}
 }
