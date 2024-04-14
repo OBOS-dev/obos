@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 #include <vmm/pg_context.h>
 #include <vmm/page_descriptor.h>
@@ -24,7 +25,7 @@ namespace obos
 		/// <param name="flags">The allocation flags.</param>
 		/// <param name="protection">The protection flags of the pages.</param>
 		/// <returns>'where', but rounded down, or nullptr is where (rounded down), or size (rounded up) are zero.</returns>
-		void* RawAllocate(void* where, size_t size, allocflag_t flags, prot_t protection);
+		OBOS_EXPORT void* RawAllocate(void* where, size_t size, allocflag_t flags, prot_t protection);
 		/// <summary>
 		/// Frees (un-maps) a region of pages.<para></para>
 		/// If part of the region is un-mapped, the function fails.
@@ -32,7 +33,7 @@ namespace obos
 		/// <param name="where">The base address to un-map.</param>
 		/// <param name="size">The size of the region to free. This is rounded up to the nearest page size.<para></para></param>
 		/// <returns>Whether the function succeeded (true) or not (false).</returns>
-		bool RawFree(void* where, size_t size);
+		OBOS_EXPORT bool RawFree(void* where, size_t size);
 
 		/// <summary>
 		/// (Re)Maps a page descriptor.
@@ -41,7 +42,7 @@ namespace obos
 		/// <param name="pd">The page descriptor to map.</param>
 		/// <returns>'true' on success, otherwise false. Panics if context == nullptr, and debug mode is enabled.
 		/// If context == nullptr, and OBOS_RELEASE is defined, the function returns false.</returns>
-		bool MapPageDescriptor(Context* ctx, const page_descriptor& pd);
+		OBOS_EXPORT bool MapPageDescriptor(Context* ctx, const page_descriptor& pd);
 		/// <summary>
 		/// Finds a base address that has 'size' bytes (rounded up to the page size), that is within startRange and endRegion.
 		/// </summary>
@@ -50,7 +51,7 @@ namespace obos
 		/// <param name="endRange">The end of the range. This cannot be zero. If (endRegion-startRegion) &lt; size, the function fails.</param>
 		/// <param name="size">The amount of bytes that should be free.</param>
 		/// <returns>The found base address, or zero on failure to find a free region.</returns>
-		uintptr_t FindBase(Context* ctx, uintptr_t startRange, uintptr_t endRange, size_t size);
+		OBOS_EXPORT uintptr_t FindBase(Context* ctx, uintptr_t startRange, uintptr_t endRange, size_t size);
 		/// <summary>
 		/// Allocates and maps pages at 'base'.
 		/// </summary>
@@ -61,7 +62,7 @@ namespace obos
 		/// <param name="flags">The allocation flags.<para></para></param>
 		/// <param name="protection">The protection flags of the pages.<para></para></param>
 		/// <returns>The base of the allocation, or nullptr on failure.</returns>
-		void *Allocate(Context* ctx, void* base, size_t size, allocflag_t flags, prot_t protection);
+		OBOS_EXPORT void *Allocate(Context* ctx, void* base, size_t size, allocflag_t flags, prot_t protection);
 		/// <summary>
 		/// Frees (un-maps) a region of pages.<para></para>
 		/// If part of the region is un-mapped, the function fails.
@@ -70,6 +71,6 @@ namespace obos
 		/// <param name="base">The base address to un map.</param>
 		/// <param name="size">The size of the region to free. This is rounded up to the nearest page size.<para></para></param>
 		/// <returns>Whether the function succeeded in it's operation (true) or not (false).</returns>
-		bool Free(Context *ctx, void* base, size_t size);
+		OBOS_EXPORT bool Free(Context *ctx, void* base, size_t size);
 	}
 }

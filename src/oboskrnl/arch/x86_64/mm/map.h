@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 #include <vmm/prot.h>
 #include <vmm/page_descriptor.h>
@@ -27,7 +28,7 @@ namespace obos
 		/// <param name="phys">The physical page to map.</param>
 		/// <param name="prot">The protection flags.</param>
 		/// <returns>The virtual address.</returns>
-		void* map_page_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot);
+		OBOS_EXPORT void* map_page_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot);
 		/// <summary>
 		/// Maps a physical page to a virtual address as a huge page.
 		/// </summary>
@@ -36,21 +37,21 @@ namespace obos
 		/// <param name="phys">The physical page to map.</param>
 		/// <param name="prot">The protection flags.</param>
 		/// <returns>The virtual address.</returns>
-		void* map_hugepage_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot);
+		OBOS_EXPORT void* map_hugepage_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot);
 
 		/// <summary>
 		/// Un-maps a page.
 		/// </summary>
 		/// <param name="ctx">The context. This can be nullptr to specify the current context.</param>
 		/// <param name="addr">The address to un-map. The underlying physical page is kept allocated.</param>
-		void unmap(vmm::Context* ctx, void* addr);
+		OBOS_EXPORT void unmap(vmm::Context* ctx, void* addr);
 		/// <summary>
 		/// Makes a page descriptor from a virtual page.
 		/// </summary>
 		/// <param name="ctx">The context. This can be nullptr to specify the current context.</param>
 		/// <param name="addr">The virtual address to make a page descriptor from.</param>
 		/// <param name="out">[out] The page descriptor to store the result in.</param>
-		void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out);
+		OBOS_EXPORT void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out);
 
 		/// <summary>
 		/// Registers any allocated pages that InitializeVMM() might not know about in the kernel context.<br>
@@ -66,7 +67,7 @@ namespace obos
 		/// <param name="hasToBeInUserMode">Whether the fault has to be from user-mode thread.</param>
 		/// <param name="callback">The handler.</param>
 		/// <returns>Whether the handler was registered (true) or not (false).</returns>
-		bool register_page_fault_handler(vmm::PageFaultReason reason, bool hasToBeInUserMode, void(*callback)(void* on, vmm::PageFaultErrorCode errorCode, const vmm::page_descriptor& pd));
+		OBOS_EXPORT bool register_page_fault_handler(vmm::PageFaultReason reason, bool hasToBeInUserMode, void(*callback)(void* on, vmm::PageFaultErrorCode errorCode, const vmm::page_descriptor& pd));
 
 		// nPages is in units of OBOS_PAGE_SIZE.
 		// So to allocate/free one OBOS_PAGE_SIZE, you would pass one as nPages.
@@ -78,13 +79,13 @@ namespace obos
 		/// <param name="nPages">The number of pages to allocate.</param>
 		/// <param name="alignToHugePageSize">Whether to align to the huge page size (true), or not (false).</param>
 		/// <returns>The physical address of the pages allocated.</returns>
-		uintptr_t AllocatePhysicalPages(size_t nPages, bool alignToHugePageSize);
+		OBOS_EXPORT uintptr_t AllocatePhysicalPages(size_t nPages, bool alignToHugePageSize);
 		/// <summary>
 		/// Frees physical pages.
 		/// </summary>
 		/// <param name="base">The base of the pages.</param>
 		/// <param name="nPages">The amount of pages to free.</param>
-		void FreePhysicalPages(uintptr_t base, size_t nPages);
+		OBOS_EXPORT void FreePhysicalPages(uintptr_t base, size_t nPages);
 
 		// Internal interface.
 

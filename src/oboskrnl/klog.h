@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <stdarg.h>
+#include <export.h>
 
 #ifdef OBOS_DEBUG
 #define OBOS_ASSERTP(expr, msg, ...) do { if (!(expr)) { obos::logger::panic(nullptr, "Function %s, File %s, Line %d: Assertion failed, \"%s\". " msg "\n", __func__, __FILE__, __LINE__, #expr __VA_ARGS__); } } while(0)
@@ -37,12 +38,12 @@ namespace obos
 			PANIC_RED = 0x00ac1616,
 		};
 
-		FORMAT(printf, 1) size_t printf(const char* format, ...);
-		size_t vprintf(const char* format, va_list list);
-		size_t vsprintf(char* dest, const char* format, va_list list);
-		FORMAT(printf, 2) size_t sprintf(char* dest, const char* format, ...);
-		FORMAT(printf, 3) size_t snprintf(char* dest, size_t cnt, const char* format, ...);
-		size_t vsnprintf(char* dest, size_t cnt, const char* format, va_list list);
+		OBOS_EXPORT FORMAT(printf, 1) size_t printf(const char* format, ...);
+		OBOS_EXPORT size_t vprintf(const char* format, va_list list);
+		OBOS_EXPORT size_t vsprintf(char* dest, const char* format, va_list list);
+		OBOS_EXPORT FORMAT(printf, 2) size_t sprintf(char* dest, const char* format, ...);
+		OBOS_EXPORT FORMAT(printf, 3) size_t snprintf(char* dest, size_t cnt, const char* format, ...);
+		OBOS_EXPORT size_t vsnprintf(char* dest, size_t cnt, const char* format, va_list list);
 
 		constexpr const char* DEBUG_PREFIX_MESSAGE = "[Debug] ";
 		constexpr const char* LOG_PREFIX_MESSAGE = "[Log] ";
@@ -50,14 +51,14 @@ namespace obos
 		constexpr const char* WARNING_PREFIX_MESSAGE = "[Warning] ";
 		constexpr const char* ERROR_PREFIX_MESSAGE = "[Error] ";
 
-		FORMAT(printf, 1) size_t debug(const char* format, ...);
-		FORMAT(printf, 1) size_t log(const char* format, ...);
-		FORMAT(printf, 1) size_t info(const char* format, ...);
-		FORMAT(printf, 1) size_t warning(const char* format, ...);
-		FORMAT(printf, 1) size_t error(const char* format, ...);
-		[[noreturn]] FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
-		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
+		OBOS_EXPORT FORMAT(printf, 1) size_t debug(const char* format, ...);
+		OBOS_EXPORT FORMAT(printf, 1) size_t log(const char* format, ...);
+		OBOS_EXPORT FORMAT(printf, 1) size_t info(const char* format, ...);
+		OBOS_EXPORT FORMAT(printf, 1) size_t warning(const char* format, ...);
+		OBOS_EXPORT FORMAT(printf, 1) size_t error(const char* format, ...);
+		[[noreturn]] OBOS_EXPORT FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
+		[[noreturn]] OBOS_EXPORT void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
 
-		void stackTrace(void* stackTraceParameter, const char* prefix = "\t", size_t(*outputCallback)(const char* format, ...) = printf);
+		OBOS_EXPORT void stackTrace(void* stackTraceParameter, const char* prefix = "\t", size_t(*outputCallback)(const char* format, ...) = printf);
 	}
 }

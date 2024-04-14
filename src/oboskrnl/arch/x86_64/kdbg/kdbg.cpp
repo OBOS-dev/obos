@@ -1072,7 +1072,7 @@ namespace obos
 					shouldRun = write_memory(at, val, gran);
 				}
 				else
-					printf("Invalid command '%s'.\n%s", command, help_message);
+					printf("Invalid command '%s'.\nUse 'help' for a list of valid commands.\n", command);
 				end:
 				delete[] command;
 				allocators::g_kAllocator->Free(buf, allocators::g_kAllocator->QueryObjectSize(buf));

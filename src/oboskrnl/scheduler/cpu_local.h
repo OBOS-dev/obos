@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 #include <scheduler/stack.h>
 #include <scheduler/thread.h>
@@ -32,7 +33,7 @@ namespace obos
 			Thread* idleThread;
 			ThreadList dpcList;
 		};
-		cpu_local* GetCPUPtr();
+		OBOS_EXPORT cpu_local* GetCPUPtr();
 		extern cpu_local* g_cpuInfo;
 		extern size_t g_nCPUs;
 	}

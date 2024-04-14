@@ -14,6 +14,11 @@ namespace obos
 	{
 		constexpr uint64_t g_driverHeaderMagic = 0x0002'7855'0650'CDAA;
 #define OBOS_DRIVER_HEADER_SECTION ".obosDriverHeader"
+#ifndef __INTELLISENSE__
+#	define OBOS_DEFINE_IN_SECTION(s) __attribute__((section(s)))
+#else
+#	define OBOS_DEFINE_IN_SECTION(section)
+#endif
 		enum class driverType
 		{
 			Invalid = 0,
@@ -22,6 +27,8 @@ namespace obos
 			NicDriver,
 			DriverLoader,
 			KernelExtension,
+			MaxValue = KernelExtension,
+			
 		};
 		struct kernelLoaderPacket
 		{
@@ -37,8 +44,12 @@ namespace obos
 			// PNP
 			struct
 			{
-				acpi_hid hid[8];
-				acpi_hid cid[16];
+				static constexpr size_t maxHIDs = 4;
+				static constexpr size_t maxCIDs = 16;
+				acpi_hid hid[maxHIDs] = {};
+				acpi_hid cid[maxCIDs] = {};
+				size_t nHIDs = 0;
+				size_t nCIDs = 0;
 			} acpi_pnp;
 			// Whether the specified ACPI table exists
 			union
@@ -48,8 +59,9 @@ namespace obos
 			} acpi_table;
 		};
 		// For the kernel to recognize the file as a file, some conditions must be met:
-		// A driver header exists on a 8-byte boundary, with the magic field set to g_driverHeaderMagic.
+		// A driver header exists in the section specified by the macro OBOS_DRIVER_HEADER_SECTION, with the magic field set to g_driverHeaderMagic. The section must be at least RW.
 		// The driver header must have all fields valid.
+		// The driver must have its symbols exported.
 		// The driver must be a dynamic elf file, matching the ABI's specifications for ELF files.
 		// Example:
 		// The x86_64 SystemV ABI specifies that ELF files must have e_ident[EI_CLASS] = ELFCLASS64, e_ident[EI_DATA] = ELFDATA2LSB, and e_machine = EM_X86_64 (62)
@@ -58,18 +70,19 @@ namespace obos
 		// For example, the driver can't be using the Microsoft ABI when the kernel uses the SystemV ABI.
 		struct driverHeader
 		{
-			alignas(0x8) uint64_t magic = g_driverHeaderMagic;
-			alignas(0x8) driverType type = driverType::Invalid;
-			alignas(0x8) char friendlyName[33] = {};
+			uint64_t magic = g_driverHeaderMagic;
+			driverType type = driverType::Invalid;
+			char friendlyName[33] = {};
 			// The path of driver to detect whether this driver should be loaded.
 			// The "loader" driver.
 			// This can be the kernel path.
 			// If this is empty, this driver must be loaded manually.
-			alignas(0x8) char requestedLoader[257] = {};
-			alignas(0x8) void* loaderPacket; // The data expected by the loader driver to know whether this driver should be loaded or not.
+			char requestedLoader[257] = {};
+			void* loaderPacket; // The data expected by the loader driver to know whether this driver should be loaded or not.
 			
-			alignas(0x8) const char* path = nullptr; // Initialized by the kernel.
-			alignas(0x8) const char* loader = nullptr; // Initialized by the kernel.
+			const char* path = nullptr; // Initialized by the kernel.
+			const char* loader = nullptr; // Initialized by the kernel.
+			uint32_t id; // Initialized by the kernel.
 		};
 	}
 }

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/ticks.h>
@@ -19,6 +20,6 @@ namespace obos
 		extern ThreadList g_threadPriorities[4];
 		extern SchedulerTime g_ticks;
 		void schedule();
-		void yield();
+		OBOS_EXPORT void yield();
 	}
 }

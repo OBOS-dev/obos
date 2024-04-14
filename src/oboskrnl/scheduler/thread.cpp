@@ -8,6 +8,12 @@
 #include <klog.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/cpu_local.h>
+#include <scheduler/scheduler.h>
+
+#include <arch/thr_context_info.h>
+
+#include <vmm/map.h>
 
 namespace obos
 {
@@ -64,6 +70,28 @@ namespace obos
 				c = c->next;
 			}
 			return nullptr;
+		}
+		static void ExitCurrentThreadImpl(uintptr_t)
+		{
+			Thread* cur = scheduler::GetCPUPtr()->currentThread;
+			cur->flags = (scheduler::ThreadFlags)((uint32_t)cur->flags | (uint32_t)scheduler::ThreadFlags::IsDead);
+			if ((uint32_t)cur->flags & (uint32_t)scheduler::ThreadFlags::IsDeferredProcedureCall)
+				scheduler::GetCPUPtr()->dpcList.Remove(cur);
+			if (!(--cur->referenceCount))
+				delete cur;
+			vmm::Free(cur->addressSpace, (void*)cur->thread_stack.base, cur->thread_stack.size);
+			scheduler::GetCPUPtr()->currentThread = nullptr;
+			scheduler::yield();
+		}
+		[[noreturn]] void ExitCurrentThread()
+		{
+			arch::JumpToFunctionWithCPUTempStack(ExitCurrentThreadImpl, 0);
+			while (1)
+				scheduler::yield();
+		}
+		uint32_t GetCurrentTid()
+		{
+			return GetCPUPtr()->currentThread->tid;
 		}
 	}
 }

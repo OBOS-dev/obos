@@ -16,6 +16,7 @@
 #include <allocators/allocator.h>
 
 #include <driver_interface/loader.h>
+#include <driver_interface/driverId.h>
 
 #ifdef __x86_64__
 #include <limine/limine.h>
@@ -115,8 +116,9 @@ namespace obos
 				break;
 			}
 		}
-		driverInterface::LoadDriver(procExecutable, procExecutableSize);
-
+		uint32_t id = driverInterface::LoadDriver(procExecutable, procExecutableSize)->id;
+		asm("int3");
+		driverInterface::StartDriver(id);
 		while(1);
 	}
 }

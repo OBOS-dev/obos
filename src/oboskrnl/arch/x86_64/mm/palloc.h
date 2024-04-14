@@ -7,12 +7,13 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 namespace obos
 {
-	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB = false);
-	void FreePhysicalPages(uintptr_t addr, size_t nPages);
-	void OptimizePMMFreeList();
+	OBOS_EXPORT uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB = false);
+	OBOS_EXPORT void FreePhysicalPages(uintptr_t addr, size_t nPages);
+	OBOS_EXPORT void OptimizePMMFreeList();
 
-	void* MapToHHDM(uintptr_t phys);
+	OBOS_EXPORT void* MapToHHDM(uintptr_t phys);
 }

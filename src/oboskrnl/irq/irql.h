@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <export.h>
 
 namespace obos
 {
@@ -17,19 +18,19 @@ namespace obos
 	/// </summary>
 	/// <param name="newIRQL">The new IRQL. This must be less than the current IRQL, or the function will panic.</param>
 	/// <param name="setThrIRQL">[opt] Whether to set the current thread's IRQL in the context..</param>
-	void LowerIRQL(uint8_t newIRQL, bool setThrIRQL = true);
+	OBOS_EXPORT void LowerIRQL(uint8_t newIRQL, bool setThrIRQL = true);
 	/// <summary>
 	/// Raises the IRQL of the current processor.
 	/// </summary>
 	/// <param name="newIRQL">The new IRQL. This must be greater than the current IRQL, or the function will panic.</param>
 	/// <param name="oldIRQL">[out] A pointer to a variable which will store the current IRQL.</param>
 	/// <param name="setThrIRQL">[opt] Whether to set the current thread's IRQL in the context..</param>
-	void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL, bool setThrIRQL = true);
+	OBOS_EXPORT void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL, bool setThrIRQL = true);
 	/// <summary>
 	/// Gets the IRQL of the current processor.
 	/// </summary>
 	/// <returns>The IRQL of the current processor.</returns>
-	uint8_t GetIRQL();
+	OBOS_EXPORT uint8_t GetIRQL();
 	// IRQL table:
 	// 0: All IRQs are allowed to run. You cannot use this to initialize an Irq object.
 	// 1: Invalid.

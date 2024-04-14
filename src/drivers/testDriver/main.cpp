@@ -5,13 +5,15 @@
 */
 
 #include <int.h>
-//#include <klog.h>
+#include <klog.h>
 
 #include <driver_interface/header.h>
 
+#include <scheduler/thread.h>
+
 using namespace obos;
 [[maybe_unused]] volatile
-driverInterface::driverHeader __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) g_driverHeader = {
+driverInterface::driverHeader OBOS_DEFINE_IN_SECTION(OBOS_DRIVER_HEADER_SECTION) g_driverHeader = {
 	.magic = driverInterface::g_driverHeaderMagic,
 	.type  = driverInterface::driverType::KernelExtension,
 	.friendlyName = "Test driver",
@@ -19,18 +21,9 @@ driverInterface::driverHeader __attribute__((section(OBOS_DRIVER_HEADER_SECTION)
 	.loaderPacket = nullptr
 };
 
-namespace obos
-{
-	namespace logger
-	{
-		__attribute__((weak)) size_t log(const char* format, ...);
-	}
-}
-
 extern "C"
 void _start()
 {
-	(g_driverHeader);
 	logger::log("In test driver!\n");
-	while (1);
+	scheduler::ExitCurrentThread();
 }

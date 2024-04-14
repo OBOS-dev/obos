@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <struct_packing.h>
+#include <export.h>
 
 namespace obos
 {
@@ -43,6 +44,6 @@ namespace obos
 	/// <param name="nEntries">The amount of entries to search.</param>
 	/// <param name="signature">The signature of the table to look for.</param>
 	/// <returns>The table, or nullptr on failure.</returns>
-	ACPISDTHeader* GetTableWithSignature(ACPISDTHeader* sdt, bool t32, size_t nEntries, char(*signature)[4]);
-	void GetSDTFromRSDP(ACPIRSDPHeader* rsdp, ACPISDTHeader** oHeader, bool *oT32, size_t *oNEntries);
+	OBOS_EXPORT ACPISDTHeader* GetTableWithSignature(ACPISDTHeader* sdt, bool t32, size_t nEntries, char(*signature)[4]);
+	OBOS_EXPORT void GetSDTFromRSDP(ACPIRSDPHeader* rsdp, ACPISDTHeader** oHeader, bool *oT32, size_t *oNEntries);
 }
