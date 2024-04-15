@@ -9,7 +9,7 @@
 
 #include <arch/x86_64/kdbg/io.h>
 
-#include <ZyDis.h>
+#include <Zydis.h>
 
 #include <vmm/init.h>
 #include <vmm/mprot.h>

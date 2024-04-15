@@ -17,6 +17,6 @@ execute_process(
 	COMMAND ${CMAKE_COMMAND} -E tar -xzf ${CMAKE_SOURCE_DIR}/dependencies/ZyDis/zydis-amalgamated.tar.gz
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/dependencies/ZyDis/
 )
-file (COPY "${CMAKE_SOURCE_DIR}/dependencies/ZyDis/amalgamated-dist/ZyDis.h" DESTINATION "${CMAKE_SOURCE_DIR}/dependencies/include/")
-set (zydis_c ${CMAKE_SOURCE_DIR}/dependencies/ZyDis/amalgamated-dist/ZyDis.c CACHE INTERNAL "The amalgamated ZyDis source file.")
+file (COPY "${CMAKE_SOURCE_DIR}/dependencies/ZyDis/amalgamated-dist/Zydis.h" DESTINATION "${CMAKE_SOURCE_DIR}/dependencies/include/")
+set (zydis_c ${CMAKE_SOURCE_DIR}/dependencies/ZyDis/amalgamated-dist/Zydis.c CACHE INTERNAL "The amalgamated ZyDis source file.")
 file (REMOVE ${CMAKE_SOURCE_DIR}/dependencies/ZyDis/zydis-amalgamated.tar.gz)
