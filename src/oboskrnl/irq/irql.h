@@ -14,7 +14,7 @@ namespace obos
 	// For internal-use only.
 	uint8_t& getIRQLVar();
 	/// <summary>
-	/// Lowers the irql of the current processor.
+	/// Lowers the IRQL of the current processor.
 	/// </summary>
 	/// <param name="newIRQL">The new IRQL. This must be less than the current IRQL, or the function will panic.</param>
 	/// <param name="setThrIRQL">[opt] Whether to set the current thread's IRQL in the context..</param>
@@ -41,11 +41,16 @@ namespace obos
 	// 15: All IRQs are masked. Otherwise unused by drivers and the kernel.
 	enum
 	{
-		IRQL_PASSIVE = 0,
-		IRQL_DISPATCH = 2,
+		IRQL_PASSIVE = 0x0,
+		IRQL_RESV1,
+		IRQL_DISPATCH,
+#ifdef __x86_64__
 		IRQL_IPI_DISPATCH,
+#else
+		IRQL_RESV2,
+#endif
 		IRQL_GPE,
-		IRQL_MASK_ALL = 15,
+		IRQL_MASK_ALL = 0xf,
 		IRQL_INVALID = 0xff,
 	};
 }
