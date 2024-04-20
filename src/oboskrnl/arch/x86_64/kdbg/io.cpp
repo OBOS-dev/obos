@@ -313,7 +313,8 @@ namespace obos
 					else
 						continue;
 				}	
-				ret[stringSize] = 0;
+				if (ret)
+					ret[stringSize] = 0;
 			}
 			putchar('\n');
 			return ret;
