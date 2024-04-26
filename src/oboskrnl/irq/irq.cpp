@@ -64,7 +64,6 @@ namespace obos
 	}
 	IrqVector* look_for_irq_in_list(uint8_t vec)
 	{
-		IrqVector *vector = nullptr;
 		for (auto c = g_irqVectors.head; c;)
 		{
 			if (c->vector == vec)

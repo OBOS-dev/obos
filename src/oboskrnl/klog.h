@@ -14,8 +14,8 @@
 #define OBOS_ASSERTP(expr, msg, ...) do { if (!(expr)) { obos::logger::panic(nullptr, "Function %s, File %s, Line %d: Assertion failed, \"%s\". " msg "\n", __func__, __FILE__, __LINE__, #expr __VA_ARGS__); } } while(0)
 #define OBOS_ASSERT(expr, msg, ...)  do { if (!(expr)) { obos::logger::error("Function %s, File %s, Line %d: Assertion failed, \"%s\". " msg "\n", __func__, __FILE__, __LINE__, #expr __VA_ARGS__); } } while(0)
 #else
-#define OBOS_ASSERTP(expr, msg, ...)
-#define OBOS_ASSERT(expr, msg, ...)
+#define OBOS_ASSERTP(expr, msg, ...) do {} while(0)
+#define OBOS_ASSERT(expr, msg, ...) do {} while(0)
 #endif
 
 #ifdef __GNUC__
