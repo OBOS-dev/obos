@@ -246,6 +246,7 @@ namespace obos
 				FreePhysicalPages(PageMap::MaskPhysicalAddressFromEntry(pm[indices[level]]), 1);
 			}
 		}
+		static uintptr_t s_FBAddr = 0;
 		static void MapFramebuffer(PageMap* pm)
 		{
 			Framebuffer fb{};
@@ -254,13 +255,14 @@ namespace obos
 			size_t fbSize = ((size_t)fb.height * (size_t)fb.pitch);
 			size_t nHugePagesInFB = fbSize / OBOS_HUGE_PAGE_SIZE;
 			size_t nLeftOverPagesInFb = (fbSize - nHugePagesInFB * OBOS_HUGE_PAGE_SIZE) / OBOS_PAGE_SIZE;
-			uintptr_t newFBAddr = 0xffff'ff00'0000'0000;
-			uintptr_t addr = newFBAddr;
-			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE)
-				map_hugepage_to(pm, addr, fbPhys + (addr - newFBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
-			for (; addr < (newFBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE + nLeftOverPagesInFb * OBOS_PAGE_SIZE); addr += OBOS_PAGE_SIZE)
-				map_page_to(pm, addr, fbPhys + (addr - newFBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
-			fb.address = (void*)newFBAddr;
+			uintptr_t s_FBAddr = 0xffff'ff00'0000'0000;
+			uintptr_t addr = s_FBAddr;
+			s_FBAddr = s_FBAddr;
+			for (; addr < (s_FBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE)
+				map_hugepage_to(pm, addr, fbPhys + (addr - s_FBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
+			for (; addr < (s_FBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE + nLeftOverPagesInFb * OBOS_PAGE_SIZE); addr += OBOS_PAGE_SIZE)
+				map_page_to(pm, addr, fbPhys + (addr - s_FBAddr), (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE);
+			fb.address = (void*)s_FBAddr;
 			g_kernelConsole.SetFramebuffer(&fb, nullptr, true);
 		}
 		static void MapKernel(PageMap* pm)
@@ -340,6 +342,36 @@ namespace obos
 			size_t i = 0;
 			for (uintptr_t addr = hhdm_offset.response->offset; addr < hhdm_limit; addr += OBOS_HUGE_PAGE_SIZE, i++)
 				get_page_descriptor(ctx, (void*)addr, node.pageDescriptors[i]);
+			ctx->AppendPageNode(node);
+			// NOTE(oberrow,20/04/2024): I just realized that the framebuffer is being mapped but never marked as mapped.
+			// Whoopsie.
+			Framebuffer fb{};
+			g_kernelConsole.GetFramebuffer(&fb, nullptr, nullptr);
+			uintptr_t fbPhys = (uintptr_t)fb.address - hhdm_offset.response->offset;
+			size_t fbSize = ((size_t)fb.height * (size_t)fb.pitch);
+			size_t nHugePagesInFB = fbSize / OBOS_HUGE_PAGE_SIZE;
+			size_t nLeftOverPagesInFb = (fbSize - nHugePagesInFB * OBOS_HUGE_PAGE_SIZE) / OBOS_PAGE_SIZE;
+			uintptr_t addr = s_FBAddr;
+			node.nPageDescriptors = nHugePagesInFB + nLeftOverPagesInFb;
+			node.pageDescriptors = new vmm::page_descriptor[node.nPageDescriptors];
+			for (i = 0; addr < (s_FBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE, i++)
+			{
+				node.pageDescriptors[i].protFlags = (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE;
+				node.pageDescriptors[i].isHugePage = true;
+				node.pageDescriptors[i].phys = fbPhys + (addr-s_FBAddr);
+				node.pageDescriptors[i].virt = addr;
+				node.pageDescriptors[i].present = true;
+				node.pageDescriptors[i].awaitingDemandPagingFault = false;
+			}
+			for (; addr < (s_FBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE + nLeftOverPagesInFb * OBOS_PAGE_SIZE); addr += OBOS_PAGE_SIZE, i++)
+			{
+				node.pageDescriptors[i].protFlags = (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE;
+				node.pageDescriptors[i].isHugePage = false;
+				node.pageDescriptors[i].phys = fbPhys + (addr - s_FBAddr);
+				node.pageDescriptors[i].virt = addr;
+				node.pageDescriptors[i].present = true;
+				node.pageDescriptors[i].awaitingDemandPagingFault = false;
+			}
 			ctx->AppendPageNode(node);
 		}
 	}
