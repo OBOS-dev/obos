@@ -21,6 +21,7 @@ namespace obos
 			uintptr_t rip = 0;
 			size_t hitCount = 0;
 			bool enabled = false;
+			bool awaitingSmpRefresh = false; // Set for breakpoints that are initialized before SMP initialization.
 			struct
 			{
 				const char* name = nullptr;

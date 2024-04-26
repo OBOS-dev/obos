@@ -24,6 +24,11 @@
 #include <vmm/map.h>
 #include <irq/irql.h>
 
+#if OBOS_KDBG_ENABLED
+#include <arch/x86_64/kdbg/bp.h>
+#include <arch/x86_64/kdbg/debugger_state.h>
+#endif
+
 extern "C" char smp_trampoline_start[];
 extern "C" char smp_trampoline_end[];
 extern "C" uintptr_t smp_trampoline_cr3_loc;
@@ -47,6 +52,12 @@ namespace obos
 		cpu_local* g_cpuInfo;
 		size_t g_nCPUs;
 	}
+#ifdef OBOS_KDBG_ENABLED
+	namespace kdbg
+	{
+		extern void setupDRsForBreakpoint(bp*);
+	}
+#endif
 	using namespace scheduler;
 	extern struct idtEntry g_idtEntries[256];
 	struct idtPointer;
@@ -54,7 +65,7 @@ namespace obos
 	namespace arch
 	{
 		uint8_t g_lapicIDs[256];
-		static bool jumped_to_bootstrap = false;
+		static volatile bool jumped_to_bootstrap = false;
 		bool g_initializedAllCPUs = false;
 		void InitializeGDTCPU(cpu_local* info)
 		{
@@ -145,7 +156,7 @@ namespace obos
 			char sign[4] = { 'A', 'P', 'I', 'C' };
 			auto madt = (MADTTable*)GetTableWithSignature(sdt, t32, nEntries, &sign);
 			size_t nCPUs = ParseMADTForLAPICIds(madt, g_lapicIDs, 0);
-			ParseMADTForLAPICIds(madt, g_lapicIDs, sizeof(g_lapicIDs) / sizeof(*g_lapicIDs), true, false);
+			ParseMADTForLAPICIds(madt, g_lapicIDs, sizeof(g_lapicIDs) / sizeof(*g_lapicIDs));
 			if (nCPUs > sizeof(g_lapicIDs) / sizeof(*g_lapicIDs))
 				nCPUs = sizeof(g_lapicIDs) / sizeof(*g_lapicIDs);
 			g_nCPUs = nCPUs;
@@ -213,6 +224,17 @@ namespace obos
 			g_initializedAllCPUs = true;
 			memzero(0, 0x1000);
 			arch::unmap(&vmm::g_kernelContext, 0);
+#ifdef OBOS_KDBG_ENABLED
+			for (size_t i = 0; i < 4; i++)
+			{
+				auto b = kdbg::g_kdbgState.breakpoints[i];
+				if (!b)
+					continue;
+				if (!b->awaitingSmpRefresh)
+					continue;
+				kdbg::setupDRsForBreakpoint(b);
+			}
+#endif
 			return nCPUsStarted;
 		}
 		bool g_halt;
