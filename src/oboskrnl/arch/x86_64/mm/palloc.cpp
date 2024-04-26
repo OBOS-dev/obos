@@ -36,6 +36,7 @@ namespace obos
 	};
 	MemoryNode *g_memoryHead, *g_memoryTail;
 	size_t g_nMemoryNodes;
+	size_t g_nPhysPagesUsed = 0;
 	bool g_pmmInitialized = false;
 	locks::SpinLock g_pmmLock;
 	static uintptr_t CalculateHHDMLimit()
@@ -78,6 +79,8 @@ namespace obos
 		g_pmmLock.Lock();
 		for (size_t i = 0; i < mmap_request.response->entry_count; i++)
 		{
+			if (mmap_request.response->entries[i]->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE || mmap_request.response->entries[i]->type == LIMINE_MEMMAP_KERNEL_AND_MODULES)
+				g_nPhysPagesUsed += ((mmap_request.response->entries[i]->length + 0xfff) & ~0xfff) >> 12;
 			if (mmap_request.response->entries[i]->type != LIMINE_MEMMAP_USABLE)
 				continue;
 			uintptr_t base = mmap_request.response->entries[i]->base;
@@ -157,6 +160,7 @@ namespace obos
 		if (oldIRQL != 0xff)
 			LowerIRQL(oldIRQL);
 		g_pmmLock.Unlock();
+		__atomic_add_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 		return ret;
 	}
 	void FreePhysicalPages(uintptr_t addr, size_t nPages)
@@ -178,6 +182,7 @@ namespace obos
 		node->nPages = nPages;
 		g_nMemoryNodes++;
 		g_pmmLock.Unlock();
+		__atomic_sub_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 	}
 	static void swapNodes(MemoryNode* node, MemoryNode* nodePhys, MemoryNode* with, MemoryNode* withPhys)
 	{
