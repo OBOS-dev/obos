@@ -117,7 +117,6 @@ namespace obos
 			}
 		}
 		uint32_t id = driverInterface::LoadDriver(procExecutable, procExecutableSize)->id;
-		asm("int3");
 		driverInterface::StartDriver(id);
 		while(1);
 	}
@@ -129,7 +128,8 @@ namespace obos
 #define STACK_CHK_GUARD 0x1C747501613CB3
 #endif
  
-extern "C" uintptr_t __stack_chk_guard = STACK_CHK_GUARD;
+extern "C" uintptr_t __stack_chk_guard;
+uintptr_t __stack_chk_guard = STACK_CHK_GUARD;
  
 extern "C" [[noreturn]] void __stack_chk_fail(void)
 {
