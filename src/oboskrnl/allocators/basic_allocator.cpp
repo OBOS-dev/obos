@@ -308,7 +308,7 @@ namespace obos
 					&vmm::g_kernelContext, 
 					blk, 
 					size, 
-					vmm::FLAGS_RESERVE|vmm::FLAGS_GUARD_PAGE_LEFT|vmm::FLAGS_GUARD_PAGE_RIGHT,
+					vmm::FLAGS_RESERVE|vmm::FLAGS_GUARD_PAGE_LEFT|vmm::FLAGS_GUARD_PAGE_RIGHT|vmm::FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS,
 					0
 				);
 				OBOS_ASSERTP(res, "Could not reserve page block.\n");

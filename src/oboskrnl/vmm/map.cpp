@@ -465,6 +465,26 @@ namespace obos
 				}
 				return nullptr;
 			}
+#ifdef OBOS_DEBUG
+			// Make sure the pages aren't mapped.
+			// That may or may not have caused two weeks of debugging something that turned out to be a off by one bug.
+			if (!(flags & FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS))
+			{
+				page_descriptor pd{};
+				size_t ps = 0;
+				uintptr_t limit = (uintptr_t)base + size;
+				for (uintptr_t addr = (uintptr_t)base; addr < limit; addr += ps)
+				{
+					arch::get_page_descriptor(ctx, (void*)addr, pd);
+					OBOS_ASSERTP(!pd.present, "Attempt to reallocate address %p.",, (void*)addr);
+#if OBOS_HAS_HUGE_PAGE_SUPPORT
+					ps = pd.isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+#else
+					ps = OBOS_PAGE_SIZE;
+#endif
+				}
+			}
+#endif
 		success:
 			if (!ImplAllocatePages(ctx, (void*)base, size, protection, flags))
 				return nullptr;
