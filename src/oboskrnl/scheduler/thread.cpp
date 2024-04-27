@@ -73,14 +73,18 @@ namespace obos
 		}
 		static void ExitCurrentThreadImpl(uintptr_t)
 		{
+			if (!scheduler::GetCPUPtr())
+				return;
 			Thread* cur = scheduler::GetCPUPtr()->currentThread;
+			if (!cur)
+				return;
 			cur->flags = (scheduler::ThreadFlags)((uint32_t)cur->flags | (uint32_t)scheduler::ThreadFlags::IsDead);
 			if ((uint32_t)cur->flags & (uint32_t)scheduler::ThreadFlags::IsDeferredProcedureCall)
 				scheduler::GetCPUPtr()->dpcList.Remove(cur);
-			if (!(--cur->referenceCount))
-				delete cur;
 			vmm::Free(cur->addressSpace, (void*)cur->thread_stack.base, cur->thread_stack.size);
 			scheduler::GetCPUPtr()->currentThread = nullptr;
+			if (!(--cur->referenceCount))
+				delete cur;
 			scheduler::yield();
 		}
 		[[noreturn]] void ExitCurrentThread()
@@ -91,6 +95,11 @@ namespace obos
 		}
 		uint32_t GetCurrentTid()
 		{
+			if (!scheduler::GetCPUPtr())
+				return 0xffffffff;
+			Thread* cur = scheduler::GetCPUPtr()->currentThread;
+			if (!cur)
+				return 0xffffffff;
 			return GetCPUPtr()->currentThread->tid;
 		}
 	}
