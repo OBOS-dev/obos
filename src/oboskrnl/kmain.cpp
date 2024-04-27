@@ -18,6 +18,8 @@
 #include <driver_interface/loader.h>
 #include <driver_interface/driverId.h>
 
+#include <scheduler/thread.h>
+
 #ifdef __x86_64__
 #include <limine/limine.h>
 #endif
@@ -118,7 +120,7 @@ namespace obos
 		}
 		uint32_t id = driverInterface::LoadDriver(procExecutable, procExecutableSize)->id;
 		driverInterface::StartDriver(id);
-		while(1);
+		scheduler::ExitCurrentThread();
 	}
 }
 
