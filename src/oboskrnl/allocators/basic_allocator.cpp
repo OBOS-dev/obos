@@ -183,6 +183,11 @@ namespace obos
 		}
 		void* BasicAllocator::ReAllocate(void* base, size_t newSize)
 		{
+			if (!newSize)
+			{
+				Free(base, QueryObjectSize(base));
+				return nullptr;
+			}
 			if (!base)
 				return Allocate(newSize);
 			newSize = round_up(newSize, 0x10);
