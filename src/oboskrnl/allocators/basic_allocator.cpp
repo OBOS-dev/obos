@@ -211,6 +211,8 @@ namespace obos
 		}
 		void BasicAllocator::Free(void* base, size_t)
 		{
+			if (!base)
+				return;
 			BasicAllocator::node* n = ((node*)base - 1);
 			if (n->magic != MEMBLOCK_MAGIC)
 				return;
@@ -243,6 +245,9 @@ namespace obos
 				return;
 			if (n->size > r->biggestFreeNode->size)
 				r->biggestFreeNode = n;
+#ifdef OBOS_DEBUG
+			memset(base, 0xAA, n->size);
+#endif
 		}
 		size_t BasicAllocator::QueryObjectSize(const void* base)
 		{
