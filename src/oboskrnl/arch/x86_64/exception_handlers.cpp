@@ -309,12 +309,12 @@ namespace obos
 	{
 		uint8_t oldIrql = 0;
 		RaiseIRQL(0xf, &oldIrql);
-#if OBOS_KDBG_ENABLED
-		kdbg::exceptionHandler(frame);
-#endif
 		if (arch::g_halt)
 			while (1)
 				asm volatile("hlt");
+#if OBOS_KDBG_ENABLED
+		kdbg::exceptionHandler(frame);
+#endif
 		logger::panic(nullptr, "NMI thrown by hardware! System Control Port: 0x%x.\n", (uint16_t)inb(0x92) | ((uint16_t)inb(0x61) << 8));
 	}
 	
