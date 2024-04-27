@@ -354,6 +354,7 @@ namespace obos
 			uintptr_t addr = s_FBAddr;
 			node.nPageDescriptors = nHugePagesInFB + nLeftOverPagesInFb;
 			node.pageDescriptors = new vmm::page_descriptor[node.nPageDescriptors];
+			memzero(node.pageDescriptors, sizeof(vmm::page_descriptor) * node.nPageDescriptors);
 			for (i = 0; addr < (s_FBAddr + nHugePagesInFB * OBOS_HUGE_PAGE_SIZE); addr += OBOS_HUGE_PAGE_SIZE, i++)
 			{
 				node.pageDescriptors[i].protFlags = (uintptr_t)vmm::PROT_x86_64_WRITE_COMBINING_CACHE | (uintptr_t)vmm::PROT_NO_DEMAND_PAGE;

@@ -5,8 +5,8 @@
 */
 
 #include <int.h>
-#include <todo.h>
 #include <klog.h>
+#include <memmanip.h>
 
 #include <arch/vmm_context.h>
 #include <arch/vmm_defines.h>
@@ -29,6 +29,7 @@ namespace obos
 		void Context::AppendPageNode(const page_node& node)
 		{
 			page_node* newNode = new page_node{};
+			memzero(newNode, sizeof(*newNode));
 			OBOS_ASSERTP(newNode, "Could not allocate a page node.\n");
 			newNode->ctx = this;
 			newNode->pageDescriptors = node.pageDescriptors;

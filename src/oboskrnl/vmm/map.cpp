@@ -410,7 +410,8 @@ namespace obos
 			{
 				node.nPageDescriptors = size / pageSize;
 				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
-				
+				memzero(node.pageDescriptors, sizeof(vmm::page_descriptor) * node.nPageDescriptors);
+
 				ImplAllocateSmallPages(ctx, where, size, node, present, protection, flags);
 			}
 #if OBOS_HAS_HUGE_PAGE_SUPPORT
@@ -425,6 +426,7 @@ namespace obos
 
 				node.nPageDescriptors = nHugePages + nPagesInitial + nPagesLeftOver;
 				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
+				memzero(node.pageDescriptors, sizeof(vmm::page_descriptor) * node.nPageDescriptors);
 				ImplAllocateHugePages(ctx, where, size, node, protection, flags, present);
 			}
 #endif
