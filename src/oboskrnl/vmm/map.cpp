@@ -157,7 +157,7 @@ namespace obos
 #endif
 			return true;
 		}
-		uintptr_t FindBase(Context* ctx, uintptr_t base, uintptr_t limit, size_t size)
+		OBOS_NO_KASAN uintptr_t FindBase(Context* ctx, uintptr_t base, uintptr_t limit, size_t size)
 		{
 			if (base % OBOS_PAGE_SIZE)
 				base -= (base % OBOS_PAGE_SIZE);
@@ -203,6 +203,7 @@ namespace obos
 #endif
 			for (const page_node* node = ctx->GetHead(); node;)
 			{
+				OBOS_ASSERTP(node->pageDescriptors, "Page descriptor pointer in node is nullptr.\n");
 				if (InRange(node->pageDescriptors[0].virt, 
 					node->pageDescriptors[node->nPageDescriptors - 1].virt + (node->pageDescriptors[node->nPageDescriptors - 1].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE), 
 					base) &&
@@ -410,7 +411,8 @@ namespace obos
 			{
 				node.nPageDescriptors = size / pageSize;
 				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
-				
+				memzero(node.pageDescriptors, sizeof(vmm::page_descriptor) * node.nPageDescriptors);
+
 				ImplAllocateSmallPages(ctx, where, size, node, present, protection, flags);
 			}
 #if OBOS_HAS_HUGE_PAGE_SUPPORT
@@ -425,6 +427,7 @@ namespace obos
 
 				node.nPageDescriptors = nHugePages + nPagesInitial + nPagesLeftOver;
 				node.pageDescriptors = new page_descriptor[node.nPageDescriptors];
+				memzero(node.pageDescriptors, sizeof(vmm::page_descriptor) * node.nPageDescriptors);
 				ImplAllocateHugePages(ctx, where, size, node, protection, flags, present);
 			}
 #endif
@@ -465,6 +468,26 @@ namespace obos
 				}
 				return nullptr;
 			}
+#ifdef OBOS_DEBUG
+			// Make sure the pages aren't mapped.
+			// That may or may not have caused two weeks of debugging something that turned out to be a off by one bug.
+			if (!(flags & FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS))
+			{
+				page_descriptor pd{};
+				size_t ps = 0;
+				uintptr_t limit = (uintptr_t)base + size;
+				for (uintptr_t addr = (uintptr_t)base; addr < limit; addr += ps)
+				{
+					arch::get_page_descriptor(ctx, (void*)addr, pd);
+					OBOS_ASSERTP(!pd.present, "Attempt to reallocate address %p.",, (void*)addr);
+#if OBOS_HAS_HUGE_PAGE_SUPPORT
+					ps = pd.isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+#else
+					ps = OBOS_PAGE_SIZE;
+#endif
+				}
+			}
+#endif
 		success:
 			if (!ImplAllocatePages(ctx, (void*)base, size, protection, flags))
 				return nullptr;

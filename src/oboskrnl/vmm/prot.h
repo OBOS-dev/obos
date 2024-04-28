@@ -79,6 +79,11 @@ namespace obos
 			/// Allocates the range of memory that was reserved by FLAGS_RESERVE.
 			/// </summary>
 			FLAGS_COMMIT = 0x80,
+#ifdef OBOS_DEBUG
+			FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS = 0x100,
+#else
+			FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS = 0x0,
+#endif
 		};
 	}
 }

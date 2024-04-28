@@ -18,6 +18,9 @@
 
 namespace obos
 {
+#if OBOS_KASAN_ENABLED
+	void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort);
+#endif
 	namespace allocators
 	{
 		// TODO: Test in userspace.
@@ -97,6 +100,10 @@ namespace obos
 			void OptimizeAllocator() override {};
 
 			~BasicAllocator();
+
+#if OBOS_KASAN_ENABLED
+			friend void obos::asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort);
+#endif
 		private:
 			locks::SpinLock m_lock;
 			region *m_regionHead = nullptr, *m_regionTail = nullptr;

@@ -15,7 +15,9 @@ namespace obos
 		// x86-64 specific.
 		extern uint8_t g_lapicIDs[256];
 		
-		// All architectures should define these next two functions.
+		// All architectures should define the following symbols.
+
+		extern bool g_initializedAllCPUs;
 
 		/// <summary>
 		/// Starts all processors. This cannot be used to restart CPUs after a call to StopCPUs().

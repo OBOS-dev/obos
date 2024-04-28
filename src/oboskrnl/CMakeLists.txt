@@ -49,6 +49,15 @@ target_link_options(oboskrnl
 	PUBLIC ${TARGET_LINKER_OPTIONS}
 )
 
+if (DEFINED OBOS_ENABLE_KASAN)
+	target_compile_options(oboskrnl PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fsanitize=kernel-address>)
+	list(APPEND oboskrnl_sources "sanitizers/asan.cpp")
+	set (OBOS_ENABLE_KASAN "1")
+else()
+	set (OBOS_ENABLE_KASAN "0")
+endif()
+target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+
 target_link_libraries(oboskrnl PRIVATE uacpi PRIVATE ${LIBGCC})
 
 if (DEFINED OBOS_SLOW_ARTHIMETRIC)

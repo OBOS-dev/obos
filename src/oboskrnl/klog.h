@@ -14,8 +14,8 @@
 #define OBOS_ASSERTP(expr, msg, ...) do { if (!(expr)) { obos::logger::panic(nullptr, "Function %s, File %s, Line %d: Assertion failed, \"%s\". " msg "\n", __func__, __FILE__, __LINE__, #expr __VA_ARGS__); } } while(0)
 #define OBOS_ASSERT(expr, msg, ...)  do { if (!(expr)) { obos::logger::error("Function %s, File %s, Line %d: Assertion failed, \"%s\". " msg "\n", __func__, __FILE__, __LINE__, #expr __VA_ARGS__); } } while(0)
 #else
-#define OBOS_ASSERTP(expr, msg, ...)
-#define OBOS_ASSERT(expr, msg, ...)
+#define OBOS_ASSERTP(expr, msg, ...) do {} while(0)
+#define OBOS_ASSERT(expr, msg, ...) do {} while(0)
 #endif
 
 #ifdef __GNUC__
@@ -57,7 +57,9 @@ namespace obos
 		OBOS_EXPORT FORMAT(printf, 1) size_t warning(const char* format, ...);
 		OBOS_EXPORT FORMAT(printf, 1) size_t error(const char* format, ...);
 		[[noreturn]] OBOS_EXPORT FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
+		[[noreturn]] OBOS_EXPORT FORMAT(printf, 1) void reportKASANViolation(const char* format, ...);
 		[[noreturn]] OBOS_EXPORT void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
+		[[noreturn]] OBOS_EXPORT void panicImpl(void* stackTraceParameter, bool fromKASANViolation, const char* format, va_list list);
 
 		OBOS_EXPORT void stackTrace(void* stackTraceParameter, const char* prefix = "\t", size_t(*outputCallback)(const char* format, ...) = printf);
 	}

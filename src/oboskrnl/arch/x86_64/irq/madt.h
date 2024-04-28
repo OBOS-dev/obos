@@ -100,8 +100,6 @@ namespace obos
 	/// <param name="table">The MADT table.</param>
 	/// <param name="lapicIds">[out] The lapic ids.</param>
 	/// <param name="maxEntries">The maximum entries that the 'lapicIds' parameter can hold.</param>
-	/// <param name="cpuEnabled">Whether the processor has to be enabled to register the LAPIC id.</param>
-	/// <param name="onlineCapable">Whether the processor has to be online capable to register the LAPIC id.</param>
 	/// <returns>How many entries are left to store.</returns>
-	size_t ParseMADTForLAPICIds(MADTTable* table, uint8_t* lapicIds, size_t maxEntries, bool cpuEnabled = true, bool onlineCapable = true);
+	size_t ParseMADTForLAPICIds(MADTTable* table, uint8_t* lapicIds, size_t maxEntries);
 }

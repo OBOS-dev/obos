@@ -27,7 +27,7 @@ namespace obos
 			OBOS_EXPORT bool Unlock();
 			OBOS_EXPORT bool Locked() const;
 		private:
-			bool m_locked = false;
+			volatile bool m_locked = false;
 			uint8_t m_oldIRQL = 0, m_minimumIRQL = 0x2 /* The scheduler can't run at this IRQL or higher. */;
 		};
 	}

@@ -9,7 +9,9 @@
 
 #include <arch/x86_64/kdbg/io.h>
 
-#include <Zydis.h>
+#if OBOS_KDBG_ENABLE_ZYDIS
+#	include <Zydis.h>
+#endif
 
 #include <vmm/init.h>
 #include <vmm/mprot.h>

@@ -105,8 +105,8 @@ namespace obos
 		locks::SpinLock error_lock;
 #define __impl_log(colour, msg, lock_name) \
 			lock_name.Lock();\
-			Pixel oldForeground = 0;\
-			Pixel oldBackground = 0;\
+			Pixel oldForeground{};\
+			Pixel oldBackground{};\
 			g_kernelConsole.GetColour(oldForeground, oldBackground);\
 			g_kernelConsole.SetColour((Pixel)colour, oldBackground);\
 			while(*format == '\n') { printf("\n"); format++; } \
@@ -157,8 +157,21 @@ namespace obos
 		}
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
 		{
+			panicImpl(stackTraceParameter, false, format, list);
+		}
+		[[noreturn]] void reportKASANViolation(const char* format, ...)
+		{
+			va_list list;
+			va_start(list, format);
+			panicImpl(nullptr, true, format, list);
+			va_end(list);
+			while (1);
+		}
+		[[noreturn]] void panicImpl(void* stackTraceParameter, bool isKASANViolation, const char* format, va_list list)
+		{
 #if defined(__x86_64__) && OBOS_KDBG_ENABLED
-			breakpoint();
+			if (!isKASANViolation && kdbg::g_initialized)
+				breakpoint();
 #endif
 			arch::StopCPUs(false);
 			g_kernelConsole.SetColour(GREY, PANIC_RED);

@@ -172,15 +172,15 @@ extern "C" void KernelArchInit()
 		vmm::MapPageDescriptor(&vmm::g_kernelContext, hpetPD);
 		arch::g_hpetAddress = (arch::HPET*)hpetPD.virt;
 	}
-	logger::log("%s: Starting processors.\n", __func__);
-	size_t nCpus = arch::StartProcessors();
-	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
 	logger::log("%s: Registering IPI handler\n", __func__);
 	arch::RegisterIPIHandler();
 #if OBOS_KDBG_ENABLED
 	logger::log("%s: Enabling kernel debugger.\n", __func__);
 	kdbg::init_kdbg(kdbg::input_format::PS2_KEYBOARD, kdbg::output_format::CONSOLE);
 #endif
+	logger::log("%s: Starting processors.\n", __func__);
+	size_t nCpus = arch::StartProcessors();
+	logger::debug("%s: Started %ld cores.\n", __func__, nCpus);
 	// sign[0] = 'F';
 	// sign[1] = 'A';
 	// sign[2] = 'C';
@@ -196,7 +196,7 @@ extern "C" void KernelArchInit()
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	scheduler::InitializeScheduler();
 	scheduler::StartKernelMainThread(kmain);
-	LowerIRQL(oldIRQL);
+	LowerIRQL(oldIRQL, false);
 	// Configure watchdog timer to wait for the LAPIC timer for one second.
 	// If it fails, assume something messed up and forgot to send an EOI.
 	uint64_t timer = calibrateHPET(scheduler::g_schedulerFrequency/2);

@@ -12,6 +12,11 @@ global _ZN4obos6memcmpEPKvim ; blk1, against, size
 global _ZN4obos6strcmpEPKcS1_
 global _ZN4obos6strlenEPKc
 
+global memcmp
+global memcpy
+global memset
+
+memset:
 _ZN4obos6memsetEPvjm:
 	push rbp
 	mov rbp, rsp
@@ -36,6 +41,7 @@ _ZN4obos7memzeroEPvm:
 
 	leave
 	ret
+memcpy:
 _ZN4obos6memcpyEPvPKvm:
 	push rbp
 	mov rbp, rsp
@@ -46,6 +52,7 @@ _ZN4obos6memcpyEPvPKvm:
 
 	leave
 	ret
+memcmp:
 _ZN4obos6memcmpEPKvS1_m:
 	push rbp
 	mov rbp, rsp
@@ -60,7 +67,7 @@ _ZN4obos6memcmpEPKvim:
 	push rbp
 	mov rbp, rsp
 
-	mov al, dil
+	mov al, sil
 	mov rcx, rdx
 	repe scasb
 	sete al

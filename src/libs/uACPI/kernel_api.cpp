@@ -7,7 +7,6 @@
 #include <new>
 
 #include <int.h>
-#include <todo.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -59,10 +58,10 @@ extern "C"
 #endif
 		switch (byteWidth)
 		{
-			case 1: *out_value = *( uint8_t*)virt; break;
-			case 2: *out_value = *(uint16_t*)virt; break;
-			case 4: *out_value = *(uint32_t*)virt; break;
-			case 8: *out_value = *(uint64_t*)virt; break;
+			case 1: *out_value = *(volatile  uint8_t*)virt; break;
+			case 2: *out_value = *(volatile uint16_t*)virt; break;
+			case 4: *out_value = *(volatile uint32_t*)virt; break;
+			case 8: *out_value = *(volatile uint64_t*)virt; break;
 			default: return UACPI_STATUS_INVALID_ARGUMENT;
 		}
 		return UACPI_STATUS_OK;
@@ -74,10 +73,10 @@ extern "C"
 #endif
 		switch (byteWidth)
 		{
-			case 1: *( uint8_t*)virt = in_value; break;
-			case 2: *(uint16_t*)virt = in_value; break;
-			case 4: *(uint32_t*)virt = in_value; break;
-			case 8: *(uint64_t*)virt = in_value; break;
+			case 1: *(volatile  uint8_t*)virt = in_value; break;
+			case 2: *(volatile uint16_t*)virt = in_value; break;
+			case 4: *(volatile uint32_t*)virt = in_value; break;
+			case 8: *(volatile uint64_t*)virt = in_value; break;
 			default: return UACPI_STATUS_INVALID_ARGUMENT;
 		}
 		return UACPI_STATUS_OK;
@@ -100,25 +99,33 @@ extern "C"
 			return UACPI_STATUS_INVALID_ARGUMENT;
 		uacpi_status status = UACPI_STATUS_OK;
 		if (byteWidth == 1)
+		{
 			if (readB)
 				*out_value = readB(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 2)
+		{
 			if (readW)
 				*out_value = readW(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 4)
+		{
 			if (readD)
 				*out_value = readD(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 8)
+		{
 			if (readQ)
 				*out_value = readQ(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		return status;
 	}
 	uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
@@ -139,25 +146,33 @@ extern "C"
 			return UACPI_STATUS_INVALID_ARGUMENT;
 		uacpi_status status = UACPI_STATUS_OK;
 		if (byteWidth == 1)
+		{
 			if (writeB)
 				writeB(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 2)
+		{
 			if (writeW)
 				writeW(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 4)
+		{
 			if (writeD)
 				writeD(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 8)
+		{
 			if (writeQ)
 				writeQ(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		return status;
 	}
 #ifdef __x86_64__
@@ -281,7 +296,6 @@ extern "C"
 	// static bool s_uACPIAllocatorInitialized = false;
 	void* uacpi_kernel_alloc(uacpi_size size)
 	{
-		static size_t nAllocationsSinceLastFree = 0;
 		// logger::debug("Attempting allocation of %lu bytes.\n", size);
 		// if (!s_uACPIAllocatorInitialized)
 		// {
@@ -370,7 +384,7 @@ extern "C"
 	}
 	uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle hnd)
 	{
-		bool* lock = (bool*)hnd;
+		volatile bool* lock = (volatile bool*)hnd;
 		uacpi_cpu_flags irql = 0;
 		RaiseIRQL(0xf, &irql);
 		const bool excepted = false;
@@ -378,12 +392,11 @@ extern "C"
 			spinlock_delay();
 		while (__atomic_compare_exchange_n(lock, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 			spinlock_delay();
-		logger::debug("Locked %p.\n", hnd);
 		return irql;
 	}
 	void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 	{
-		bool* lock = (bool*)hnd;
+		volatile bool* lock = (bool*)hnd;
 		__atomic_store_n(&lock, false, __ATOMIC_SEQ_CST);
 		LowerIRQL(oldIrql);
 	}
@@ -398,7 +411,7 @@ extern "C"
 
 	uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle _e, uacpi_u16 t)
 	{
-		size_t* e = (size_t*)_e;
+		volatile size_t* e = (size_t*)_e;
 		if (t == 0xffff)
 		{
 			while (*e > 0);
@@ -413,12 +426,12 @@ extern "C"
 	}
 	void uacpi_kernel_signal_event(uacpi_handle _e)
 	{
-		size_t* e = (size_t*)_e;
+		volatile size_t* e = (size_t*)_e;
 		__atomic_fetch_add(e, 1, __ATOMIC_SEQ_CST);
 	}
 	void uacpi_kernel_reset_event(uacpi_handle _e)
 	{
-		size_t* e = (size_t*)_e;
+		volatile size_t* e = (size_t*)_e;
 		__atomic_store_n(e, 0, __ATOMIC_SEQ_CST);
 	}
 	struct io_range
@@ -460,7 +473,7 @@ extern "C"
 	}
 	struct mutex
 	{
-		bool locked = false;
+		volatile bool locked = false;
 		// If nullptr, locked.
 		scheduler::Thread* owner = nullptr;
 	};
@@ -521,7 +534,7 @@ extern "C"
 	void uacpi_kernel_stall(uacpi_u8 usec)
 	{
 		// This (hopefully) should be enough context saved.
-		uint8_t fpuState[512] = {};
+		volatile uint8_t fpuState[512] = {};
 		asm volatile("fxsave (%0)" : : "r"(fpuState):);
 		for (uint64_t comparatorValue = calibrateHPET(1/(usec/1000000.f)); arch::g_hpetAddress->mainCounterValue < comparatorValue;)
 			pause();
@@ -530,7 +543,7 @@ extern "C"
 	void uacpi_kernel_sleep(uacpi_u64 msec)
 	{
 		// This (hopefully) should be enough context saved.
-		uint8_t fpuState[512] = {};
+		volatile uint8_t fpuState[512] = {};
 		asm volatile("fxsave (%0)" : : "r"(fpuState):);
 		for (uint64_t comparatorValue = calibrateHPET(1.f/((float)msec)*1000.f); arch::g_hpetAddress->mainCounterValue < comparatorValue;)
 			pause();
@@ -547,7 +560,7 @@ extern "C"
 	{
 		Irq *irqHnd = new Irq{ IRQL_GPE, false, true };
 		// Ask the IOAPIC (nicely) to register the irq to our vector.
-#if defined(__x86_64__) || 1
+#if defined(__x86_64__)
 		if (!IOAPIC_MapIRQToVector(irq, irqHnd->GetVector() + 0x20, true, triggerMode::LevelSensitive))
 			return UACPI_STATUS_INVALID_ARGUMENT;
 #endif
@@ -638,15 +651,7 @@ extern "C"
 									s_nWork--;
 									s_workQueueLock.Unlock();
 									// Kill ourself.
-									TODO("Do a more sane way of killing the current thread.");
-									Thread *cur = scheduler::GetCPUPtr()->currentThread;
-									cur->flags = (scheduler::ThreadFlags)((uint32_t)cur->flags | (uint32_t)scheduler::ThreadFlags::IsDead);
-									scheduler::GetCPUPtr()->dpcList.Remove(cur);
-									// vmm::Free(cur->addressSpace, (void*)cur->thread_stack.base, cur->thread_stack.size);
-									if (!(--cur->referenceCount))
-										delete cur;
-									scheduler::GetCPUPtr()->currentThread = nullptr;
-									scheduler::yield();
+									scheduler::ExitCurrentThread();
 									while(1); 
 								}, /* The thread's entry */
 								 (uintptr_t)work, /* The thread's first parameter */
