@@ -171,7 +171,7 @@ namespace obos
 		uint32_t maximumRedirectionEntries = GetIOAPICRegisterOffset(ioapicVersion);
 		maximumRedirectionEntries = (g_IOAPICAddress->ReadRegister(maximumRedirectionEntries) >> 16) & 0xff;
 		uint8_t redirectionEntryIndex = getRedirectionEntryIndex(irq);
-		if (redirectionEntryIndex > (maximumRedirectionEntries + 1))
+		if (redirectionEntryIndex >= maximumRedirectionEntries)
 			return false;
 		uint64_t redirectionEntryOffset = GetIOAPICRegisterOffset(redirectionEntries[redirectionEntryIndex]);
 		uint64_t _entry = (uint64_t)g_IOAPICAddress->ReadRegister(redirectionEntryOffset) | ((uint64_t)g_IOAPICAddress->ReadRegister(redirectionEntryOffset + 1) << 32);

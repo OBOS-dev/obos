@@ -53,6 +53,7 @@ namespace obos
 			friend uintptr_t FindBase(Context* ctx, uintptr_t startRange, uintptr_t endRange, size_t size);
 		private:
 			struct page_node* ImplGetNode(void* virt) const;
+			void ImplAppendPageNode(struct page_node* node);
 			// -1: corruption.
 			//  0: success.
 			//  1: error

@@ -18,6 +18,8 @@
 
 #include <irq/irql.h>
 
+#include <arch/vmm_defines.h>
+
 namespace obos
 {
 #define MAP_TO_HHDM(addr) (hhdm_offset.response->offset + (uintptr_t)(addr))
@@ -36,9 +38,10 @@ namespace obos
 	};
 	MemoryNode *g_memoryHead, *g_memoryTail;
 	size_t g_nMemoryNodes;
+	size_t g_nPhysPagesUsed = 0;
 	bool g_pmmInitialized = false;
 	locks::SpinLock g_pmmLock;
-	static uintptr_t CalculateHHDMLimit()
+	static OBOS_NO_KASAN uintptr_t CalculateHHDMLimit()
 	{
 		auto lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - 1];
 		uintptr_t limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
@@ -59,25 +62,29 @@ namespace obos
 		// Round the limit up.
 		limit += 0x200000;
 		limit &= ~(0x200000 - 1);
+		// Add one last big page to it...
+		limit += OBOS_HUGE_PAGE_SIZE;
 		return limit;
 	}
 	namespace arch
 	{
-		uintptr_t getHHDMLimit()
+		OBOS_NO_KASAN uintptr_t getHHDMLimit()
 		{
 			if (g_pmmInitialized)
 				return hhdm_limit;
 			return CalculateHHDMLimit();
 		}
 	}
-	void InitializePMM()
+	OBOS_NO_KASAN void InitializePMM()
 	{
 		if (g_pmmInitialized)
 			return;
-		new (&g_pmmLock) locks::SpinLock{};
+		new (&g_pmmLock) locks::SpinLock{ 0xf };
 		g_pmmLock.Lock();
 		for (size_t i = 0; i < mmap_request.response->entry_count; i++)
 		{
+			if (mmap_request.response->entries[i]->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE || mmap_request.response->entries[i]->type == LIMINE_MEMMAP_KERNEL_AND_MODULES)
+				g_nPhysPagesUsed += ((mmap_request.response->entries[i]->length + 0xfff) & ~0xfff) >> 12;
 			if (mmap_request.response->entries[i]->type != LIMINE_MEMMAP_USABLE)
 				continue;
 			uintptr_t base = mmap_request.response->entries[i]->base;
@@ -103,14 +110,11 @@ namespace obos
 		g_pmmInitialized = true;
 	}
 
-	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
+	OBOS_NO_KASAN uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
 	{
 		if (!g_nMemoryNodes)
 			logger::panic(nullptr, "No more available physical memory left.\n");
-		uint8_t oldIRQL = 0xff;
 		g_pmmLock.Lock();
-		if (GetIRQL() < 2)
-			RaiseIRQL(2, &oldIRQL);
 		MemoryNode* node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)g_memoryHead);
 		MemoryNode* nodePhys = g_memoryHead;
 		uintptr_t ret = (uintptr_t)g_memoryHead;
@@ -124,8 +128,7 @@ namespace obos
 			node = node->next;
 			if (!node)
 			{
-				if (oldIRQL != 0xff)
-					LowerIRQL(oldIRQL);
+				g_pmmLock.Unlock();
 				return 0; // Not enough physical memory to satisfy request of nPages.
 			}
 			nodePhys = node;
@@ -154,12 +157,11 @@ namespace obos
 			node->prev = nullptr;
 		}
 		ret = (uintptr_t)nodePhys + node->nPages * 4096;
-		if (oldIRQL != 0xff)
-			LowerIRQL(oldIRQL);
 		g_pmmLock.Unlock();
+		__atomic_add_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 		return ret;
 	}
-	void FreePhysicalPages(uintptr_t addr, size_t nPages)
+	OBOS_NO_KASAN void FreePhysicalPages(uintptr_t addr, size_t nPages)
 	{
 		OBOS_ASSERTP(addr != 0, "Attempt free of physical address zero.\n");
 		addr &= ~0xfff;
@@ -178,6 +180,7 @@ namespace obos
 		node->nPages = nPages;
 		g_nMemoryNodes++;
 		g_pmmLock.Unlock();
+		__atomic_sub_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 	}
 	static void swapNodes(MemoryNode* node, MemoryNode* nodePhys, MemoryNode* with, MemoryNode* withPhys)
 	{
@@ -227,7 +230,7 @@ namespace obos
 		else if (g_memoryTail == nodePhys)
 			g_memoryTail = withPhys;
 	}
-	void OptimizePMMFreeList()
+	OBOS_NO_KASAN void OptimizePMMFreeList()
 	{
 		g_pmmLock.Lock();
 		MemoryNode* currentNode = CMAP_TO_HHDM(g_memoryHead);
@@ -296,7 +299,7 @@ namespace obos
 		g_pmmLock.Unlock();
 	}
 
-	void* MapToHHDM(uintptr_t phys)
+	OBOS_NO_KASAN void* MapToHHDM(uintptr_t phys)
 	{
 		return (void*)MAP_TO_HHDM(phys);
 	}

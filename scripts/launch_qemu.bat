@@ -14,7 +14,7 @@ qemu-system-x86_64 ^
 -monitor stdio ^
 -debugcon file:CON ^
 -serial tcp:0.0.0.0:1534,server,nowait ^
--smp cores=2,threads=1,sockets=1 ^
+-smp cores=4,threads=1,sockets=1 ^
 -d int ^
 -D qemu_log.txt
 rem -drive if=pflash,format=raw,unit=1,file=ovmf/OVMF_VARS_4M.fd ^

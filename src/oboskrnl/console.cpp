@@ -37,7 +37,7 @@ namespace obos
 		m_lock.Unlock();
 	}
 
-	static void fillBackgroundTransparent(Framebuffer& framebuffer, Pixel backgroundColour, Pixel initialBackgroundColour)
+	static OBOS_NO_KASAN void fillBackgroundTransparent(Framebuffer& framebuffer, Pixel backgroundColour, Pixel initialBackgroundColour)
 	{
 		for (uint32_t i = 0; i < framebuffer.height * framebuffer.width * framebuffer.bpp / 8; i += (framebuffer.bpp / 8))
 		{
@@ -68,7 +68,7 @@ namespace obos
 			PlotPixel(pixel == initialBackgroundColour ? backgroundColour : pixel, ((uint8_t*)framebuffer.address) + i, framebuffer.format);
 		}
 	}
-	void Console::SetColour(Pixel fg, Pixel bg, bool fillBg)
+	OBOS_NO_KASAN void Console::SetColour(Pixel fg, Pixel bg, bool fillBg)
 	{
 		if (m_backgroundColour != bg && fillBg)
 			fillBackgroundTransparent(*m_drawBuffer, bg, m_backgroundColour);
@@ -124,7 +124,7 @@ namespace obos
 			*drawToFB = (m_drawBuffer == &m_framebuffer);
 	}
 
-	void Console::ClearConsole(Pixel bg)
+	OBOS_NO_KASAN void Console::ClearConsole(Pixel bg)
 	{
 		if (!m_drawBuffer)
 			return;
@@ -157,7 +157,7 @@ namespace obos
 			break;
 		}
 	}
-	void Console::newlineHandler()
+	OBOS_NO_KASAN void Console::newlineHandler()
 	{
 		m_x = 0;
 		if (++m_y == m_maxY)
@@ -168,7 +168,7 @@ namespace obos
 			m_y--;
 		}
 	}
-	static void PlotPixel(Pixel colour, uint8_t* fb, FramebufferFormat fbFmt)
+	OBOS_NO_KASAN static void PlotPixel(Pixel colour, uint8_t* fb, FramebufferFormat fbFmt)
 	{
 		switch (fbFmt)
 		{
@@ -192,7 +192,7 @@ namespace obos
 			break;
 		}
 	}
-	void Console::__ImplPutChar(char ch, uint32_t x, uint32_t y, Pixel fc, Pixel bc)
+	OBOS_NO_KASAN void Console::__ImplPutChar(char ch, uint32_t x, uint32_t y, Pixel fc, Pixel bc)
 	{
 		if (!m_drawBuffer)
 			return;

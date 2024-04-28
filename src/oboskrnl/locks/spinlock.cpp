@@ -29,7 +29,7 @@ namespace obos
 #else
 #	error Unknown arch.
 #endif
-		bool SpinLock::Lock()
+		OBOS_NO_KASAN bool SpinLock::Lock()
 		{
 			m_oldIRQL = 0xff;
 			if (GetIRQL() < m_minimumIRQL)
@@ -67,7 +67,7 @@ namespace obos
 			}
 			return m_locked;
 		}
-		bool SpinLock::Unlock()
+		OBOS_NO_KASAN bool SpinLock::Unlock()
 		{
 			if (!Locked())
 				return false; // We shouldn't be lowering the IRQL to an undefined value.
@@ -76,7 +76,7 @@ namespace obos
 				LowerIRQL(m_oldIRQL);
 			return Locked();
 		}
-		bool SpinLock::Locked() const
+		OBOS_NO_KASAN bool SpinLock::Locked() const
 		{
 			return __atomic_load_n(&m_locked, __ATOMIC_SEQ_CST);
 		}

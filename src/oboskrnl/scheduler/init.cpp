@@ -48,12 +48,10 @@ namespace obos
 				return false;
 			new (&g_schedulerIRQ) Irq{ 2, false };
 			g_schedulerIRQ.SetHandler(sched_timer_int, nullptr);
-			logger::debug("%s: Starting idle threads and the timer IRQ on all CPUs.\n", __func__);
 			// Start the idle threads and the timer on all CPUs.
 			for (size_t i = 0; i < g_nCPUs; i++)
 			{
 				g_defaultAffinity |= (1<<g_cpuInfo[i].cpuId);
-				logger::debug("%s: Starting idle thread for CPU %d.\n", __func__, g_cpuInfo[i].cpuId);
 				Thread* thr = new Thread{};
 				thr->tid = g_nextTID++;
 				thr->referenceCount = 0;
@@ -66,7 +64,6 @@ namespace obos
 				thr->addressSpace = &vmm::g_kernelContext;
 				arch::SetupThreadContext(&thr->context, &thr->thread_stack, (uintptr_t)idleTask, (uintptr_t)&g_cpuInfo[i], false, 0x4000, thr->addressSpace);
 				g_cpuInfo[i].idleThread = thr;
-				logger::debug("%s: Starting timer for CPU %d.\n", __func__, g_cpuInfo[i].cpuId);
 				arch::StartTimerOnCPU(&g_cpuInfo[i], g_schedulerFrequency, g_schedulerIRQ);
 			}
 			g_initialized = true;

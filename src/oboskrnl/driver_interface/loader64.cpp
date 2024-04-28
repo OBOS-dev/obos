@@ -225,16 +225,21 @@ namespace obos
 		{
 			return false;
 		}
-#define removeNode(head,tail,nNodes,node)do {\
-if (node->prev)\
-	node->prev->next = node->next;\
-if (node->next)\
-	node->next->prev = node->prev;\
-if (head == node)\
-	head = node;\
-if (tail == node)\
-	tail = node;\
-nNodes--; } while(0)
+#define removeNode(head,tail,nNodes,node) \
+do {\
+	if (node)\
+	{\
+		if (node->prev)\
+			node->prev->next = node->next;\
+		if (node->next)\
+			node->next->prev = node->prev;\
+		if (head == node)\
+			head = node;\
+		if (tail == node)\
+			tail = node;\
+		nNodes--;\
+	}\
+} while (0)
 		void driverIdList::Append(driverId* id)
 		{
 			if (!id)

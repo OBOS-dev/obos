@@ -23,6 +23,8 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
+#include <arch/smp_cpu_func.h>
+
 #include <allocators/allocator.h>
 
 #include <scheduler/cpu_local.h>
@@ -42,6 +44,7 @@
 
 namespace obos
 {
+	static kdbg::cpu_local_debugger_state s_dbgState;
 	extern volatile limine_kernel_file_request kernel_file;
 	void addr2sym(uintptr_t rip, const char** const symbolName, uintptr_t* symbolBase, uint8_t symType);
 	const elf::Elf64_Shdr* getSectionHeader(const elf::Elf64_Ehdr* ehdr, const char* name);
@@ -584,6 +587,33 @@ namespace obos
 			delete payload;
 			return val;
 		}
+		void setupDRsForBreakpoint(bp* _breakpoint)
+		{
+			switch (_breakpoint->idx)
+			{
+			case 0: asm volatile("mov %0, %%dr0" : : "r"(_breakpoint->rip) : ); break;
+			case 1: asm volatile("mov %0, %%dr1" : : "r"(_breakpoint->rip) : ); break;
+			case 2: asm volatile("mov %0, %%dr2" : : "r"(_breakpoint->rip) : ); break;
+			case 3: asm volatile("mov %0, %%dr3" : : "r"(_breakpoint->rip) : ); break;
+			default: break;
+			}
+			uintptr_t dr7 = 0;
+			asm volatile("mov %%dr7, %0" :"=r"(dr7) ::);
+			dr7 |= (1 << (_breakpoint->idx * 2 + 1));
+			asm volatile("mov %0, %%dr7" ::"r"(dr7) : );
+			for (size_t i = 0; i < scheduler::g_nCPUs; i++)
+			{
+				auto cpu = &scheduler::g_cpuInfo[i];
+				if (cpu == scheduler::GetCPUPtr())
+					continue;
+				if (!cpu->initialized)
+					continue;
+				set_drn_on_cpu(cpu, _breakpoint->idx, _breakpoint->rip);
+				dr7 = get_drn_on_cpu(cpu, 7);
+				dr7 |= (1 << (_breakpoint->idx * 2 + 1));
+				set_drn_on_cpu(cpu, 7, dr7);
+			}
+		}
 		bool set_breakpoint(uintptr_t rip)
 		{
 			if (g_kdbgState.nBreakpointsInUse == 4)
@@ -591,9 +621,9 @@ namespace obos
 				printf("Breakpoint limit of four breakpoints has been hit.\n");
 				return true;
 			}
-			auto breakpoint = new bp{ rip };
-			breakpoint->idx = g_kdbgState.nextBpIndex;
-			g_kdbgState.breakpoints[breakpoint->idx] = breakpoint;
+			auto _breakpoint = new bp{ rip };
+			_breakpoint->idx = g_kdbgState.nextBpIndex;
+			g_kdbgState.breakpoints[_breakpoint->idx] = _breakpoint;
 			if (!g_kdbgState.breakpoints[g_kdbgState.nextBpIndex + 1])
 				g_kdbgState.nextBpIndex++;
 			else
@@ -609,31 +639,9 @@ namespace obos
 				}
 			}
 			// Set the appropriate debug registers.
-			switch (breakpoint->idx)
-			{
-				case 0: asm volatile("mov %0, %%dr0" : :"r"(breakpoint->rip) : ); break;
-				case 1: asm volatile("mov %0, %%dr1" : :"r"(breakpoint->rip) : ); break;
-				case 2: asm volatile("mov %0, %%dr2" : :"r"(breakpoint->rip) : ); break;
-				case 3: asm volatile("mov %0, %%dr3" : :"r"(breakpoint->rip) : ); break;
-				default: break;
-			}
-			uintptr_t dr7 = 0;
-			asm volatile("mov %%dr7, %0" :"=r"(dr7) ::);
-			dr7 |= (1<<(breakpoint->idx*2+1));
-			asm volatile("mov %0, %%dr7" ::"r"(dr7):);
-			for (size_t i = 0; i < scheduler::g_nCPUs; i++)
-			{
-				auto cpu = &scheduler::g_cpuInfo[i];
-				if (cpu == scheduler::GetCPUPtr())
-					continue;
-				if (!cpu->initialized)
-					continue;
-				set_drn_on_cpu(cpu, breakpoint->idx, breakpoint->rip);
-				dr7 = get_drn_on_cpu(cpu, 7);
-				dr7 |= (1<<(breakpoint->idx*2+1));
-				set_drn_on_cpu(cpu, 7, dr7);
-			}
-			printf("Created breakpoint %d at rip=0x%p (%s+%ld).\n", breakpoint->idx, (void*)rip, breakpoint->funcInfo.name, rip-breakpoint->funcInfo.base);
+			_breakpoint->awaitingSmpRefresh = arch::g_initializedAllCPUs;
+			setupDRsForBreakpoint(_breakpoint);
+			printf("Created breakpoint %d at rip=0x%p (%s+%ld).\n", _breakpoint->idx, (void*)rip, _breakpoint->funcInfo.name, rip-_breakpoint->funcInfo.base);
 			return true;
 		}
 		bool delete_breakpoint(size_t idx)
@@ -825,7 +833,7 @@ namespace obos
 			else
 				c = new colour_changer{};
 			unique_ptr pC = c;
-			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
+			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr() ? scheduler::GetCPUPtr()->archSpecific.debugger_state : s_dbgState;
 			bool shouldRun = true;
 			while(shouldRun)
 			{
@@ -1083,7 +1091,7 @@ namespace obos
 		{
 			if (!g_initialized)
 				return false; // We shouldn't be handling anything.
-			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
+			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr() ? scheduler::GetCPUPtr()->archSpecific.debugger_state : s_dbgState;
 			dbg_state.context.frame = *frame;
 			if (isBpInstruction)
 			{
@@ -1170,7 +1178,7 @@ namespace obos
 					idx = __builtin_ctzll(dr6);
 				}
 				printf("Opening debug terminal...\n");
-				bool ret =   dbg_terminal();
+				bool ret = dbg_terminal();
 				dbg_state.context.frame.rflags |= RFLAGS_RESUME;
 				*frame = dbg_state.context.frame;
 				return false;
@@ -1180,10 +1188,10 @@ namespace obos
 		bool exceptionHandler(interrupt_frame* frame)
 		{
 			if (!g_initialized)
-				return false; // We shouldn't be handling anything.
+				return true; // We shouldn't be handling anything.
 			uint8_t oldIRQL = 0;
 			RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
-			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr()->archSpecific.debugger_state;
+			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr() ? scheduler::GetCPUPtr()->archSpecific.debugger_state : s_dbgState;
 			dbg_state.context.frame = *frame;
 			dbg_state.context.irql = oldIRQL;
 			dbg_state.context.gs_base = rdmsr(0xC0000101);

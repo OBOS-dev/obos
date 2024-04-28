@@ -3,6 +3,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if __GNUC__
+#	define OBOS_NO_KASAN __attribute__((no_sanitize_address))
+#else
+#	define OBOS_NO_KASAN
+#endif
 #if defined(__cplusplus)
 namespace obos
 {

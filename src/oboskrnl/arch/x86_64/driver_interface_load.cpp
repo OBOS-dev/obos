@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <memmanip.h>
 
 #include <utils/vector.h>
