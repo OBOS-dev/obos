@@ -99,25 +99,33 @@ extern "C"
 			return UACPI_STATUS_INVALID_ARGUMENT;
 		uacpi_status status = UACPI_STATUS_OK;
 		if (byteWidth == 1)
+		{
 			if (readB)
 				*out_value = readB(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 2)
+		{
 			if (readW)
 				*out_value = readW(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 4)
+		{
 			if (readD)
 				*out_value = readD(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 8)
+		{
 			if (readQ)
 				*out_value = readQ(address);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		return status;
 	}
 	uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
@@ -138,25 +146,33 @@ extern "C"
 			return UACPI_STATUS_INVALID_ARGUMENT;
 		uacpi_status status = UACPI_STATUS_OK;
 		if (byteWidth == 1)
+		{
 			if (writeB)
 				writeB(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 2)
+		{
 			if (writeW)
 				writeW(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 4)
+		{
 			if (writeD)
 				writeD(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		if (byteWidth == 8)
+		{
 			if (writeQ)
 				writeQ(address, in_value);
 			else
 				status = UACPI_STATUS_INVALID_ARGUMENT;
+		}
 		return status;
 	}
 #ifdef __x86_64__
@@ -280,7 +296,6 @@ extern "C"
 	// static bool s_uACPIAllocatorInitialized = false;
 	void* uacpi_kernel_alloc(uacpi_size size)
 	{
-		static size_t nAllocationsSinceLastFree = 0;
 		// logger::debug("Attempting allocation of %lu bytes.\n", size);
 		// if (!s_uACPIAllocatorInitialized)
 		// {
@@ -377,7 +392,6 @@ extern "C"
 			spinlock_delay();
 		while (__atomic_compare_exchange_n(lock, (bool*)&excepted, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 			spinlock_delay();
-		logger::debug("Locked %p.\n", hnd);
 		return irql;
 	}
 	void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
