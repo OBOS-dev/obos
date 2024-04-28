@@ -49,6 +49,7 @@ extern "C" void RaiseIRQLForScheduler()
 
 namespace obos
 {
+	extern uint8_t asan_stack_poison;
 	namespace arch
 	{
 		void SetupThreadContext(ThreadContextInfo* info, 
@@ -72,6 +73,9 @@ namespace obos
 			stack->size = stackSize;
 			info->frame.rsp = stack->base + stack->size - 8;
 			info->irql = 0;
+//#if OBOS_KASAN_ENABLED
+//			memset((void*)stack->base, asan_stack_poison, stack->size);
+//#endif
 		}
 		void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame)
 		{

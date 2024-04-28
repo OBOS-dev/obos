@@ -196,7 +196,7 @@ extern "C" void KernelArchInit()
 	__cpuid__(0xd, 0, nullptr, nullptr, (uint32_t*)&arch::ThreadContextInfo::xsave_size, nullptr);
 	scheduler::InitializeScheduler();
 	scheduler::StartKernelMainThread(kmain);
-	LowerIRQL(oldIRQL);
+	LowerIRQL(oldIRQL, false);
 	// Configure watchdog timer to wait for the LAPIC timer for one second.
 	// If it fails, assume something messed up and forgot to send an EOI.
 	uint64_t timer = calibrateHPET(scheduler::g_schedulerFrequency/2);

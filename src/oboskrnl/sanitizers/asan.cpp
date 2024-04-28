@@ -30,13 +30,12 @@ namespace obos
 		InvalidType = 0,
 		InvalidAccess,
 		ShadowSpaceAccess,
+		StackShadowSpaceAccess,
 	};
-	OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool abort = false)
+	uint8_t asan_poison = 0xDE;
+	//uint8_t asan_stack_poison = 0xA5;
+	OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool)
 	{
-//#if OBOS_KDBG_ENABLED && defined(__x86_64__)
-//		if (kdbg::g_initialized)
-//			breakpoint();
-//#endif
 		switch (type)
 		{
 		case obos::asan_violation_type::InvalidAccess:
@@ -45,11 +44,13 @@ namespace obos
 		case obos::asan_violation_type::ShadowSpaceAccess:
 			logger::reportKASANViolation("ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Pointer is in shadow space).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 			break;
+		// FIXME: Random IRQL bugs.
+		/*case obos::asan_violation_type::StackShadowSpaceAccess:
+			logger::reportKASANViolation("ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Pointer is an uninitialized stack variable).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+			break;*/
 		default:
 			break;
 		}
-		/*else
-			logger::error(format, (void*)ip, rw ? "write" : "read", sz, (void*)addr);*/
 	}
 	static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size)
 	{
@@ -72,6 +73,48 @@ namespace obos
 		}
 		return true;
 	}
+	OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
+	{
+		// Verify this memory is actually poisoned and not just coincidentally set to the poison.
+		// Note: This method might not report all shadow space accesses.
+		// First check 16 bytes after and before the pointer, and if either are poisoned, it is safe to assume that this access is that of the shadow space.
+		bool isPoisoned = false;
+		bool shortCircuitedFirst = false, shortCircuitedSecond = false;
+		if (OBOS_CROSSES_PAGE_BOUNDARY(at - 16, 16))
+			if ((shortCircuitedFirst = !isAllocated(at - 16, 16)))
+				goto short_circuit1;
+		isPoisoned = memcmp((void*)(at - 16), asan_poison, 16);
+		short_circuit1:
+		if (!isPoisoned)
+			if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 16))
+				if ((shortCircuitedSecond = !isAllocated(at + size, 16)))
+					goto short_circuit2;
+		isPoisoned = memcmp((void*)(at + size), asan_poison, 16);
+		short_circuit2:
+		if (isPoisoned || (shortCircuitedFirst && shortCircuitedSecond))
+			asan_report(at, size, ip, rw, asan_violation_type::ShadowSpaceAccess, abort);
+	}
+	//OBOS_NO_KASAN void asan_stack_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
+	//{
+	//	// Verify this memory is actually poisoned and not just coincidentally set to the poison.
+	//	// Note: This method might not report all shadow space accesses.
+	//	// First check 8 bytes after and before the pointer, and if either are poisoned, it is safe to assume that this access is that of the stackshadow space.
+	//	bool isPoisoned = false;
+	//	bool shortCircuitedFirst = false, shortCircuitedSecond = false;
+	//	if (OBOS_CROSSES_PAGE_BOUNDARY(at - 8, 8))
+	//		if ((shortCircuitedFirst = !isAllocated(at - 8, 8)))
+	//			goto short_circuit1;
+	//	isPoisoned = memcmp((void*)(at - 8), asan_stack_poison, 8);
+	//	short_circuit1:
+	//	if (!isPoisoned)
+	//		if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 8))
+	//			if ((shortCircuitedSecond = !isAllocated(at + size, 8)))
+	//				goto short_circuit2;
+	//	isPoisoned = memcmp((void*)(at + size), asan_stack_poison, 8);
+	//	short_circuit2:
+	//	if (isPoisoned || (shortCircuitedFirst && shortCircuitedSecond))
+	//		asan_report(at, size, ip, rw, asan_violation_type::StackShadowSpaceAccess, abort);
+	//}
 	OBOS_NO_KASAN void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 	{
 		bool crossesPageBoundary = OBOS_CROSSES_PAGE_BOUNDARY(at, size);
@@ -98,9 +141,11 @@ namespace obos
 			ps = OBOS_PAGE_SIZE;
 #endif
 		}
-		// Check if the address is poisoned.
-		if (memcmp((void*)at, 0xA5, size))
-			asan_report(at, size, ip, rw, asan_violation_type::ShadowSpaceAccess, abort);
+		// Check for shadow space accesses for both the stack and the kernel heap.
+		if (rw && memcmp((void*)at, asan_poison, size))
+			asan_shadow_space_access(at, size, ip, rw, abort);
+		/*if (!rw && memcmp((void*)at, asan_stack_poison, size))
+			asan_stack_shadow_space_access(at, size, ip, rw, abort);*/
 	}
 }
 

@@ -62,6 +62,7 @@ private:
 
 namespace obos
 {
+	extern uint8_t asan_poison;
 	namespace allocators
 	{
 		constexpr uintptr_t round_up(uintptr_t x, size_t to)
@@ -187,7 +188,7 @@ namespace obos
 			from->allocated.nNodes++;
 			from->nFreeBytes -= size;
 #if OBOS_KASAN_ENABLED
-			memset((uint8_t*)freeNode->getAllocAddr() + size - 256, 0xA5, 256);
+			memset((uint8_t*)freeNode->getAllocAddr() + size - 256, asan_poison, 256);
 #endif
 			return freeNode->getAllocAddr();
 		}
