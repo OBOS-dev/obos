@@ -142,6 +142,9 @@ namespace obos
 	{
 		uint8_t oldIRQL = 0;
 		RaiseIRQL(0xf, &oldIRQL, false);
+#ifdef __x86_64__
+		asm("sti");
+#endif
 		if (!(arch::IsSpuriousInterrupt(frame) && OBOS_NO_EOI_ON_SPURIOUS_INTERRUPT))
 			arch::SendEOI(frame);
 		IrqVector *vector = nullptr;
@@ -157,7 +160,7 @@ namespace obos
 		}
 		if (!vector)
 		{
-			logger::warning("%s: Could not find IrqVector object for interrupt vector %d.\n", __func__, frame->vector);
+			logger::warning("%s: Could not find IrqVector object for interrupt vector %lu.\n", __func__, frame->vector);
 			return;
 		}
 		for (auto node = vector->references.head; node; )
@@ -192,8 +195,8 @@ namespace obos
 											 dpcObject->addressSpace /* The thread's address space */
 											);
 					scheduler::GetCPUPtr()->dpcList.Append(dpcObject);
-					oldIRQL = 0xff;
 					LowerIRQL(oldIRQL, false);
+					oldIRQL = 0xff;
 					break;
 				}
 			}
