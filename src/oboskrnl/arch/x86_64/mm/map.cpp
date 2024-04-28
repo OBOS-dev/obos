@@ -32,6 +32,9 @@
 
 #define BIT(n) ((uintptr_t)1 << n)
 
+extern "C" uintptr_t KERNEL_BASE;
+extern "C" uintptr_t KERNEL_TOP;
+
 namespace obos
 {
 	extern volatile limine_hhdm_request hhdm_offset;
@@ -50,13 +53,13 @@ namespace obos
 	{
 		uintptr_t getKernelBase()
 		{
-			return g_kernelBase;
+			return ((uintptr_t)&KERNEL_BASE) & ~0xfff;
 		}
 		uintptr_t getKernelTop()
 		{
-			return g_kernelTop;
+			return (((uintptr_t)&KERNEL_TOP) + 0xfff) & ~0xfff;
 		}
-		uintptr_t DecodeProt(uintptr_t prot)
+		OBOS_NO_KASAN uintptr_t DecodeProt(uintptr_t prot)
 		{
 			uintptr_t ret = 0;
 			if (!(prot & vmm::PROT_NO_DEMAND_PAGE))
@@ -83,7 +86,7 @@ namespace obos
 				ret |= BIT(63);
 			return ret;
 		}
-		uintptr_t DecodeEntry(uintptr_t entry)
+		OBOS_NO_KASAN uintptr_t DecodeEntry(uintptr_t entry)
 		{
 			uintptr_t ret = 0, flags = entry;
 			flags &= ~((((uintptr_t)1 << GetPhysicalAddressBits()) - 1) << 12);
@@ -111,26 +114,26 @@ namespace obos
 			return ret;
 		}
 
-		void* map_page_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		OBOS_NO_KASAN void* map_page_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			return map_page_to(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), virt, phys, prot);
 		}
-		void* map_hugepage_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		OBOS_NO_KASAN void* map_hugepage_to(vmm::Context* ctx, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			return map_hugepage_to(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), virt, phys, prot);
 		}
 
-		void unmap(vmm::Context* ctx, void* addr)
+		OBOS_NO_KASAN void unmap(vmm::Context* ctx, void* addr)
 		{
 			unmap(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), addr);
 		}
 
-		void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out)
+		OBOS_NO_KASAN void get_page_descriptor(vmm::Context* ctx, void* addr, vmm::page_descriptor& out)
 		{
 			get_page_descriptor(ctx ? ctx->GetContext()->getCR3() : GetCurrentPageMap(), addr, out);
 		}
 
-		void* map_page_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		OBOS_NO_KASAN void* map_page_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(virt))
 				return nullptr;
@@ -147,7 +150,7 @@ namespace obos
 				invlpg(virt);
 			return (void*)virt;
 		}
-		void* map_hugepage_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
+		OBOS_NO_KASAN void* map_hugepage_to(PageMap* pm, uintptr_t virt, uintptr_t phys, vmm::prot_t prot)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(virt))
 				return nullptr;
@@ -167,7 +170,7 @@ namespace obos
 				invlpg(virt);
 			return (void*)virt;
 		}
-		void unmap(PageMap* pm, void* addr)
+		OBOS_NO_KASAN void unmap(PageMap* pm, void* addr)
 		{
 			uintptr_t virt = (uintptr_t)addr;
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(addr))
@@ -184,7 +187,7 @@ namespace obos
 			pm->FreePageMapAt(virt, 3 - (uint8_t)isHugePage);
 			invlpg(virt);
 		}
-		void get_page_descriptor(class PageMap* pm, void* addr, vmm::page_descriptor& out)
+		OBOS_NO_KASAN void get_page_descriptor(class PageMap* pm, void* addr, vmm::page_descriptor& out)
 		{
 			out.virt = ((uintptr_t)addr) & ~0xfff;
 			uintptr_t l2Entry = pm->GetL2PageMapEntryAt(out.virt);
@@ -222,11 +225,11 @@ namespace obos
 			out.phys = PageMap::MaskPhysicalAddressFromEntry(out.isHugePage ? l2Entry : l1Entry) + ((uintptr_t)addr & (out.isHugePage ? 0x1f'ffff : 0xfff));
 		}
 
-		uintptr_t AllocatePhysicalPages(size_t nPages, bool alignToHugePageSize)
+		OBOS_NO_KASAN uintptr_t AllocatePhysicalPages(size_t nPages, bool alignToHugePageSize)
 		{
 			return ::obos::AllocatePhysicalPages(nPages, alignToHugePageSize);
 		}
-		void FreePhysicalPages(uintptr_t base, size_t nPages)
+		OBOS_NO_KASAN void FreePhysicalPages(uintptr_t base, size_t nPages)
 		{
 			base &= ~(OBOS_PAGE_SIZE-1);
 			::obos::FreePhysicalPages(base, nPages);
@@ -332,7 +335,7 @@ namespace obos
 			s_internalKernelContext.set(&s_kernelCr3);
 			new (&vmm::g_kernelContext) vmm::Context{ &s_internalKernelContext };
 		}
-		void register_allocated_pages_in_context(vmm::Context* ctx)
+		OBOS_NO_KASAN void register_allocated_pages_in_context(vmm::Context* ctx)
 		{
 			// Register the HHDM in the context.
 			vmm::page_node node{};

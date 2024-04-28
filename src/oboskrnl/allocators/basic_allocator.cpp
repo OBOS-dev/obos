@@ -22,6 +22,10 @@
 #include <arch/vmm_map.h>
 #include <arch/vmm_defines.h>
 
+#if __x86_64__
+#	include <arch/x86_64/mm/palloc.h>
+#endif
+
 struct safe_lock
 {
 	safe_lock() = delete;
@@ -69,6 +73,9 @@ namespace obos
 		void *BasicAllocator::Allocate(size_t size)
 		{
 			size = round_up(size, 0x10);
+#if OBOS_KASAN_ENABLED
+			size += 0x100 /* add 256 byte shadow space */;
+#endif
 			// First, find a region.
 			BasicAllocator::region* from = nullptr;
 			BasicAllocator::region* start = m_regionHead;
@@ -179,6 +186,9 @@ namespace obos
 			from->allocated.tail = freeNode;
 			from->allocated.nNodes++;
 			from->nFreeBytes -= size;
+#if OBOS_KASAN_ENABLED
+			memset((uint8_t*)freeNode->getAllocAddr() + size - 256, 0xA5, 256);
+#endif
 			return freeNode->getAllocAddr();
 		}
 		void* BasicAllocator::ReAllocate(void* base, size_t newSize)
@@ -191,6 +201,8 @@ namespace obos
 			if (!base)
 				return Allocate(newSize);
 			newSize = round_up(newSize, 0x10);
+			// NOTE: Memory corruption can happen with KASAN enabled if QueryObjectSize() doesn't remove the shadow space size from the size returned.
+			// Because of this, make sure to subtract the shadow space size if you ever decide to change this code to use the node directly.
 			size_t objSize = QueryObjectSize(base);
 			if (objSize == SIZE_MAX)
 				return nullptr;
@@ -258,9 +270,13 @@ namespace obos
 				return SIZE_MAX;
 			if (!n->_containingRegion)
 				return SIZE_MAX;
+#if OBOS_KASAN_ENABLED
+			return n->size - 256;
+#else
 			return n->size;
+#endif
 		}
-		BasicAllocator::region* BasicAllocator::allocateNewRegion(size_t size)
+		OBOS_NO_KASAN BasicAllocator::region* BasicAllocator::allocateNewRegion(size_t size)
 		{
 			size = round_up(size, OBOS_PAGE_SIZE*4);
 			size += sizeof(region) + sizeof(node);
@@ -269,16 +285,15 @@ namespace obos
 			BasicAllocator::region* blk = nullptr;
 			if (this == &vmm::g_vmmAllocator)
 			{
-				blk = (region*)vmm::RawAllocate(
-					(void*)vmm::FindBase(&vmm::g_kernelContext,
-						OBOS_KERNEL_ADDRESS_SPACE_USABLE_BASE, 
-						OBOS_KERNEL_ADDRESS_SPACE_LIMIT,
-						size
-					),
-					size,
-					vmm::FLAGS_GUARD_PAGE_LEFT|vmm::FLAGS_GUARD_PAGE_RIGHT,
-					0
-				);
+#ifdef __x86_64__
+				const size_t nPages = (size / OBOS_PAGE_SIZE) + ((size % OBOS_PAGE_SIZE) != 0);
+				uintptr_t phys = AllocatePhysicalPages(nPages);
+				if (!phys)
+					return nullptr;
+				blk = (region*)MapToHHDM(phys);
+#else
+#	error Unknown architecture.
+#endif
 				memzero(blk, size);
 			}
 			else
@@ -311,23 +326,6 @@ namespace obos
 			blk->prev = m_regionTail;
 			m_regionTail = blk;
 			m_nRegions++;
-			if (this == &vmm::g_vmmAllocator)
-			{
-				m_lock.Unlock();
-				void *res = vmm::Allocate(
-					&vmm::g_kernelContext, 
-					blk, 
-					size, 
-					vmm::FLAGS_RESERVE|vmm::FLAGS_GUARD_PAGE_LEFT|vmm::FLAGS_GUARD_PAGE_RIGHT|vmm::FLAGS_DBG_NO_CHECK_VIRTUAL_ADDRESS,
-					0
-				);
-				OBOS_ASSERTP(res, "Could not reserve page block.\n");
-				auto pgNode = vmm::g_kernelContext.GetPageNode(res);
-				OBOS_ASSERTP(pgNode, "No page node found");
-				for (size_t i = 0; i < pgNode->nPageDescriptors; i++)
-					arch::get_page_descriptor(&vmm::g_kernelContext, (void*)pgNode->pageDescriptors[i].virt, pgNode->pageDescriptors[i]);
-				m_lock.Lock();
-			}
 			return blk;
 		}
 		void BasicAllocator::freeRegion(BasicAllocator::region* block)
@@ -341,7 +339,15 @@ namespace obos
 			if (m_regionTail == block)
 				m_regionTail = block->prev;
 			m_nRegions--;
-			vmm::Free(&vmm::g_kernelContext, block, block->size+sizeof(*block));
+			if (this != &vmm::g_vmmAllocator)
+				vmm::Free(&vmm::g_kernelContext, block, block->size);
+			else
+			{
+#if __x86_64__
+				const size_t nPages = (block->size / OBOS_PAGE_SIZE) + ((block->size % OBOS_PAGE_SIZE) != 0);
+				FreePhysicalPages((uintptr_t)block-(uintptr_t)MapToHHDM(0), nPages);
+#endif
+			}
 		}
 		BasicAllocator::~BasicAllocator()
 		{

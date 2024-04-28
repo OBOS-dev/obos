@@ -127,13 +127,13 @@ namespace obos
 		}
 		extern bool g_halt;
 	}
-	uint32_t getCPUId()
+	OBOS_NO_KASAN uint32_t getCPUId()
 	{
 		if (!scheduler::GetCPUPtr())
 			return 0; // We're on the BSP
 		return scheduler::GetCPUPtr()->cpuId;
 	}
-	uint32_t getTID()
+	OBOS_NO_KASAN uint32_t getTID()
 	{
 		if (scheduler::GetCPUPtr() && scheduler::GetCPUPtr()->currentThread)
 			return scheduler::GetCPUPtr()->currentThread->tid;
@@ -143,7 +143,7 @@ namespace obos
 	{
 		return 0;
 	}
-	void defaultExceptionHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN void defaultExceptionHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIRQL = 0;
 		RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
@@ -167,7 +167,7 @@ namespace obos
 			"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
 			"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
 			"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
-			"\tCR4: 0x%016lx, CR8: 0x%016lx, EFER: 0x%016lx\n",
+			"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n",
 			frame->intNumber,
 			(frame->cs != 0x8) ? "user" : "kernel",
 			frame->rip,
@@ -188,7 +188,7 @@ namespace obos
 		);
 		asm volatile("nop");
 	}
-	bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
+	OBOS_NO_KASAN bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
 	{
 		arch::page_fault_handler_node* node = arch::s_pfHandlers.head;
 		while (node)
@@ -223,7 +223,7 @@ namespace obos
 			ret |= vmm::PageFault_Execution;
 		return ret;
 	}
-	void pageFaultHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN void pageFaultHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIRQL = 0;
 		RaiseIRQL(15, &oldIRQL);
@@ -305,7 +305,7 @@ namespace obos
 		);
 		asm volatile("nop");
 	}
-	void nmiHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN void nmiHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIrql = 0;
 		RaiseIRQL(0xf, &oldIrql);

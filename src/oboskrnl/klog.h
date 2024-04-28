@@ -57,7 +57,9 @@ namespace obos
 		OBOS_EXPORT FORMAT(printf, 1) size_t warning(const char* format, ...);
 		OBOS_EXPORT FORMAT(printf, 1) size_t error(const char* format, ...);
 		[[noreturn]] OBOS_EXPORT FORMAT(printf, 2) void panic(void* stackTraceParameter, const char* format, ...);
+		[[noreturn]] OBOS_EXPORT FORMAT(printf, 1) void reportKASANViolation(const char* format, ...);
 		[[noreturn]] OBOS_EXPORT void panicVariadic(void* stackTraceParameter, const char* format, va_list list);
+		[[noreturn]] OBOS_EXPORT void panicImpl(void* stackTraceParameter, bool fromKASANViolation, const char* format, va_list list);
 
 		OBOS_EXPORT void stackTrace(void* stackTraceParameter, const char* prefix = "\t", size_t(*outputCallback)(const char* format, ...) = printf);
 	}

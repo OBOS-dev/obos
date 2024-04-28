@@ -14,6 +14,7 @@ PHDRS
 SECTIONS
 {
     . = 0xffffffff80000000;
+    KERNEL_BASE = .;
 
     .text : {
         *(.text .text.*)
@@ -45,4 +46,5 @@ SECTIONS
         *(.note .note.*)
         *(.comment)
     }
+    KERNEL_TOP = .;
 }

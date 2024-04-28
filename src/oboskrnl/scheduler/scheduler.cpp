@@ -20,15 +20,15 @@ namespace obos
 	{
 		SchedulerTime g_ticks;
 		ThreadList g_threadPriorities[4];
-		bool check_thread_affinity(const Thread* thr)
+		OBOS_NO_KASAN bool check_thread_affinity(const Thread* thr)
 		{
 			return (thr->affinity & (1<<GetCPUPtr()->cpuId));
 		}
-		bool can_thread_run(const Thread* thr)
+		OBOS_NO_KASAN bool can_thread_run(const Thread* thr)
 		{
 			return check_thread_affinity(thr) && !((uint32_t)thr->flags & (uint32_t)ThreadFlags::IsDead) && thr->status == ThreadStatus::CanRun;
 		}
-		Thread* findThreadInList(ThreadList& list)
+		OBOS_NO_KASAN Thread* findThreadInList(ThreadList& list)
 		{
 			// Find a thread to run that has the following attributes:
 			// status == ThreadStatus::CanRun
@@ -50,7 +50,7 @@ namespace obos
 			}
 			return chosenThread;
 		}
-		void schedule()
+		OBOS_NO_KASAN void schedule()
 		{
 			if (!g_initialized)
 				return;
@@ -114,7 +114,7 @@ namespace obos
 			GetCPUPtr()->currentThread = chosenThread;
 			arch::SwitchToThrContext(&chosenThread->context);
 		}
-		void yield()
+		OBOS_NO_KASAN void yield()
 		{
 			if (!GetCPUPtr()->currentThread)
 			{

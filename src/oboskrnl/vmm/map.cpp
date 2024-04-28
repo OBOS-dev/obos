@@ -157,7 +157,7 @@ namespace obos
 #endif
 			return true;
 		}
-		uintptr_t FindBase(Context* ctx, uintptr_t base, uintptr_t limit, size_t size)
+		OBOS_NO_KASAN uintptr_t FindBase(Context* ctx, uintptr_t base, uintptr_t limit, size_t size)
 		{
 			if (base % OBOS_PAGE_SIZE)
 				base -= (base % OBOS_PAGE_SIZE);
@@ -203,6 +203,7 @@ namespace obos
 #endif
 			for (const page_node* node = ctx->GetHead(); node;)
 			{
+				OBOS_ASSERTP(node->pageDescriptors, "Page descriptor pointer in node is nullptr.\n");
 				if (InRange(node->pageDescriptors[0].virt, 
 					node->pageDescriptors[node->nPageDescriptors - 1].virt + (node->pageDescriptors[node->nPageDescriptors - 1].isHugePage ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE), 
 					base) &&

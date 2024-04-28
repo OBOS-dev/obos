@@ -73,5 +73,43 @@ namespace obos
 		{
 			return vmm_allocate(count);
 		}
+		static void vmm_free(void* ptr)
+		{
+			const size_t size = g_vmmAllocator.QueryObjectSize(ptr);
+			g_vmmAllocator.Free(ptr, size);
+		}
+		void page_descriptor::operator delete (void* ptr) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_descriptor::operator delete[](void* ptr) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_descriptor::operator delete (void* ptr, size_t count) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_descriptor::operator delete[](void* ptr, size_t size) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_node::operator delete (void* ptr) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_node::operator delete[](void* ptr) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_node::operator delete (void* ptr, size_t count) noexcept
+		{
+			vmm_free(ptr);
+		}
+		void page_node::operator delete[](void* ptr, size_t size) noexcept
+		{
+			vmm_free(ptr);
+		}
 	}
+
 }

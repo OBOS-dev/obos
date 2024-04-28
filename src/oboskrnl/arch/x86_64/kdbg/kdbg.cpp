@@ -1188,7 +1188,7 @@ namespace obos
 		bool exceptionHandler(interrupt_frame* frame)
 		{
 			if (!g_initialized)
-				return false; // We shouldn't be handling anything.
+				return true; // We shouldn't be handling anything.
 			uint8_t oldIRQL = 0;
 			RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
 			cpu_local_debugger_state& dbg_state = scheduler::GetCPUPtr() ? scheduler::GetCPUPtr()->archSpecific.debugger_state : s_dbgState;

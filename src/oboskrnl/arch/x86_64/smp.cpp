@@ -105,7 +105,7 @@ namespace obos
 			gdtr.base = (uintptr_t)info->archSpecific.gdt;
 			reload_gdt((uintptr_t)&gdtr);
 		}
-		[[noreturn]] void ProcStart(cpu_local* info)
+		[[noreturn]] OBOS_NO_KASAN void ProcStart(cpu_local* info)
 		{
 			InitializeGDTCPU(info);
 			// We must set GS_BASE before anything else, or we'll have problems (such as IRQL mismatching).

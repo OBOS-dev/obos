@@ -157,8 +157,21 @@ namespace obos
 		}
 		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
 		{
+			panicImpl(stackTraceParameter, false, format, list);
+		}
+		[[noreturn]] void reportKASANViolation(const char* format, ...)
+		{
+			va_list list;
+			va_start(list, format);
+			panicImpl(nullptr, true, format, list);
+			va_end(list);
+			while (1);
+		}
+		[[noreturn]] void panicImpl(void* stackTraceParameter, bool isKASANViolation, const char* format, va_list list)
+		{
 #if defined(__x86_64__) && OBOS_KDBG_ENABLED
-			breakpoint();
+			if (!isKASANViolation && kdbg::g_initialized)
+				breakpoint();
 #endif
 			arch::StopCPUs(false);
 			g_kernelConsole.SetColour(GREY, PANIC_RED);

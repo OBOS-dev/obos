@@ -26,41 +26,34 @@ namespace obos
 			m_internalContext = new arch::pg_context{};
 			m_internalContext->alloc();
 		}
-		void Context::AppendPageNode(const page_node& node)
+		void Context::ImplAppendPageNode(struct page_node* node)
 		{
-			page_node* newNode = new page_node{};
-			memzero(newNode, sizeof(*newNode));
-			OBOS_ASSERTP(newNode, "Could not allocate a page node.\n");
-			newNode->ctx = this;
-			newNode->pageDescriptors = node.pageDescriptors;
-			newNode->nPageDescriptors = node.nPageDescriptors;
-			newNode->allocFlags = node.allocFlags;
 			// Make sure to insert this node in order.
 			// Find the node that goes behind this and append the node off that.
-			if (m_tail && m_tail->pageDescriptors[0].virt < node.pageDescriptors[0].virt)
+			if (m_tail && m_tail->pageDescriptors[0].virt < node->pageDescriptors[0].virt)
 			{
 				// Append it
 				Lock();
 				if (m_tail)
-					m_tail->next = newNode;
-				if(!m_head)
-					m_head = newNode;
-				newNode->prev = m_tail;
-				m_tail = newNode;
+					m_tail->next = node;
+				if (!m_head)
+					m_head = node;
+				node->prev = m_tail;
+				m_tail = node;
 				m_nNodes++;
 				Unlock();
 				return;
 			}
-			else if (m_head && m_head->pageDescriptors[0].virt > node.pageDescriptors[0].virt)
+			else if (m_head && m_head->pageDescriptors[0].virt > node->pageDescriptors[0].virt)
 			{
 				// Prepend it
 				Lock();
 				if (m_head)
-					m_head->prev = newNode;
-				if(!m_tail)
-					m_tail = newNode;
-				newNode->next = m_head;
-				m_head = newNode;
+					m_head->prev = node;
+				if (!m_tail)
+					m_tail = node;
+				node->next = m_head;
+				m_head = node;
 				m_nNodes++;
 				Unlock();
 				return;
@@ -69,41 +62,63 @@ namespace obos
 			{
 				// Find the node that this node should go after.
 				Lock();
-				page_node *found = nullptr, *n = m_head;
-				while(n && n->next)
+				page_node* found = nullptr, * n = m_head;
+				while (n && n->next)
 				{
-					if (n->pageDescriptors[0].virt < node.pageDescriptors[0].virt &&
-						n->next->pageDescriptors[0].virt > node.pageDescriptors[0].virt)
+					if (n->pageDescriptors[0].virt < node->pageDescriptors[0].virt &&
+						n->next->pageDescriptors[0].virt > node->pageDescriptors[0].virt)
 					{
 						found = n;
 						break;
 					}
-					
+
 					n = n->next;
 				}
 				if (!found)
 				{
 					// Append it
 					if (m_tail)
-						m_tail->next = newNode;
-					if(!m_head)
-						m_head = newNode;
-					newNode->prev = m_tail;
-					m_tail = newNode;
+						m_tail->next = node;
+					if (!m_head)
+						m_head = node;
+					node->prev = m_tail;
+					m_tail = node;
 					m_nNodes++;
 					Unlock();
 					return;
 				}
 				if (found->next)
-					found->next->prev = newNode;
+					found->next->prev = node;
 				if (m_tail == found)
-					m_tail = newNode;
-				newNode->next = found->next;
-				found->next = newNode;
-				newNode->prev = found;
+					m_tail = node;
+				node->next = found->next;
+				found->next = node;
+				node->prev = found;
 				m_nNodes++;
 				Unlock();
 			}
+		}
+		void Context::AppendPageNode(const page_node& n)
+		{
+			page_node node = n;
+			// Temporarily append this node.
+			ImplAppendPageNode(&node);
+			page_node* newNode = new page_node{};
+			memzero(newNode, sizeof(*newNode));
+			OBOS_ASSERTP(newNode, "Could not allocate a page node.\n");
+			newNode->ctx = this;
+			newNode->pageDescriptors = node.pageDescriptors;
+			newNode->nPageDescriptors = node.nPageDescriptors;
+			newNode->allocFlags = node.allocFlags;
+			if (node.next)
+				node.next->prev = node.prev;
+			if (node.prev)
+				node.prev->next = node.next;
+			if (m_head == &node)
+				m_head = node.next;
+			if (m_tail == &node)
+				m_tail = node.prev;
+			ImplAppendPageNode(newNode);
 		}
 		void Context::RemovePageNode(void* virt)
 		{

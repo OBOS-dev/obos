@@ -18,6 +18,8 @@
 
 #include <irq/irql.h>
 
+#include <arch/vmm_defines.h>
+
 namespace obos
 {
 #define MAP_TO_HHDM(addr) (hhdm_offset.response->offset + (uintptr_t)(addr))
@@ -39,7 +41,7 @@ namespace obos
 	size_t g_nPhysPagesUsed = 0;
 	bool g_pmmInitialized = false;
 	locks::SpinLock g_pmmLock;
-	static uintptr_t CalculateHHDMLimit()
+	static OBOS_NO_KASAN uintptr_t CalculateHHDMLimit()
 	{
 		auto lastMMAPEntry = mmap_request.response->entries[mmap_request.response->entry_count - 1];
 		uintptr_t limit = hhdm_offset.response->offset + (uintptr_t)lastMMAPEntry->base + (lastMMAPEntry->length / 4096) * 4096;
@@ -60,18 +62,20 @@ namespace obos
 		// Round the limit up.
 		limit += 0x200000;
 		limit &= ~(0x200000 - 1);
+		// Add one last big page to it...
+		limit += OBOS_HUGE_PAGE_SIZE;
 		return limit;
 	}
 	namespace arch
 	{
-		uintptr_t getHHDMLimit()
+		OBOS_NO_KASAN uintptr_t getHHDMLimit()
 		{
 			if (g_pmmInitialized)
 				return hhdm_limit;
 			return CalculateHHDMLimit();
 		}
 	}
-	void InitializePMM()
+	OBOS_NO_KASAN void InitializePMM()
 	{
 		if (g_pmmInitialized)
 			return;
@@ -106,7 +110,7 @@ namespace obos
 		g_pmmInitialized = true;
 	}
 
-	uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
+	OBOS_NO_KASAN uintptr_t AllocatePhysicalPages(size_t nPages, bool align2MIB)
 	{
 		if (!g_nMemoryNodes)
 			logger::panic(nullptr, "No more available physical memory left.\n");
@@ -163,7 +167,7 @@ namespace obos
 		__atomic_add_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 		return ret;
 	}
-	void FreePhysicalPages(uintptr_t addr, size_t nPages)
+	OBOS_NO_KASAN void FreePhysicalPages(uintptr_t addr, size_t nPages)
 	{
 		OBOS_ASSERTP(addr != 0, "Attempt free of physical address zero.\n");
 		addr &= ~0xfff;
@@ -232,7 +236,7 @@ namespace obos
 		else if (g_memoryTail == nodePhys)
 			g_memoryTail = withPhys;
 	}
-	void OptimizePMMFreeList()
+	OBOS_NO_KASAN void OptimizePMMFreeList()
 	{
 		g_pmmLock.Lock();
 		MemoryNode* currentNode = CMAP_TO_HHDM(g_memoryHead);
@@ -301,7 +305,7 @@ namespace obos
 		g_pmmLock.Unlock();
 	}
 
-	void* MapToHHDM(uintptr_t phys)
+	OBOS_NO_KASAN void* MapToHHDM(uintptr_t phys)
 	{
 		return (void*)MAP_TO_HHDM(phys);
 	}

@@ -33,26 +33,26 @@ namespace obos
 			return (eax >> 8) & 0xff;
 		}
 
-		uintptr_t PageMap::GetL4PageMapEntryAt(uintptr_t at)
+		OBOS_NO_KASAN uintptr_t PageMap::GetL4PageMapEntryAt(uintptr_t at)
 		{
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(GetPageMap());
 			return GetEntryAt(arr, at, 3);
 		}
-		uintptr_t PageMap::GetL3PageMapEntryAt(uintptr_t at)
+		OBOS_NO_KASAN uintptr_t PageMap::GetL3PageMapEntryAt(uintptr_t at)
 		{
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL4PageMapEntryAt(at)));
 			if (arr == MapToHHDM(0))
 				return 0;
 			return GetEntryAt(arr, at, 2);
 		}
-		uintptr_t PageMap::GetL2PageMapEntryAt(uintptr_t at)
+		OBOS_NO_KASAN uintptr_t PageMap::GetL2PageMapEntryAt(uintptr_t at)
 		{
 			uintptr_t* arr = (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetL3PageMapEntryAt(at)));
 			if (arr == MapToHHDM(0))
 				return 0;
 			return GetEntryAt(arr, at, 1);
 		}
-		uintptr_t PageMap::GetL1PageMapEntryAt(uintptr_t at)
+		OBOS_NO_KASAN uintptr_t PageMap::GetL1PageMapEntryAt(uintptr_t at)
 		{
 			if (GetL2PageMapEntryAt(at) & ((uintptr_t)1 << 7))
 				return 0;
@@ -62,7 +62,7 @@ namespace obos
 			return GetEntryAt(arr, at, 0);
 		}
 
-		uintptr_t* PageMap::AllocatePageMapAt(uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
+		OBOS_NO_KASAN uintptr_t* PageMap::AllocatePageMapAt(uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
 		{
 			if (depth > 3 || depth == 0)
 				return nullptr;
@@ -114,7 +114,7 @@ namespace obos
 			}
 			return (uintptr_t*)MapToHHDM(MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(at, (4-depth))));
 		}
-		bool PageMap::FreePageMapAt(uintptr_t at, uint8_t maxDepth)
+		OBOS_NO_KASAN bool PageMap::FreePageMapAt(uintptr_t at, uint8_t maxDepth)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(at))
 				return false;
@@ -154,7 +154,7 @@ namespace obos
 			return true;
 		}
 
-		uintptr_t PageMap::GetEntryAt(uintptr_t* arr, uintptr_t virt, uint8_t level)
+		OBOS_NO_KASAN uintptr_t PageMap::GetEntryAt(uintptr_t* arr, uintptr_t virt, uint8_t level)
 		{
 			if (!OBOS_IS_VIRT_ADDR_CANONICAL(arr))
 				return 0;
