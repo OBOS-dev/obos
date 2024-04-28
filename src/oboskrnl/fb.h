@@ -35,7 +35,11 @@ namespace obos
 	};
 	union Pixel
 	{
-		Pixel() = default;
+		Pixel()
+		{
+			raw.rgbx = 0;
+			ele.x = 0;
+		}
 		Pixel(uint32_t rgbx)
 		{
 			raw.rgbx = rgbx;
@@ -53,7 +57,7 @@ namespace obos
 		struct 
 		{
 			uint32_t rgbx;
-		} raw;
+		} raw{ 0 };
 		struct
 		{
 			uint8_t r;

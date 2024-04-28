@@ -105,8 +105,8 @@ namespace obos
 		locks::SpinLock error_lock;
 #define __impl_log(colour, msg, lock_name) \
 			lock_name.Lock();\
-			Pixel oldForeground = 0;\
-			Pixel oldBackground = 0;\
+			Pixel oldForeground{};\
+			Pixel oldBackground{};\
 			g_kernelConsole.GetColour(oldForeground, oldBackground);\
 			g_kernelConsole.SetColour((Pixel)colour, oldBackground);\
 			while(*format == '\n') { printf("\n"); format++; } \
