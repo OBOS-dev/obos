@@ -79,7 +79,7 @@ namespace obos
 	{
 		if (g_pmmInitialized)
 			return;
-		new (&g_pmmLock) locks::SpinLock{};
+		new (&g_pmmLock) locks::SpinLock{ 0xf };
 		g_pmmLock.Lock();
 		for (size_t i = 0; i < mmap_request.response->entry_count; i++)
 		{
@@ -114,10 +114,7 @@ namespace obos
 	{
 		if (!g_nMemoryNodes)
 			logger::panic(nullptr, "No more available physical memory left.\n");
-		uint8_t oldIRQL = 0xff;
 		g_pmmLock.Lock();
-		if (GetIRQL() < 2)
-			RaiseIRQL(2, &oldIRQL);
 		MemoryNode* node = (MemoryNode*)MAP_TO_HHDM((uintptr_t*)g_memoryHead);
 		MemoryNode* nodePhys = g_memoryHead;
 		uintptr_t ret = (uintptr_t)g_memoryHead;
@@ -131,8 +128,7 @@ namespace obos
 			node = node->next;
 			if (!node)
 			{
-				if (oldIRQL != 0xff)
-					LowerIRQL(oldIRQL);
+				g_pmmLock.Unlock();
 				return 0; // Not enough physical memory to satisfy request of nPages.
 			}
 			nodePhys = node;
@@ -161,8 +157,6 @@ namespace obos
 			node->prev = nullptr;
 		}
 		ret = (uintptr_t)nodePhys + node->nPages * 4096;
-		if (oldIRQL != 0xff)
-			LowerIRQL(oldIRQL);
 		g_pmmLock.Unlock();
 		__atomic_add_fetch(&g_nPhysPagesUsed, nPages, __ATOMIC_SEQ_CST);
 		return ret;
