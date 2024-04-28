@@ -54,8 +54,10 @@ namespace obos
 		{
 			if (!g_initialized)
 				return;
+			uint8_t oldIRQL = 0;
 			if (GetIRQL() < 2)
-				logger::panic(nullptr, "%s: Scheduler must only be run at IRQL 2 or higher.\n", __func__);
+				//logger::panic(nullptr, "%s: Scheduler must only be run at IRQL 2 or higher.\n", __func__);
+				RaiseIRQL(2, &oldIRQL, false);
 			if (GetCPUPtr()->currentThread)
 			{
 				// Mark the current thread as ThreadStatus::CanRun if it is in the ThreadStatus::Running state.
