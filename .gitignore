@@ -1,9 +1,6 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
-################################################################################
-
-/.vs
+﻿/.vs
 /CMakePresets.json
-/out/build/x86_64-debug
+/out
 /dependencies/hyper
-/dependencies/include/UltraProtocol
+/dependencies/include/
+/qemu_log.txt
