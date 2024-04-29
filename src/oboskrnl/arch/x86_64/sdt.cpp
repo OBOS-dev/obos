@@ -23,7 +23,7 @@ namespace obos
 		uintptr_t _addr = (uintptr_t)addr;
 		return (T)(hhdm_offset.response->offset + _addr);
 	}
-	ACPISDTHeader* GetTableWithSignature(ACPISDTHeader* sdt, bool t32, size_t nEntries, char(*signature)[4])
+	OBOS_NO_UBSAN_FOR(alignment) ACPISDTHeader* GetTableWithSignature(ACPISDTHeader* sdt, bool t32, size_t nEntries, char(*signature)[4])
 	{
 		uint64_t* tableAddresses64 = reinterpret_cast<uint64_t*>(sdt + 1);
 		uint32_t* tableAddresses32 = reinterpret_cast<uint32_t*>(sdt + 1);

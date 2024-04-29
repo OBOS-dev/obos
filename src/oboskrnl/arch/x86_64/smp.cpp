@@ -67,7 +67,7 @@ namespace obos
 		uint8_t g_lapicIDs[256];
 		static volatile bool jumped_to_bootstrap = false;
 		bool g_initializedAllCPUs = false;
-		void InitializeGDTCPU(cpu_local* info)
+		OBOS_NO_KASAN OBOS_NO_UBSAN void InitializeGDTCPU(cpu_local* info)
 		{
 			// Initialize the TSS entry in the GDT.
 			struct
@@ -93,6 +93,7 @@ namespace obos
 			info->archSpecific.gdt[6] = *((uint64_t*)&tss_entry + 1);
 			// Initialize the TSS stacks.
 			info->archSpecific.tss.ist0 = info->tempStack.base + info->tempStack.size;
+			info->archSpecific.tss.ist1 = info->tempStack.base + info->tempStack.size;
 			info->archSpecific.tss.rsp0 = info->tempStack.base + info->tempStack.size;
 			info->archSpecific.tss.iopb = sizeof(cpu_local::archSpecific.tss)-1;
 			// Load the GDT and reset segment values.
@@ -105,7 +106,7 @@ namespace obos
 			gdtr.base = (uintptr_t)info->archSpecific.gdt;
 			reload_gdt((uintptr_t)&gdtr);
 		}
-		[[noreturn]] OBOS_NO_KASAN void ProcStart(cpu_local* info)
+		[[noreturn]] OBOS_NO_KASAN OBOS_NO_UBSAN void ProcStart(cpu_local* info)
 		{
 			InitializeGDTCPU(info);
 			// We must set GS_BASE before anything else, or we'll have problems (such as IRQL mismatching).

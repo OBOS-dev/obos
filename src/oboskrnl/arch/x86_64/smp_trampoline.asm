@@ -94,6 +94,7 @@ align 1
 	mov rax, _ZN4obos4arch9ProcStartEPNS_9scheduler9cpu_localE
 	jmp rax
 
+align 8
 smp_trampoline_cr3_loc:
 	dq 0
 smp_trampoline_cpu_local_ptr:
@@ -101,6 +102,7 @@ smp_trampoline_cpu_local_ptr:
 smp_trampoline_pat:
 	dq 0
 smp_trampoline_end:
+align 1
 section .text
 global _ZN4obos9scheduler9GetCPUPtrEv
 extern _ZN4obos5rdmsrEj

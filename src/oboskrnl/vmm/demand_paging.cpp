@@ -19,7 +19,7 @@ namespace obos
 {
 	namespace vmm
 	{
-		void DemandPageHandler(void*, PageFaultErrorCode, const page_descriptor& pd)
+		OBOS_NO_KASAN OBOS_NO_UBSAN void DemandPageHandler(void*, PageFaultErrorCode, const page_descriptor& pd)
 		{
 #ifdef OBOS_DEBUG
 			OBOS_ASSERTP(pd.awaitingDemandPagingFault, "Demand page handler called for no reason.");

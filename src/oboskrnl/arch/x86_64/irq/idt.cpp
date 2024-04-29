@@ -50,7 +50,7 @@ namespace obos
 	}
 	static int getIntIST(int i)
 	{
-		if (i > 32)
+		if (i >= 32)
 			return 0;
 		if (i == 8)
 			return 2;

@@ -18,4 +18,5 @@ namespace obos
 	OBOS_EXPORT bool   memcmp(const void* blk1, int against, size_t count);
 	OBOS_EXPORT bool   strcmp(const char* str1, const char* str2);
 	OBOS_EXPORT size_t strlen(const char* str);
+	OBOS_EXPORT const char* strchr(const char* str, char ch);
 }
