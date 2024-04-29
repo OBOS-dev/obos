@@ -45,7 +45,7 @@ set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set(TARGET_DRIVER_LINKER_OPTIONS)
 
 list (APPEND oboskrnl_sources 
-	"arch/x86_64/entry.c"
+	"arch/x86_64/entry.c" "arch/x86_64/bgdt.asm"
 )
 
 add_compile_definitions(__x86_64__=1)
