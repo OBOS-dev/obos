@@ -14,18 +14,18 @@
 namespace obos
 {
 	static uint8_t s_irql = 0;
-	uint8_t& getIRQLVar()
+	OBOS_NO_KASAN uint8_t& getIRQLVar()
 	{
 		if (scheduler::GetCPUPtr())
 			return scheduler::GetCPUPtr()->irql;
 		return s_irql;
 	}
-	static void setCurThreadIRQL(uint8_t to)
+	OBOS_NO_KASAN static void setCurThreadIRQL(uint8_t to)
 	{
 		if (scheduler::GetCPUPtr() && scheduler::GetCPUPtr()->currentThread)
 			scheduler::GetCPUPtr()->currentThread->context.irql = to;
 	}
-	void LowerIRQL(uint8_t newIRQL, bool setThrIRQL)
+	OBOS_NO_KASAN void LowerIRQL(uint8_t newIRQL, bool setThrIRQL)
 	{
 		if (arch::GetIRQL() != getIRQLVar())
 			arch::SetIRQL(getIRQLVar());
@@ -37,7 +37,7 @@ namespace obos
 			setCurThreadIRQL(newIRQL);
 		arch::SetIRQL(getIRQLVar());
 	}
-	void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL, bool setThrIRQL)
+	OBOS_NO_KASAN void RaiseIRQL(uint8_t newIRQL, uint8_t* oldIRQL, bool setThrIRQL)
 	{
 		newIRQL &= 0xf;
 		if (arch::GetIRQL() != getIRQLVar())
@@ -50,7 +50,7 @@ namespace obos
 			setCurThreadIRQL(newIRQL);
 		arch::SetIRQL(getIRQLVar());
 	}
-	uint8_t GetIRQL()
+	OBOS_NO_KASAN uint8_t GetIRQL()
 	{
 		if (arch::GetIRQL() != getIRQLVar())
 			arch::SetIRQL(getIRQLVar());

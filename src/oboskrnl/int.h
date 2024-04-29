@@ -8,6 +8,13 @@
 #else
 #	define OBOS_NO_KASAN
 #endif
+#if __GNUC__
+#	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
+#	define OBOS_NO_UBSAN_FOR(what) __attribute__((no_sanitize(#what)))
+#else
+#	define OBOS_NO_UBSAN
+#	define OBOS_NO_UBSAN_FOR(what)
+#endif
 #if defined(__cplusplus)
 namespace obos
 {

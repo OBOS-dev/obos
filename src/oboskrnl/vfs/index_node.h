@@ -67,6 +67,7 @@ namespace obos
 		}
 		struct index_node
 		{
+			string_view entryName{};
 			string_view filepath{};
 			union
 			{
@@ -77,9 +78,11 @@ namespace obos
 			index_node_flags flags = index_node_flags::Default;
 			locks::SpinLock lock{};
 			perm_info permissionInfo{};
+			size_t references;
 
 			index_node_list children{};
-			index_node *next = nullptr, *prev = nullptr;
+			index_node *next = nullptr, *prev = nullptr, *parent = nullptr;
 		};
+		extern index_node* g_root;
 	}
 }

@@ -139,11 +139,11 @@ namespace obos
 			return scheduler::GetCPUPtr()->currentThread->tid;
 		return (uint32_t)-1;
 	}
-	uint32_t getPID()
+	OBOS_NO_KASAN OBOS_NO_UBSAN uint32_t getPID()
 	{
 		return 0;
 	}
-	OBOS_NO_KASAN void defaultExceptionHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN OBOS_NO_UBSAN void defaultExceptionHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIRQL = 0;
 		RaiseIRQL(IRQL_MASK_ALL, &oldIRQL);
@@ -188,7 +188,7 @@ namespace obos
 		);
 		asm volatile("nop");
 	}
-	OBOS_NO_KASAN bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
+	OBOS_NO_KASAN OBOS_NO_UBSAN bool callPageFaultHandlers(vmm::PageFaultReason reason, uintptr_t at, const vmm::page_descriptor &pd, uint32_t ec)
 	{
 		arch::page_fault_handler_node* node = arch::s_pfHandlers.head;
 		while (node)
@@ -208,7 +208,7 @@ namespace obos
 			return false;
 		return true;
 	}
-	uint32_t DecodePFErrorCode(uintptr_t ec)
+	OBOS_NO_KASAN OBOS_NO_UBSAN uint32_t DecodePFErrorCode(uintptr_t ec)
 	{
 		uintptr_t ret = 0;
 		if (ec & 1)
@@ -223,7 +223,7 @@ namespace obos
 			ret |= vmm::PageFault_Execution;
 		return ret;
 	}
-	OBOS_NO_KASAN void pageFaultHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN OBOS_NO_UBSAN void pageFaultHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIRQL = 0;
 		RaiseIRQL(15, &oldIRQL);
@@ -305,7 +305,7 @@ namespace obos
 		);
 		asm volatile("nop");
 	}
-	OBOS_NO_KASAN void nmiHandler(interrupt_frame* frame)
+	OBOS_NO_KASAN OBOS_NO_UBSAN void nmiHandler(interrupt_frame* frame)
 	{
 		uint8_t oldIrql = 0;
 		RaiseIRQL(0xf, &oldIrql);

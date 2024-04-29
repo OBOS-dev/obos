@@ -11,6 +11,7 @@ global _ZN4obos6memcmpEPKvS1_m ; blk1,blk2,size
 global _ZN4obos6memcmpEPKvim ; blk1, against, size
 global _ZN4obos6strcmpEPKcS1_
 global _ZN4obos6strlenEPKc
+global _ZN4obos6strchrEPKcc
 
 global memcmp
 global memcpy
@@ -109,4 +110,19 @@ _ZN4obos6strlenEPKc:
 	sub rax, 2
 
 	leave
+	ret
+_ZN4obos6strchrEPKcc:
+	push rbp
+	mov rbp, rsp
+
+	push rdi
+	call _ZN4obos6strlenEPKc
+	pop rdi
+	mov rcx, rax
+	mov al, sil
+	repne scasb
+	mov rax, rdi
+	dec rax
+
+	leave 
 	ret

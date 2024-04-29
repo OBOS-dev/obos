@@ -145,9 +145,8 @@ namespace obos
 		size_t error(const char* format, ...)
 		{
 			__impl_log(ERROR_RED, ERROR_PREFIX_MESSAGE, error_lock);
-
 		}
-		[[noreturn]] void panic(void* stackTraceParameter, const char* format, ...)
+		[[noreturn]] OBOS_NO_KASAN OBOS_NO_UBSAN void panic(void* stackTraceParameter, const char* format, ...)
 		{
 			va_list list;
 			va_start(list, format);
@@ -155,11 +154,11 @@ namespace obos
 			va_end(list);
 			while (1);
 		}
-		[[noreturn]] void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
+		[[noreturn]] OBOS_NO_KASAN OBOS_NO_UBSAN void panicVariadic(void* stackTraceParameter, const char* format, va_list list)
 		{
 			panicImpl(stackTraceParameter, false, format, list);
 		}
-		[[noreturn]] void reportKASANViolation(const char* format, ...)
+		[[noreturn]] OBOS_NO_KASAN OBOS_NO_UBSAN void reportKASANViolation(const char* format, ...)
 		{
 			va_list list;
 			va_start(list, format);
@@ -167,7 +166,7 @@ namespace obos
 			va_end(list);
 			while (1);
 		}
-		[[noreturn]] void panicImpl(void* stackTraceParameter, bool isKASANViolation, const char* format, va_list list)
+		[[noreturn]] OBOS_NO_KASAN OBOS_NO_UBSAN void panicImpl(void* stackTraceParameter, bool isKASANViolation, const char* format, va_list list)
 		{
 #if defined(__x86_64__) && OBOS_KDBG_ENABLED
 			if (!isKASANViolation && kdbg::g_initialized)

@@ -119,6 +119,7 @@ _ZN4obos4arch11YieldThreadEPNS_9scheduler6ThreadE:
 	push 0
 ; Instead of reserving it, just write it directly.
 	pushaq
+	cli
 	; Just not here though
 	mov rax, ds
 	push rax

@@ -20,6 +20,10 @@
 
 #include <scheduler/thread.h>
 
+#include <vfs/cwd.h>
+#include <vfs/index_node.h>
+#include <vfs/fsnode.h>
+
 #ifdef __x86_64__
 #include <limine/limine.h>
 #endif
@@ -100,26 +104,52 @@ namespace obos
 		};
 		uacpi_status st = uacpi_initialize(&params);
 		verify_status(st, uacpi_initialize);
-	
+
 		st = uacpi_namespace_load();
 		verify_status(st, uacpi_namespace_load);
-	
+
 		st = uacpi_namespace_initialize();
 		verify_status(st, uacpi_namespace_initialize);
-		
-		uint8_t* procExecutable = nullptr;
-		size_t procExecutableSize = 0;
-		for (size_t i = 0; i < module_request.response->module_count; i++)
-		{
-			if (strcmp(module_request.response->modules[i]->path, "/obos/testDriver"))
+
+		auto setupDirectory = [](const char* name, vfs::index_node* parent)->vfs::index_node*
 			{
-				procExecutable = (uint8_t*)module_request.response->modules[i]->address;
-				procExecutableSize = module_request.response->modules[i]->size;
-				break;
-			}
-		}
-		uint32_t id = driverInterface::LoadDriver(procExecutable, procExecutableSize)->id;
-		driverInterface::StartDriver(id);
+				if (parent && parent->type != vfs::index_node_type::Directory)
+					return nullptr;
+				vfs::index_node* node = new vfs::index_node{};
+				node->parent = parent;
+				node->type = vfs::index_node_type::Directory;
+				node->entryName = name;
+				if (parent)
+				{
+					size_t filepathSz = parent->filepath.len + node->entryName.len + (parent != vfs::g_root);
+					char* filepath = (char*)memcpy(new char[filepathSz + 1], parent->filepath.str, parent->filepath.len);
+					filepath[(parent != vfs::g_root) ? parent->filepath.len : 0] = '/';
+					memcpy(&filepath[((parent != vfs::g_root) ? parent->filepath.len : 0) + 1], name, node->entryName.len);
+					filepath[filepathSz] = 0;
+					node->filepath = filepath;
+					auto& children = (int)(parent->flags & vfs::index_node_flags::IsMountPoint) ? parent->data.mPoint->root : parent->children;
+					children.lock.Lock();
+					if (!children.head)
+						children.head = node;
+					if (children.tail)
+						children.tail->next = node;
+					node->prev = children.tail;
+					children.tail = node;
+					children.nNodes++;
+					children.lock.Unlock();
+				}
+				else
+				{
+					char* filepath = (char*)memcpy(new char[node->entryName.len + 1], name, node->entryName.len);
+					filepath[node->entryName.len] = 0;
+					node->filepath = filepath;
+				}
+				return node;
+			};
+		vfs::g_root = setupDirectory("/", nullptr);
+		vfs::index_node* root_foo = setupDirectory("foo", vfs::g_root);
+		vfs::index_node* root_bar = setupDirectory("bar", vfs::g_root);
+		vfs::index_node* root_foo_baz = setupDirectory("baz", root_foo);
 		scheduler::ExitCurrentThread();
 	}
 }
