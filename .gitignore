@@ -4,3 +4,6 @@
 
 /.vs
 /CMakePresets.json
+/out/build/x86_64-debug
+/dependencies/hyper
+/dependencies/include/UltraProtocol
