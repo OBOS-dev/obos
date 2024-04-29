@@ -7,6 +7,7 @@ set (oboskrnl_sources ${oboskrnl_sources}
 	"vmm/pg_context.cpp" "vmm/map.cpp" "allocators/allocator.cpp" "allocators/basic_allocator.cpp"
 	"vmm/init.cpp" "vmm/demand_paging.cpp" "vmm/mprot.cpp" "irq/irq.cpp"
 	"scheduler/init.cpp" "scheduler/thread.cpp" "scheduler/scheduler.cpp" "kmain.cpp"
+	"vfs/open.cpp" "vfs/cwd.cpp"
 )
 
 add_executable(oboskrnl)
@@ -57,6 +58,14 @@ else()
 	set (OBOS_ENABLE_KASAN "0")
 endif()
 target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+if (DEFINED OBOS_ENABLE_UBSAN)
+	target_compile_options(oboskrnl PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fsanitize=undefined>)
+	list(APPEND oboskrnl_sources "sanitizers/ubsan.cpp")
+	set (OBOS_ENABLE_UBSAN "1")
+else()
+	set (OBOS_ENABLE_UBSAN "0")
+endif()
+target_compile_definitions(oboskrnl PRIVATE OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
 
 target_link_libraries(oboskrnl PRIVATE uacpi PRIVATE ${LIBGCC})
 

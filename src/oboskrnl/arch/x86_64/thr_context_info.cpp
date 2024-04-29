@@ -32,15 +32,15 @@
 #define GS_BASE  		0xC0000101
 #define KERNEL_GS_BASE  0xC0000102
 
-extern "C" uintptr_t GetContextInfoOffset(obos::scheduler::Thread*)
+extern "C" OBOS_NO_KASAN uintptr_t GetContextInfoOffset(obos::scheduler::Thread*)
 {
 	return (uintptr_t)&((obos::scheduler::Thread*)nullptr)->context;
 }
-extern "C" uintptr_t GetLastPreemptTimeOffset(obos::scheduler::Thread*)
+extern "C" OBOS_NO_KASAN uintptr_t GetLastPreemptTimeOffset(obos::scheduler::Thread*)
 {
 	return (uintptr_t)&((obos::scheduler::Thread*)nullptr)->lastPreemptTime;
 }
-extern "C" void RaiseIRQLForScheduler()
+extern "C" OBOS_NO_KASAN void RaiseIRQLForScheduler()
 {
 	uint8_t oldIRQL = 0;
 	if (obos::GetIRQL() < 2)
@@ -52,7 +52,7 @@ namespace obos
 	extern uint8_t asan_stack_poison;
 	namespace arch
 	{
-		void SetupThreadContext(ThreadContextInfo* info, 
+		OBOS_NO_KASAN void SetupThreadContext(ThreadContextInfo* info,
 								scheduler::thr_stack* stack,
 								uintptr_t entry, uintptr_t arg1, 
 								bool isUsermode, 
@@ -77,7 +77,7 @@ namespace obos
 //			memset((void*)stack->base, asan_stack_poison, stack->size);
 //#endif
 		}
-		void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame)
+		OBOS_NO_KASAN void SaveThreadContext(ThreadContextInfo* dest, interrupt_frame* frame)
 		{
 			memcpy(&dest->frame, frame, sizeof(*frame));
 			dest->pm = (PageMap*)getCR3();
