@@ -19,3 +19,5 @@ typedef _Bool bool;
 #endif
 
 #define OBOS_NORETURN [[_Noreturn]]
+#define OBOS_NODISCARD [[__nodiscard__]]
+#define OBOS_NODISCARD_REASON(why) [[__nodiscard__(why)]]

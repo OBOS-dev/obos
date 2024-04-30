@@ -9,7 +9,7 @@
 #include <int.h>
 #include <stdarg.h>
 
-#define OBOS_ASSERT(expression) do { if (!(expression)) { OBOS_Panic(PANIC_REASON_ASSERTION_FAILED, "Assertion failed in function %s. File: %s, line %d. %s\n", __func__, __FILE__, __LINE__, #expression); } } while(0)
+#define OBOS_ASSERT(expression) do { if (!(expression)) { OBOS_Panic(OBOS_PANIC_ASSERTION_FAILED, "Assertion failed in function %s. File: %s, line %d. %s\n", __func__, __FILE__, __LINE__, #expression); } } while(0)
 
 typedef enum
 {
@@ -18,7 +18,7 @@ typedef enum
 	OBOS_PANIC_KASAN_VIOLATION,
 	OBOS_PANIC_UBSAN_VIOLATION,
 	OBOS_PANIC_DRIVER_FAILURE,
-	OBOS_ASSERTION_FAILED,
+	OBOS_PANIC_ASSERTION_FAILED,
 } panic_reason;
 typedef enum
 {

@@ -144,11 +144,11 @@ int_handler_common:
 Arch_FlushIDT:
 	lidt [rdi]
 	ret
-global OBOS_SetIRQL
-global OBOS_GetIRQL
+global CoreS_GetIRQL
+global CoreS_SetIRQL
 ; Takes no registers as input.
 ; Sets rax to the current IRQL (cr8).
-OBOS_GetIRQL:
+CoreS_GetIRQL:
 	push rbp
 	mov rbp, rsp
 	
@@ -159,7 +159,7 @@ OBOS_GetIRQL:
 ; Input:
 ; rdi: New IRQL.
 ; Modifies: cr8
-OBOS_SetIRQL:
+CoreS_SetIRQL:
 	push rbp
 	mov rbp, rsp
 	

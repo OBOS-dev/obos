@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-list (APPEND oboskrnl_sources "klog.c")
+list (APPEND oboskrnl_sources "klog.c" "locks/spinlock.c" "irq/irql.c")
 
 add_executable(oboskrnl)
 

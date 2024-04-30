@@ -8,6 +8,8 @@
 #include <klog.h>
 #include <stdarg.h>
 
+#include <locks/spinlock.h>
+
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8
@@ -26,12 +28,21 @@ log_level OBOS_GetLogLevel()
 {
 	return s_logLevel;
 }
+static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
+static spinlock s_printfLock; bool s_printfLockInitialized = false;
 static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
+	if (!s_loggerLockInitialized)
+	{
+		s_loggerLock = Core_SpinlockCreate();
+		s_loggerLockInitialized = true;
+	}
 	if (s_logLevel > minimumLevel)
 		return;
+	uint8_t oldIrql = Core_SpinlockAcquire(&s_printfLock);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
+	Core_SpinlockRelease(&s_printfLock, oldIrql);
 }
 void OBOS_Debug(const char* format, ...)
 {
@@ -72,7 +83,9 @@ OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
 " ____) |  | | | |__| | |     \n"
 "|_____/   |_|  \\____/|_|     ";
 
-
+	Core_SpinlockForcedRelease(&s_printfLock);
+	Core_SpinlockForcedRelease(&s_loggerLock);
+	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
 	printf("\n%s\n", ascii_art);
 	printf("Kernel Panic! Reason: %d. Information on the crash is below:\n");
 	va_list list;
@@ -102,8 +115,16 @@ size_t printf(const char* format, ...)
 }
 size_t vprintf(const char* format, va_list list)
 {
+	if (!s_printfLockInitialized)
+	{
+		s_printfLockInitialized = true;
+		s_printfLock = Core_SpinlockCreate();
+	}
 	char ch[8];
-	return stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
+	uint8_t oldIrql = Core_SpinlockAcquire(&s_printfLock);
+	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
+	Core_SpinlockRelease(&s_printfLock, oldIrql);
+	return ret;
 }
 size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 {
