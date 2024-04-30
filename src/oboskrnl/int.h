@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <error.h>
 //#include <stdbool.h>
 
 #ifndef __cplusplus

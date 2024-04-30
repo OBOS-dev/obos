@@ -15,6 +15,6 @@ typedef bool spinlock;
 spinlock Core_SpinlockCreate();
 irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql);
 irql Core_SpinlockAcquire(spinlock* const lock);
-void Core_SpinlockRelease(spinlock* const lock, irql oldIrql);
+obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);
 void Core_SpinlockForcedRelease(spinlock* const lock);
 bool Core_SpinlockIsAcquired(const spinlock* const lock);
