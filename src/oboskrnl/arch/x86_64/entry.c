@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 
 #include <UltraProtocol/ultra_protocol.h>
 
@@ -13,18 +14,16 @@
 
 extern void Arch_InitBootGDT();
 
-void int3_handler(interrupt_frame* frame)
-{
-
-}
-
 void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 {
 	if (magic != ULTRA_MAGIC)
 		return; // All hope is lost.
+	// TODO: Parse boot context.
+	OBOS_Debug("Initializing the Boot GDT.\n");
 	Arch_InitBootGDT();
+	OBOS_Debug("Initializing the Boot IDT.\n");
 	Arch_InitializeIDT();
-	Arch_RawRegisterInterrupt(3, int3_handler);
-	asm("int3");
+	OBOS_Debug("Testing panics...\n");
+	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Test panic.\n");
 	while (1);
 }

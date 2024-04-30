@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-list (APPEND oboskrnl_sources )
+list (APPEND oboskrnl_sources "klog.c")
 
 add_executable(oboskrnl)
 

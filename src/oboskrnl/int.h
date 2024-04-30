@@ -17,3 +17,5 @@
 #	undef NULL
 typedef _Bool bool;
 #endif
+
+#define OBOS_NORETURN [[_Noreturn]]
