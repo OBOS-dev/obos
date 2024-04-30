@@ -47,9 +47,9 @@ GDTPtr:
 	.base: dq GDT
 section .text
 
-global InitBootGDT
+global Arch_InitBootGDT
 
-InitBootGDT:
+Arch_InitBootGDT:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 10

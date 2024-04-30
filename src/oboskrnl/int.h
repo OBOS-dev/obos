@@ -8,8 +8,12 @@
 
 #include <stdint.h>
 #include <stddef.h>
+//#include <stdbool.h>
 
 #ifndef __cplusplus
 #	define nullptr ((void*)0)
-//#	undef NULL
+#	define true (1)
+#	define false (0)
+#	undef NULL
+typedef _Bool bool;
 #endif
