@@ -42,7 +42,7 @@ struc thread_ctx
 align 8
 .extended_ctx_ptr: resq 1
 .cr3: resq 1
-.irql: resb 1
+.irql: resq 1
 .gs_base: resq 1
 .fs_base: resq 1
 .frame: resq 0x1a
@@ -73,6 +73,7 @@ CoreS_SwitchToThreadContext:
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000101
+	wrmsr
 	add rdi, 8
 	; Restore FS_BASE
 	mov eax, [rdi]
@@ -80,9 +81,11 @@ CoreS_SwitchToThreadContext:
 	mov ecx, 0xC0000100
 	wrmsr
 	; Restore thread GPRs.
+	add rdi, 8 ; Skip the saved DS
 	mov rsp, rdi
 	add rsp, 8 ; Skip the saved DS
 	popaq
+	add rsp, 0x18
 	iretq
 CoreS_FreeThreadContext:
 	push rbp
@@ -98,15 +101,15 @@ CoreS_SetupThreadContext:
 	;             rdi,             rsi,            rdx,               rcx,              r8,               r9
 	; thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize
 
-	cmp rcx, 0
+	test rax,rax
 	jne .L1
 	mov rax, 3 ; OBOS_STATUS_UNIMPLEMENTED
 	jmp .finish
 
 .L1:
 	; Setup the registers.
-	mov [rdi+thread_ctx.frame+0xA8], rsi       ; ctx->frame.rip
-	mov [rdi+thread_ctx.frame+0x58], rdx       ; ctx->frame.rdi
+	mov [rdi+thread_ctx.frame+0xA8], rsi             ; ctx->frame.rip
+	mov [rdi+thread_ctx.frame+0x58], rdx             ; ctx->frame.rdi
 	mov qword [rdi+thread_ctx.frame+0xB0], 0x8       ; ctx->frame.cs
 	mov qword [rdi+thread_ctx.frame+0xC8], 0x10      ; ctx->frame.ss
 	mov qword [rdi+thread_ctx.frame+0xB8], 0x200202  ; ctx->frame.rflags

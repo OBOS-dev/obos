@@ -26,9 +26,9 @@ irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql)
 		return IRQL_INVALID;
 	if (minIrql & 0xf0)
 		return IRQL_INVALID;
-	const bool expected = true;
+	const bool expected = false;
 	irql newIrql = Core_GetIrql() < minIrql ? Core_RaiseIrql(minIrql) : IRQL_INVALID;
-	while (atomic_compare_exchange_strong(lock, &expected, false))
+	while (atomic_compare_exchange_strong(lock, &expected, true))
 		spinlock_hint();
 	return newIrql;
 }
