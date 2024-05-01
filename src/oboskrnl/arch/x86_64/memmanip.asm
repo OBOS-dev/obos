@@ -29,7 +29,7 @@ memzero:
 	mov rbp, rsp
 
 	push rdi
-	xor rax, rax
+	xor eax, eax
 	mov rcx, rsi
 	rep stosb
 	pop rax
