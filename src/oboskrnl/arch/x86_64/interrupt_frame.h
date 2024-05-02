@@ -1,5 +1,5 @@
 /*
-	oboskrnl/arch/x86_64/irq/interrupt_frame.h
+	oboskrnl/arch/x86_64/interrupt_frame.h
 
 	Copyright (c) 2024 Omar Berrow
 */

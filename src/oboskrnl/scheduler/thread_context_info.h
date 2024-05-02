@@ -17,7 +17,7 @@
 /// IRQL
 /// The thread's current address space.
 /// </summary>
-typedef struct __thread_context_info thread_ctx;
+typedef struct thread_context_info thread_ctx;
 
 
 // TODO: Add a way to specify the address space of the thread.
@@ -37,6 +37,11 @@ obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
 OBOS_NORETURN void CoreS_SwitchToThreadContext(const thread_ctx* ctx);
+/// <summary>
+/// Saves the current thread's context into the passed thread's context, then calls the scheduler.
+/// </summary>
+/// <param name="ctx">The thread's context.</param>
+void CoreS_SaveRegisterContextAndYield(thread_ctx* ctx);
 /// <summary>
 /// Frees anything inside of a thread's context.
 /// </summary>

@@ -24,4 +24,12 @@ typedef enum
 	/// A function was called, but an option passed to it had not been implemented yet.
 	/// </summary>
 	OBOS_STATUS_UNIMPLEMENTED,
+	/// <summary>
+	/// A function was called before one of the prerequisite components was initialized.
+	/// </summary>
+	OBOS_STATUS_INVALID_INIT_PHASE,
+	/// <summary>
+	/// The affinity in the thread object is invalid.
+	/// </summary>
+	OBOS_STATUS_INVALID_AFFINITY,
 } obos_status;

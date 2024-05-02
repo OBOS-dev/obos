@@ -6,6 +6,7 @@
 
 ; obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
 ; OBOS_NORETURN void CoreS_SwitchToThreadContext(const thread_ctx* ctx);
+; void CoreS_SaveRegisterContextAndYield(thread_ctx* ctx);
 ; obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
 ; uintptr_t CoreS_CallFunctionOnStack(uintptr_t(*func)(uintptr_t), uintptr_t userdata);
 ; 
@@ -14,6 +15,7 @@
 
 global CoreS_SetupThreadContext
 global CoreS_SwitchToThreadContext
+global CoreS_SaveRegisterContextAndYield
 global CoreS_FreeThreadContext
 global CoreS_CallFunctionOnStack
 global CoreS_SetThreadIRQL
@@ -145,6 +147,61 @@ CoreS_CallFunctionOnStack:
 
 	leave
 	ret
+extern Core_Schedule
+extern Core_GetIRQLVar
+CoreS_SaveRegisterContextAndYield:
+	; Save the current GPRs.
+	mov [rdi+thread_ctx.frame+0x8] , rbp
+	mov qword [rdi+thread_ctx.frame+0x10], 0
+	mov [rdi+thread_ctx.frame+0x18], r8
+	mov [rdi+thread_ctx.frame+0x20], r9
+	mov [rdi+thread_ctx.frame+0x28], r10
+	mov [rdi+thread_ctx.frame+0x30], r11
+	mov [rdi+thread_ctx.frame+0x38], r12
+	mov [rdi+thread_ctx.frame+0x40], r13
+	mov [rdi+thread_ctx.frame+0x48], r14
+	mov [rdi+thread_ctx.frame+0x50], r15
+	mov [rdi+thread_ctx.frame+0x58], rdi
+	mov [rdi+thread_ctx.frame+0x60], rsi
+	mov qword [rdi+thread_ctx.frame+0x68], 0
+	mov [rdi+thread_ctx.frame+0x70], rbx
+	mov [rdi+thread_ctx.frame+0x78], rdx
+	mov [rdi+thread_ctx.frame+0x80], rcx
+	mov [rdi+thread_ctx.frame+0x88], rax
+	mov rax, ds
+	mov [rdi+thread_ctx.frame+0x00], rax ; ds
+	mov rax, [rsp+0xD0]
+	mov [rdi+thread_ctx.frame+0xA8], rax ; return address
+	mov rax, cs
+	mov [rdi+thread_ctx.frame+0xB0], rax ; cs
+	pushfq
+	pop rax
+	mov [rdi+thread_ctx.frame+0xB8], rax ; rflags
+	lea rax, [rsp+0xD8] ; skip the return address
+	mov [rdi+thread_ctx.frame+0xC0], rax ; rsp
+	mov rax, ss
+	mov [rdi+thread_ctx.frame+0xC8], rax ; ss
+	mov ecx, 0xC000101
+	rdmsr
+	shl rdx, 32
+	or rax, rdx
+	mov [rdi+thread_ctx.gs_base], rax
+	mov ecx, 0xC000100
+	rdmsr
+	shl rdx, 32
+	or rax, rdx
+	mov [rdi+thread_ctx.fs_base], rax
+	mov rax, cr3
+	mov [rdi+thread_ctx.cr3], rax
+	
+	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
+	jz .call_scheduler
+	mov rax, [rdi+thread_ctx.extended_ctx_ptr]
+	xsave [rax]
+
+.call_scheduler:
+	call Core_Schedule
+; When the scheduler switches to the current thread context, the rip will be at the return address, as we set rip to the return address passed on the stack
 CoreS_SetThreadIRQL:
 	push rbp
 	mov rbp, rsp

@@ -86,3 +86,25 @@ Arch_InitBootGDT:
 	push 0x8
 	push rax
 	retfq
+global Arch_FlushGDT
+Arch_FlushGDT:
+	push rbp
+	mov rbp, rsp
+
+	lgdt [rdi]
+
+	mov ax, 0x28
+	ltr ax
+
+	mov ax, 0x10
+	mov ds, ax
+	mov ss, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax 
+
+	leave
+	pop rax
+	push 0x8
+	push rax
+	ret

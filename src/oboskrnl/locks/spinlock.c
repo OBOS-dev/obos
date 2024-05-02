@@ -38,11 +38,12 @@ irql Core_SpinlockAcquire(spinlock* const lock)
 }
 obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
-	if (oldIrql & 0xf0)
+	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
 		return OBOS_STATUS_INVALID_IRQL;
 	atomic_store(lock, false);
 	if (oldIrql != IRQL_INVALID)
 		Core_LowerIrql(oldIrql);
+	return OBOS_STATUS_SUCCESS;
 }
 void Core_SpinlockForcedRelease(spinlock* const lock)
 {
