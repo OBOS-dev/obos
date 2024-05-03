@@ -125,10 +125,11 @@ schedule:
 		}
 	}
 	// Thread starvation prevention and work stealing.
-	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority < THREAD_PRIORITY_MAX_VALUE; priority++)
+	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
 	{
 		thread_priority_list* list = priorityList(priority);
-		ThreadStarvationPrevention(list, priority);
+		if (priority < THREAD_PRIORITY_MAX_VALUE)
+			ThreadStarvationPrevention(list, priority);
 		WorkStealing(list, priority);
 	}
 	thread* chosenThread = nullptr;
