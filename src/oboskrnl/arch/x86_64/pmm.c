@@ -114,9 +114,9 @@ uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_
 			MAP_TO_HHDM(node->next, struct freelist_node)->prev = node->prev;
 		if (node->prev)
 			MAP_TO_HHDM(node->prev, struct freelist_node)->next = node->next;
-		if (s_head == node)
+		if ((uintptr_t)s_head == UNMAP_FROM_HHDM(node))
 			s_head = node->next;
-		if (s_tail == node)
+		if ((uintptr_t)s_tail == UNMAP_FROM_HHDM(node))
 			s_tail = node->prev;
 		s_nNodes--;
 		node->next = nullptr;
@@ -141,4 +141,17 @@ void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 		s_head = (struct freelist_node*)addr;
 	node->prev = s_tail;
 	s_tail = (struct freelist_node*)addr;
+}
+uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status)
+{
+	return Arch_AllocatePhysicalPages(nPages, alignment, status);
+}
+obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
+{
+	Arch_FreePhysicalPages(base, nPages);
+	return OBOS_STATUS_SUCCESS;
+}
+void* Arch_MapToHHDM(uintptr_t phys)
+{
+	return MAP_TO_HHDM(phys, void);
 }

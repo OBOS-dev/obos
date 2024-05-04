@@ -27,3 +27,4 @@ obos_status Arch_InitializePMM();
 /// <returns>The physical pages, or zero on failure.</returns>
 uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status* status);
 void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages);
+void* Arch_MapToHHDM(uintptr_t phys);
