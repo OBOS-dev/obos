@@ -24,8 +24,9 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
+#include <arch/x86_64/pmm.h>
+
 extern void Arch_InitBootGDT();
-static void test_function(uintptr_t userdata);
 
 static char thr_stack[0x4000];
 static char kmain_thr_stack[0x10000];
@@ -33,11 +34,9 @@ extern char Arch_InitialISTStack[0x10000];
 extern void Arch_disablePIC();
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
-static thread_ctx bsp_idleThreadCtx;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
-static thread_ctx kernelMainThreadCtx;
 
 static cpu_local bsp_cpu;
 __asm__(
@@ -64,10 +63,15 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	bsp_cpu.isBSP = true;
 	Core_CpuCount = 1;
 	Core_CpuInfo = &bsp_cpu;
-	CoreS_SetupThreadContext(&bsp_idleThreadCtx, Arch_IdleTask, 0, false, thr_stack, 0x4000);
-	CoreS_SetupThreadContext(&kernelMainThreadCtx, Arch_KernelMainBootstrap, bcontext, false, kmain_thr_stack, 0x10000);
-	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &bsp_idleThreadCtx);
-	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &kernelMainThreadCtx);
+	thread_ctx ctx1, ctx2;
+	memzero(&ctx1, sizeof(ctx1));
+	memzero(&ctx2, sizeof(ctx2));
+	CoreS_SetupThreadContext(&ctx2, Arch_KernelMainBootstrap, bcontext, false, kmain_thr_stack, 0x10000);
+	CoreS_SetupThreadContext(&ctx1, Arch_IdleTask, 0, false, thr_stack, 0x4000);
+	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &ctx2);
+	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
+	kernelMainThread.context.gs_base = &bsp_cpu;
+	bsp_idleThread.context.gs_base = &bsp_cpu;
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
 	// Initialize the CPU's GDT.
@@ -129,12 +133,12 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 	{
 		switch (header->type)
 		{
-		case ULTRA_ATTRIBUTE_PLATFORM_INFO: break;
+		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = header; break;
 		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = header;  break;
 		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = header; break;
 		case ULTRA_ATTRIBUTE_MODULE_INFO: break;
 		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (header + 1); break;
-		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: Arch_LdrPlatformInfo = header; break;
+		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: break;
 		case ULTRA_ATTRIBUTE_INVALID:
 			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid UltraProtocol attribute type %d.\n", header->type);
 			break;
@@ -153,8 +157,23 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 }
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
-	Core_Yield();
+	//Core_Yield();
 	ParseBootContext(bcontext);
+	if (Arch_LdrPlatformInfo->page_table_depth != 4)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
+	OBOS_Debug("%s: Initializing PMM.\n", __func__);
+	Arch_InitializePMM();
+#define sz 0x4ul
+	OBOS_Debug("Attempt allocation of %lu bytes (%lu pages, %lu mib)\n", sz*0x1000, sz, sz/256);
+	obos_status allocStatus = OBOS_STATUS_SUCCESS;
+	uintptr_t addr1 = Arch_AllocatePhysicalPages(sz, 0x200, &allocStatus);
+	if (allocStatus == OBOS_STATUS_SUCCESS)
+	{
+		Arch_FreePhysicalPages(addr1, sz);
+		OBOS_Debug("Allocated %d pages at physical address 0x%p.\n", sz, addr1);
+	}
+	else
+		OBOS_Debug("Allocation failed!\n");
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
