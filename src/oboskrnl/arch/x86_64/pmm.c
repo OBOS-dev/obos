@@ -111,7 +111,6 @@ uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_
 		node->next = nullptr;
 		node->prev = nullptr;
 	}
-	// FIXME: Alignment issues.
 	phys = (uintptr_t)node + node->nPages * 0x1000;
 	phys -= Arch_LdrPlatformInfo->higher_half_base;
 	if (status)
