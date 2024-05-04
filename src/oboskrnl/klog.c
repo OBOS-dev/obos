@@ -39,10 +39,10 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	}
 	if (s_logLevel > minimumLevel)
 		return;
-	uint8_t oldIrql = Core_SpinlockAcquire(&s_printfLock);
+	uint8_t oldIrql = Core_SpinlockAcquire(&s_loggerLock);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
-	Core_SpinlockRelease(&s_printfLock, oldIrql);
+	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
 void OBOS_Debug(const char* format, ...)
 {

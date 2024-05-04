@@ -24,9 +24,11 @@ irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql)
 {
 	if (!lock)
 		return IRQL_INVALID;
-	const bool expected = true;
+	if (minIrql & 0xf0)
+		return IRQL_INVALID;
+	const bool expected = false;
 	irql newIrql = Core_GetIrql() < minIrql ? Core_RaiseIrql(minIrql) : IRQL_INVALID;
-	while (atomic_compare_exchange_strong(lock, &expected, false))
+	while (atomic_compare_exchange_strong(lock, &expected, true))
 		spinlock_hint();
 	return newIrql;
 }
@@ -34,11 +36,14 @@ irql Core_SpinlockAcquire(spinlock* const lock)
 {
 	return Core_SpinlockAcquireExplicit(lock, IRQL_MASKED);
 }
-void Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
+obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
+	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
+		return OBOS_STATUS_INVALID_IRQL;
 	atomic_store(lock, false);
 	if (oldIrql != IRQL_INVALID)
 		Core_LowerIrql(oldIrql);
+	return OBOS_STATUS_SUCCESS;
 }
 void Core_SpinlockForcedRelease(spinlock* const lock)
 {

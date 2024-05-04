@@ -14,7 +14,7 @@ global getDR6
 global pause
 global getEFER
 global rdmsr
-global wrmsrm
+global wrmsr
 global outb
 global outw
 global outd
@@ -185,4 +185,16 @@ xsave:
 	xor rcx,rcx
 	xgetbv
 	xsave [rdi]
+	ret
+global CoreS_GetCPULocalPtr
+CoreS_GetCPULocalPtr:
+	push rbp
+	mov rbp, rsp
+
+	mov ecx, 0xC0000101
+	rdmsr
+	shl rdx, 32
+	or rax, rdx
+
+	leave 
 	ret

@@ -5,8 +5,9 @@
 [BITS 64]
 
 section .bss
-initial_ist:
-	resb 0x4000
+Arch_InitialISTStack:
+	resb 0x10000
+global Arch_InitialISTStack
 section .data
 align 1
 TSS:
@@ -65,7 +66,7 @@ Arch_InitBootGDT:
 	shr rdx, 8
 	mov [GDT.tss_baseHigh], edx
 
-	lea rax, [initial_ist+0x4000]
+	lea rax, [Arch_InitialISTStack+0x10000]
 	mov [TSS.ist0], rax
 
 	lgdt [GDTPtr]
@@ -85,3 +86,25 @@ Arch_InitBootGDT:
 	push 0x8
 	push rax
 	retfq
+global Arch_FlushGDT
+Arch_FlushGDT:
+	push rbp
+	mov rbp, rsp
+
+	lgdt [rdi]
+
+	mov ax, 0x28
+	ltr ax
+
+	mov ax, 0x10
+	mov ds, ax
+	mov ss, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax 
+
+	leave
+	pop rax
+	push 0x8
+	push rax
+	ret
