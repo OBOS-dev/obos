@@ -21,10 +21,19 @@ target_include_directories(oboskrnl
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
-target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
-
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
 	PRIVATE "-T" PRIVATE "${CMAKE_SOURCE_DIR}/src/build/x86_64/link.ld"
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )
+
+if (DEFINED OBOS_ENABLE_UBSAN)
+	list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
+	target_compile_options(oboskrnl
+		PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
+	)
+	set(OBOS_ENABLE_UBSAN "1")
+endif()
+target_compile_definitions(oboskrnl PRIVATE OBOS_UBSAN_ENABLED=$<IF:${OBOS_ENABLE_UBSAN},1,0>)
+
+target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
