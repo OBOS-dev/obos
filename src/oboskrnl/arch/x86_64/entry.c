@@ -24,7 +24,7 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
-#include <arch/x86_64/pmm.h>
+#include <mm/bare_map.h>
 
 extern void Arch_InitBootGDT();
 
@@ -58,6 +58,13 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
 	Arch_InitializeIDT();
+	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
+	{
+		uint32_t edx = 0;
+		__cpuid__(0x80000001, 0, nullptr, nullptr, nullptr, &edx);
+		if (edx & (1 << 20))
+			wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080) | (1<<11) /* XD Enable */);
+	}
 	OBOS_Debug("%s: Initializing scheduler.\n", __func__);
 	bsp_cpu.id = 0;
 	bsp_cpu.isBSP = true;
@@ -166,14 +173,10 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 #define sz 0x4ul
 	OBOS_Debug("Attempt allocation of %lu bytes (%lu pages, %lu mib)\n", sz*0x1000, sz, sz/256);
 	obos_status allocStatus = OBOS_STATUS_SUCCESS;
-	uintptr_t addr1 = Arch_AllocatePhysicalPages(sz, 0x200, &allocStatus);
-	if (allocStatus == OBOS_STATUS_SUCCESS)
-	{
-		Arch_FreePhysicalPages(addr1, sz);
-		OBOS_Debug("Allocated %d pages at physical address 0x%p.\n", sz, addr1);
-	}
-	else
-		OBOS_Debug("Allocation failed!\n");
+	void* mem = OBOS_BasicMMAllocatePages(sz*0x1000, &allocStatus);
+	OBOS_Debug("%s: %s %d pages.\n", __func__, allocStatus == OBOS_STATUS_SUCCESS ? "Allocated" : "Could not allocate", sz);
+	if (allocStatus == OBOS_STATUS_SUCCESS) 
+		OBOS_Debug("Note: Memory address is 0x%p.\n", mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
