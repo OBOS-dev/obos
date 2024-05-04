@@ -32,4 +32,8 @@ typedef enum
 	/// The affinity in the thread object is invalid.
 	/// </summary>
 	OBOS_STATUS_INVALID_AFFINITY,
+	/// <summary>
+	/// There is not enough memory to satisfy your request.
+	/// </summary>
+	OBOS_STATUS_NOT_ENOUGH_MEMORY,
 } obos_status;
