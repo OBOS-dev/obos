@@ -16,8 +16,8 @@
 #define getSchedulerTicks (CoreS_GetCPULocalPtr()->schedulerTicks)
 #define getPriorityLists (CoreS_GetCPULocalPtr()->priorityLists)
 #define priorityList(priority) ((priority <= THREAD_PRIORITY_MAX_VALUE) ? &getPriorityLists[priority] : nullptr)
-#define verifyAffinity(thr, cpuId) (thr->affinity & (1 << CoreH_CPUIdToAffinity(cpuId)))
-#define threadCanThread(thr) (thr->status == THREAD_STATUS_READY && verifyAffinity(thr, CoreS_GetCPULocalPtr()->id))
+#define verifyAffinity(thr, cpuId) (thr->affinity & CoreH_CPUIdToAffinity(cpuId))
+#define threadCanRunThread(thr) ((thr->status == THREAD_STATUS_RUNNING || thr->status == THREAD_STATUS_READY) && verifyAffinity(thr, CoreS_GetCPULocalPtr()->id))
 
 size_t Core_ReadyThreadCount;
 const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE + 1] = {
@@ -47,8 +47,9 @@ static void ThreadStarvationPrevention(thread_priority_list* list, thread_priori
 	// The first (list->nNodes / 4) threads in a priority list will be starving usually because they are at the beginning of the list, and the scheduler starts from the back.
 	for (thread_node* thrN = list->list.head; thrN && i < (list->list.nNodes / 4); )
 	{
-		if (thrN->data->status != THREAD_STATUS_RUNNING)
-			OBOS_ASSERT(thrN->data->status == THREAD_STATUS_READY);
+		if (thrN->data->status == THREAD_STATUS_RUNNING)
+			continue;
+		OBOS_ASSERT(thrN->data->status == THREAD_STATUS_READY);
 		if (thrN->data->flags & THREAD_FLAGS_PRIORITY_RAISED)
 			continue;
 		CoreH_ThreadListRemove(&list->list, thrN);
@@ -87,8 +88,8 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 			// Steal some work from the target CPU.
 			for (thread_node* thrN = list->list.head; thrN && j < ((targetNodeCount - ourNodeCount) / nCoresWithMoreNodes + 1); )
 			{
-				if (thrN->data->status != THREAD_STATUS_RUNNING)
-					OBOS_ASSERT(thrN->data->status == THREAD_STATUS_READY);
+				if (thrN->data->status != THREAD_STATUS_READY)
+					continue;
 				if (thrN->data->flags & THREAD_FLAGS_PRIORITY_RAISED)
 					continue;
 				if (!verifyAffinity(thrN->data, CoreS_GetCPULocalPtr()->id))
@@ -111,7 +112,8 @@ void Core_Schedule()
 	if (!getCurrentThread)
 		goto schedule;
 	getCurrentThread->lastRunTick = getSchedulerTicks;
-	if (getCurrentThread->quantum++ < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && threadCanThread(getCurrentThread))
+	bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
+	if (getCurrentThread->quantum++ < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 schedule:
 	if (getCurrentThread)

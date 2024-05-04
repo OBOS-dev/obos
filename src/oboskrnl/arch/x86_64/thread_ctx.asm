@@ -181,12 +181,12 @@ CoreS_SaveRegisterContextAndYield:
 	mov [rdi+thread_ctx.frame+0xC0], rax ; rsp
 	mov rax, ss
 	mov [rdi+thread_ctx.frame+0xC8], rax ; ss
-	mov ecx, 0xC000101
+	mov ecx, 0xC0000101
 	rdmsr
 	shl rdx, 32
 	or rax, rdx
 	mov [rdi+thread_ctx.gs_base], rax
-	mov ecx, 0xC000100
+	mov ecx, 0xC0000100
 	rdmsr
 	shl rdx, 32
 	or rax, rdx
@@ -201,6 +201,7 @@ CoreS_SaveRegisterContextAndYield:
 
 .call_scheduler:
 	call Core_Schedule
+	ret ; There is the chance that the scheduler returned because the threads quantum has not been finished yet.
 ; When the scheduler switches to the current thread context, the rip will be at the return address, as we set rip to the return address passed on the stack
 CoreS_SetThreadIRQL:
 	push rbp
