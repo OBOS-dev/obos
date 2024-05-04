@@ -163,10 +163,10 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
-#define sz 0x8000ul
+#define sz 0x4ul
 	OBOS_Debug("Attempt allocation of %lu bytes (%lu pages, %lu mib)\n", sz*0x1000, sz, sz/256);
 	obos_status allocStatus = OBOS_STATUS_SUCCESS;
-	uintptr_t addr1 = Arch_AllocatePhysicalPages(sz, 0, &allocStatus);
+	uintptr_t addr1 = Arch_AllocatePhysicalPages(sz, 0x200, &allocStatus);
 	if (allocStatus == OBOS_STATUS_SUCCESS)
 	{
 		Arch_FreePhysicalPages(addr1, sz);

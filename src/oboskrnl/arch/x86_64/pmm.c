@@ -64,12 +64,12 @@ obos_status Arch_InitializePMM()
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignment, size_t *nPagesRequiredP)
+static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)
 {
 	size_t nPagesRequired = nPages;
 	uintptr_t nodePhys = (uintptr_t)node - Arch_LdrPlatformInfo->higher_half_base;
-	nPagesRequired += (node->nPages % alignment);
-	uintptr_t mod = nodePhys % (alignment * 0x1000);
+	nPagesRequired += (node->nPages & ((alignmentMask + 1) / 0x1000 - 1));
+	uintptr_t mod = nodePhys & alignmentMask;
 	nPagesRequired += mod / 4096;
 	if (nPagesRequiredP)
 		*nPagesRequiredP = nPagesRequired;
@@ -79,16 +79,27 @@ static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t
 #define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LdrPlatformInfo->higher_half_base)
 uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
 {
+	if (!nPages)
+	{
+		*status = OBOS_STATUS_INVALID_ARGUMENT;
+		return 0;
+	}
 	if (!alignmentPages)
 		alignmentPages = 1;
+	if (__builtin_popcount(alignmentPages) > 1)
+	{
+		*status = OBOS_STATUS_INVALID_ARGUMENT;
+		return 0;
+	}
 	if (!s_head)
 		OBOS_Panic(OBOS_PANIC_NO_MEMORY, "No more avaliable physical memory!\n");
 	uintptr_t phys = 0;
 	if (nPages % alignmentPages)
 		nPages += (alignmentPages - (nPages % alignmentPages));
+	size_t alignmentMask = alignmentPages*0x1000-1;
 	size_t nPagesRequired = 0;
 	struct freelist_node* node = MAP_TO_HHDM(s_head, struct freelist_node);
-	while (UNMAP_FROM_HHDM(node) && !IsRegionSufficient(node, nPages, alignmentPages, &nPagesRequired))
+	while (UNMAP_FROM_HHDM(node) && !IsRegionSufficient(node, nPages, alignmentMask, &nPagesRequired))
 		node = MAP_TO_HHDM(node->next, struct freelist_node);
 	if (!UNMAP_FROM_HHDM(node))
 	{
