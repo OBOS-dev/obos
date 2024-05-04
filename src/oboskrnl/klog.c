@@ -86,8 +86,9 @@ OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
 	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
+	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
-	printf("Kernel Panic! Reason: %d. Information on the crash is below:\n");
+	printf("Kernel Panic! Reason: %d. Information on the crash is below:\n", reason);
 	va_list list;
 	va_start(list, format);
 	vprintf(format, list);
@@ -97,6 +98,7 @@ OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
 
 static char* outputCallback(const char* buf, void* a, int len)
 {
+	OBOS_UNUSED(a);
 	for (size_t i = 0; i < (size_t)len; i++)
 	{
 #ifdef __x86_64__
