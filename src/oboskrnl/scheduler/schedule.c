@@ -158,6 +158,7 @@ schedule:
 				OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
 			break;
 		}
+		OBOS_ASSERT(nextPriority <= THREAD_PRIORITY_MAX_VALUE);
 		list = priorityList(nextPriority);
 	}
 	if (!list)

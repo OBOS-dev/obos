@@ -24,7 +24,9 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
-#include <mm/bare_map.h>
+#include <arch/x86_64/pmm.h>
+
+#include <allocators/basic_allocator.h>
 
 extern void Arch_InitBootGDT();
 
@@ -171,19 +173,100 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 	if (!Arch_KernelBinary)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
 }
-obos_status Arch_InitializeKernelPageTable();
+extern obos_status Arch_InitializeKernelPageTable();
+static size_t runAllocatorTests(allocator_info* allocator, size_t passes);
+void pageFaultHandler(interrupt_frame* frame)
+{
+	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
+		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
+		"Register dump:\n"
+		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
+		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
+		"\tRCX: 0x%016lx, RAX: 0x%016lx, RIP: 0x%016lx\n"
+		"\t R8: 0x%016lx,  R9: 0x%016lx, R10: 0x%016lx\n"
+		"\tR11: 0x%016lx, R12: 0x%016lx, R13: 0x%016lx\n"
+		"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
+		"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
+		"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
+		"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n",
+		(void*)frame->rip,
+		frame->cs == 0x8 ? "kernel" : "user",
+		(frame->errorCode & 2) ? "write" : ((frame->errorCode & 0x10) ? "execute" : "read"),
+		getCR2(),
+		frame->errorCode & 1 ? "present" : "unpresent",
+		frame->errorCode,
+		frame->rdi, frame->rsi, frame->rbp,
+		frame->rsp, frame->rbx, frame->rdx,
+		frame->rcx, frame->rax, frame->rip,
+		frame->r8, frame->r9, frame->r10,
+		frame->r11, frame->r12, frame->r13,
+		frame->r14, frame->r15, frame->rflags,
+		frame->ss, frame->ds, frame->cs,
+		getCR0(), getCR2(), getCR3(),
+		getCR4(), Core_GetIrql(), getEFER()
+	);
+}
+uint64_t random_number();
+__asm__(
+	".global random_number; random_number:; rdrand %rax; ret;"
+);
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
 	ParseBootContext(bcontext);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
+	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
+	OBOS_Debug("%s: Testing allocator...\n", __func__);
+	OBOS_Debug("%lu", random_number());
+	basic_allocator alloc;
+	OBOSH_ConstructBasicAllocator(&alloc);
+	OBOS_ASSERT(runAllocatorTests(&alloc, 1000000) == 1000000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
+}
+static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
+{
+	OBOS_Debug("%s: Testing allocator. Pass count is %lu.\n", __func__, passes);
+	void* lastDiv16Pointer = nullptr;
+	size_t passInterval = 10000;
+	if (passInterval % 10)
+		passInterval += (passInterval - passInterval % 10);
+	size_t lastStatusMessageInterval = 0;
+	const char* buf = "\xef\xbe\xad\xed";
+	size_t lastFreeIndex = 0;
+	for (size_t i = 0; i < passes; i++)
+	{
+		if (!i)
+			OBOS_Debug("%s: &i=0x%p\n", __func__, &i);
+		if ((lastStatusMessageInterval + passInterval) == i)
+		{
+			OBOS_Debug("%s: Finished %lu passes so far.\n", __func__, i);
+			lastStatusMessageInterval = i;
+		}
+		uint64_t r = random_number();
+		void* mem = allocator->Allocate(allocator, r % 0x10000 + 16, nullptr);
+		if (!mem)
+			return i;
+		((uint8_t*)mem)[i % 4] = buf[i % 4];
+		if (++lastFreeIndex == 3)
+		{
+			lastFreeIndex = 0;
+			if (lastDiv16Pointer)
+			{
+				size_t objSize = allocator->QueryBlockSize(allocator, lastDiv16Pointer, nullptr);
+				if (objSize == SIZE_MAX)
+					return i;
+				allocator->Free(allocator, lastDiv16Pointer, objSize);
+			}
+			lastDiv16Pointer = mem;
+		}
+	}
+	return passes;
 }

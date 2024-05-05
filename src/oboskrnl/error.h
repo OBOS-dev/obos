@@ -40,4 +40,8 @@ typedef enum
 	/// A mismatched pointer was passed.
 	/// </summary>
 	OBOS_STATUS_MISMATCH,
+	/// <summary>
+	/// An internal error happened.
+	/// </summary>
+	OBOS_STATUS_INTERNAL_ERROR,
 } obos_status;

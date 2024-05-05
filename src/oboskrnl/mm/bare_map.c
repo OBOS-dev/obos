@@ -49,6 +49,11 @@ void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	for (currentNode = s_regionList.head; currentNode;)
 	{
 		uintptr_t currentNodeAddr = currentNode->addr & ~0xfff;
+		if (currentNodeAddr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+		{
+			currentNode = currentNode->next;
+			continue;
+		}
 		if ((currentNodeAddr - lastAddress) >= (sz + OBOS_PAGE_SIZE))
 		{
 			found = lastAddress;
