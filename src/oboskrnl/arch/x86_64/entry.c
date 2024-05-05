@@ -132,6 +132,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 struct ultra_memory_map_attribute* Arch_MemoryMap;
 struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct ultra_kernel_info_attribute* Arch_KernelInfo;
+struct ultra_module_info_attribute* Arch_KernelBinary;
 const char* OBOS_KernelCmdLine;
 static void ParseBootContext(struct ultra_boot_context* bcontext)
 {
@@ -143,9 +144,15 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = header; break;
 		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = header;  break;
 		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = header; break;
-		case ULTRA_ATTRIBUTE_MODULE_INFO: break;
 		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (header + 1); break;
 		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: break;
+		case ULTRA_ATTRIBUTE_MODULE_INFO: 
+		{
+			struct ultra_module_info_attribute* module = header;
+			if (strcmp(module->name, "__KERNEL__"))
+				Arch_KernelBinary = module;
+			break;
+		}
 		case ULTRA_ATTRIBUTE_INVALID:
 			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid UltraProtocol attribute type %d.\n", header->type);
 			break;
@@ -161,7 +168,10 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel info from bootloader.\n");
 	if (Arch_KernelInfo->partition_type == ULTRA_PARTITION_TYPE_INVALID)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
+	if (!Arch_KernelBinary)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
 }
+obos_status Arch_InitializeKernelPageTable();
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
@@ -170,16 +180,10 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
-#define sz 0x4ul
-	OBOS_Debug("Testing OBOS_BasicMMAllocatePages...\n", sz*0x1000, sz, sz/256);
-	void* mem1 = OBOS_BasicMMAllocatePages(4 * 0x1000, nullptr);
-	void* mem3 = OBOS_BasicMMAllocatePages(32 * 0x1000, nullptr);
-	OBOS_BasicMMFreePages(mem3, 0x20000);
-	void* mem4 = OBOS_BasicMMAllocatePages(48 * 0x1000, nullptr);
-	OBOS_BasicMMFreePages(mem1, 0x4000);
-	void* mem2 = OBOS_BasicMMAllocatePages(16 * 0x1000, nullptr);
-	OBOS_BasicMMFreePages(mem2, 0x10000);
-	OBOS_BasicMMFreePages(mem4, 0x30000);
+	OBOS_Debug("%s: Initializing page tables.\n", __func__);
+	obos_status status = Arch_InitializeKernelPageTable();
+	if (status != OBOS_STATUS_SUCCESS)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }

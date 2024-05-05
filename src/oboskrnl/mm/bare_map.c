@@ -14,23 +14,10 @@
 #define REGION_MAGIC_INT 0x4F424F534253434D
 #define REGION_MAGIC "OBOSBSCM"
 
-// Represents an allocated region.
-typedef struct region
-{
-	union
-	{
-		uint64_t integer;
-		const char* signature;
-	} magic;
-	uintptr_t addr;
-	size_t size;
-	struct region* next;
-	struct region* prev;
-} region;
 static struct
 {
-	region* head;
-	region* tail;
+	basicmm_region* head;
+	basicmm_region* tail;
 	size_t nNodes;
 } s_regionList;
 static spinlock s_regionListLock;
@@ -52,11 +39,11 @@ static void Unlock(irql oldIrql)
 
 void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
-	sz += sizeof(region);
+	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
-	// Find a region.
-	region* node = nullptr;
-	region* currentNode = nullptr;
+	// Find a basicmm_region.
+	basicmm_region* node = nullptr;
+	basicmm_region* currentNode = nullptr;
 	uintptr_t lastAddress = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	uintptr_t found = 0;
 	for (currentNode = s_regionList.head; currentNode;)
@@ -73,13 +60,13 @@ void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	}
 	if (!found)
 	{
-		region* currentNode = s_regionList.tail;
+		basicmm_region* currentNode = s_regionList.tail;
 		if (currentNode)
 			found = (currentNode->addr & ~0xfff) + currentNode->size;
 		else
 			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	}
-	node = (region*)found;
+	node = (basicmm_region*)found;
 	for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
 	{
 		obos_status stat = OBOS_STATUS_SUCCESS;
@@ -99,10 +86,10 @@ void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 }
 obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 {
-	sz += sizeof(region);
+	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
 	uintptr_t base = (uintptr_t)base_;
-	region* reg = ((region*)base - 1);
+	basicmm_region* reg = ((basicmm_region*)base - 1);
 	if (((uintptr_t)reg & ~0xfff) != (base & ~0xfff))
 		return OBOS_STATUS_MISMATCH;
 	if (reg->magic.integer != REGION_MAGIC_INT)
@@ -120,18 +107,16 @@ obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 		s_regionList.tail = reg->prev;
 	s_regionList.nNodes--;
 	Unlock(oldIrql);
-	// Unmap the region.
+	// Unmap the basicmm_region.
 	base &= ~0xfff;
 	for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
 		OBOSS_UnmapPage((void*)addr);
 	return OBOS_STATUS_SUCCESS;
 }
 
-size_t OBOSH_BasicMMGetRegionSize() { return sizeof(region); }
-void OBOSH_BasicMMAddRegion(void* nodeBase, void* base_, size_t sz)
+void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, size_t sz)
 {
 	uintptr_t base = (uintptr_t)base_;
-	region* node = (region*)nodeBase;
 	node->magic.integer = REGION_MAGIC_INT;
 	node->addr = base;
 	node->size = sz;
@@ -167,7 +152,7 @@ void OBOSH_BasicMMAddRegion(void* nodeBase, void* base_, size_t sz)
 	{
 		irql oldIrql = Lock();
 		// Find the node that this node should go after.
-		region* found = nullptr, *n = s_regionList.head;
+		basicmm_region* found = nullptr, *n = s_regionList.head;
 		while (n && n->next)
 		{
 			if (n->addr < base &&

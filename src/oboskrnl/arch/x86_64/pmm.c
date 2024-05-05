@@ -25,6 +25,7 @@ static size_t s_nNodes;
 size_t Arch_TotalPhysicalPages = 0;
 size_t Arch_TotalPhysicalPagesUsed = 0;
 size_t Arch_UsablePhysicalPages = 0;
+uintptr_t Arch_PhysicalMemoryBoundaries;
 obos_status Arch_InitializePMM()
 {
 	if (!Arch_MemoryMap)
@@ -48,6 +49,8 @@ obos_status Arch_InitializePMM()
 			nPages--;
 		}
 		Arch_TotalPhysicalPages += nPages;
+		if ((phys + nPages * 0x1000) > Arch_PhysicalMemoryBoundaries)
+			Arch_PhysicalMemoryBoundaries = (phys + nPages * 0x1000);
 		if (entry->type != ULTRA_MEMORY_TYPE_FREE)
 			continue;
 		Arch_UsablePhysicalPages += nPages;
@@ -62,6 +65,8 @@ obos_status Arch_InitializePMM()
 		s_tail = (struct freelist_node*)phys;
 		s_nNodes++;
 	}
+	if (Arch_PhysicalMemoryBoundaries & 4294967295)
+		Arch_PhysicalMemoryBoundaries = (Arch_PhysicalMemoryBoundaries + 4294967295) & ~4294967295;
 	return OBOS_STATUS_SUCCESS;
 }
 static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)

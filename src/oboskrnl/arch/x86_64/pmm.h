@@ -11,6 +11,7 @@
 extern size_t Arch_TotalPhysicalPages;
 extern size_t Arch_TotalPhysicalPagesUsed;
 extern size_t Arch_UsablePhysicalPages;
+extern uintptr_t Arch_PhysicalMemoryBoundaries;
 
 /// <summary>
 /// Initializes the PMM.

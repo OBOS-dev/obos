@@ -23,6 +23,19 @@ obos_status OBOSS_MapPage_RW_XD(void* at, uintptr_t phys);
 /// <returns>The status of the function.</returns>
 obos_status OBOSS_UnmapPage(void* at);
 
+typedef struct basicmm_region
+{
+	union
+	{
+		uint64_t integer;
+		char signature[8];
+	} magic;
+	uintptr_t addr;
+	size_t size;
+	struct basicmm_region* next;
+	struct basicmm_region* prev;
+} basicmm_region;
+
 /// <summary>
 /// Allocates physical pages.
 /// </summary>
@@ -57,14 +70,9 @@ void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status);
 obos_status OBOS_BasicMMFreePages(void *base, size_t sz);
 
 /// <summary>
-/// Gets the size of a region. This always returns the same thing.
-/// </summary>
-/// <returns>The size of a region.</returns>
-size_t OBOSH_BasicMMGetRegionSize();
-/// <summary>
 /// Adds a region to the region nodes for the basic mm for OBOS.
 /// </summary>
-/// <param name="nodeBase">The address of the node. The size of this should be greater than or equal to OBOSH_BasicMMGetRegionSize's return value.</param>
+/// <param name="nodeBase">The address of the node.</param>
 /// <param name="base">The base of the region.</param>
 /// <param name="sz">The size of the region.</param>
-void OBOSH_BasicMMAddRegion(void* nodeBase, void* base, size_t sz);
+void OBOSH_BasicMMAddRegion(basicmm_region* nodeBase, void* base, size_t sz);
