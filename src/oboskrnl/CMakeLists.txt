@@ -5,6 +5,7 @@
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
+	"text.c"
 )
 
 add_executable(oboskrnl)

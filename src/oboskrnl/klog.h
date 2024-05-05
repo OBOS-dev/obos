@@ -23,6 +23,7 @@ typedef enum
 	OBOS_PANIC_NO_MEMORY,
 	OBOS_PANIC_ALLOCATOR_ERROR,
 } panic_reason;
+const char* OBOSH_PanicReasonToStr(panic_reason reason);
 typedef enum
 {
 	LOG_LEVEL_DEBUG,

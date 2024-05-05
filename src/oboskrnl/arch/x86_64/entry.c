@@ -8,6 +8,8 @@
 #include <klog.h>
 #include <struct_packing.h>
 #include <memmanip.h>
+#include <text.h>
+#include <font.h>
 
 #include <UltraProtocol/ultra_protocol.h>
 
@@ -28,6 +30,8 @@
 
 #include <allocators/basic_allocator.h>
 
+#include <arch/x86_64/boot_info.h>
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -47,6 +51,8 @@ __asm__(
 extern void Arch_IdleTask();
 extern void Arch_FlushGDT(uintptr_t gdtr);
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext);
+static void ParseBootContext(struct ultra_boot_context* bcontext);
+void pageFaultHandler(interrupt_frame* frame);
 void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 {
 	if (magic != ULTRA_MAGIC)
@@ -59,6 +65,24 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
+	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
+	ParseBootContext(bcontext);
+	if (Arch_LdrPlatformInfo->page_table_depth != 4)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
+	if (!Arch_Framebuffer)
+		OBOS_Warning("No framebuffer passed by the framebuffer. All kernel logs will be on port 0xE9.\n");
+	else
+	{
+		OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
+		OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
+		OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
+		OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
+		OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
+		OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+		OBOS_TextRendererState.column = 0;
+		OBOS_TextRendererState.row = 0;
+		OBOS_TextRendererState.font = font_bin;
+	}
 	Arch_InitializeIDT();
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
@@ -75,15 +99,21 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	thread_ctx ctx1, ctx2;
 	memzero(&ctx1, sizeof(ctx1));
 	memzero(&ctx2, sizeof(ctx2));
+	OBOS_Debug("Setting up thread context.\n");
 	CoreS_SetupThreadContext(&ctx2, Arch_KernelMainBootstrap, bcontext, false, kmain_thr_stack, 0x10000);
 	CoreS_SetupThreadContext(&ctx1, Arch_IdleTask, 0, false, thr_stack, 0x4000);
+	OBOS_Debug("Initializing thread.\n");
 	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &ctx2);
 	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
 	kernelMainThread.context.gs_base = &bsp_cpu;
 	bsp_idleThread.context.gs_base = &bsp_cpu;
+	OBOS_Debug("Readying threads for execution.\n");
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
+	OBOS_Debug("Initializing CPU-local GDT.\n");
 	// Initialize the CPU's GDT.
+	memzero(Core_CpuInfo[0].arch_specific.gdtEntries, sizeof(Core_CpuInfo[0].arch_specific.gdtEntries));
+	memzero(&Core_CpuInfo[0].arch_specific.tss, sizeof(Core_CpuInfo[0].arch_specific.tss));
 	Core_CpuInfo[0].arch_specific.gdtEntries[0] = 0;
 	Core_CpuInfo[0].arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
 	Core_CpuInfo[0].arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
@@ -100,6 +130,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 		uint32_t baseHigh;
 		uint32_t resv1;
 	} tss_entry;
+	memzero(&tss_entry, sizeof(tss_entry));
 	uintptr_t tss = (uintptr_t)&Core_CpuInfo[0].arch_specific.tss;
 	tss_entry.limitLow = sizeof(Core_CpuInfo[0].arch_specific.tss);
 	tss_entry.baseLow = tss & 0xffff;
@@ -122,11 +153,14 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	gdtr.limit = sizeof(Core_CpuInfo[0].arch_specific.gdtEntries) - 1;
 	gdtr.base = Core_CpuInfo[0].arch_specific.gdtEntries;
 	Arch_FlushGDT(&gdtr);
+	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
+	OBOS_Debug("Initializing priority lists.\n");
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
 	// Finally yield into the scheduler.
+	OBOS_Debug("Yielding into the scheduler!\n");
 	Core_Yield();
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
 	while (1);
@@ -135,6 +169,7 @@ struct ultra_memory_map_attribute* Arch_MemoryMap;
 struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
+struct ultra_framebuffer* Arch_Framebuffer;
 const char* OBOS_KernelCmdLine;
 static void ParseBootContext(struct ultra_boot_context* bcontext)
 {
@@ -147,7 +182,12 @@ static void ParseBootContext(struct ultra_boot_context* bcontext)
 		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = header;  break;
 		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = header; break;
 		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (header + 1); break;
-		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: break;
+		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: 
+		{
+			struct ultra_framebuffer_attribute* fb = header;
+			Arch_Framebuffer = &fb->fb;
+			break;
+		}
 		case ULTRA_ATTRIBUTE_MODULE_INFO: 
 		{
 			struct ultra_module_info_attribute* module = header;
@@ -213,10 +253,6 @@ __asm__(
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
-	ParseBootContext(bcontext);
-	if (Arch_LdrPlatformInfo->page_table_depth != 4)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
-	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
@@ -224,7 +260,6 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	OBOS_Debug("%s: Testing allocator...\n", __func__);
-	OBOS_Debug("%lu", random_number());
 	basic_allocator alloc;
 	OBOSH_ConstructBasicAllocator(&alloc);
 	OBOS_ASSERT(runAllocatorTests(&alloc, 1000000) == 1000000);

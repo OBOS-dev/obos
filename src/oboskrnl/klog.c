@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <stdarg.h>
+#include <text.h>
 
 #include <locks/spinlock.h>
 
@@ -19,6 +20,23 @@
 #	include <arch/x86_64/asm_helpers.h>
 #endif
 
+const char* OBOSH_PanicReasonToStr(panic_reason reason)
+{
+	const char* table[] = {
+		"OBOS_PANIC_EXCEPTION",
+		"OBOS_PANIC_FATAL_ERROR",
+		"OBOS_PANIC_KASAN_VIOLATION",
+		"OBOS_PANIC_UBSAN_VIOLATION",
+		"OBOS_PANIC_DRIVER_FAILURE",
+		"OBOS_PANIC_ASSERTION_FAILED",
+		"OBOS_PANIC_SCHEDULER_ERROR",
+		"OBOS_PANIC_NO_MEMORY",
+		"OBOS_PANIC_ALLOCATOR_ERROR",
+	};
+	if (reason > OBOS_PANIC_ALLOCATOR_ERROR)
+		return nullptr;
+	return table[reason];
+}
 static log_level s_logLevel;
 void OBOS_SetLogLevel(log_level level)
 {
@@ -88,7 +106,7 @@ OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
 	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
-	printf("Kernel Panic! Reason: %d. Information on the crash is below:\n", reason);
+	printf("Kernel Panic! Reason: %s. Information on the crash is below:\n", OBOSH_PanicReasonToStr(reason));
 	va_list list;
 	va_start(list, format);
 	vprintf(format, list);
@@ -96,11 +114,13 @@ OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
 	while (1);
 }
 
+
 static char* outputCallback(const char* buf, void* a, int len)
 {
 	OBOS_UNUSED(a);
 	for (size_t i = 0; i < (size_t)len; i++)
 	{
+		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
 #ifdef __x86_64__
 		outb(0xE9, buf[i]);
 #endif

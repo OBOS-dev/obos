@@ -2,5 +2,6 @@
 /CMakePresets.json
 /out
 /dependencies/hyper
+/dependencies/UltraProtocol
 /dependencies/include/
 /qemu_log.txt
