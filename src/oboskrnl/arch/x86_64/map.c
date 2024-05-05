@@ -56,7 +56,7 @@ static uintptr_t GetPageMapEntryForDepth(uintptr_t pml4Base, uintptr_t addr, uin
 	return 0;
 }
 
-uintptr_t* AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
+uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
 {
 	if (depth > 3 || depth == 0)
 		return nullptr;
@@ -89,6 +89,26 @@ uintptr_t* AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlag
 	}
 	return (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(pml4Base, at, (4 - depth))));
 }
+bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
+{
+	if (maxDepth > 3 || maxDepth == 0)
+		return false;
+	for (uint8_t i = (4 - maxDepth); i < 4; i++)
+	{
+		if (!(GetPageMapEntryForDepth(pml4Base, at, i + 1) & 1))
+			continue;
+		uintptr_t* pageMap = (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(pml4Base, at, i + 1)));
+		uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(pageMap[AddressToIndex(at, i)]);
+		uintptr_t* subPageMap = (uintptr_t*)Arch_MapToHHDM(phys);
+		if (memcmp_b(subPageMap, (int)0, 4096))
+		{
+			pageMap[AddressToIndex(at, i)] = 0;
+			OBOSS_FreePhysicalPages(phys, 1);
+			continue;
+		}
+	}
+	return true;
+}
 
 obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 {
@@ -97,8 +117,18 @@ obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	const uintptr_t flags = 0x8000000000000003;
-	uintptr_t* pm = AllocatePageMapAt(getCR3(), at, flags, 3);
+	uintptr_t* pm = Arch_AllocatePageMapAt(getCR3(), at, flags, 3);
 	pm[AddressToIndex(at, 0)] = phys | flags;
+	return OBOS_STATUS_SUCCESS;
+}
+obos_status OBOSS_UnmapPage(void* at_)
+{
+	uintptr_t at = (uintptr_t)at_;
+	if (at & 0xfff)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(Arch_GetPML2Entry(getCR3(), at)));
+	pt[AddressToIndex(at, 0)] = 0;
+	Arch_FreePageMapAt(getCR3(), at, 3);
 	invlpg(at);
 	return OBOS_STATUS_SUCCESS;
 }

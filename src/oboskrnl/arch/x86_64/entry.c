@@ -171,12 +171,15 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
 #define sz 0x4ul
-	OBOS_Debug("Attempt allocation of %lu bytes (%lu pages, %lu mib)\n", sz*0x1000, sz, sz/256);
-	obos_status allocStatus = OBOS_STATUS_SUCCESS;
-	void* mem = OBOS_BasicMMAllocatePages(sz*0x1000, &allocStatus);
-	OBOS_Debug("%s: %s %d pages.\n", __func__, allocStatus == OBOS_STATUS_SUCCESS ? "Allocated" : "Could not allocate", sz);
-	if (allocStatus == OBOS_STATUS_SUCCESS) 
-		OBOS_Debug("Note: Memory address is 0x%p.\n", mem);
+	OBOS_Debug("Testing OBOS_BasicMMAllocatePages...\n", sz*0x1000, sz, sz/256);
+	void* mem1 = OBOS_BasicMMAllocatePages(4 * 0x1000, nullptr);
+	void* mem3 = OBOS_BasicMMAllocatePages(32 * 0x1000, nullptr);
+	OBOS_BasicMMFreePages(mem3, 0x20000);
+	void* mem4 = OBOS_BasicMMAllocatePages(48 * 0x1000, nullptr);
+	OBOS_BasicMMFreePages(mem1, 0x4000);
+	void* mem2 = OBOS_BasicMMAllocatePages(16 * 0x1000, nullptr);
+	OBOS_BasicMMFreePages(mem2, 0x10000);
+	OBOS_BasicMMFreePages(mem4, 0x30000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
