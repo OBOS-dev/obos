@@ -18,20 +18,20 @@
 
 #include <elf/elf64.h>
 
-static size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
+static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
 
-uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
+OBOS_NO_KASAN uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
 {
 	return phys & 0xffffffffff000;
 }
-uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	if (!pml4Base)
 		return 0;
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(pml4Base));
 	return arr[AddressToIndex(addr, 3)];
 }
-uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML4Entry(pml4Base, addr));
 	if (!phys)
@@ -39,7 +39,7 @@ uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(phys);
 	return arr[AddressToIndex(addr, 2)];
 }
-uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML3Entry(pml4Base, addr));
 	if (!phys)
@@ -47,7 +47,7 @@ uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(phys);
 	return arr[AddressToIndex(addr, 1)];
 }
-uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML2Entry(pml4Base, addr));
 	if (!phys)

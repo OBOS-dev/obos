@@ -90,7 +90,7 @@ void OBOS_Error(const char* format, ...)
 	common_log(LOG_LEVEL_ERROR, "ERROR", format, list);
 	va_end(list);
 }
-OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...)
+OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	(reason = reason);
 	const char* ascii_art =

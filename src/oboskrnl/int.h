@@ -37,3 +37,8 @@ typedef _Bool bool;
 #define OBOS_NODISCARD [[__nodiscard__]]
 #define OBOS_NODISCARD_REASON(why) [[__nodiscard__(why)]]
 #define OBOS_UNUSED(x) (void)(sizeof((x), 0))
+#ifdef __GNUC__
+#	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
+#else
+#	define OBOS_NO_KASAN
+#endif

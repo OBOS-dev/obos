@@ -36,5 +36,13 @@ if (DEFINED OBOS_ENABLE_UBSAN)
 	set(OBOS_ENABLE_UBSAN "1")
 endif()
 target_compile_definitions(oboskrnl PRIVATE OBOS_UBSAN_ENABLED=$<IF:${OBOS_ENABLE_UBSAN},1,0>)
+if (DEFINED OBOS_ENABLE_KASAN)
+	list (APPEND oboskrnl_sources "sanitizers/asan.c")
+	target_compile_options(oboskrnl
+		PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
+	)
+	set(OBOS_ENABLE_KASAN "1")
+endif()
+target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=$<IF:${OBOS_ENABLE_KASAN},1,0>)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

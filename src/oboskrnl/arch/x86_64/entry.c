@@ -60,13 +60,13 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	// TODO: Parse boot context.
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
 	Arch_disablePIC();
+	ParseBootContext(bcontext);
 	Core_GetIrql();
 	asm("sti");
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
 	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
-	ParseBootContext(bcontext);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	if (!Arch_Framebuffer)
@@ -171,7 +171,7 @@ struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_framebuffer* Arch_Framebuffer;
 const char* OBOS_KernelCmdLine;
-static void ParseBootContext(struct ultra_boot_context* bcontext)
+static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
 	struct ultra_attribute_header* header = bcontext->attributes;
 	for (size_t i = 0; i < bcontext->attribute_count; i++, header = ULTRA_NEXT_ATTRIBUTE(header))

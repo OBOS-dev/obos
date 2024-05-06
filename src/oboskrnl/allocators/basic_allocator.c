@@ -25,6 +25,7 @@ static void set_status(obos_status* p, obos_status to)
 	if (p)
 		*p = to;
 }
+extern uint8_t asan_poison;
 static basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
 {
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
@@ -193,7 +194,7 @@ tryAgain:
 	from->allocated.nNodes++;
 	from->nFreeBytes -= size;
 #if OBOS_KASAN_ENABLED
-	memset((uint8_t*)freeNode->getAllocAddr() + size - 256, asan_poison, 256);
+	memset((uint8_t*)OBOS_NODE_ADDR(freeNode) + size - 256, asan_poison, 256);
 #endif
 	return OBOS_NODE_ADDR(freeNode);
 }

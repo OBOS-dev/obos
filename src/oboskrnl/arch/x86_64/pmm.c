@@ -82,7 +82,7 @@ static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t
 }
 #define MAP_TO_HHDM(addr, type) ((type*)(Arch_LdrPlatformInfo->higher_half_base + (uintptr_t)(addr)))
 #define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LdrPlatformInfo->higher_half_base)
-uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
+OBOS_NO_KASAN uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
 {
 	if (!nPages)
 	{
@@ -133,7 +133,7 @@ uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_
 		*status = OBOS_STATUS_SUCCESS;
 	return phys;
 }
-void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
+OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 {
 	OBOS_ASSERT(addr);
 	OBOS_ASSERT(!(addr & 0xfff));
@@ -156,7 +156,7 @@ obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 	Arch_FreePhysicalPages(base, nPages);
 	return OBOS_STATUS_SUCCESS;
 }
-void* Arch_MapToHHDM(uintptr_t phys)
+OBOS_NO_KASAN void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
 }
