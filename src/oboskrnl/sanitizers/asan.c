@@ -47,22 +47,25 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 		break;
 	}
 }
-static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size)
+static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
 {
 #ifdef __x86_64__
 	base &= ~0xfff;
 	size += (0x1000 - (size & 0xfff));
+	uintptr_t flags = 1;
+	if (rw)
+		flags |= 2;
 	for (uintptr_t addr = base; addr < (base + size); addr += 0x1000)
 	{
 		// First check if this is a huge page.
 		uintptr_t entry = Arch_GetPML2Entry(getCR3(), addr);
-		if (!(entry & 1))
+		if (!(entry & flags))
 			return false;
 		if (entry & (1 << 7))
 			goto check;
 		entry = Arch_GetPML1Entry(getCR3(), addr);
 		check:
-		if (!(entry & 1))
+		if (!(entry & flags))
 			return false;
 	}
 #endif
@@ -76,13 +79,13 @@ OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t
 	bool isPoisoned = false;
 	bool shortCircuitedFirst = false, shortCircuitedSecond = false;
 	if (OBOS_CROSSES_PAGE_BOUNDARY(at - 16, 16))
-		if ((shortCircuitedFirst = !isAllocated(at - 16, 16)))
+		if ((shortCircuitedFirst = !isAllocated(at - 16, 16, false)))
 			goto short_circuit1;
 	isPoisoned = memcmp_b((void*)(at - 16), asan_poison, 16);
 	short_circuit1:
 	if (!isPoisoned)
 		if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 16))
-			if ((shortCircuitedSecond = !isAllocated(at + size, 16)))
+			if ((shortCircuitedSecond = !isAllocated(at + size, 16, false)))
 				goto short_circuit2;
 	isPoisoned = memcmp_b((void*)(at + size), asan_poison, 16);
 	short_circuit2:
@@ -91,7 +94,7 @@ OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t
 }
 OBOS_NO_KASAN void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
-	if (!isAllocated(at, size))
+	if (!isAllocated(at, size, rw))
 		asan_report(at, size, ip, rw, InvalidAccess, abort);
 	// Check for shadow space accesses for both the stack and the kernel heap.
 	if (rw && memcmp_b((void*)at, asan_poison, size))
