@@ -22,7 +22,7 @@ if (CMAKE_HOST_WIN32)
 elseif(CMAKE_HOST_LINUX)
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64 CACHE INTERNAL "The hyper install binary")
 	file(DOWNLOAD
-		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_instal-linux-x86_64
+		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-linux-x86_64
 		${hyper_install}
 	)
 else()
