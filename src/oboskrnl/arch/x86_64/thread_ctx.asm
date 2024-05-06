@@ -103,7 +103,7 @@ CoreS_SetupThreadContext:
 	;             rdi,             rsi,            rdx,               rcx,              r8,               r9
 	; thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize
 
-	test rax,rax
+	test rdi,rdi
 	jne .L1
 	mov rax, 3 ; OBOS_STATUS_UNIMPLEMENTED
 	jmp .finish
