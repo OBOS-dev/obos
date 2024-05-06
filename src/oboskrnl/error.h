@@ -36,4 +36,12 @@ typedef enum
 	/// There is not enough memory to satisfy your request.
 	/// </summary>
 	OBOS_STATUS_NOT_ENOUGH_MEMORY,
+	/// <summary>
+	/// A mismatched pointer was passed.
+	/// </summary>
+	OBOS_STATUS_MISMATCH,
+	/// <summary>
+	/// An internal error happened.
+	/// </summary>
+	OBOS_STATUS_INTERNAL_ERROR,
 } obos_status;

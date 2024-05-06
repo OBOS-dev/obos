@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 section .text
+default rel
 
 align 32
 global Arch_b_isr_handler
