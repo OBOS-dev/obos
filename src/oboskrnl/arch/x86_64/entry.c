@@ -250,6 +250,8 @@ uint64_t random_number();
 __asm__(
 	".global random_number; random_number:; rdrand %rax; ret;"
 );
+allocator_info* OBOS_KernelAllocator;
+static basic_allocator kalloc;
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
@@ -260,9 +262,9 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	OBOS_Debug("%s: Testing allocator...\n", __func__);
-	basic_allocator alloc;
-	OBOSH_ConstructBasicAllocator(&alloc);
-	OBOS_ASSERT(runAllocatorTests(&alloc, 1000000) == 1000000);
+	OBOSH_ConstructBasicAllocator(&kalloc);
+	OBOS_KernelAllocator = &kalloc;
+	OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
