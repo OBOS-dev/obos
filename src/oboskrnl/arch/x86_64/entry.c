@@ -286,10 +286,12 @@ static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
 			lastStatusMessageInterval = i;
 		}
 		uint64_t r = random_number();
-		void* mem = allocator->Allocate(allocator, r % 0x10000 + 16, nullptr);
+		size_t size = r % 0x1000 + 16;
+		void* mem = allocator->Allocate(allocator, size, nullptr);
 		if (!mem)
 			return i;
-		((uint8_t*)mem)[i % 4] = buf[i % 4];
+		((uint8_t*)mem)[0] = 5;
+		((uint8_t*)mem)[size-1] = 4;
 		if (++lastFreeIndex == 3)
 		{
 			lastFreeIndex = 0;

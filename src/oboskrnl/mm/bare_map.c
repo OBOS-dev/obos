@@ -37,7 +37,7 @@ static void Unlock(irql oldIrql)
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }
 
-void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
+void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
@@ -89,7 +89,7 @@ void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		*status = OBOS_STATUS_SUCCESS;
 	return node + 1;
 }
-obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
+OBOS_NO_KASAN obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
@@ -119,7 +119,7 @@ obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 	return OBOS_STATUS_SUCCESS;
 }
 
-void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, size_t sz)
+OBOS_NO_KASAN void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, size_t sz)
 {
 	uintptr_t base = (uintptr_t)base_;
 	node->magic.integer = REGION_MAGIC_INT;

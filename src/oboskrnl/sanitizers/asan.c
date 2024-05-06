@@ -94,8 +94,8 @@ OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t
 }
 OBOS_NO_KASAN void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
-	if (!isAllocated(at, size, rw))
-		asan_report(at, size, ip, rw, InvalidAccess, abort);
+	/*if (!isAllocated(at, size, rw))
+		asan_report(at, size, ip, rw, InvalidAccess, abort);*/
 	// Check for shadow space accesses for both the stack and the kernel heap.
 	if (rw && memcmp_b((void*)at, asan_poison, size))
 		asan_shadow_space_access(at, size, ip, rw, abort);

@@ -26,7 +26,7 @@ static void set_status(obos_status* p, obos_status to)
 		*p = to;
 }
 extern uint8_t asan_poison;
-static basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
+static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
 {
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
 	size += sizeof(basicalloc_region) + sizeof(basicalloc_node);
@@ -57,7 +57,7 @@ static basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, 
 	This->nRegions++;
 	return blk;
 }
-static void freeRegion(basic_allocator* This, basicalloc_region* block)
+static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
 {
 	if (block->prev)
 		block->prev->next = block->next;
@@ -70,7 +70,7 @@ static void freeRegion(basic_allocator* This, basicalloc_region* block)
 	This->nRegions--;
 	OBOS_BasicMMFreePages(block, block->size);
 }
-static void* Allocate(allocator_info* This_, size_t size, obos_status* status)
+static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -198,7 +198,7 @@ tryAgain:
 #endif
 	return OBOS_NODE_ADDR(freeNode);
 }
-static void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
+static OBOS_NO_KASAN  void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -208,7 +208,7 @@ static void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPer
 	size_t size = bytesPerObject*nObjects;
 	return memzero(Allocate(This, size, status), size);
 }
-static void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
+static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -246,7 +246,7 @@ static void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_
 	set_status(status, This_->Free(This_, base, objSize));
 	return newBlock;
 }
-static obos_status Free(allocator_info* This_, void* base, size_t nBytes)
+static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t nBytes)
 {
 	OBOS_UNUSED(nBytes);
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
@@ -290,7 +290,7 @@ static obos_status Free(allocator_info* This_, void* base, size_t nBytes)
 #endif
 	return OBOS_STATUS_SUCCESS;
 }
-static obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
+static OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !nBytes || !base)
 		return OBOS_STATUS_INVALID_ARGUMENT;
