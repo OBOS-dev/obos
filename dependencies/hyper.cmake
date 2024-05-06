@@ -15,15 +15,19 @@ file(DOWNLOAD
 )
 if (CMAKE_HOST_WIN32)
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-win64.exe CACHE INTERNAL "The hyper install binary")
+	file(DOWNLOAD
+		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-win64.exe
+		${hyper_install}
+	)
 elseif(CMAKE_HOST_LINUX)
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64 CACHE INTERNAL "The hyper install binary")
+	file(DOWNLOAD
+		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_instal-linux-x86_64
+		${hyper_install}
+	)
 else()
 	message(FATAL_ERROR "You must be on windows or linux to compile OBOS.")
 endif()
-file(DOWNLOAD
-	https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-win64.exe
-	${hyper_install}
-)
 FetchContent_Declare(UltraProtocol
 	GIT_REPOSITORY https://github.com/UltraOS/UltraProtocol.git
 	GIT_TAG 769ba9c7b3ea4907873ebd120ade5e3749b82528
