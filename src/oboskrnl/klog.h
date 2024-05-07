@@ -22,6 +22,7 @@ typedef enum
 	OBOS_PANIC_SCHEDULER_ERROR,
 	OBOS_PANIC_NO_MEMORY,
 	OBOS_PANIC_ALLOCATOR_ERROR,
+	OBOS_PANIC_STACK_CORRUPTION,
 } panic_reason;
 const char* OBOSH_PanicReasonToStr(panic_reason reason);
 typedef enum

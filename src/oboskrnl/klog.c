@@ -32,8 +32,9 @@ const char* OBOSH_PanicReasonToStr(panic_reason reason)
 		"OBOS_PANIC_SCHEDULER_ERROR",
 		"OBOS_PANIC_NO_MEMORY",
 		"OBOS_PANIC_ALLOCATOR_ERROR",
+		"OBOS_PANIC_STACK_CORRUPTION",
 	};
-	if (reason > OBOS_PANIC_ALLOCATOR_ERROR)
+	if (reason > OBOS_PANIC_STACK_CORRUPTION)
 		return nullptr;
 	return table[reason];
 }

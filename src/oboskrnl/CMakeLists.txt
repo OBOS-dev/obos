@@ -5,7 +5,7 @@
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
-	"text.c"
+	"text.c" "sanitizers/stack.c"
 )
 
 add_executable(oboskrnl)
@@ -16,6 +16,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=gnu17>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
 )
 
 target_include_directories(oboskrnl 

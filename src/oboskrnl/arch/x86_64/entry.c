@@ -37,7 +37,6 @@ extern void Arch_InitBootGDT();
 static char thr_stack[0x4000];
 static char kmain_thr_stack[0x10000];
 extern char Arch_InitialISTStack[0x10000];
-extern void Arch_disablePIC();
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
 
@@ -55,11 +54,7 @@ static void ParseBootContext(struct ultra_boot_context* bcontext);
 void pageFaultHandler(interrupt_frame* frame);
 void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 {
-	if (magic != ULTRA_MAGIC)
-		return; // All hope is lost.
-	// TODO: Parse boot context.
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
-	Arch_disablePIC();
 	ParseBootContext(bcontext);
 	Core_GetIrql();
 	asm("sti");
