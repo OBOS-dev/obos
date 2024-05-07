@@ -27,6 +27,7 @@ Arch_KernelEntryBootstrap:
 	test ebx, (1<<18)
 	jne .rdseed
 	rdrand rax
+	jnc .rdrand
 	jmp .move
 .rdseed:
 	mov eax, 1
@@ -35,6 +36,7 @@ Arch_KernelEntryBootstrap:
 	test ecx, (1<<30)
 	jne .done
 	rdseed rax
+	jnc .rdseed
 .move:
 	; Move the (likely) random value into the stack guard variable.
 	mov [__stack_chk_guard], rax
