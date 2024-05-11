@@ -17,6 +17,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 )
 
 target_include_directories(oboskrnl 

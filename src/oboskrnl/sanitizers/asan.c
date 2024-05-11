@@ -10,6 +10,8 @@
 
 #include <allocators/basic_allocator.h>
 
+#include <sanitizers/asan.h>
+
 #define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (((uintptr_t)(base) & ~0xfff) == ((((uintptr_t)(base) + (size)) & ~0xfff)))
 
 #ifdef __x86_64__
@@ -24,24 +26,22 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 #endif
 
-
-typedef enum
-{
-	InvalidType = 0,
-	InvalidAccess,
-	ShadowSpaceAccess,
-	StackShadowSpaceAccess,
-} asan_violation_type;
-uint8_t asan_poison = 0xDE;
+const uint8_t OBOS_ASANPoisonValues[] = {
+	0xDE,
+	0xAA,
+};
 OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
 {
 	switch (type)
 	{
-	case InvalidAccess:
+	case ASAN_InvalidAccess:
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p.\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
-	case ShadowSpaceAccess:
+	case ASAN_ShadowSpaceAccess:
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Pointer is in shadow space).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		break;
+	case ASAN_UseAfterFree:
+		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Use of memory block after free).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	default:
 		break;
@@ -71,34 +71,55 @@ static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
 #endif
 	return true;
 }
-OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
+static OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, uint8_t poisonIndex, bool abort)
 {
+	OBOS_ASSERT(poisonIndex <= ASAN_POISON_MAX);
 	// Verify this memory is actually poisoned and not just coincidentally set to the poison.
 	// Note: This method might not report all shadow space accesses.
-	// First check 16 bytes after and before the pointer, and if either are poisoned, it is safe to assume that this access is that of the shadow space.
+	// First check 16 bytes after and before the pointer, and if either sides are poisoned, it is safe to assume that this access is that of the shadow space.
 	bool isPoisoned = false;
 	bool shortCircuitedFirst = false, shortCircuitedSecond = false;
 	if (OBOS_CROSSES_PAGE_BOUNDARY(at - 16, 16))
 		if ((shortCircuitedFirst = !isAllocated(at - 16, 16, false)))
 			goto short_circuit1;
-	isPoisoned = memcmp_b((void*)(at - 16), asan_poison, 16);
+	isPoisoned = memcmp_b((void*)(at - 16), OBOS_ASANPoisonValues[poisonIndex], 16);
 	short_circuit1:
 	if (!isPoisoned)
 		if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 16))
 			if ((shortCircuitedSecond = !isAllocated(at + size, 16, false)))
 				goto short_circuit2;
-	isPoisoned = memcmp_b((void*)(at + size), asan_poison, 16);
-	short_circuit2:
+	isPoisoned = memcmp_b((void*)(at + size), OBOS_ASANPoisonValues[poisonIndex], 16);
+short_circuit2:
 	if (isPoisoned || (shortCircuitedFirst && shortCircuitedSecond))
-		asan_report(at, size, ip, rw, ShadowSpaceAccess, abort);
+	{
+		asan_violation_type type = ASAN_InvalidType;
+		switch (poisonIndex)
+		{
+		case ASAN_POISON_ALLOCATED:
+			type = ASAN_ShadowSpaceAccess;
+			break;
+		case ASAN_POISON_FREED:
+			type = ASAN_UseAfterFree;
+			break;
+		default:
+			break;
+		}
+		asan_report(at, size, ip, rw, type, abort);
+	}
 }
-OBOS_NO_KASAN void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
+OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
 	/*if (!isAllocated(at, size, rw))
 		asan_report(at, size, ip, rw, InvalidAccess, abort);*/
-	// Check for shadow space accesses for both the stack and the kernel heap.
-	if (rw && memcmp_b((void*)at, asan_poison, size))
-		asan_shadow_space_access(at, size, ip, rw, abort);
+#ifdef __x86_64__
+	// Make sure the pointer is valid.
+	if (!(((uintptr_t)(at) >> 47) == 0 || ((uintptr_t)(at) >> 47) == 0x1ffff))
+		asan_report(at, size, ip, rw, ASAN_InvalidAccess, abort);
+#endif
+	if (memcmp_b((void*)at, OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], size))
+		asan_shadow_space_access(at, size, ip, rw, ASAN_POISON_ALLOCATED, abort);
+	if (memcmp_b((void*)at, OBOS_ASANPoisonValues[ASAN_POISON_FREED], size))
+		asan_shadow_space_access(at, size, ip, rw, ASAN_POISON_FREED, abort);
 }
 
 #if __INTELLISENSE__

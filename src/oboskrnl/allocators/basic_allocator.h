@@ -10,6 +10,8 @@
 
 #include <allocators/base.h>
 
+#include <locks/spinlock.h>
+
 #define MEMBLOCK_MAGIC  0x6AB450AA
 #define PAGEBLOCK_MAGIC	0x768AADFC
 #define MEMBLOCK_DEAD   0x3D793CCD
@@ -45,6 +47,7 @@ typedef struct basic_allocator
 	basicalloc_region *regionHead, *regionTail;
 	size_t nRegions;
 	size_t totalPagesAllocated;
+	spinlock lock;
 } basic_allocator;
 
 obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This);

@@ -13,6 +13,10 @@
 
 #include <mm/bare_map.h>
 
+#include <sanitizers/asan.h>
+
+#include <locks/spinlock.h>
+
 uintptr_t round_up(uintptr_t x, size_t to)
 {
 	if (x % to)
@@ -25,7 +29,20 @@ static void set_status(obos_status* p, obos_status to)
 	if (p)
 		*p = to;
 }
-extern uint8_t asan_poison;
+struct safe_spinlock
+{
+	spinlock* lock;
+	uint8_t oldIrql;
+};
+static void Lock(struct safe_spinlock* l)
+{
+	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED);
+}
+static void Unlock(struct safe_spinlock* l)
+{
+	Core_SpinlockRelease(l->lock, l->oldIrql);
+}
+#define makeSafeLock(name, This) struct safe_spinlock name; name.lock = &((This)->lock); Lock(&name);
 static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
 {
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
@@ -112,7 +129,7 @@ tryAgain:
 			OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "Memory corruption detected for block %p. Dumping basicalloc_node contents.\nn->magic: 0x%08x, n->size: %ld, n->_containingRegion: 0x%p, n->next: 0x%p, n->prev: 0x%p, allocAddr: 0x%p\n", n, n->magic, n->size, n->_containingRegion, n->next, n->prev, OBOS_NODE_ADDR(n));
 		if (n->size == size)
 		{
-			//makeSafeLock(lock);
+			makeSafeLock(lock, This);
 			freeNode = n;
 			if (freeNode->prev)
 				freeNode->prev->next = freeNode->next;
@@ -135,12 +152,13 @@ tryAgain:
 				}
 				from->biggestFreeNode = res;
 			}
+			Unlock(&lock);
 			break;
 		}
 		if (n->size >= (size + sizeof(basicalloc_node)))
 		{
 			// This'll work as long as we suballocate within the basicalloc_node.
-			//makeSafeLock(lock);
+			makeSafeLock(lock, This);
 			n->size -= size + sizeof(basicalloc_node);
 			if (!n->size)
 			{
@@ -168,6 +186,7 @@ tryAgain:
 			}
 			basicalloc_node* newNode = (basicalloc_node*)((char*)OBOS_NODE_ADDR(n) + n->size);
 			freeNode = newNode;
+			Unlock(&lock);
 			break;
 		}
 
@@ -180,7 +199,7 @@ tryAgain:
 		freeNode = nullptr;
 		goto tryAgain;
 	}
-	//makeSafeLock(lock);
+	makeSafeLock(lock, This);
 	freeNode->next = freeNode->prev = nullptr;
 	freeNode->magic = MEMBLOCK_MAGIC;
 	freeNode->_containingRegion = from;
@@ -194,8 +213,11 @@ tryAgain:
 	from->allocated.nNodes++;
 	from->nFreeBytes -= size;
 #if OBOS_KASAN_ENABLED
-	memset((uint8_t*)OBOS_NODE_ADDR(freeNode) + size - 256, asan_poison, 256);
+	memset((uint8_t*)OBOS_NODE_ADDR(freeNode) + size - 256, OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], 256);
+	if (memcmp_b(OBOS_NODE_ADDR(freeNode), OBOS_ASANPoisonValues[ASAN_POISON_FREED], 8))
+		memzero(OBOS_NODE_ADDR(freeNode), freeNode->size);
 #endif
+	Unlock(&lock);
 	return OBOS_NODE_ADDR(freeNode);
 }
 static OBOS_NO_KASAN  void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
@@ -259,6 +281,7 @@ static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t 
 	basicalloc_region* r = (basicalloc_region*)n->_containingRegion;
 	if (!r)
 		return OBOS_STATUS_INTERNAL_ERROR;
+	makeSafeLock(lock, (basic_allocator*)This_);
 	if (n->prev)
 		n->prev->next = n->next;
 	if (n->next)
@@ -270,6 +293,7 @@ static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t 
 	if (!(--r->allocated.nNodes))
 	{
 		freeRegion((basic_allocator*)This_, r);
+		Unlock(&lock);
 		return OBOS_STATUS_SUCCESS;
 	}
 	n->next = n->prev = nullptr;
@@ -285,9 +309,11 @@ static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t 
 		return OBOS_STATUS_INTERNAL_ERROR;
 	if (n->size > r->biggestFreeNode->size)
 		r->biggestFreeNode = n;
-#ifdef OBOS_DEBUG
-	memset(base, 0xAA, n->size);
+#if OBOS_KASAN_ENABLED
+	volatile void* b = base;
+	memset(b, OBOS_ASANPoisonValues[ASAN_POISON_FREED], n->size);
 #endif
+	Unlock(&lock);
 	return OBOS_STATUS_SUCCESS;
 }
 static OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
