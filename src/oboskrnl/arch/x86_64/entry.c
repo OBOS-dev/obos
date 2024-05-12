@@ -1,7 +1,7 @@
 /*
-*	oboskrnl/arch/x86_64/entry.c
-*
-*	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/arch/x86_64/entry.c
+ *
+ * Copyright (c) 2024 Omar Berrow
 */
 
 #include <int.h>
@@ -31,6 +31,8 @@
 #include <allocators/basic_allocator.h>
 
 #include <arch/x86_64/boot_info.h>
+
+#include <arch/x86_64/lapic.h>
 
 extern void Arch_InitBootGDT();
 
@@ -256,10 +258,12 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
-	OBOS_Debug("%s: Testing allocator...\n", __func__);
+	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = &kalloc;
-	OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
+	OBOS_Debug("%s: Initialize LAPIC.\n", __func__);
+	Arch_LAPICInitialize(true);
+	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }

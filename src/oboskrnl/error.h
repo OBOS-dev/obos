@@ -1,7 +1,7 @@
 /*
-	oboskrnl/error.h
-
-	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/error.h
+ * 
+ * Copyright (c) 2024 Omar Berrow
 */
 
 #pragma once
@@ -44,4 +44,8 @@ typedef enum
 	/// An internal error happened.
 	/// </summary>
 	OBOS_STATUS_INTERNAL_ERROR,
+	/// <summary>
+	/// An error occurred, and a retry of the operation is needed.
+	/// </summary>
+	OBOS_STATUS_RETRY,
 } obos_status;
