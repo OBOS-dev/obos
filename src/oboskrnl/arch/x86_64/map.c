@@ -179,8 +179,8 @@ obos_status OBOSS_UnmapPage(void* at_)
 		return OBOS_STATUS_SUCCESS;
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(phys);
-	pt[AddressToIndex(at, (uint8_t)0)] = 0;
-	Arch_FreePageMapAt(getCR3(), at, 3 - (uint8_t)0);
+	pt[AddressToIndex(at, (uint8_t)isHugePage)] = 0;
+	Arch_FreePageMapAt(getCR3(), at, 3 - (uint8_t)isHugePage);
 	invlpg(at);
 	return OBOS_STATUS_SUCCESS;
 }
