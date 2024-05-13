@@ -102,6 +102,7 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* for
 " ____) |  | | | |__| | |     \n"
 "|_____/   |_|  \\____/|_|     ";
 
+	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
 	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);

@@ -73,6 +73,10 @@ void OBOS_Error(const char* format, ...);
 /// <param name="format">The printf-style format string describing how the fail happened..</param>
 /// <param name="...">Any variadic arguments.</param>
 OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...);
+/// <summary>
+/// Halts all other CPUs.
+/// </summary>
+void OBOSS_HaltCPUs();
 
 // printf-Style functions.
 size_t printf(const char* format, ...);

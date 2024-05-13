@@ -60,7 +60,7 @@ void Arch_LAPICSendEOI()
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;
 }
-obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
+OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
 {
 	if (!Arch_LAPICAddress)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -90,6 +90,7 @@ obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
 	default:
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	}
+	icr |= ((uint64_t)vector.deliveryMode << 8);
 	Arch_LAPICAddress->interruptCommand32_63 = icr >> 32;
 	Arch_LAPICAddress->interruptCommand0_31 = icr & UINT32_MAX;
 	while (Arch_LAPICAddress->interruptCommand0_31 & (1<<12))

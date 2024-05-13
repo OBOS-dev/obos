@@ -12,6 +12,8 @@
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
 
+#include <allocators/base.h>
+
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
 size_t Core_CpuCount;
@@ -30,9 +32,13 @@ obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread
 }
 obos_status CoreH_ThreadReady(thread* thr)
 {
-	// TODO: Implement.
-	OBOS_UNUSED(thr);
-	return OBOS_STATUS_UNIMPLEMENTED;
+	if (!OBOS_KernelAllocator)
+		return OBOS_STATUS_INVALID_INIT_PHASE;
+	thread_node* node = (thread_node*)OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(thread_node), nullptr);
+	obos_status status = CoreH_ThreadReadyNode(thr, node);
+	if (status != OBOS_STATUS_SUCCESS)
+		OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(thread_node));
+	return status;
 }
 obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 {

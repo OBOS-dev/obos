@@ -46,11 +46,8 @@ static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
 
 static cpu_local bsp_cpu;
-__asm__(
-	".global Arch_IdleTask; Arch_IdleTask:; hlt; jmp Arch_IdleTask;"
-);
 extern void Arch_IdleTask();
-extern void Arch_FlushGDT(uintptr_t gdtr);
+void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackSize);
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext);
 static void ParseBootContext(struct ultra_boot_context* bcontext);
 void pageFaultHandler(interrupt_frame* frame);
@@ -107,55 +104,17 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	OBOS_Debug("Readying threads for execution.\n");
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
+	Core_CpuInfo->idleThread = &bsp_idleThread;
 	OBOS_Debug("Initializing CPU-local GDT.\n");
 	// Initialize the CPU's GDT.
-	memzero(Core_CpuInfo[0].arch_specific.gdtEntries, sizeof(Core_CpuInfo[0].arch_specific.gdtEntries));
-	memzero(&Core_CpuInfo[0].arch_specific.tss, sizeof(Core_CpuInfo[0].arch_specific.tss));
-	Core_CpuInfo[0].arch_specific.gdtEntries[0] = 0;
-	Core_CpuInfo[0].arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
-	Core_CpuInfo[0].arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
-	Core_CpuInfo[0].arch_specific.gdtEntries[3] = 0x00aff3000000ffff; // 64-bit user-mode data
-	Core_CpuInfo[0].arch_specific.gdtEntries[4] = 0x00affb000000ffff; // 64-bit user-mode code
-	struct
-	{
-		uint16_t limitLow;
-		uint16_t baseLow;
-		uint8_t baseMiddle1;
-		uint8_t access;
-		uint8_t gran;
-		uint8_t baseMiddle2;
-		uint32_t baseHigh;
-		uint32_t resv1;
-	} tss_entry;
-	memzero(&tss_entry, sizeof(tss_entry));
-	uintptr_t tss = (uintptr_t)&Core_CpuInfo[0].arch_specific.tss;
-	tss_entry.limitLow = sizeof(Core_CpuInfo[0].arch_specific.tss);
-	tss_entry.baseLow = tss & 0xffff;
-	tss_entry.baseMiddle1 = (tss >> 16) & 0xff;
-	tss_entry.baseMiddle2 = (tss >> 24) & 0xff;
-	tss_entry.baseHigh = (tss >> 32) & 0xffffffff;
-	tss_entry.access = 0x89;
-	tss_entry.gran = 0x40;
-	Core_CpuInfo[0].arch_specific.gdtEntries[5] = *((uint64_t*)&tss_entry + 0);
-	Core_CpuInfo[0].arch_specific.gdtEntries[6] = *((uint64_t*)&tss_entry + 1);
-
-	Core_CpuInfo[0].arch_specific.tss.ist0 = Arch_InitialISTStack + sizeof(Arch_InitialISTStack);
-	Core_CpuInfo[0].arch_specific.tss.rsp0 = Arch_InitialISTStack + sizeof(Arch_InitialISTStack);
-	Core_CpuInfo[0].arch_specific.tss.iopb = sizeof(Core_CpuInfo[0].arch_specific.tss) - 1;
-	struct
-	{
-		uint16_t limit;
-		uintptr_t base;
-	} OBOS_PACK gdtr;
-	gdtr.limit = sizeof(Core_CpuInfo[0].arch_specific.gdtEntries) - 1;
-	gdtr.base = Core_CpuInfo[0].arch_specific.gdtEntries;
-	Arch_FlushGDT(&gdtr);
+	Arch_CPUInitializeGDT(&Core_CpuInfo[0], Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
 	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
 	OBOS_Debug("Initializing priority lists.\n");
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
+	Core_CpuInfo->initialized = true;
 	// Finally yield into the scheduler.
 	OBOS_Debug("Yielding into the scheduler!\n");
 	Core_Yield();
@@ -249,6 +208,7 @@ __asm__(
 );
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
+void Arch_SMPStartup();
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
@@ -261,8 +221,10 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = &kalloc;
-	OBOS_Debug("%s: Initialize LAPIC.\n", __func__);
+	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
 	Arch_LAPICInitialize(true);
+	OBOS_Debug("%s: Initializing SMP.\n", __func__);
+	Arch_SMPStartup();
 	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
@@ -275,7 +237,6 @@ static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
 	if (passInterval % 10)
 		passInterval += (passInterval - passInterval % 10);
 	size_t lastStatusMessageInterval = 0;
-	const char* buf = "\xef\xbe\xad\xed";
 	size_t lastFreeIndex = 0;
 	for (size_t i = 0; i < passes; i++)
 	{

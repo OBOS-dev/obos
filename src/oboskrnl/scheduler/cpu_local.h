@@ -28,6 +28,7 @@ typedef struct cpu_local
 	thread_priority_list* currentPriorityList;
 	uint64_t schedulerTicks;
 	irql currentIrql;
+	bool initialized;
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
