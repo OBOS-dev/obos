@@ -27,5 +27,10 @@ obos_status Arch_InitializePMM();
 /// <param name="status">[optional] A pointer to a variable that will store the function's status. Can be nullptr.</param>
 /// <returns>The physical pages, or zero on failure.</returns>
 uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status* status);
+/// <summary>
+/// Frees physical pages.
+/// </summary>
+/// <param name="addr">The address of the page.</param>
+/// <param name="nPages">The amount of pages to free.</param>
 void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages);
 void* Arch_MapToHHDM(uintptr_t phys);

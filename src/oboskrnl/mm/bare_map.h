@@ -9,7 +9,7 @@
 #include <int.h>
 
 /// <summary>
-/// Maps a page as Read, Write, and execution disabled.<br></br>
+/// Maps a page as Read, Write, and execution disabled. This page should not accessible from user-mode.<br></br>
 /// This should not fail if the address at 'at' is already allocated.
 /// </summary>
 /// <param name="at">The address of the page to map.</param>
@@ -22,6 +22,14 @@ obos_status OBOSS_MapPage_RW_XD(void* at, uintptr_t phys);
 /// <param name="at">The address of the page to unmap.</param>
 /// <returns>The status of the function.</returns>
 obos_status OBOSS_UnmapPage(void* at);
+/// <summary>
+/// Queries the physical address of an address.
+/// </summary>
+/// <param name="at">The address to query.</param>
+/// <param name="oPhys">[out] The physical address.</param>
+/// <returns>The status of the function.</returns>
+obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
+
 
 typedef struct basicmm_region
 {

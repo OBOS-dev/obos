@@ -52,7 +52,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
 	if (!blk)
 		return nullptr;
-	memzero(blk, sizeof(*blk));
+	memzero(blk, initialSize + sizeof(basicalloc_node));
 	blk->magic = PAGEBLOCK_MAGIC;
 	blk->size = initialSize + sizeof(basicalloc_node);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);

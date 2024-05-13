@@ -10,6 +10,8 @@ global Arch_SMPTrampolineCR3
 global Arch_SMPTrampolineRSP
 global Arch_SMPTrampolineCPULocalPtr
 
+section .data
+
 Arch_SMPTrampolineStart:
 bits 16
 real_mode:

@@ -223,6 +223,7 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	OBOS_KernelAllocator = &kalloc;
 	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
 	Arch_LAPICInitialize(true);
+	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 100000) == 100000);
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
 	Arch_SMPStartup();
 	OBOS_Log("%s: Done early boot.\n", __func__);

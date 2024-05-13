@@ -138,6 +138,8 @@ OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	OBOS_ASSERT(addr);
 	OBOS_ASSERT(!(addr & 0xfff));
 	addr &= ~0xfff;
+	if (!addr)
+		return;
 	struct freelist_node* node = (struct freelist_node*)(Arch_LdrPlatformInfo->higher_half_base + addr);
 	node->nPages = nPages;
 	if (s_tail)
@@ -153,6 +155,9 @@ uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_stat
 }
 obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 {
+	base &= ~0xfff;
+	if (!base)
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	Arch_FreePhysicalPages(base, nPages);
 	return OBOS_STATUS_SUCCESS;
 }

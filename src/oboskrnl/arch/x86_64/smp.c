@@ -219,6 +219,7 @@ void Arch_SMPStartup()
 	}
 	Core_LowerIrql(oldIrql);
 	Arch_SMPInitialized = true;
+	OBOS_BasicMMFreePages(nullptr, 0x1000);
 }
 bool Arch_HaltCPUs = false;
 uint8_t Arch_CPUsHalted = 0;
