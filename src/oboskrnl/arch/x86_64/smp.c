@@ -135,6 +135,7 @@ void Arch_APEntry(cpu_local* info)
 {
 	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x10000);
 	wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
+	Arch_InitializeIDT(false);
 	(void)Core_RaiseIrql(0xf);
 	// Setup the idle thread.
 	thread_ctx* ctx = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(thread_ctx), nullptr);

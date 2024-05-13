@@ -55,10 +55,11 @@ static int getIntIST(int i)
 		return 2;
 	return (i == 14 || i == 2 || i == 8 || i == 18 || i == 13) ? 1 : 0;
 }
-void Arch_InitializeIDT()
+void Arch_InitializeIDT(bool isBSP)
 {
-	for (int i = 0; i < 256; i++)
-		RegisterISRInIDT(i, (uintptr_t)(&Arch_b_isr_handler + (i * 32)), true, getIntIST(i));
+	if (isBSP)
+		for (int i = 0; i < 256; i++)
+			RegisterISRInIDT(i, (uintptr_t)(&Arch_b_isr_handler + (i * 32)), true, getIntIST(i));
 	struct idtPointer idtPtr;
 	idtPtr.size = sizeof(g_idtEntries) - 1;
 	idtPtr.idt = (uintptr_t)g_idtEntries;

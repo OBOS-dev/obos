@@ -77,7 +77,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
 	}
-	Arch_InitializeIDT();
+	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
 		uint32_t edx = 0;
@@ -225,7 +225,6 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	Arch_LAPICInitialize(true);
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
 	Arch_SMPStartup();
-	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
