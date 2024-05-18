@@ -7,7 +7,10 @@
 #include <int.h>
 #include <struct_packing.h>
 
+#include <irq/irq.h>
+
 #include <arch/x86_64/idt.h>
+#include <arch/x86_64/irq_vector.h>
 
 extern char Arch_b_isr_handler;
 extern char Arch_e_isr_handler;
@@ -68,4 +71,22 @@ void Arch_InitializeIDT(bool isBSP)
 void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
 {
 	Arch_IRQHandlers[vec] = f;
+}
+obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
+{
+	obos_status s = OBOS_STATUS_SUCCESS;
+	if ((s = CoreS_IsIRQVectorInUse(vector)))
+		return s;
+	if ((uintptr_t)handler < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if(!(((uintptr_t)(handler) >> 47) == 0 || ((uintptr_t)(handler) >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	Arch_IRQHandlers[vector - 32] = (uintptr_t)handler;
+	return OBOS_STATUS_SUCCESS;
+}
+obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
+{
+	if (vector > 224)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	return Arch_IRQHandlers[vector-32] ? OBOS_STATUS_SUCCESS : OBOS_STATUS_IN_USE;
 }

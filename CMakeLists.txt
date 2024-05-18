@@ -4,7 +4,7 @@
 
 cmake_minimum_required(VERSION 3.7)
 
-project(OBOS C  ASM_NASM)
+project(OBOS C ASM_NASM)
 
 # Download dependencies.
 # NOTE: As dependencies are added, please add them to the .gitignore file.

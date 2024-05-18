@@ -227,7 +227,7 @@ static OBOS_NO_KASAN  void* ZeroAllocate(allocator_info* This, size_t nObjects, 
 		set_status(status, OBOS_STATUS_INVALID_ARGUMENT);
 		return nullptr;
 	}
-	size_t size = bytesPerObject*nObjects;
+	size_t size = bytesPerObject * nObjects;
 	return memzero(Allocate(This, size, status), size);
 }
 static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)

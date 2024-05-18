@@ -34,6 +34,8 @@
 
 #include <arch/x86_64/lapic.h>
 
+#include <irq/irq.h>
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -209,6 +211,11 @@ __asm__(
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
 void Arch_SMPStartup();
+static void irq_move_callback_(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
+{
+	OBOS_Debug("Moving IRQ Object 0x%p from vector %d to vector %d.\n", i, from->id, to->id);
+}
+
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
 	//Core_Yield();
@@ -226,9 +233,26 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 100000) == 100000);
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
 	Arch_SMPStartup();
+	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
+	if ((status = Core_InitializeIRQInterface()) != OBOS_STATUS_SUCCESS)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
+	irq* irqObj1 = Core_IrqObjectAllocate(nullptr);
+	Core_IrqObjectInitializeIRQL(irqObj1, 0x2, false, false);
+	irqObj1->moveCallback = irq_move_callback_;
+	irq* irqObj2 = Core_IrqObjectAllocate(nullptr);
+	irqObj2->moveCallback = irq_move_callback_;
+	Core_IrqObjectInitializeVector(irqObj2, 0, true, true);
+	irq* irqObj3 = Core_IrqObjectAllocate(nullptr);
+	irqObj3->moveCallback = irq_move_callback_;
+	Core_IrqObjectInitializeIRQL(irqObj3, 0x2, false, true);
+	irq* irqObj4 = Core_IrqObjectAllocate(nullptr);
+	irqObj4->moveCallback = irq_move_callback_;
+	Core_IrqObjectInitializeIRQL(irqObj4, 0x2, true, false);
+	
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
+
 static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
 {
 	OBOS_Debug("%s: Testing allocator. Pass count is %lu.\n", __func__, passes);

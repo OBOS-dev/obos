@@ -30,7 +30,7 @@ else()
 endif()
 FetchContent_Declare(UltraProtocol
 	GIT_REPOSITORY https://github.com/UltraOS/UltraProtocol.git
-	GIT_TAG 769ba9c7b3ea4907873ebd120ade5e3749b82528
+	GIT_TAG 69235d363c077a090a9b7a313ed8c6f73e4a4807
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/dependencies/UltraProtocol
 )
 FetchContent_MakeAvailable(UltraProtocol)

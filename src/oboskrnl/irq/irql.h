@@ -6,6 +6,7 @@
 
 #pragma once
 
+// You mustn't include anything else, or everything will likely stop compiling.
 #include <int.h>
 
 typedef uint8_t irql;

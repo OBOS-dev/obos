@@ -48,4 +48,16 @@ typedef enum
 	/// An error occurred, and a retry of the operation is needed.
 	/// </summary>
 	OBOS_STATUS_RETRY,
+	/// <summary>
+	/// The object is already initialized.
+	/// </summary>
+	OBOS_STATUS_ALREADY_INITIALIZED,
+	/// <summary>
+	/// The request could not be fulfilled, as a required resource was not found.
+	/// </summary>
+	OBOS_STATUS_NOT_FOUND,
+	/// <summary>
+	/// The resource is already in use.
+	/// </summary>
+	OBOS_STATUS_IN_USE,
 } obos_status;
