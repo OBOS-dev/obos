@@ -166,7 +166,7 @@ void Arch_SMPStartup()
 	memzero(cpu_info, s_nLAPICIDs * sizeof(cpu_local));
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];
-	wrmsr(0xC0000101 /* GS_BASE */, &cpu_info[0]);
+	wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 	Arch_MapPage(getCR3(), nullptr, 0, 0x3);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;

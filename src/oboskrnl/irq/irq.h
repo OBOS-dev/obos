@@ -85,15 +85,16 @@ typedef void(*irq_move_callback)(struct irq* i, struct irq_vector* from, struct 
 /// <param name="i">The irq object.</param>
 /// <param name="frame">The interrupt frame.</param>
 /// <param name="userdata">The user data.</param>
-typedef void(*irq_handler)(struct irq* i, interrupt_frame* frame, void* userdata);
+/// <param name="oldIrql">The irql before the call of the irq dispatcher. Must be lowered before exit of the handler.</param>
+typedef void(*irq_handler)(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
 typedef struct irq
 {
 	irq_vector* vector;
 	bool choseVector;
-	// Must be non-null if vector->allowWorkSharing is true.
 	void* irqCheckerUserdata;
 	void* handlerUserdata;
 	void* irqMoveCallbackUserdata;
+	// Must be non-null if vector->allowWorkSharing is true.
 	check_irq_callback irqChecker;
 	irq_handler handler;
 	irq_move_callback moveCallback;
@@ -143,5 +144,20 @@ obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interr
 /// Checks if an irq vector is in use.
 /// </summary>
 /// <param name="vector">The vector id.</param>
-/// <returns>OBOS_STATUS_IN_USE if the vector is in use, OBOS_STATUS_SUCCESS on success, any other status is an error code.</returns>
+/// <returns>OBOS_STATUS_IN_USE if the vector is in use, OBOS_STATUS_SUCCESS if the vector is unused, any other status is an error code.</returns>
 obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector);
+/// <summary>
+/// Sends an EOI to the IRQ controller.
+/// </summary>
+/// <param name="frame">The interrupt frame.</param>
+void CoreS_SendEOI(interrupt_frame* frame);
+/// <summary>
+/// Enters an IRQ handler.
+/// </summary>
+/// <param name="frame">The interrupt frame.</param>
+void CoreS_EnterIRQHandler(interrupt_frame* frame);
+/// <summary>
+/// Exits an IRQ handler.
+/// </summary>
+/// <param name="frame">The interrupt frame.</param>
+void CoreS_ExitIRQHandler(interrupt_frame* frame);

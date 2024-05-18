@@ -58,6 +58,9 @@ typedef struct thread
 	uint64_t tid;
 	thread_flags flags;
 
+	size_t references;
+	void(*free)(struct thread* what);
+
 	thread_status status;
 	thread_priority priority;
 	uint8_t quantum;
@@ -72,6 +75,7 @@ typedef struct thread_node
 {
 	struct thread_node *next, *prev;
 	thread* data;
+	void(*free)(struct thread_node* what);
 } thread_node;
 typedef struct thread_list
 {
@@ -86,10 +90,12 @@ typedef struct thread_priority_list
 	size_t quantum;
 	thread_priority priority;
 } thread_priority_list;
+thread* CoreH_ThreadAllocate(obos_status* status);
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx);
 obos_status CoreH_ThreadReady(thread* thr);
 obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
-obos_status CoreH_ThreadBlock(thread* thr, thread_node* node);
+obos_status CoreH_ThreadBlock(thread* thr, thread_node* node, bool canYield);
 obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node);
 obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node);
 uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId);
+OBOS_NORETURN void CoreH_ExitCurrentThread();

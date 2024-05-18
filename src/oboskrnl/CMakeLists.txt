@@ -51,4 +51,8 @@ else()
 endif()
 target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
 
+target_compile_definitions(oboskrnl
+	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
+	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>)
+
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

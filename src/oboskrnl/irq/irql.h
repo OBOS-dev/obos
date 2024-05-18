@@ -13,7 +13,7 @@ typedef uint8_t irql;
 enum
 {
 	IRQL_PASSIVE,
-	IRQL_DISPATCH,
+	IRQL_DISPATCH = 2,
 	IRQL_MASKED = 0xf,
 	IRQL_INVALID = 0xff,
 };

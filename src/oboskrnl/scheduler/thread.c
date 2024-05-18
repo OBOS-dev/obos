@@ -17,6 +17,21 @@
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
 size_t Core_CpuCount;
+static void free_thr(thread* thr)
+{
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));
+}
+static void free_node(thread_node* node)
+{
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+}
+thread* CoreH_ThreadAllocate(obos_status* status)
+{
+	thread* thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
+	if (thr)
+		thr->free = free_thr;
+	return thr;
+}
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx)
 {
 	if (!thr || !ctx || priority < 0 || priority >= THREAD_PRIORITY_MAX_VALUE || !affinity)
@@ -34,10 +49,11 @@ obos_status CoreH_ThreadReady(thread* thr)
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	thread_node* node = (thread_node*)OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(thread_node), nullptr);
+	thread_node* node = (thread_node*)OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), nullptr);
+	node->free = free_node;
 	obos_status status = CoreH_ThreadReadyNode(thr, node);
 	if (status != OBOS_STATUS_SUCCESS)
-		OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(thread_node));
+		free_node(node);
 	return status;
 }
 obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
@@ -68,7 +84,7 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	Core_ReadyThreadCount++;
 	return CoreH_ThreadListAppend(priorityList, node);
 }
-obos_status CoreH_ThreadBlock(thread* thr, thread_node* node)
+obos_status CoreH_ThreadBlock(thread* thr, thread_node* node, bool canYield)
 {
 	if (!thr || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -81,7 +97,7 @@ obos_status CoreH_ThreadBlock(thread* thr, thread_node* node)
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
-	if (thr == Core_GetCurrentThread())
+	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
 }
@@ -134,4 +150,26 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId)
 {
 	return (1 << cpuId);
+}
+
+OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
+{
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	thread* currentThread = Core_GetCurrentThread();
+	// Block (unready) the current thread so it can no longer be run.
+	CoreH_ThreadBlock(currentThread, currentThread->snode, false);
+	currentThread->flags |= THREAD_FLAGS_DIED;
+	CoreS_FreeThreadContext(&currentThread->context);
+	if (!(--currentThread->references) && currentThread->free)
+	{
+		currentThread->snode->free(currentThread->snode);
+		currentThread->free(currentThread);
+	}
+	Core_Yield();
+	OBOS_UNREACHABLE;
+}
+OBOS_NORETURN void CoreH_ExitCurrentThread()
+{
+	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
+	OBOS_UNREACHABLE;
 }

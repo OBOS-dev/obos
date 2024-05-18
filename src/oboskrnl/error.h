@@ -6,6 +6,9 @@
 
 #pragma once
 
+#define obos_likely_error(status) ((status) != OBOS_STATUS_SUCCESS)
+#define obos_unlikely_error(status) ((status) == OBOS_STATUS_SUCCESS)
+
 typedef enum
 {
 	/// <summary>

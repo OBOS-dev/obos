@@ -22,6 +22,51 @@ irq* Core_IrqObjectAllocate(obos_status* status)
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
+void Core_IRQDispatcher(interrupt_frame* frame)
+{
+	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
+	if (irql_ < Core_GetIrql())
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"Core_GetIrql() < OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector)\").");
+	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
+	CoreS_EnterIRQHandler(frame);
+	CoreS_SendEOI(frame);
+	irql oldIrql = Core_SpinlockAcquire(&s_lock);
+	irq* irq_obj = nullptr;
+	if (!s_irqVectors[frame->vector].allowWorkSharing)
+	{
+		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
+		Core_SpinlockRelease(&s_lock, oldIrql);
+	}
+	else
+	{
+		irq_vector* vector = &s_irqVectors[frame->vector];
+		for (irq_node* node = vector->irqObjects.head; node && !irq_obj; )
+		{
+			irq* cur = node->data;
+			if (cur->irqChecker)
+				if (cur->irqChecker(cur, cur->irqCheckerUserdata))
+					irq_obj = cur;
+			
+			node = node->next;
+		}
+	}
+	if (!irq_obj)
+	{
+		// Spooky actions from a distance...
+		Core_LowerIrqlNoThread(oldIrql2);
+		return;
+	}
+	if (irq_obj->handler)
+		irq_obj->handler(
+			irq_obj,
+			frame,
+			irq_obj->handlerUserdata,
+			oldIrql2);
+	else
+		Core_LowerIrqlNoThread(oldIrql2);
+	OBOS_ASSERT(Core_GetIrql() == oldIrql2);
+	CoreS_ExitIRQHandler(frame);
+}
 obos_status Core_InitializeIRQInterface()
 {
 	if (s_irqInterfaceInitialized)
@@ -65,6 +110,15 @@ static void remove_irq_from_vector(irq_vector* This, irq_node* what)
 		This->irqObjects.tail = what->prev;
 	This->irqObjects.nNodes--;
 }
+static obos_status register_irq_vector_handler(irq_vector_id id, void(*handler)(interrupt_frame*))
+{
+	obos_status s = OBOS_STATUS_SUCCESS;
+	if (CoreS_IsIRQVectorInUse(id) == OBOS_STATUS_IN_USE)
+		s = CoreS_RegisterIRQHandler(id, nullptr);
+	if (s == OBOS_STATUS_SUCCESS)
+		s = CoreS_RegisterIRQHandler(id, handler);
+	return s;
+}
 static obos_status register_irq_vector(irq* obj, irq_vector_id id, bool allowWorkSharing, bool force)
 {
 	irq_vector* vector = &s_irqVectors[id];
@@ -73,7 +127,7 @@ static obos_status register_irq_vector(irq* obj, irq_vector_id id, bool allowWor
 	{
 		append_irq_to_vector(vector, obj);
 		vector->allowWorkSharing = allowWorkSharing;
-		return OBOS_STATUS_SUCCESS;
+		return register_irq_vector_handler(vector->id, Core_IRQDispatcher);
 	}
 	if (!force)
 		return OBOS_STATUS_IN_USE;
@@ -115,7 +169,12 @@ static obos_status register_irq_vector(irq* obj, irq_vector_id id, bool allowWor
 		cur->vector = newVector;
 		newVector->allowWorkSharing = vector->allowWorkSharing;
 		vector->allowWorkSharing = allowWorkSharing;
-		return OBOS_STATUS_SUCCESS;
+		
+		obos_status status = register_irq_vector_handler(vector->id, Core_IRQDispatcher);
+		if (obos_likely_error(status))
+			return status;
+		status = register_irq_vector_handler(newVector->id, Core_IRQDispatcher);
+		return status;
 	}
 	// We've forced this.
 	// Move the vectors in this vector to some other vector with the same IRQL.
@@ -173,7 +232,11 @@ find:
 	newVector->allowWorkSharing = vector->allowWorkSharing;
 	vector->allowWorkSharing = false;
 	append_irq_to_vector(vector, obj);
-	return OBOS_STATUS_SUCCESS;
+	obos_status status = register_irq_vector_handler(vector->id, Core_IRQDispatcher);
+	if (obos_likely_error(status))
+		return status;
+	status = register_irq_vector_handler(newVector->id, Core_IRQDispatcher);
+	return status;
 }
 obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allowWorkSharing, bool force)
 {

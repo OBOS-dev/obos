@@ -191,7 +191,7 @@ schedule:
 
 void Core_Yield()
 {
-	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(0x2) : IRQL_INVALID;
+	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
 	if (getCurrentThread)
 	{
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);

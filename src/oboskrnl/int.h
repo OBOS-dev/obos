@@ -41,6 +41,9 @@ typedef _Bool bool;
 #ifdef __GNUC__
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
+#elif _MSC_VER
+#	define OBOS_NO_KASAN
+#	define OBOS_NO_UBSAN
 #else
 #	define OBOS_NO_KASAN
 #	define OBOS_NO_UBSAN

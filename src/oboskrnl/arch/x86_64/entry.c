@@ -215,6 +215,21 @@ static void irq_move_callback_(struct irq* i, struct irq_vector* from, struct ir
 {
 	OBOS_Debug("Moving IRQ Object 0x%p from vector %d to vector %d.\n", i, from->id, to->id);
 }
+static void irq_handler_(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+{
+	OBOS_Debug("Received IRQ %d (irq object 0x%p)!\n", i->vector->id, i);
+	Core_LowerIrql(oldIrql);
+}
+static bool check_irq_callback_(struct irq* obj, void* userdata)
+{
+	static int i = 0;
+	if (i == (int)userdata)
+	{
+		i++;
+		return true;
+	}
+	return false;
+}
 
 void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 {
@@ -248,7 +263,30 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	irq* irqObj4 = Core_IrqObjectAllocate(nullptr);
 	irqObj4->moveCallback = irq_move_callback_;
 	Core_IrqObjectInitializeIRQL(irqObj4, 0x2, true, false);
-	
+	irqObj1->handler = irq_handler_;
+	irqObj2->handler = irq_handler_;
+	irqObj3->handler = irq_handler_;
+	irqObj4->handler = irq_handler_;
+	irqObj4->irqChecker = check_irq_callback_;
+	irqObj2->irqChecker = check_irq_callback_;
+	irqObj4->irqCheckerUserdata = 0;
+	irqObj2->irqCheckerUserdata = 1;
+	ipi_lapic_info lapic = {
+		.isShorthand = true,
+		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_SELF,
+	};
+	ipi_vector_info vector = {
+		.deliveryMode = LAPIC_DELIVERY_MODE_FIXED,
+		.info.vector = irqObj4->vector->id + 0x20,
+	};
+	Core_LowerIrql(0x0);
+	Arch_LAPICSendIPI(lapic, vector);
+	vector.info.vector = irqObj3->vector->id + 0x20;
+	Arch_LAPICSendIPI(lapic, vector);
+	vector.info.vector = irqObj2->vector->id + 0x20;
+	Arch_LAPICSendIPI(lapic, vector);
+	vector.info.vector = irqObj1->vector->id + 0x20;
+	Arch_LAPICSendIPI(lapic, vector);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
 }
