@@ -44,7 +44,7 @@ static OBOS_NO_UBSAN void ParseMADT()
 	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
 	bool tables32 = rsdp->Revision == 0;
 	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
-	xsdt = (ACPIRSDPHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
+	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
 	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
 	MADTTable* madt = nullptr;
 	for (size_t i = 0; i < nEntries; i++)
@@ -145,6 +145,7 @@ void Arch_APEntry(cpu_local* info)
 	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
 	info->idleThread = idleThread;
+	Arch_LAPICInitialize(false);
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
 }
 static OBOS_NO_UBSAN void SetMemberInSMPTrampoline(uint8_t off, uint64_t val)

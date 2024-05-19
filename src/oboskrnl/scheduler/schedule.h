@@ -28,3 +28,4 @@ void Core_Yield();
 
 extern size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;
+extern uint64_t Core_SchedulerTimerFrequency;

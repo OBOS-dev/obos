@@ -158,11 +158,12 @@ OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
+	thread_node* node = currentThread->snode;
 	CoreH_ThreadBlock(currentThread, false);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);
-	if (currentThread->snode->free)
-		currentThread->snode->free(currentThread->snode);
+	if (node->free)
+		node->free(node);
 	if (!currentThread->references && currentThread->free)
 		currentThread->free(currentThread);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;

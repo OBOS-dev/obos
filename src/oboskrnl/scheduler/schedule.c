@@ -191,6 +191,7 @@ switch_thread:
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;
+uint64_t Core_SchedulerTimerFrequency = 1000;
 void Core_Yield()
 {
 	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;

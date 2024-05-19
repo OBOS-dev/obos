@@ -16,6 +16,8 @@
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/interrupt_frame.h>
 
+#include <arch/x86_64/hpet_table.h>
+
 #include <irq/irql.h>
 
 #include <locks/spinlock.h>
@@ -35,6 +37,8 @@
 #include <arch/x86_64/lapic.h>
 
 #include <irq/irq.h>
+
+#include <mm/bare_map.h>
 
 extern void Arch_InitBootGDT();
 
@@ -210,90 +214,114 @@ __asm__(
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
 void Arch_SMPStartup();
-static void irq_move_callback_(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
-{
-	(userdata = userdata);
-	OBOS_Debug("Moving IRQ Object 0x%p from vector %d to vector %d.\n", i, from->id, to->id);
-}
-static void irq_handler_(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
-{
-	(userdata = userdata);
-	(frame = frame);
-	OBOS_Debug("Received IRQ %d (irq object 0x%p)!\n", i->vector->id, i);
-	Core_LowerIrql(oldIrql);
-}
-static bool check_irq_callback_(struct irq* obj, void* userdata)
+extern uint64_t Arch_FindCounter(uint64_t hz);
+void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
 	(obj = obj);
-	static int i = 0;
-	if (i == (intptr_t)userdata)
+	(frame = frame);
+	(userdata = userdata);
+	(obj = obj);
+	if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
 	{
-		i++;
-		return true;
+		Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
+		Arch_LAPICAddress->divideConfig = 0b1101;
+		Arch_LAPICAddress->initialCount = Arch_FindCounter(Core_SchedulerTimerFrequency);
+		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
+		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 	}
-	return false;
+	else
+		Core_Yield();
+	Core_LowerIrqlNoThread(oldIrql);
 }
-
+HPET* Arch_HPETAddress;
+uint64_t Arch_HPETFrequency;
+uint64_t Arch_CalibrateHPET(uint64_t freq)
+{
+	if (!Arch_HPETFrequency)
+		Arch_HPETFrequency = 1000000000000000 / Arch_HPETAddress->generalCapabilitiesAndID.counterCLKPeriod;
+	Arch_HPETAddress->generalConfig &= ~(1 << 0);
+	uint64_t compValue = Arch_HPETAddress->mainCounterValue + (Arch_HPETFrequency / freq);
+	Arch_HPETAddress->timer0.timerConfigAndCapabilities &= ~(1 << 2);
+	Arch_HPETAddress->timer0.timerConfigAndCapabilities &= ~(1 << 3);
+	return compValue;
+}
+#define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
+static OBOS_NO_UBSAN void InitializeHPET()
+{
+	extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+	static basicmm_region hpet_region;
+	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
+	bool tables32 = rsdp->Revision == 0;
+	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
+	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
+	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
+	HPET_Table* hpet_table = nullptr;
+	for (size_t i = 0; i < nEntries; i++)
+	{
+		uintptr_t phys = tables32 ? OffsetPtr(xsdt, sizeof(*xsdt), uint32_t)[i] : OffsetPtr(xsdt, sizeof(*xsdt), uint64_t)[i];
+		ACPISDTHeader* header = (ACPISDTHeader*)Arch_MapToHHDM(phys);
+		if (memcmp(header->Signature, "HPET", 4))
+		{
+			hpet_table = (HPET_Table*)header;
+			break;
+		}
+	}
+	if (!hpet_table)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n");
+	uintptr_t phys = hpet_table->baseAddress.address;
+	Arch_HPETAddress = (HPET*)0xffffffffffffe000;
+	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
+	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
+}
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
+	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
+	bsp_idleThread.context.cr3 = getCR3();
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
 	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
 	Arch_LAPICInitialize(true);
-	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 100000) == 100000);
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
 	Arch_SMPStartup();
+	bsp_idleThread.context.gs_base = rdmsr(0xC0000101 /* GS_BASE */);
 	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
-	if ((status = Core_InitializeIRQInterface()) != OBOS_STATUS_SUCCESS)
+	if (obos_likely_error(status = Core_InitializeIRQInterface()))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
-	irq* irqObj1 = Core_IrqObjectAllocate(nullptr);
-	Core_IrqObjectInitializeIRQL(irqObj1, 0x2, false, false);
-	irqObj1->moveCallback = irq_move_callback_;
-	irq* irqObj2 = Core_IrqObjectAllocate(nullptr);
-	irqObj2->moveCallback = irq_move_callback_;
-	Core_IrqObjectInitializeVector(irqObj2, 0, true, true);
-	irq* irqObj3 = Core_IrqObjectAllocate(nullptr);
-	irqObj3->moveCallback = irq_move_callback_;
-	Core_IrqObjectInitializeIRQL(irqObj3, 0x2, false, true);
-	irq* irqObj4 = Core_IrqObjectAllocate(nullptr);
-	irqObj4->moveCallback = irq_move_callback_;
-	Core_IrqObjectInitializeIRQL(irqObj4, 0x2, true, false);
-	irqObj1->handler = irq_handler_;
-	irqObj2->handler = irq_handler_;
-	irqObj3->handler = irq_handler_;
-	irqObj4->handler = irq_handler_;
-	irqObj4->irqChecker = check_irq_callback_;
-	irqObj2->irqChecker = check_irq_callback_;
-	irqObj4->irqCheckerUserdata = 0;
-	irqObj2->irqCheckerUserdata = (void*)1;
-	ipi_lapic_info lapic = {
+	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
+	InitializeHPET();
+	Core_SchedulerIRQ = Core_IrqObjectAllocate(&status);
+	if (obos_likely_error(status))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
+	status = Core_IrqObjectInitializeIRQL(Core_SchedulerIRQ, IRQL_DISPATCH, false, true);
+	if (obos_likely_error(status))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
+	Core_SchedulerIRQ->handler = Arch_SchedulerIRQHandlerEntry;
+	Core_SchedulerIRQ->handlerUserdata = nullptr;
+	Core_SchedulerIRQ->irqChecker = nullptr;
+	Core_SchedulerIRQ->irqCheckerUserdata = nullptr;
+	// Hopefully this won't cause trouble.
+	Core_SchedulerIRQ->choseVector = false;
+	Core_SchedulerIRQ->vector->nIRQsWithChosenID = 1;
+	Core_LowerIrql(oldIrql);
+	ipi_lapic_info target = {
 		.isShorthand = true,
-		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_SELF,
+		.info = {
+			.shorthand = LAPIC_DESTINATION_SHORTHAND_ALL,
+		}
 	};
 	ipi_vector_info vector = {
 		.deliveryMode = LAPIC_DELIVERY_MODE_FIXED,
-		.info.vector = irqObj4->vector->id + 0x20,
+		.info.vector = Core_SchedulerIRQ->vector->id + 0x20
 	};
-	Core_LowerIrql(0x0);
-	Arch_LAPICSendIPI(lapic, vector);
-	vector.info.vector = irqObj3->vector->id + 0x20;
-	Arch_LAPICSendIPI(lapic, vector);
-	vector.info.vector = irqObj2->vector->id + 0x20;
-	Arch_LAPICSendIPI(lapic, vector);
-	vector.info.vector = irqObj1->vector->id + 0x20;
-	Arch_LAPICSendIPI(lapic, vector);
-	Core_IrqObjectFree(irqObj1);
-	Core_IrqObjectFree(irqObj2);
-	Core_IrqObjectFree(irqObj3);
-	Core_IrqObjectFree(irqObj4);
+	Arch_LAPICSendIPI(target, vector);
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	while (1);
+	Core_ExitCurrentThread();
 }

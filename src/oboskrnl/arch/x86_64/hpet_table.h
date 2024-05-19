@@ -30,14 +30,14 @@ typedef struct OBOS_PACK HPET_Table
 } HPET_Table;
 typedef struct OBOS_PACK HPET_Timer
 {
-	uint64_t timerConfigAndCapabilities;
-	uint64_t timerComparatorValue;
-	struct
+	volatile uint64_t timerConfigAndCapabilities;
+	volatile uint64_t timerComparatorValue;
+	volatile struct
 	{
 		uint32_t fsbIntVal;
 		uint32_t fsbIntAddr;
 	} timerFSBInterruptRoute;
-	const uint64_t resv;
+	const volatile uint64_t resv;
 } HPET_Timer;
 typedef struct OBOS_PACK HPET
 {
@@ -49,7 +49,7 @@ typedef struct OBOS_PACK HPET
 		bool legRouteCap : 1;
 		uint16_t vendorID;
 		uint32_t counterCLKPeriod;
-	} __attribute__((packed)) generalCapabilitiesAndID;
+	} OBOS_PACK generalCapabilitiesAndID;
 	volatile const uint64_t resv1;
 	volatile uint64_t generalConfig;
 	volatile const uint64_t resv2;
