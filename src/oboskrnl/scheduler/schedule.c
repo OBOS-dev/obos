@@ -41,7 +41,7 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
 static void ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
-	if (list->noStarvationQuantum++ < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
+	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
 		return;
 	list->noStarvationQuantum = 0;
 	// The first (list->nNodes / 4) threads in a priority list will be starving usually because they are at the beginning of the list, and the scheduler starts from the back.
@@ -113,7 +113,7 @@ void Core_Schedule()
 		goto schedule;
 	getCurrentThread->lastRunTick = getSchedulerTicks;
 	bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
-	if (getCurrentThread->quantum++ < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
+	if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 schedule:
 	if (getCurrentThread)
@@ -137,7 +137,7 @@ schedule:
 	thread* chosenThread = nullptr;
 	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
 		CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];
-	if (CoreS_GetCPULocalPtr()->currentPriorityList->quantum++ >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
+	if (++CoreS_GetCPULocalPtr()->currentPriorityList->quantum >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
 	{
 		CoreS_GetCPULocalPtr()->currentPriorityList->quantum = 0;
 		thread_priority nextPriority = CoreS_GetCPULocalPtr()->currentPriorityList->priority - 1;
@@ -184,11 +184,13 @@ schedule:
 	chosenThread->status = THREAD_STATUS_RUNNING;
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
-	switch_thread:
+switch_thread:
+	if (getCurrentThread)
+		getCurrentThread->status = THREAD_STATUS_READY;
 	getCurrentThread = chosenThread;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
-
+struct irq* Core_SchedulerIRQ;
 void Core_Yield()
 {
 	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;

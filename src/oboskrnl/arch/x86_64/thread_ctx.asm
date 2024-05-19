@@ -51,6 +51,7 @@ align 8
 endstruc
 %endmacro
 
+extern Core_GetIRQLVar
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
 	cli
@@ -70,6 +71,11 @@ CoreS_SwitchToThreadContext:
 	; Restore IRQL.
 	mov rax, [rdi]
 	mov cr8, rax
+	push rdi
+	call Core_GetIRQLVar
+	pop rdi
+	mov rcx, [rdi]
+	mov [rax], rcx
 	add rdi, 8
 	; Restore GS_BASE
 	mov eax, [rdi]
@@ -170,14 +176,14 @@ CoreS_SaveRegisterContextAndYield:
 	mov [rdi+thread_ctx.frame+0x88], rax
 	mov rax, ds
 	mov [rdi+thread_ctx.frame+0x00], rax ; ds
-	mov rax, [rsp+0xD0]
+	mov rax, [rsp]
 	mov [rdi+thread_ctx.frame+0xA8], rax ; return address
 	mov rax, cs
 	mov [rdi+thread_ctx.frame+0xB0], rax ; cs
 	pushfq
 	pop rax
 	mov [rdi+thread_ctx.frame+0xB8], rax ; rflags
-	lea rax, [rsp+0xD8] ; skip the return address
+	lea rax, [rsp+0x8] ; skip the return address
 	mov [rdi+thread_ctx.frame+0xC0], rax ; rsp
 	mov rax, ss
 	mov [rdi+thread_ctx.frame+0xC8], rax ; ss

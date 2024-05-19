@@ -27,3 +27,4 @@ void Core_Schedule();
 void Core_Yield();
 
 extern size_t Core_ReadyThreadCount;
+extern struct irq* Core_SchedulerIRQ;
