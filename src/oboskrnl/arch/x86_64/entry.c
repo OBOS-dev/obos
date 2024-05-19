@@ -50,10 +50,10 @@ static thread_node kernelMainThreadNode;
 static cpu_local bsp_cpu;
 extern void Arch_IdleTask();
 void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackSize);
-void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext);
+void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
 void pageFaultHandler(interrupt_frame* frame);
-void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
+void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
 	ParseBootContext(bcontext);
@@ -62,7 +62,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
-	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
+	Arch_RawRegisterInterrupt(0xe, (uintptr_t)pageFaultHandler);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	if (!Arch_Framebuffer)
@@ -96,20 +96,20 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	memzero(&ctx1, sizeof(ctx1));
 	memzero(&ctx2, sizeof(ctx2));
 	OBOS_Debug("Setting up thread context.\n");
-	CoreS_SetupThreadContext(&ctx2, Arch_KernelMainBootstrap, bcontext, false, kmain_thr_stack, 0x10000);
-	CoreS_SetupThreadContext(&ctx1, Arch_IdleTask, 0, false, thr_stack, 0x4000);
+	CoreS_SetupThreadContext(&ctx2, (uintptr_t)Arch_KernelMainBootstrap, 0, false, kmain_thr_stack, 0x10000);
+	CoreS_SetupThreadContext(&ctx1, (uintptr_t)Arch_IdleTask, 0, false, thr_stack, 0x4000);
 	OBOS_Debug("Initializing thread.\n");
 	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &ctx2);
 	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
-	kernelMainThread.context.gs_base = &bsp_cpu;
-	bsp_idleThread.context.gs_base = &bsp_cpu;
+	kernelMainThread.context.gs_base = (uintptr_t)&bsp_cpu;
+	bsp_idleThread.context.gs_base = (uintptr_t)&bsp_cpu;
 	OBOS_Debug("Readying threads for execution.\n");
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
 	Core_CpuInfo->idleThread = &bsp_idleThread;
 	OBOS_Debug("Initializing CPU-local GDT.\n");
 	// Initialize the CPU's GDT.
-	Arch_CPUInitializeGDT(&Core_CpuInfo[0], Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
+	Arch_CPUInitializeGDT(&Core_CpuInfo[0], (uintptr_t)Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
 	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
@@ -136,19 +136,19 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 	{
 		switch (header->type)
 		{
-		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = header; break;
-		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = header;  break;
-		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = header; break;
-		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (header + 1); break;
+		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = (struct ultra_platform_info_attribute*)header; break;
+		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = (struct ultra_kernel_info_attribute*)header;  break;
+		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = (struct ultra_memory_map_attribute*)header; break;
+		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (const char*)(header + 1); break;
 		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: 
 		{
-			struct ultra_framebuffer_attribute* fb = header;
+			struct ultra_framebuffer_attribute* fb = (struct ultra_framebuffer_attribute*)header;
 			Arch_Framebuffer = &fb->fb;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_MODULE_INFO: 
 		{
-			struct ultra_module_info_attribute* module = header;
+			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
 			break;
@@ -172,7 +172,6 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
-static size_t runAllocatorTests(allocator_info* allocator, size_t passes);
 void pageFaultHandler(interrupt_frame* frame)
 {
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
@@ -213,17 +212,21 @@ static basic_allocator kalloc;
 void Arch_SMPStartup();
 static void irq_move_callback_(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
 {
+	(userdata = userdata);
 	OBOS_Debug("Moving IRQ Object 0x%p from vector %d to vector %d.\n", i, from->id, to->id);
 }
 static void irq_handler_(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
+	(userdata = userdata);
+	(frame = frame);
 	OBOS_Debug("Received IRQ %d (irq object 0x%p)!\n", i->vector->id, i);
 	Core_LowerIrql(oldIrql);
 }
 static bool check_irq_callback_(struct irq* obj, void* userdata)
 {
+	(obj = obj);
 	static int i = 0;
-	if (i == (int)userdata)
+	if (i == (intptr_t)userdata)
 	{
 		i++;
 		return true;
@@ -231,7 +234,7 @@ static bool check_irq_callback_(struct irq* obj, void* userdata)
 	return false;
 }
 
-void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
+void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
@@ -242,7 +245,7 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
-	OBOS_KernelAllocator = &kalloc;
+	OBOS_KernelAllocator = (allocator_info*)&kalloc;
 	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
 	Arch_LAPICInitialize(true);
 	//OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 100000) == 100000);
@@ -270,7 +273,7 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	irqObj4->irqChecker = check_irq_callback_;
 	irqObj2->irqChecker = check_irq_callback_;
 	irqObj4->irqCheckerUserdata = 0;
-	irqObj2->irqCheckerUserdata = 1;
+	irqObj2->irqCheckerUserdata = (void*)1;
 	ipi_lapic_info lapic = {
 		.isShorthand = true,
 		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_SELF,
@@ -287,47 +290,10 @@ void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
 	Arch_LAPICSendIPI(lapic, vector);
 	vector.info.vector = irqObj1->vector->id + 0x20;
 	Arch_LAPICSendIPI(lapic, vector);
+	Core_IrqObjectFree(irqObj1);
+	Core_IrqObjectFree(irqObj2);
+	Core_IrqObjectFree(irqObj3);
+	Core_IrqObjectFree(irqObj4);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	while (1);
-}
-
-static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
-{
-	OBOS_Debug("%s: Testing allocator. Pass count is %lu.\n", __func__, passes);
-	void* lastDiv16Pointer = nullptr;
-	size_t passInterval = 10000;
-	if (passInterval % 10)
-		passInterval += (passInterval - passInterval % 10);
-	size_t lastStatusMessageInterval = 0;
-	size_t lastFreeIndex = 0;
-	for (size_t i = 0; i < passes; i++)
-	{
-		if (!i)
-			OBOS_Debug("%s: &i=0x%p\n", __func__, &i);
-		if ((lastStatusMessageInterval + passInterval) == i)
-		{
-			OBOS_Debug("%s: Finished %lu passes so far.\n", __func__, i);
-			lastStatusMessageInterval = i;
-		}
-		uint64_t r = random_number();
-		size_t size = r % 0x1000 + 16;
-		void* mem = allocator->Allocate(allocator, size, nullptr);
-		if (!mem)
-			return i;
-		((uint8_t*)mem)[0] = 5;
-		((uint8_t*)mem)[size-1] = 4;
-		if (++lastFreeIndex == 3)
-		{
-			lastFreeIndex = 0;
-			if (lastDiv16Pointer)
-			{
-				size_t objSize = allocator->QueryBlockSize(allocator, lastDiv16Pointer, nullptr);
-				if (objSize == SIZE_MAX)
-					return i;
-				allocator->Free(allocator, lastDiv16Pointer, objSize);
-			}
-			lastDiv16Pointer = mem;
-		}
-	}
-	return passes;
 }

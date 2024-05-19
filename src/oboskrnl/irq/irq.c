@@ -298,3 +298,38 @@ obos_status Core_IrqObjectInitializeVector(irq* obj, irq_vector_id vector, bool 
 	Core_SpinlockRelease(&s_lock, oldIrql);
 	return res;
 }
+obos_status Core_IrqObjectFree(irq* obj)
+{
+	if (!s_irqInterfaceInitialized)
+		return OBOS_STATUS_INVALID_INIT_PHASE;
+	if (!obj)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (obj->vector)
+	{
+		irql oldIrql = Core_SpinlockAcquire(&s_lock);
+		irq_node* node = nullptr;
+		if (!obj->vector->allowWorkSharing)
+			node = obj->vector->irqObjects.head;
+		else
+		{
+			for (irq_node* cur = obj->vector->irqObjects.head; cur && !node; )
+			{
+				if (cur->data == obj)
+					node = cur;
+				cur = cur->next;
+			}
+		}
+		OBOS_ASSERT(node);
+		OBOS_ASSERT(node->data == obj);
+		remove_irq_from_vector(obj->vector, node);
+		if (!obj->vector->irqObjects.nNodes)
+		{
+			obj->vector->allowWorkSharing = true;
+			obj->vector->irqObjectsCapacity = 16;
+		}
+		obj->vector->nIRQsWithChosenID -= (size_t)obj->choseVector;
+		Core_SpinlockRelease(&s_lock, oldIrql);
+	}
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
+	return OBOS_STATUS_SUCCESS;
+}

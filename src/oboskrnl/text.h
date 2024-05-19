@@ -19,7 +19,7 @@ typedef struct
 {
 	uint32_t column;
 	uint32_t row;
-	void* font; // Must be 8x16 font.
+	const void* font; // Must be 8x16 font.
 	struct
 	{
 		void* base;

@@ -49,8 +49,8 @@ void CoreS_SaveRegisterContextAndYield(thread_ctx* ctx);
 /// <returns>The status code of the function.</returns>
 obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
 /// <summary>
-/// Calls a function on a stack allocated in the kernel address space.<br></br>
-/// This function must be thread-safe. It mustn't use the same stack as another CPU or thread.<br></br>
+/// Calls a function on a stack allocated in the kernel address space.<para/>
+/// This function must be thread-safe. It mustn't use the same stack as another CPU or thread.<para/>
 /// This function is intended to be used in contexts such as ExitCurrentThread, where it might free the stack.
 /// </summary>
 /// <param name="func">The function to be called.</param>

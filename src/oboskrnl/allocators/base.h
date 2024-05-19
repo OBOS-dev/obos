@@ -34,8 +34,8 @@ typedef struct allocator_info
 	/// <returns>A pointer to the block allocated, or nullptr on failure.</returns>
 	void* (*ZeroAllocate)(struct allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status);
 	/// <summary>
-	/// Reallocates a previously allocated block of memory.<br></br>
-	/// If nBytes==0, the function shall call Free() on the block.<br></br>
+	/// Reallocates a previously allocated block of memory.<para/>
+	/// If nBytes==0, the function shall call Free() on the block.<para/>
 	/// If base==nullptr, the function shall Allocate() the byte count passed.
 	/// </summary>
 	/// <param name="This">The allocator object used.</param>

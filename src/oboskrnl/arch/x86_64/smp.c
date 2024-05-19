@@ -126,7 +126,6 @@ extern void Arch_IdleTask();
 OBOS_NORETURN extern void Arch_APYield(void* startup_stack, void* temp_stack);
 static void idleTaskBootstrap()
 {
-	OBOS_Debug("Hello from CPU %d.\n", CoreS_GetCPULocalPtr()->id);
 	ap_initialized = true;
 	CoreS_GetCPULocalPtr()->initialized = true;
 	Arch_IdleTask();
@@ -138,11 +137,12 @@ void Arch_APEntry(cpu_local* info)
 	Arch_InitializeIDT(false);
 	(void)Core_RaiseIrql(0xf);
 	// Setup the idle thread.
-	thread_ctx* ctx = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(thread_ctx), nullptr);
-	thread* idleThread = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(thread), nullptr);
+	thread_ctx ctx;
+	memzero(&ctx, sizeof(ctx));
 	void* thr_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
-	CoreS_SetupThreadContext(ctx, idleTaskBootstrap, 0, false, thr_stack, 0x4000);
-	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), ctx);
+	CoreS_SetupThreadContext(&ctx, idleTaskBootstrap, 0, false, thr_stack, 0x4000);
+	thread* idleThread = CoreH_ThreadAllocate(nullptr);
+	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
 	info->idleThread = idleThread;
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
@@ -212,14 +212,13 @@ void Arch_SMPStartup()
 			OBOS_Error("%s: Could not send IPI. Status: %d.\n", status);
 			continue;
 		}
-		// TODO: Wait for SMP trampoline.
 		while (!atomic_load(&ap_initialized))
 			pause();
 		atomic_store(&ap_initialized, false);
 	}
 	Core_LowerIrql(oldIrql);
 	Arch_SMPInitialized = true;
-	OBOS_BasicMMFreePages(nullptr, 0x1000);
+	OBOSS_UnmapPage(nullptr);
 }
 bool Arch_HaltCPUs = false;
 uint8_t Arch_CPUsHalted = 0;

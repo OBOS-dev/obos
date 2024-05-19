@@ -46,13 +46,13 @@ irql Core_GetIrql();
 // Do not use unless you know what you're doing.
 
 /// <summary>
-/// Sets the current IRQL in the IRQ controller.<br></br>
+/// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would set the cr8 register to 'to' on x86_64.
 /// </summary>
 /// <param name="to"></param>
 void    CoreS_SetIRQL(uint8_t to);
 /// <summary>
-/// Sets the current IRQL in the IRQ controller.<br></br>
+/// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would return the cr8 register on x86_64.
 /// </summary>
 /// <returns>The current IRQL.</returns>

@@ -70,8 +70,8 @@ typedef struct irq_vector
 /// <returns>Whether this specific IRQ belongs to this IRQ object.</returns>
 typedef bool(*check_irq_callback)(struct irq* i, void* userdata);
 /// <summary>
-/// Called when an IRQ is being moved from one vector to another. This is called before the move of the object.<br></br>
-/// Cannot reference any construction function in the abstract irq interface.
+/// Called when an IRQ is being moved from one vector to another. This is called before the move of the object.<para/>
+/// Cannot reference any construction function in the abstract irq interface.<para/>
 /// Note: Both vectors should always be of the same IRQL.
 /// </summary>
 /// <param name="i">The irq object.</param>
@@ -132,6 +132,13 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 /// <param name="force">See force parameter for Core_IrqObjectInitializeIRQL.</param>
 /// <returns>The status of the function.</returns>
 obos_status Core_IrqObjectInitializeVector(irq* obj, irq_vector_id vector, bool allowWorkSharing, bool force);
+/// <summary>
+/// Frees and dereferences an IRQ object.<para/>
+/// It is UB to use the irq object after.
+/// </summary>
+/// <param name="obj">The irq object.</param>
+/// <returns>The status of the function.</returns>
+obos_status Core_IrqObjectFree(irq* obj);
 
 /// <summary>
 /// Registers an IRQ handler for the specified irq vector id.

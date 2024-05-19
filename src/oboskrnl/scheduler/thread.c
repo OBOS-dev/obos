@@ -84,14 +84,15 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	Core_ReadyThreadCount++;
 	return CoreH_ThreadListAppend(priorityList, node);
 }
-obos_status CoreH_ThreadBlock(thread* thr, thread_node* node, bool canYield)
+obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 {
-	if (!thr || !node)
+	if (!thr)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if(!thr->masterCPU || thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
+	if (!thr->masterCPU || thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
+	thread_node* node = thr->snode;
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
@@ -157,18 +158,18 @@ OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
-	CoreH_ThreadBlock(currentThread, currentThread->snode, false);
+	CoreH_ThreadBlock(currentThread, false);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);
-	if (!(--currentThread->references) && currentThread->free)
-	{
+	if (currentThread->snode->free)
 		currentThread->snode->free(currentThread->snode);
+	if (!currentThread->references && currentThread->free)
 		currentThread->free(currentThread);
-	}
+	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }
-OBOS_NORETURN void CoreH_ExitCurrentThread()
+OBOS_NORETURN void Core_ExitCurrentThread()
 {
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
