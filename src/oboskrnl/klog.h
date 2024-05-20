@@ -9,7 +9,13 @@
 #include <int.h>
 #include <stdarg.h>
 
-#define OBOS_ASSERT(expression) do { if (!(expression)) { OBOS_Panic(OBOS_PANIC_ASSERTION_FAILED, "Assertion failed in function %s. File: %s, line %d. %s\n", __func__, __FILE__, __LINE__, #expression); } } while(0)
+#if OBOS_DEBUG
+#	define OBOS_ASSERT(expression) do { if (!(expression)) { OBOS_Panic(OBOS_PANIC_ASSERTION_FAILED, "Assertion failed in function %s. File: %s, line %d. %s\n", __func__, __FILE__, __LINE__, #expression); } } while(0)
+#else
+#	define OBOS_ASSERT(expression) do { } while(0)
+#endif
+
+#define OBOS_UNREACHABLE (OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unreachable statement reached.\n"))
 
 typedef enum
 {
@@ -73,6 +79,10 @@ void OBOS_Error(const char* format, ...);
 /// <param name="format">The printf-style format string describing how the fail happened..</param>
 /// <param name="...">Any variadic arguments.</param>
 OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...);
+/// <summary>
+/// Halts all other CPUs.
+/// </summary>
+void OBOSS_HaltCPUs();
 
 // printf-Style functions.
 size_t printf(const char* format, ...);

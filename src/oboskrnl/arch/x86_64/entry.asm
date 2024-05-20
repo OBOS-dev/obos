@@ -48,3 +48,7 @@ Arch_KernelEntryBootstrap:
 	; Call into the kernel entry.
 	push 0 ; Make sure if the kernel entry returns, it triple faults and doesn't do goofy things.
 	jmp Arch_KernelEntry
+global Arch_IdleTask
+Arch_IdleTask:
+	hlt
+	jmp Arch_IdleTask

@@ -1,7 +1,7 @@
 /*
-*	oboskrnl/arch/x86_64/entry.c
-*
-*	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/arch/x86_64/entry.c
+ *
+ * Copyright (c) 2024 Omar Berrow
 */
 
 #include <int.h>
@@ -15,6 +15,8 @@
 
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/interrupt_frame.h>
+
+#include <arch/x86_64/hpet_table.h>
 
 #include <irq/irql.h>
 
@@ -32,6 +34,12 @@
 
 #include <arch/x86_64/boot_info.h>
 
+#include <arch/x86_64/lapic.h>
+
+#include <irq/irq.h>
+
+#include <mm/bare_map.h>
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -44,15 +52,12 @@ static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
 
 static cpu_local bsp_cpu;
-__asm__(
-	".global Arch_IdleTask; Arch_IdleTask:; hlt; jmp Arch_IdleTask;"
-);
 extern void Arch_IdleTask();
-extern void Arch_FlushGDT(uintptr_t gdtr);
-void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext);
+void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackSize);
+void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
 void pageFaultHandler(interrupt_frame* frame);
-void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
+void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
 	ParseBootContext(bcontext);
@@ -61,7 +66,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
-	Arch_RawRegisterInterrupt(0xe, pageFaultHandler);
+	Arch_RawRegisterInterrupt(0xe, (uintptr_t)pageFaultHandler);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	if (!Arch_Framebuffer)
@@ -78,7 +83,10 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
 	}
-	Arch_InitializeIDT();
+#if OBOS_RELEASE
+	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
+#endif
+	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
 		uint32_t edx = 0;
@@ -95,70 +103,34 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext, uint32_t magic)
 	memzero(&ctx1, sizeof(ctx1));
 	memzero(&ctx2, sizeof(ctx2));
 	OBOS_Debug("Setting up thread context.\n");
-	CoreS_SetupThreadContext(&ctx2, Arch_KernelMainBootstrap, bcontext, false, kmain_thr_stack, 0x10000);
-	CoreS_SetupThreadContext(&ctx1, Arch_IdleTask, 0, false, thr_stack, 0x4000);
+	CoreS_SetupThreadContext(&ctx2, (uintptr_t)Arch_KernelMainBootstrap, 0, false, kmain_thr_stack, 0x10000);
+	CoreS_SetupThreadContext(&ctx1, (uintptr_t)Arch_IdleTask, 0, false, thr_stack, 0x4000);
 	OBOS_Debug("Initializing thread.\n");
 	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &ctx2);
 	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
-	kernelMainThread.context.gs_base = &bsp_cpu;
-	bsp_idleThread.context.gs_base = &bsp_cpu;
+	kernelMainThread.context.gs_base = (uintptr_t)&bsp_cpu;
+	bsp_idleThread.context.gs_base = (uintptr_t)&bsp_cpu;
 	OBOS_Debug("Readying threads for execution.\n");
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
+	Core_CpuInfo->idleThread = &bsp_idleThread;
 	OBOS_Debug("Initializing CPU-local GDT.\n");
 	// Initialize the CPU's GDT.
-	memzero(Core_CpuInfo[0].arch_specific.gdtEntries, sizeof(Core_CpuInfo[0].arch_specific.gdtEntries));
-	memzero(&Core_CpuInfo[0].arch_specific.tss, sizeof(Core_CpuInfo[0].arch_specific.tss));
-	Core_CpuInfo[0].arch_specific.gdtEntries[0] = 0;
-	Core_CpuInfo[0].arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
-	Core_CpuInfo[0].arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
-	Core_CpuInfo[0].arch_specific.gdtEntries[3] = 0x00aff3000000ffff; // 64-bit user-mode data
-	Core_CpuInfo[0].arch_specific.gdtEntries[4] = 0x00affb000000ffff; // 64-bit user-mode code
-	struct
-	{
-		uint16_t limitLow;
-		uint16_t baseLow;
-		uint8_t baseMiddle1;
-		uint8_t access;
-		uint8_t gran;
-		uint8_t baseMiddle2;
-		uint32_t baseHigh;
-		uint32_t resv1;
-	} tss_entry;
-	memzero(&tss_entry, sizeof(tss_entry));
-	uintptr_t tss = (uintptr_t)&Core_CpuInfo[0].arch_specific.tss;
-	tss_entry.limitLow = sizeof(Core_CpuInfo[0].arch_specific.tss);
-	tss_entry.baseLow = tss & 0xffff;
-	tss_entry.baseMiddle1 = (tss >> 16) & 0xff;
-	tss_entry.baseMiddle2 = (tss >> 24) & 0xff;
-	tss_entry.baseHigh = (tss >> 32) & 0xffffffff;
-	tss_entry.access = 0x89;
-	tss_entry.gran = 0x40;
-	Core_CpuInfo[0].arch_specific.gdtEntries[5] = *((uint64_t*)&tss_entry + 0);
-	Core_CpuInfo[0].arch_specific.gdtEntries[6] = *((uint64_t*)&tss_entry + 1);
-
-	Core_CpuInfo[0].arch_specific.tss.ist0 = Arch_InitialISTStack + sizeof(Arch_InitialISTStack);
-	Core_CpuInfo[0].arch_specific.tss.rsp0 = Arch_InitialISTStack + sizeof(Arch_InitialISTStack);
-	Core_CpuInfo[0].arch_specific.tss.iopb = sizeof(Core_CpuInfo[0].arch_specific.tss) - 1;
-	struct
-	{
-		uint16_t limit;
-		uintptr_t base;
-	} OBOS_PACK gdtr;
-	gdtr.limit = sizeof(Core_CpuInfo[0].arch_specific.gdtEntries) - 1;
-	gdtr.base = Core_CpuInfo[0].arch_specific.gdtEntries;
-	Arch_FlushGDT(&gdtr);
+	Arch_CPUInitializeGDT(&Core_CpuInfo[0], (uintptr_t)Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
 	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
+	Core_CpuInfo[0].arch_specific.ist_stack = Arch_InitialISTStack;
 	OBOS_Debug("Initializing priority lists.\n");
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
+	Core_CpuInfo->initialized = true;
 	// Finally yield into the scheduler.
 	OBOS_Debug("Yielding into the scheduler!\n");
 	Core_Yield();
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
-	while (1);
+	while (1)
+		asm volatile("nop" : : :);
 }
 struct ultra_memory_map_attribute* Arch_MemoryMap;
 struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
@@ -173,19 +145,19 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 	{
 		switch (header->type)
 		{
-		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = header; break;
-		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = header;  break;
-		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = header; break;
-		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (header + 1); break;
+		case ULTRA_ATTRIBUTE_PLATFORM_INFO: Arch_LdrPlatformInfo = (struct ultra_platform_info_attribute*)header; break;
+		case ULTRA_ATTRIBUTE_KERNEL_INFO: Arch_KernelInfo = (struct ultra_kernel_info_attribute*)header;  break;
+		case ULTRA_ATTRIBUTE_MEMORY_MAP: Arch_MemoryMap = (struct ultra_memory_map_attribute*)header; break;
+		case ULTRA_ATTRIBUTE_COMMAND_LINE: OBOS_KernelCmdLine = (const char*)(header + 1); break;
 		case ULTRA_ATTRIBUTE_FRAMEBUFFER_INFO: 
 		{
-			struct ultra_framebuffer_attribute* fb = header;
+			struct ultra_framebuffer_attribute* fb = (struct ultra_framebuffer_attribute*)header;
 			Arch_Framebuffer = &fb->fb;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_MODULE_INFO: 
 		{
-			struct ultra_module_info_attribute* module = header;
+			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
 			break;
@@ -209,7 +181,6 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
-static size_t runAllocatorTests(allocator_info* allocator, size_t passes);
 void pageFaultHandler(interrupt_frame* frame)
 {
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
@@ -243,64 +214,158 @@ void pageFaultHandler(interrupt_frame* frame)
 }
 uint64_t random_number();
 __asm__(
-	".global random_number; random_number:; rdrand %rax; ret;"
+	"random_number:; rdrand %rax; ret; "
 );
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
-void Arch_KernelMainBootstrap(struct ultra_boot_context* bcontext)
+void Arch_SMPStartup();
+extern uint64_t Arch_FindCounter(uint64_t hz);
+void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
+{
+	(obj = obj);
+	(frame = frame);
+	(userdata = userdata);
+	(obj = obj);
+	if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
+	{
+		Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
+		Arch_LAPICAddress->divideConfig = 0b1101;
+		Arch_LAPICAddress->initialCount = Arch_FindCounter(Core_SchedulerTimerFrequency);
+		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
+		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
+	}
+	else
+		Core_Yield();
+}
+HPET* Arch_HPETAddress;
+uint64_t Arch_HPETFrequency;
+uint64_t Arch_CalibrateHPET(uint64_t freq)
+{
+	if (!Arch_HPETFrequency)
+		Arch_HPETFrequency = 1000000000000000 / Arch_HPETAddress->generalCapabilitiesAndID.counterCLKPeriod;
+	Arch_HPETAddress->generalConfig &= ~(1 << 0);
+	uint64_t compValue = Arch_HPETAddress->mainCounterValue + (Arch_HPETFrequency / freq);
+	Arch_HPETAddress->timer0.timerConfigAndCapabilities &= ~(1 << 2);
+	Arch_HPETAddress->timer0.timerConfigAndCapabilities &= ~(1 << 3);
+	return compValue;
+}
+#define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
+static OBOS_NO_UBSAN void InitializeHPET()
+{
+	extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+	static basicmm_region hpet_region;
+	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
+	bool tables32 = rsdp->Revision == 0;
+	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
+	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
+	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
+	HPET_Table* hpet_table = nullptr;
+	for (size_t i = 0; i < nEntries; i++)
+	{
+		uintptr_t phys = tables32 ? OffsetPtr(xsdt, sizeof(*xsdt), uint32_t)[i] : OffsetPtr(xsdt, sizeof(*xsdt), uint64_t)[i];
+		ACPISDTHeader* header = (ACPISDTHeader*)Arch_MapToHHDM(phys);
+		if (memcmp(header->Signature, "HPET", 4))
+		{
+			hpet_table = (HPET_Table*)header;
+			break;
+		}
+	}
+	if (!hpet_table)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n");
+	uintptr_t phys = hpet_table->baseAddress.address;
+	Arch_HPETAddress = (HPET*)0xffffffffffffe000;
+	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
+	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
+}
+static atomic_size_t nThreadsEntered = 0;
+static void scheduler_test(size_t maxPasses)
+{
+	OBOS_Debug("Entered thread %d (work id %d).\n", Core_GetCurrentThread()->tid, nThreadsEntered++);
+	volatile uint8_t* lastPtr = nullptr;
+	volatile size_t lastFree = 0;
+	for (size_t i = 0; i < maxPasses; i++)
+	{
+		volatile size_t sz = random_number() % 0x1000 + 1;
+		volatile uint8_t *buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+		OBOS_ASSERT(buf);
+		buf[0] = 0xDE;
+		buf[sz - 1] = 0xAD;
+		if (i - lastFree == 3)
+		{
+			size_t blkSz = 0;
+			OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, lastPtr, &blkSz);
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, lastPtr, blkSz);
+		}
+		lastPtr = buf;
+	}
+	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
+	Core_ExitCurrentThread();
+}
+void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
+	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (status != OBOS_STATUS_SUCCESS)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
-	OBOS_Debug("%s: Testing allocator...\n", __func__);
+	bsp_idleThread.context.cr3 = getCR3();
+	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
-	OBOS_KernelAllocator = &kalloc;
-	OBOS_ASSERT(runAllocatorTests(OBOS_KernelAllocator, 1000000) == 1000000);
-	OBOS_Log("%s: Done early boot.\n", __func__);
-	while (1);
-}
-static size_t runAllocatorTests(allocator_info* allocator, size_t passes)
-{
-	OBOS_Debug("%s: Testing allocator. Pass count is %lu.\n", __func__, passes);
-	void* lastDiv16Pointer = nullptr;
-	size_t passInterval = 10000;
-	if (passInterval % 10)
-		passInterval += (passInterval - passInterval % 10);
-	size_t lastStatusMessageInterval = 0;
-	const char* buf = "\xef\xbe\xad\xed";
-	size_t lastFreeIndex = 0;
-	for (size_t i = 0; i < passes; i++)
+	OBOS_KernelAllocator = (allocator_info*)&kalloc;
+	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
+	Arch_LAPICInitialize(true);
+	OBOS_Debug("%s: Initializing SMP.\n", __func__);
+	Arch_SMPStartup();
+	bsp_idleThread.context.gs_base = rdmsr(0xC0000101 /* GS_BASE */);
+	bsp_idleThread.masterCPU = CoreS_GetCPULocalPtr();
+	Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
+	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
+	if (obos_likely_error(status = Core_InitializeIRQInterface()))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
+	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
+	InitializeHPET();
+	Core_SchedulerIRQ = Core_IrqObjectAllocate(&status);
+	if (obos_likely_error(status))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
+	status = Core_IrqObjectInitializeIRQL(Core_SchedulerIRQ, IRQL_DISPATCH, false, true);
+	if (obos_likely_error(status))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
+	Core_SchedulerIRQ->handler = Arch_SchedulerIRQHandlerEntry;
+	Core_SchedulerIRQ->handlerUserdata = nullptr;
+	Core_SchedulerIRQ->irqChecker = nullptr;
+	Core_SchedulerIRQ->irqCheckerUserdata = nullptr;
+	// Hopefully this won't cause trouble.
+	Core_SchedulerIRQ->choseVector = false;
+	Core_SchedulerIRQ->vector->nIRQsWithChosenID = 1;
+	ipi_lapic_info target = {
+		.isShorthand = true,
+		.info = {
+			.shorthand = LAPIC_DESTINATION_SHORTHAND_ALL,
+		}
+	};
+	ipi_vector_info vector = {
+		.deliveryMode = LAPIC_DELIVERY_MODE_FIXED,
+		.info.vector = Core_SchedulerIRQ->vector->id + 0x20
+	};
+	Core_LowerIrql(oldIrql);
+	//Arch_PutInterruptOnIST(Core_SchedulerIRQ->vector->id + 0x20, 1);
+	Arch_LAPICSendIPI(target, vector);
+	OBOS_Debug("%s: Testing the scheduler.\n", __func__);
+	for (size_t i = 0; i < 16; i++)
 	{
-		if (!i)
-			OBOS_Debug("%s: &i=0x%p\n", __func__, &i);
-		if ((lastStatusMessageInterval + passInterval) == i)
-		{
-			OBOS_Debug("%s: Finished %lu passes so far.\n", __func__, i);
-			lastStatusMessageInterval = i;
-		}
-		uint64_t r = random_number();
-		size_t size = r % 0x1000 + 16;
-		void* mem = allocator->Allocate(allocator, size, nullptr);
-		if (!mem)
-			return i;
-		((uint8_t*)mem)[0] = 5;
-		((uint8_t*)mem)[size-1] = 4;
-		if (++lastFreeIndex == 3)
-		{
-			lastFreeIndex = 0;
-			if (lastDiv16Pointer)
-			{
-				size_t objSize = allocator->QueryBlockSize(allocator, lastDiv16Pointer, nullptr);
-				if (objSize == SIZE_MAX)
-					return i;
-				allocator->Free(allocator, lastDiv16Pointer, objSize);
-			}
-			lastDiv16Pointer = mem;
-		}
+		thread_ctx ctx;
+		memzero(&ctx, sizeof(ctx));
+		void* stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 1000, false, stack, 0x4000);
+		thread* thr = CoreH_ThreadAllocate(nullptr);
+		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
+			CoreH_ThreadReady(thr);
+		else
+			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
 	}
-	return passes;
+	OBOS_Log("%s: Done early boot.\n", __func__);
+	Core_ExitCurrentThread();
 }

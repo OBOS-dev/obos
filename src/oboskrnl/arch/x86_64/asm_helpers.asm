@@ -25,6 +25,9 @@ global __cpuid__
 global invlpg
 global wbinvd
 global xsave
+global cli
+global sti
+global hlt
 
 getCR0:
 	push rbp
@@ -197,4 +200,13 @@ CoreS_GetCPULocalPtr:
 	or rax, rdx
 
 	leave 
+	ret
+cli:
+	cli
+	ret
+sti:
+	sti
+	ret
+hlt:
+	hlt
 	ret

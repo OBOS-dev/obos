@@ -4,4 +4,5 @@
 /dependencies/hyper
 /dependencies/UltraProtocol
 /dependencies/include/
+/dependencies/needs_download.cmake
 /qemu_log.txt

@@ -31,6 +31,7 @@
 typedef _Bool bool;
 #else
 #	define OBOS_ALIGNAS(x) alignas(x)
+#	undef NULL
 #endif
 
 #define OBOS_NORETURN [[_Noreturn]]
@@ -39,6 +40,18 @@ typedef _Bool bool;
 #define OBOS_UNUSED(x) (void)(sizeof((x), 0))
 #ifdef __GNUC__
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
+#	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
+#elif _MSC_VER
+#	define OBOS_NO_KASAN
+#	define OBOS_NO_UBSAN
 #else
 #	define OBOS_NO_KASAN
+#	define OBOS_NO_UBSAN
+#endif
+#if __STDC_VERSION__ < 202311L && __STDC_VERSION__ >= 201112L
+#	define OBOS_STATIC_ASSERT(expr, msg) _Static_assert(expr, msg)
+#elif __STDC_VERSION__ == 202311L
+#	define OBOS_STATIC_ASSERT(expr, msg) static_assert(expr, msg)
+#else
+#	define OBOS_STATIC_ASSERT(expr, msg) 
 #endif

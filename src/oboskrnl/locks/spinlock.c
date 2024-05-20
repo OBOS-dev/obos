@@ -13,14 +13,15 @@
 #include <locks/spinlock.h>
 
 #ifdef __x86_64__
-#	define spinlock_hint() __asm__ volatile ("pause")
+#	define spinlock_hint() __builtin_ia32_pause()
 #endif
 
 spinlock Core_SpinlockCreate()
 {
-	return false;
+	spinlock tmp = ATOMIC_FLAG_INIT;
+	return tmp;
 }
-irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql)
+OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql)
 {
 	if (!lock)
 		return IRQL_INVALID;
@@ -28,7 +29,7 @@ irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql)
 		return IRQL_INVALID;
 	const bool expected = false;
 	irql newIrql = Core_GetIrql() < minIrql ? Core_RaiseIrql(minIrql) : IRQL_INVALID;
-	while (atomic_compare_exchange_strong(lock, &expected, true))
+	while (atomic_flag_test_and_set_explicit(lock, memory_order_seq_cst))
 		spinlock_hint();
 	return newIrql;
 }
@@ -36,20 +37,16 @@ irql Core_SpinlockAcquire(spinlock* const lock)
 {
 	return Core_SpinlockAcquireExplicit(lock, IRQL_MASKED);
 }
-obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
+OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
 	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
 		return OBOS_STATUS_INVALID_IRQL;
-	atomic_store(lock, false);
+	atomic_flag_clear_explicit(lock, memory_order_seq_cst);
 	if (oldIrql != IRQL_INVALID)
 		Core_LowerIrql(oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
-void Core_SpinlockForcedRelease(spinlock* const lock)
+OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 {
-	atomic_store(lock, false);
-}
-bool Core_SpinlockIsAcquired(const spinlock* const lock)
-{
-	return atomic_load(lock);
+	atomic_flag_clear_explicit(lock, memory_order_seq_cst);
 }

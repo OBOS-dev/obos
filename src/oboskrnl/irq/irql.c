@@ -57,8 +57,8 @@ irql Core_RaiseIrqlNoThread(irql to)
 	if (to < *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL.\n", __func__, to);
 	irql oldIRQL = Core_GetIrql();
-	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to);
+	*Core_GetIRQLVar() = to;
 	return oldIRQL;
 }
 irql Core_GetIrql()

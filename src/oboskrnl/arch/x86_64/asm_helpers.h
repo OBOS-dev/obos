@@ -35,3 +35,7 @@ void invlpg(uintptr_t addr);
 void wbinvd();
 
 void xsave(void* region);
+
+void cli();
+void sti();
+void hlt();

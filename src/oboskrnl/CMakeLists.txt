@@ -5,7 +5,7 @@
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
-	"text.c" "sanitizers/stack.c"
+	"text.c" "sanitizers/stack.c" "irq/irq.c"
 )
 
 add_executable(oboskrnl)
@@ -13,7 +13,6 @@ add_executable(oboskrnl)
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=gnu17>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
@@ -50,5 +49,11 @@ else()
 	set(OBOS_ENABLE_KASAN "0")
 endif()
 target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+
+target_compile_definitions(oboskrnl
+	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
+	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
+	PRIVATE $<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
+	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

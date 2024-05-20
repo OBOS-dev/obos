@@ -125,7 +125,10 @@ int_handler_common:
 	ja .finished
 	mov rax, [Arch_IRQHandlers+rax*8]
 	
+	cmp qword [rsp+0xB0], 0x8 ; Kernel code
+	je .no_swapgs1
 	swapgs
+.no_swapgs1:
 
 	test rax,rax
 	jz .finished
@@ -133,8 +136,14 @@ int_handler_common:
 	mov rdi, rsp
 	call rax
 
+
 .finished:
+
+	cmp qword [rsp+0xB0], 0x8 ; Kernel code
+	je .no_swapgs2
 	swapgs
+.no_swapgs2:
+
 	mov rsp, rbp
 	popaq
 
@@ -147,6 +156,10 @@ Arch_FlushIDT:
 	ret
 global CoreS_GetIRQL
 global CoreS_SetIRQL
+extern OBOS_Panic
+section .rodata
+panic_format1: db "Invalid IRQL %d passed to CoreS_GetIRQL.", 0xa, 0x0
+section .text
 ; Takes no registers as input.
 ; Sets rax to the current IRQL (cr8).
 CoreS_GetIRQL:
@@ -159,11 +172,20 @@ CoreS_GetIRQL:
 	ret
 ; Input:
 ; rdi: New IRQL.
-; Modifies: cr8
 CoreS_SetIRQL:
 	push rbp
 	mov rbp, rsp
-	
+
+	cmp rdi, 1
+	jne .success
+; Panic!
+	mov rax, 1
+	push rdi
+	mov rdi, 1 ; OBOS_PANIC_FATAL_ERROR
+	mov rsi, panic_format1
+	pop rdx
+	call OBOS_Panic
+.success:
 	mov cr8, rdi
 	
 	leave

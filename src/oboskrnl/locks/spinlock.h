@@ -7,14 +7,14 @@
 #pragma once
 
 #include <int.h>
+#include <stdatomic.h>
 
 #include <irq/irql.h>
 
-typedef bool spinlock;
+typedef atomic_flag spinlock;
 
 spinlock Core_SpinlockCreate();
 irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql);
 irql Core_SpinlockAcquire(spinlock* const lock);
 obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);
 void Core_SpinlockForcedRelease(spinlock* const lock);
-bool Core_SpinlockIsAcquired(const spinlock* const lock);

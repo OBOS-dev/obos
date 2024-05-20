@@ -41,6 +41,7 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
+	irql oldIrql = Lock();
 	// Find a basicmm_region.
 	basicmm_region* node = nullptr;
 	basicmm_region* currentNode = nullptr;
@@ -71,6 +72,12 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		else
 			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	}
+	if (!found)
+	{
+		if (status)
+			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
+		return nullptr;
+	}
 	node = (basicmm_region*)found;
 	for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
 	{
@@ -84,10 +91,11 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		}
 		OBOSS_MapPage_RW_XD((void*)addr, mem);
 	}
+	Unlock(oldIrql);
 	OBOSH_BasicMMAddRegion(node, node + 1, sz);
 	if (status)
 		*status = OBOS_STATUS_SUCCESS;
-	return node + 1;
+	return (node + 1);
 }
 OBOS_NO_KASAN obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 {
@@ -113,9 +121,15 @@ OBOS_NO_KASAN obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 	s_regionList.nNodes--;
 	Unlock(oldIrql);
 	// Unmap the basicmm_region.
-	base &= ~0xfff;
+	base &= ~0xfff;;
 	for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
+	{
+		uintptr_t phys = 0;
+		OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
 		OBOSS_UnmapPage((void*)addr);
+		if (phys)
+			OBOSS_FreePhysicalPages(phys, 1);
+	}
 	return OBOS_STATUS_SUCCESS;
 }
 

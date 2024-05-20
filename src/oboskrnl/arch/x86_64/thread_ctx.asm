@@ -51,6 +51,7 @@ align 8
 endstruc
 %endmacro
 
+extern Core_GetIRQLVar
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
 	cli
@@ -70,12 +71,20 @@ CoreS_SwitchToThreadContext:
 	; Restore IRQL.
 	mov rax, [rdi]
 	mov cr8, rax
+	push rdi
+	call Core_GetIRQLVar
+	pop rdi
+	mov rcx, [rdi]
+	mov [rax], rcx
 	add rdi, 8
 	; Restore GS_BASE
+	cmp qword [rdi+16+0xB0], 0x8
+	je .restore_fs_base
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000101
 	wrmsr
+.restore_fs_base:
 	add rdi, 8
 	; Restore FS_BASE
 	mov eax, [rdi]
@@ -135,13 +144,18 @@ CoreS_SetupThreadContext:
 .finish:
 	leave
 	ret
-extern Arch_InitialISTStack
+extern Arch_GetCPUTempStack
 CoreS_CallFunctionOnStack:
 	push rbp
 	mov rbp, rsp
 
 	; TODO: Make thread-safe
-	lea rsp, [Arch_InitialISTStack+0x10000]
+	push rdi
+	push rsi
+	call Arch_GetCPUTempStack
+	pop rsi
+	pop rdi
+	lea rsp, [rax+0x10000]
 	xchg rdi, rsi
 	call rsi
 
@@ -170,14 +184,14 @@ CoreS_SaveRegisterContextAndYield:
 	mov [rdi+thread_ctx.frame+0x88], rax
 	mov rax, ds
 	mov [rdi+thread_ctx.frame+0x00], rax ; ds
-	mov rax, [rsp+0xD0]
+	mov rax, [rsp]
 	mov [rdi+thread_ctx.frame+0xA8], rax ; return address
 	mov rax, cs
 	mov [rdi+thread_ctx.frame+0xB0], rax ; cs
 	pushfq
 	pop rax
 	mov [rdi+thread_ctx.frame+0xB8], rax ; rflags
-	lea rax, [rsp+0xD8] ; skip the return address
+	lea rax, [rsp+0x8] ; skip the return address
 	mov [rdi+thread_ctx.frame+0xC0], rax ; rsp
 	mov rax, ss
 	mov [rdi+thread_ctx.frame+0xC8], rax ; ss
@@ -200,7 +214,9 @@ CoreS_SaveRegisterContextAndYield:
 	xsave [rax]
 
 .call_scheduler:
-	call Core_Schedule
+	mov rdi, Core_Schedule
+	xor rsi,rsi
+	call CoreS_CallFunctionOnStack
 	ret ; There is the chance that the scheduler returned because the threads quantum has not been finished yet.
 ; When the scheduler switches to the current thread context, the rip will be at the return address, as we set rip to the return address passed on the stack
 CoreS_SetThreadIRQL:

@@ -11,6 +11,9 @@
 
 #include <locks/spinlock.h>
 
+#include <scheduler/cpu_local.h>
+#include <scheduler/thread.h>
+
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8
@@ -91,6 +94,21 @@ void OBOS_Error(const char* format, ...)
 	common_log(LOG_LEVEL_ERROR, "ERROR", format, list);
 	va_end(list);
 }
+static uint32_t getCPUId()
+{
+	if (!CoreS_GetCPULocalPtr())
+		return (uint32_t)-1;
+	return CoreS_GetCPULocalPtr()->id;
+}
+static uint32_t getTID()
+{
+	if (!CoreS_GetCPULocalPtr())
+		return (uint32_t)-1;
+	if (!CoreS_GetCPULocalPtr()->currentThread)
+		return (uint32_t)-1;
+	return CoreS_GetCPULocalPtr()->currentThread->tid;
+}
+volatile bool OBOS_SideEffect = false;
 OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	(reason = reason);
@@ -102,17 +120,19 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* for
 " ____) |  | | | |__| | |     \n"
 "|_____/   |_|  \\____/|_|     ";
 
+	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
 	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
-	printf("Kernel Panic! Reason: %s. Information on the crash is below:\n", OBOSH_PanicReasonToStr(reason));
+	printf("Kernel Panic on CPU %d in thread %d! Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), OBOSH_PanicReasonToStr(reason));
 	va_list list;
 	va_start(list, format);
 	vprintf(format, list);
 	va_end(list);
-	while (1);
+	while (1)
+		OBOS_SideEffect = !OBOS_SideEffect;
 }
 
 

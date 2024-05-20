@@ -109,6 +109,10 @@ obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t 
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
+	if (column >= (state->fb.width / 8))
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (row >= (state->fb.height / 16))
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	switch (ch)
 	{
 	case '\n':
@@ -120,8 +124,6 @@ obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t 
 	case '\b':
 		break;
 	default:
-		if (state->column >= (state->fb.width / 8))
-			newlineHandler(state);
 		putch(state, ch, column, row, 0xcccccccc, 0);
 		break;
 	}

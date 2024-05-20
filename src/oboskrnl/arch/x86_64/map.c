@@ -128,6 +128,8 @@ bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
 {
+	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	flags |= 1;
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0xfff || at & 0xfff)
@@ -141,6 +143,8 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 }
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
 {
+	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	flags |= 1;
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0x1fffff || at & 0x1fffff)
@@ -160,16 +164,43 @@ obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 }
 obos_status OBOSS_UnmapPage(void* at_)
 {
+	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	uintptr_t at = (uintptr_t)at_;
 	if (at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML2Entry(getCR3(), at));
-	if (!phys)
+	uintptr_t entry = Arch_GetPML2Entry(getCR3(), at);
+	if (!(entry & (1 << 0)))
 		return OBOS_STATUS_SUCCESS;
+	bool isHugePage = (entry & (1ULL<<7));
+	if (isHugePage)
+		entry = Arch_GetPML3Entry(getCR3(), at);
+	if (!(entry & (1<<0)))
+		return OBOS_STATUS_SUCCESS;
+	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(phys);
-	pt[AddressToIndex(at, 0)] = 0;
-	Arch_FreePageMapAt(getCR3(), at, 3);
+	pt[AddressToIndex(at, (uint8_t)isHugePage)] = 0;
+	Arch_FreePageMapAt(getCR3(), at, 3 - (uint8_t)isHugePage);
 	invlpg(at);
+	return OBOS_STATUS_SUCCESS;
+}
+obos_status OBOSS_GetPagePhysicalAddress(void* at_, uintptr_t* oPhys)
+{
+	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!oPhys)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	uintptr_t at = (uintptr_t)at_;
+	*oPhys = 0;
+	uintptr_t entry = Arch_GetPML2Entry(getCR3(), at);
+	if (!(entry & (1 << 0)))
+		return OBOS_STATUS_SUCCESS;
+	bool isHugePage = (entry & (1ULL << 7));
+	if (isHugePage)
+		entry = Arch_GetPML3Entry(getCR3(), at);
+	if (!(entry & (1 << 0)))
+		return OBOS_STATUS_SUCCESS;
+	*oPhys = Arch_MaskPhysicalAddressFromEntry(((uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(entry)))[AddressToIndex(at, (uint8_t)isHugePage)]);
 	return OBOS_STATUS_SUCCESS;
 }
 

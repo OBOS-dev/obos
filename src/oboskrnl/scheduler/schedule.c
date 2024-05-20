@@ -41,21 +41,29 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
 static void ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
-	if (list->noStarvationQuantum++ < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
+	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
 		return;
 	list->noStarvationQuantum = 0;
 	// The first (list->nNodes / 4) threads in a priority list will be starving usually because they are at the beginning of the list, and the scheduler starts from the back.
 	for (thread_node* thrN = list->list.head; thrN && i < (list->list.nNodes / 4); )
 	{
 		if (thrN->data->status == THREAD_STATUS_RUNNING)
+		{
+			thrN = thrN->next;
 			continue;
+		}
 		OBOS_ASSERT(thrN->data->status == THREAD_STATUS_READY);
 		if (thrN->data->flags & THREAD_FLAGS_PRIORITY_RAISED)
+		{
+			thrN = thrN->next;
 			continue;
+		}
+		thread_node* next = thrN->next;
 		CoreH_ThreadListRemove(&list->list, thrN);
 		CoreH_ThreadListAppend(&(priorityList(priority + 1)->list), thrN);
 		thrN->data->flags |= THREAD_FLAGS_PRIORITY_RAISED;
-		thrN = thrN->next;
+		thrN->data->priority++;
+		thrN = next;
 	}
 }
 static void WorkStealing(thread_priority_list* list, thread_priority priority)
@@ -85,25 +93,38 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 			size_t targetNodeCount = cpu->priorityLists[priority].list.nNodes;
 			size_t ourNodeCount = list->list.nNodes;
 			size_t j = 0;
+			(void)Core_SpinlockAcquireExplicit(&cpu->schedulerLock, IRQL_DISPATCH);
 			// Steal some work from the target CPU.
-			for (thread_node* thrN = list->list.head; thrN && j < ((targetNodeCount - ourNodeCount) / nCoresWithMoreNodes + 1); )
+			for (thread_node* thrN = cpu->priorityLists[priority].list.head; thrN && j < ((targetNodeCount - ourNodeCount) / nCoresWithMoreNodes + 1); j++)
 			{
 				if (thrN->data->status != THREAD_STATUS_READY)
+				{
+					thrN = thrN->next;
 					continue;
+				}
 				if (thrN->data->flags & THREAD_FLAGS_PRIORITY_RAISED)
+				{
+					thrN = thrN->next;
 					continue;
+				}
 				if (!verifyAffinity(thrN->data, CoreS_GetCPULocalPtr()->id))
+				{
+					thrN = thrN->next;
 					continue;
+				}
 				// Steal this thread.
-				CoreH_ThreadListRemove(&list->list, thrN);
-				CoreH_ThreadListAppend(&(priorityList(priority + 1)->list), thrN);
+				thread_node* next = thrN->next;
+				CoreH_ThreadListRemove(&cpu->priorityLists[priority].list, thrN);
+				CoreH_ThreadListAppend(&(priorityList(priority)->list), thrN);
 				thrN->data->masterCPU = CoreS_GetCPULocalPtr();
-				thrN = thrN->next;
+				thrN = next;
 			}
+			Core_SpinlockRelease(&cpu->schedulerLock, IRQL_DISPATCH);
 		}
 	}
 }
 
+//static spinlock s_lock;
 // This should be assumed to be called with the current thread's context saved.
 // It does NOT do that on it's own.
 void Core_Schedule()
@@ -113,8 +134,9 @@ void Core_Schedule()
 		goto schedule;
 	getCurrentThread->lastRunTick = getSchedulerTicks;
 	bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
-	if (getCurrentThread->quantum++ < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
+	if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		return; // No rescheduling needed, as the thread's quantum isn't finished yet.
+	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 schedule:
 	if (getCurrentThread)
 	{
@@ -123,7 +145,8 @@ schedule:
 		if (getCurrentThread->flags & THREAD_FLAGS_PRIORITY_RAISED)
 		{
 			CoreH_ThreadListRemove(&list->list, getCurrentThread->snode);
-			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority - 1)->list), getCurrentThread->snode);
+			getCurrentThread->priority--;
+			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), getCurrentThread->snode);
 		}
 	}
 	// Thread starvation prevention and work stealing.
@@ -137,7 +160,7 @@ schedule:
 	thread* chosenThread = nullptr;
 	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
 		CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];
-	if (CoreS_GetCPULocalPtr()->currentPriorityList->quantum++ >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
+	if (++CoreS_GetCPULocalPtr()->currentPriorityList->quantum >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
 	{
 		CoreS_GetCPULocalPtr()->currentPriorityList->quantum = 0;
 		thread_priority nextPriority = CoreS_GetCPULocalPtr()->currentPriorityList->priority - 1;
@@ -184,14 +207,18 @@ schedule:
 	chosenThread->status = THREAD_STATUS_RUNNING;
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
-	switch_thread:
+switch_thread:
+	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
+	if (getCurrentThread)
+		getCurrentThread->status = THREAD_STATUS_READY;
 	getCurrentThread = chosenThread;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
-
+struct irq* Core_SchedulerIRQ;
+uint64_t Core_SchedulerTimerFrequency = 1000;
 void Core_Yield()
 {
-	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(0x2) : IRQL_INVALID;
+	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
 	if (getCurrentThread)
 	{
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);
