@@ -72,6 +72,12 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		else
 			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	}
+	if (!found)
+	{
+		if (status)
+			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
+		return nullptr;
+	}
 	node = (basicmm_region*)found;
 	for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
 	{

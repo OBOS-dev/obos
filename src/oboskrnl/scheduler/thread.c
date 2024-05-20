@@ -16,6 +16,7 @@
 
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
+thread_affinity Core_DefaultThreadAffinity = 1;
 size_t Core_CpuCount;
 static void free_thr(thread* thr)
 {
@@ -92,12 +93,14 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
+	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	thread_node* node = thr->snode;
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
+	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
@@ -131,6 +134,16 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 	if (!node->data)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	irql oldIrql = Core_SpinlockAcquire(&list->lock);
+#ifdef OBOS_DEBUG
+	thread_node* cur = list->head;
+	for (; cur;)
+	{
+		if (cur == node)
+			break;
+		cur = cur->next;
+	}
+	OBOS_ASSERT(cur);
+#endif
 	if (node->next)
 		node->next->prev = node->prev;
 	if (node->prev)
@@ -139,8 +152,9 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 		list->head = node->next;
 	if (list->tail == node)
 		list->tail = node->prev;
-	node->data->snode = nullptr;
 	list->nNodes--;
+	node->next = nullptr;
+	node->prev = nullptr;
 	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
 	{
 		Core_LowerIrql(oldIrql);
@@ -155,7 +169,6 @@ uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId)
 
 OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
-	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
 	thread_node* node = currentThread->snode;
@@ -172,6 +185,7 @@ OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 }
 OBOS_NORETURN void Core_ExitCurrentThread()
 {
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
 }

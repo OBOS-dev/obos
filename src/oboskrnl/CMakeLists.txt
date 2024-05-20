@@ -13,7 +13,6 @@ add_executable(oboskrnl)
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=gnu17>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
@@ -53,6 +52,8 @@ target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KAS
 
 target_compile_definitions(oboskrnl
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
-	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>)
+	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
+	PRIVATE $<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
+	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

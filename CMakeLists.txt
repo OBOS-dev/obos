@@ -40,5 +40,23 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 
 add_compile_definitions(OBOS_ARCHITECTURE_BITS=${OBOS_ARCHITECTURE_BITS})
 
+execute_process(COMMAND
+  "${GIT_EXECUTABLE}" describe --match=NeVeRmAtCh --always --abbrev=40 --dirty
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  OUTPUT_VARIABLE GIT_SHA1
+  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+# the date of the commit
+execute_process(COMMAND
+  "${GIT_EXECUTABLE}" log -1 --format=%ad --date=local
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  OUTPUT_VARIABLE GIT_DATE
+  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
+
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")
+
+set(C_STANDARD 17)
+set(C_STANDARD_REQUIRED true)

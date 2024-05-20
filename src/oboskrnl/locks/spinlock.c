@@ -29,7 +29,7 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 		return IRQL_INVALID;
 	const bool expected = false;
 	irql newIrql = Core_GetIrql() < minIrql ? Core_RaiseIrql(minIrql) : IRQL_INVALID;
-	while (atomic_flag_test_and_set_explicit(lock, memory_order_acquire))
+	while (atomic_flag_test_and_set_explicit(lock, memory_order_seq_cst))
 		spinlock_hint();
 	return newIrql;
 }
@@ -41,12 +41,12 @@ OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrq
 {
 	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
 		return OBOS_STATUS_INVALID_IRQL;
-	atomic_flag_clear_explicit(lock, memory_order_release);
+	atomic_flag_clear_explicit(lock, memory_order_seq_cst);
 	if (oldIrql != IRQL_INVALID)
 		Core_LowerIrql(oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
 OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 {
-	atomic_flag_clear_explicit(lock, memory_order_release);
+	atomic_flag_clear_explicit(lock, memory_order_seq_cst);
 }

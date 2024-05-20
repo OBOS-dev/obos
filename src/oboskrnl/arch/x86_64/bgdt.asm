@@ -107,4 +107,4 @@ Arch_FlushGDT:
 	pop rax
 	push 0x8
 	push rax
-	ret
+	retfq

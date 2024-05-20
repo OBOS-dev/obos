@@ -186,6 +186,7 @@ void Arch_SMPStartup()
 		cpu_info[i].schedulerTicks = 0;
 		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x10000, nullptr);
 		cpu_info[i].arch_specific.startup_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
+		Core_DefaultThreadAffinity |= CoreH_CPUIdToAffinity(cpu_info[i].id);
 		SetMemberInSMPTrampoline((uintptr_t)&Arch_SMPTrampolineRSP - (uintptr_t)Arch_SMPTrampolineStart, (uint64_t)cpu_info[i].arch_specific.startup_stack + 0x4000);
 		SetMemberInSMPTrampoline((uintptr_t)&Arch_SMPTrampolineCPULocalPtr - (uintptr_t)Arch_SMPTrampolineStart, (uint64_t)&cpu_info[i]);
 		ipi_lapic_info lapic = {
@@ -276,4 +277,8 @@ OBOS_NO_KASAN void OBOSS_HaltCPUs()
 	// Wait for all CPUs to halt.
 	while (atomic_load(&Arch_CPUsHalted) != (Core_CpuCount - 1))
 		pause();
+}
+uintptr_t Arch_GetCPUTempStack()
+{
+	return CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
 }

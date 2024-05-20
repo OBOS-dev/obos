@@ -75,6 +75,12 @@ void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
 {
 	Arch_IRQHandlers[vec] = f;
 }
+void Arch_PutInterruptOnIST(uint8_t vec, uint8_t ist)
+{
+	if (ist > 8)
+		return;
+	g_idtEntries[vec].ist = ist;
+}
 obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
 {
 	obos_status s = OBOS_STATUS_SUCCESS;

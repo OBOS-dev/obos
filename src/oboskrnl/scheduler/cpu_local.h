@@ -12,6 +12,8 @@
 
 #include <irq/irql.h>
 
+#include <locks/spinlock.h>
+
 #ifdef __x86_64__
 #	include <arch/x86_64/cpu_local_arch.h>
 #endif
@@ -26,6 +28,7 @@ typedef struct cpu_local
 	// Only threads that are ready can go in one of these thread lists.
 	thread_priority_list priorityLists[THREAD_PRIORITY_MAX_VALUE + 1];
 	thread_priority_list* currentPriorityList;
+	spinlock schedulerLock;
 	uint64_t schedulerTicks;
 	irql currentIrql;
 	bool initialized;

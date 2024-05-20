@@ -54,6 +54,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	{
 		// Spooky actions from a distance...
 		Core_LowerIrqlNoThread(oldIrql2);
+		CoreS_ExitIRQHandler(frame);
 		return;
 	}
 	if (irq_obj->handler)
@@ -62,10 +63,8 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
-	else
-		Core_LowerIrqlNoThread(oldIrql2);
-	OBOS_ASSERT(Core_GetIrql() == oldIrql2);
 	CoreS_ExitIRQHandler(frame);
+	Core_LowerIrqlNoThread(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

@@ -83,6 +83,9 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
 	}
+#if OBOS_RELEASE
+	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
+#endif
 	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
@@ -117,6 +120,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
+	Core_CpuInfo[0].arch_specific.ist_stack = Arch_InitialISTStack;
 	OBOS_Debug("Initializing priority lists.\n");
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
@@ -125,7 +129,8 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	OBOS_Debug("Yielding into the scheduler!\n");
 	Core_Yield();
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
-	while (1);
+	while (1)
+		asm volatile("nop" : : :);
 }
 struct ultra_memory_map_attribute* Arch_MemoryMap;
 struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
@@ -209,7 +214,7 @@ void pageFaultHandler(interrupt_frame* frame)
 }
 uint64_t random_number();
 __asm__(
-	".global random_number; random_number:; rdrand %rax; ret;"
+	"random_number:; rdrand %rax; ret; "
 );
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
@@ -231,7 +236,6 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 	}
 	else
 		Core_Yield();
-	Core_LowerIrqlNoThread(oldIrql);
 }
 HPET* Arch_HPETAddress;
 uint64_t Arch_HPETFrequency;
@@ -273,6 +277,30 @@ static OBOS_NO_UBSAN void InitializeHPET()
 	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
 	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
 }
+static atomic_size_t nThreadsEntered = 0;
+static void scheduler_test(size_t maxPasses)
+{
+	OBOS_Debug("Entered thread %d (work id %d).\n", Core_GetCurrentThread()->tid, nThreadsEntered++);
+	volatile uint8_t* lastPtr = nullptr;
+	volatile size_t lastFree = 0;
+	for (size_t i = 0; i < maxPasses; i++)
+	{
+		volatile size_t sz = random_number() % 0x1000 + 1;
+		volatile uint8_t *buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+		OBOS_ASSERT(buf);
+		buf[0] = 0xDE;
+		buf[sz - 1] = 0xAD;
+		if (i - lastFree == 3)
+		{
+			size_t blkSz = 0;
+			OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, lastPtr, &blkSz);
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, lastPtr, blkSz);
+		}
+		lastPtr = buf;
+	}
+	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
+	Core_ExitCurrentThread();
+}
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -292,6 +320,8 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
 	Arch_SMPStartup();
 	bsp_idleThread.context.gs_base = rdmsr(0xC0000101 /* GS_BASE */);
+	bsp_idleThread.masterCPU = CoreS_GetCPULocalPtr();
+	Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
 	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
 	if (obos_likely_error(status = Core_InitializeIRQInterface()))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
@@ -310,7 +340,6 @@ void Arch_KernelMainBootstrap()
 	// Hopefully this won't cause trouble.
 	Core_SchedulerIRQ->choseVector = false;
 	Core_SchedulerIRQ->vector->nIRQsWithChosenID = 1;
-	Core_LowerIrql(oldIrql);
 	ipi_lapic_info target = {
 		.isShorthand = true,
 		.info = {
@@ -321,7 +350,22 @@ void Arch_KernelMainBootstrap()
 		.deliveryMode = LAPIC_DELIVERY_MODE_FIXED,
 		.info.vector = Core_SchedulerIRQ->vector->id + 0x20
 	};
+	Core_LowerIrql(oldIrql);
+	//Arch_PutInterruptOnIST(Core_SchedulerIRQ->vector->id + 0x20, 1);
 	Arch_LAPICSendIPI(target, vector);
+	OBOS_Debug("%s: Testing the scheduler.\n", __func__);
+	for (size_t i = 0; i < 16; i++)
+	{
+		thread_ctx ctx;
+		memzero(&ctx, sizeof(ctx));
+		void* stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 1000, false, stack, 0x4000);
+		thread* thr = CoreH_ThreadAllocate(nullptr);
+		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
+			CoreH_ThreadReady(thr);
+		else
+			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
+	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

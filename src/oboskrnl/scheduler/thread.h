@@ -52,6 +52,7 @@ typedef enum
 	THREAD_STATUS_BLOCKED,
 } thread_status;
 typedef __uint128_t thread_affinity;
+extern thread_affinity Core_DefaultThreadAffinity;
 extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE + 1];
 typedef struct thread
 {
