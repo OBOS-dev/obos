@@ -113,6 +113,7 @@ OBOS_NO_KASAN uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignme
 		return 0;
 	}
 	node->nPages -= nPagesRequired;
+	Arch_TotalPhysicalPagesUsed += nPagesRequired;
 	if (!node->nPages)
 	{
 		if (node->next)
@@ -147,6 +148,7 @@ OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	if (!s_head)
 		s_head = (struct freelist_node*)addr;
 	node->prev = s_tail;
+	Arch_TotalPhysicalPagesUsed -= nPages;
 	s_tail = (struct freelist_node*)addr;
 }
 uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status)

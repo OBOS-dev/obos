@@ -79,6 +79,7 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	if (!cpuFound)
 		return OBOS_STATUS_INVALID_AFFINITY;
 	node->data = thr;
+	thr->snode = node;
 	thr->masterCPU = cpuFound;
 	thr->status = THREAD_STATUS_READY;
 	thread_list* priorityList = &cpuFound->priorityLists[thr->priority].list;
@@ -119,7 +120,6 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	node->prev = list->tail;
 	list->tail = node;
 	list->nNodes++;
-	node->data->snode = node;
 	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
 	{
 		Core_LowerIrql(oldIrql);

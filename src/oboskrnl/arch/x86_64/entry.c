@@ -40,6 +40,8 @@
 
 #include <mm/bare_map.h>
 
+#include <scheduler/process.h>
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -220,6 +222,7 @@ allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
 void Arch_SMPStartup();
 extern uint64_t Arch_FindCounter(uint64_t hz);
+atomic_size_t nCPUsWithInitializedTimer;
 void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
 	(obj = obj);
@@ -233,6 +236,7 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		Arch_LAPICAddress->initialCount = Arch_FindCounter(Core_SchedulerTimerFrequency);
 		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
+		nCPUsWithInitializedTimer++;
 	}
 	else
 		Core_Yield();
@@ -301,6 +305,7 @@ static void scheduler_test(size_t maxPasses)
 	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
 	Core_ExitCurrentThread();
 }
+process* OBOS_KernelProcess;
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -309,12 +314,19 @@ void Arch_KernelMainBootstrap()
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
-	if (status != OBOS_STATUS_SUCCESS)
+	if (obos_likely_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	bsp_idleThread.context.cr3 = getCR3();
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
+	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
+	OBOS_KernelProcess = Core_ProcessAllocate(&status);
+	if (obos_likely_error(status))
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
+	OBOS_KernelProcess->pid = Core_NextPID++;
+	Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
+	Core_ProcessAppendThread(OBOS_KernelProcess, &bsp_idleThread);
 	OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
 	Arch_LAPICInitialize(true);
 	OBOS_Debug("%s: Initializing SMP.\n", __func__);
@@ -353,19 +365,24 @@ void Arch_KernelMainBootstrap()
 	Core_LowerIrql(oldIrql);
 	//Arch_PutInterruptOnIST(Core_SchedulerIRQ->vector->id + 0x20, 1);
 	Arch_LAPICSendIPI(target, vector);
+	while (nCPUsWithInitializedTimer != Core_CpuCount)
+		pause();
 	OBOS_Debug("%s: Testing the scheduler.\n", __func__);
-	for (size_t i = 0; i < 16; i++)
+	for (size_t i = 0; i < 0; i++)
 	{
 		thread_ctx ctx;
 		memzero(&ctx, sizeof(ctx));
 		void* stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 1000, false, stack, 0x4000);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 4000, false, stack, 0x4000);
 		thread* thr = CoreH_ThreadAllocate(nullptr);
 		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
+		{
 			CoreH_ThreadReady(thr);
+			Core_ProcessAppendThread(OBOS_KernelProcess, thr);
+		}
 		else
 			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
 	}
-	OBOS_Log("%s: Done early boot.\n", __func__);
+	OBOS_Log("%s: Done early boot. Boot required %d KiB of memory to finish.\n", __func__, Arch_TotalPhysicalPagesUsed * 4);
 	Core_ExitCurrentThread();
 }

@@ -33,6 +33,8 @@
 
 #include <allocators/base.h>
 
+#include <scheduler/process.h>
+
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
@@ -144,6 +146,7 @@ void Arch_APEntry(cpu_local* info)
 	thread* idleThread = CoreH_ThreadAllocate(nullptr);
 	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
+	Core_ProcessAppendThread(OBOS_KernelProcess, idleThread);
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
