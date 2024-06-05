@@ -19,7 +19,7 @@ git clone https://github.com/oberrow/obos.git
 (x86_64)
 ```sh
 mkdir build
-cmake -DCMAKE_BUILD_TYPE=Release --toolchain=src/toolchains/x86_64/toolchain.cmake -B build .
+cmake -DCMAKE_BUILD_TYPE=Release --toolchain=src/build/x86_64/toolchain.cmake -B build .
 cmake --build build
 ```
 4. To run the kernel, run the script under scripts/launch_qemu.\[bat,sh\]
