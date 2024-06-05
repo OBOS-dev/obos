@@ -13,13 +13,13 @@ file(DOWNLOAD
 	https://github.com/UltraOS/Hyper/releases/download/v0.7.0/BOOTX64.EFI
 	${CMAKE_SOURCE_DIR}/dependencies/hyper/BOOTX64.efi
 )
-if (CMAKE_HOST_WIN32)
+if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-win64.exe CACHE INTERNAL "The hyper install binary")
 	file(DOWNLOAD
 		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-win64.exe
 		${hyper_install}
 	)
-elseif(CMAKE_HOST_LINUX)
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64 CACHE INTERNAL "The hyper install binary")
 	file(DOWNLOAD
 		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-linux-x86_64
