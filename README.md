@@ -37,5 +37,7 @@ chmod +x ./launch_qemu.sh
 cd scripts
 call launch_qemu.bat
 ```
-## **NOTE**
+#### **NOTE**
 If the ISO does not get into the kernel stage (you will know depending on if there are messages or not) on real hardware, try booting using legacy bios.
+## Credits
+- My friend [@LemurLord16](https://github.com/LemurLord16) (@dudeplayer2 on discord) for listening to me yap about new features.
