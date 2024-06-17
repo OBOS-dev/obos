@@ -12,7 +12,6 @@
 
 typedef struct cpu_local_arch
 {
-	// TODO
 	uint64_t gdtEntries[7];
 	struct
 	{
@@ -34,6 +33,6 @@ typedef struct cpu_local_arch
 		uint16_t iopb;
 	} OBOS_PACK tss;
 	void* ist_stack; // Size: 0x10000 bytes.
-	void* startup_stack; // Size: 0x4000 bytes.
+	void* startup_stack; // Size: 0x4000 bytes, freed after smp initialization.
 	bool initializedSchedulerTimer;
 } cpu_local_arch;

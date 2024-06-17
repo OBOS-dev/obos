@@ -49,6 +49,7 @@ list (APPEND oboskrnl_sources
 	"arch/x86_64/asm_helpers.asm" "arch/x86_64/thread_ctx.asm" "arch/x86_64/memmanip.asm"
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
+	"arch/x86_64/ioapic.c"
 )
 
 add_compile_definitions(__x86_64__=1 OBOS_PAGE_SIZE=4096 OBOS_KERNEL_ADDRESS_SPACE_BASE=0xffffff0000000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffffffffffff000)
@@ -57,4 +58,4 @@ add_compile_options($<$<CONFIG:Debug>:-g>)
 set (OBOS_ARCHITECTURE "x86_64")
 set (OBOS_ARCHITECTURE_BITS 64) # 64-bit architecture.
 set (OBOS_ARCHITECTURE_ENDIANNESS "Little-Endian") # Little-Endian architecture.
-set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/toolchains/x86_64/link.ld")
+set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/x86_64/link.ld")

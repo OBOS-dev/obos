@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <error.h>
 //#include <stdbool.h>
 
 #ifndef __cplusplus
@@ -34,13 +33,13 @@ typedef _Bool bool;
 #	undef NULL
 #endif
 
-#define OBOS_NORETURN [[_Noreturn]]
-#define OBOS_NODISCARD [[__nodiscard__]]
-#define OBOS_NODISCARD_REASON(why) [[__nodiscard__(why)]]
-#define OBOS_UNUSED(x) (void)(sizeof((x), 0))
+#define OBOS_NORETURN [[noreturn]]
+#define OBOS_UNUSED(x) (void)(x)
 #ifdef __GNUC__
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
+#	define OBOS_NODISCARD __attribute__ ((warn_unused_result))
+#	define OBOS_NODISCARD_REASON(why) 
 #elif _MSC_VER
 #	define OBOS_NO_KASAN
 #	define OBOS_NO_UBSAN

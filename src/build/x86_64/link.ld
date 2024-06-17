@@ -5,9 +5,10 @@ ENTRY(Arch_KernelEntryBootstrap)
 
 PHDRS
 {
-    text    PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
-    rodata  PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
-    data    PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
+    text        PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
+    no_pti_text PT_LOAD    FLAGS((1 << 0) | (1 << 1) | (1 << 2)); /* Read + Write + Execute */
+    rodata      PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
+    data        PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
 }
 
 SECTIONS
@@ -19,6 +20,14 @@ SECTIONS
         *(.text .text.*)
     } :text
 
+    . += CONSTANT(MAXPAGESIZE);
+
+    Arch_no_pti_start = .;
+    .no.pti.text : {
+        *(.no.pti.text)
+    } :no_pti_text
+    Arch_no_pti_end = (. + CONSTANT(MAXPAGESIZE)-1) & (CONSTANT(MAXPAGESIZE)-1);
+    
     . += CONSTANT(MAXPAGESIZE);
 
     .rodata : {

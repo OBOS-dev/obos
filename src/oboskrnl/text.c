@@ -7,6 +7,7 @@
 #include <int.h>
 #include <text.h>
 #include <memmanip.h>
+#include <error.h>
 
 // Makeshift text renderer.
 

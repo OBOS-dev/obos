@@ -12,7 +12,7 @@ extern Arch_KernelEntry
 global Arch_KernelEntryBootstrap
 Arch_KernelEntryBootstrap:
 	cmp rsi, 0x554c5442
-	je .ok ; should triple fault
+	je .ok ; should triple fault on failure
 	xor rax,rax
 	jmp rax ; All hope is lost.
 .ok:
@@ -21,20 +21,20 @@ Arch_KernelEntryBootstrap:
 ; Get a hardware-generated random value.
 ; If both methods are unsupported, it will fallback to using the default value used.
 .rdrand:
-	mov eax, 7
+	mov eax, 1
 	xor ecx,ecx
 	cpuid
-	test ebx, (1<<18)
-	jne .rdseed
+	bt ecx, 30
+	jnc .rdseed
 	rdrand rax
 	jnc .rdrand
 	jmp .move
 .rdseed:
-	mov eax, 1
+	mov eax, 7
 	xor ecx,ecx
 	cpuid
-	test ecx, (1<<30)
-	jne .done
+	bt ebx, 18
+	jnc .done
 	rdseed rax
 	jnc .rdseed
 .move:

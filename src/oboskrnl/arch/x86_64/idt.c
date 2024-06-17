@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <struct_packing.h>
 
 #include <irq/irq.h>
@@ -64,8 +65,13 @@ static int getIntIST(int i)
 void Arch_InitializeIDT(bool isBSP)
 {
 	if (isBSP)
+	{
 		for (int i = 0; i < 256; i++)
-			RegisterISRInIDT(i, (uintptr_t)(&Arch_b_isr_handler + (i * 32)), false, getIntIST(i));
+			RegisterISRInIDT(i,
+							 (uintptr_t)(&Arch_b_isr_handler + (i * 32)),
+							 i == 3 /* The only interrupt that can be called from user mode is the breakpoint interrupt */, 
+							 getIntIST(i));
+	}
 	struct idtPointer idtPtr;
 	idtPtr.size = sizeof(g_idtEntries) - 1;
 	idtPtr.idt = (uintptr_t)g_idtEntries;

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <scheduler/thread_context_info.h>
 
@@ -53,7 +54,7 @@ typedef enum
 } thread_status;
 typedef __uint128_t thread_affinity;
 extern thread_affinity Core_DefaultThreadAffinity;
-extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE + 1];
+extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
 typedef struct thread
 {
 	uint64_t tid;

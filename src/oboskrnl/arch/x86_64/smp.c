@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -69,7 +70,6 @@ static OBOS_NO_UBSAN void ParseMADT()
 				break; // make continue if more types are parsed
 			s_lapicIDs[s_nLAPICIDs++] = mLapicId->apicID;
 		}
-		
 	}
 }
 extern uint8_t Arch_SMPTrampolineStart[];
@@ -77,7 +77,7 @@ extern uint8_t Arch_SMPTrampolineEnd[];
 extern uint64_t Arch_SMPTrampolineCR3;
 extern uint64_t Arch_SMPTrampolineRSP;
 extern uint64_t Arch_SMPTrampolineCPULocalPtr;
-static bool ap_initialized;
+static _Atomic(bool) ap_initialized;
 static void nmiHandler(interrupt_frame* frame);
 extern void Arch_FlushGDT(uintptr_t gdtr);
 void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackSize)
@@ -88,7 +88,7 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
 	info->arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
 	info->arch_specific.gdtEntries[3] = 0x00aff3000000ffff; // 64-bit user-mode data
-	info->arch_specific.gdtEntries[4] = 0x00affb000000ffff; // 64-bit user-mode code
+	info->arch_specific.gdtEntries[4] = 0x00cff3000000ffff; // 64-bit user-mode code
 	struct
 	{
 		uint16_t limitLow;

@@ -5,11 +5,16 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 
 #include <mm/bare_map.h>
 
 #include <locks/spinlock.h>
+
+// Quote of the VMM:
+// When I wrote this, only God and I understood what I was doing.
+// Now, only God knows.
 
 #define REGION_MAGIC_INT 0x4F424F534253434D
 #define REGION_MAGIC "OBOSBSCM"

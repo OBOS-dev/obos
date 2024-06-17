@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 extern size_t Arch_TotalPhysicalPages;
 extern size_t Arch_TotalPhysicalPagesUsed;

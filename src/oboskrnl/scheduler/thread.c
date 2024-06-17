@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <error.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/cpu_local.h>
@@ -35,7 +36,7 @@ thread* CoreH_ThreadAllocate(obos_status* status)
 }
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx)
 {
-	if (!thr || !ctx || priority < 0 || priority >= THREAD_PRIORITY_MAX_VALUE || !affinity)
+	if (!thr || !ctx || priority < 0 || priority > THREAD_PRIORITY_MAX_VALUE || !affinity)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	thr->priority = priority;
 	thr->status = THREAD_STATUS_READY;
@@ -67,6 +68,8 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
 		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->masterCPU)
+		return OBOS_STATUS_SUCCESS;
 	cpu_local* cpuFound = nullptr;
 	for (size_t cpui = 0; cpui < Core_CpuCount; cpui++)
 	{
@@ -96,12 +99,13 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		return OBOS_STATUS_SUCCESS;
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	thread_node* node = thr->snode;
+	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
-	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	thr->masterCPU = nullptr;
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;

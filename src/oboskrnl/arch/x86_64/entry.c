@@ -5,7 +5,9 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
+#include <stdint.h>
 #include <struct_packing.h>
 #include <memmanip.h>
 #include <text.h>
@@ -15,7 +17,6 @@
 
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/interrupt_frame.h>
-
 #include <arch/x86_64/hpet_table.h>
 
 #include <irq/irql.h>
@@ -26,6 +27,8 @@
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 
+#include <irq/timer.h>
+
 #include <arch/x86_64/asm_helpers.h>
 
 #include <arch/x86_64/pmm.h>
@@ -35,12 +38,16 @@
 #include <arch/x86_64/boot_info.h>
 
 #include <arch/x86_64/lapic.h>
+#include <arch/x86_64/ioapic.h>
 
 #include <irq/irq.h>
 
 #include <mm/bare_map.h>
+#include <mm/init.h>
 
 #include <scheduler/process.h>
+
+#include <stdatomic.h>
 
 extern void Arch_InitBootGDT();
 
@@ -65,14 +72,8 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	ParseBootContext(bcontext);
 	Core_GetIrql();
 	asm("sti");
-	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
-	Arch_InitBootGDT();
-	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
-	Arch_RawRegisterInterrupt(0xe, (uintptr_t)pageFaultHandler);
-	if (Arch_LdrPlatformInfo->page_table_depth != 4)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 	if (!Arch_Framebuffer)
-		OBOS_Warning("No framebuffer passed by the framebuffer. All kernel logs will be on port 0xE9.\n");
+		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
 	else
 	{
 		OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
@@ -84,10 +85,31 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
+		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
+			return;
 	}
+	if (Arch_LdrPlatformInfo->page_table_depth != 4)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
+	OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
+	char cpu_vendor[13] = {0};
+	memset(cpu_vendor, 0, 13);
+	__cpuid__(0, 0, nullptr, (uint32_t*)&cpu_vendor[0],(uint32_t*)&cpu_vendor[8], (uint32_t*)&cpu_vendor[4]);
+	uint32_t ecx = 0;
+	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	bool isHypervisor = ecx & (1<<31) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	char brand_string[49];
+	memset(brand_string, 0, sizeof(brand_string));
+	__cpuid__(0x80000002, 0, (uint32_t*)&brand_string[0], (uint32_t*)&brand_string[4], (uint32_t*)&brand_string[8], (uint32_t*)&brand_string[12]);
+	__cpuid__(0x80000003, 0, (uint32_t*)&brand_string[16], (uint32_t*)&brand_string[20], (uint32_t*)&brand_string[24], (uint32_t*)&brand_string[28]);
+	__cpuid__(0x80000004, 0, (uint32_t*)&brand_string[32], (uint32_t*)&brand_string[36], (uint32_t*)&brand_string[40], (uint32_t*)&brand_string[44]);
+	OBOS_Log("Running on a %s processor, cpu brand string, %s. We are currently %srunning on a hypervisor\n", cpu_vendor, brand_string, isHypervisor ? "" : "not ");
 #endif
+	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
+	Arch_InitBootGDT();
+	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
+	Arch_RawRegisterInterrupt(0xe, (uintptr_t)pageFaultHandler);
 	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
@@ -225,10 +247,10 @@ extern uint64_t Arch_FindCounter(uint64_t hz);
 atomic_size_t nCPUsWithInitializedTimer;
 void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
-	(obj = obj);
-	(frame = frame);
-	(userdata = userdata);
-	(obj = obj);
+	OBOS_UNUSED(obj);
+	OBOS_UNUSED(frame);
+	OBOS_UNUSED(userdata);
+	OBOS_UNUSED(oldIrql);
 	if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
 	{
 		Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
@@ -243,6 +265,7 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 }
 HPET* Arch_HPETAddress;
 uint64_t Arch_HPETFrequency;
+timer_frequency CoreS_TimerFrequency;
 uint64_t Arch_CalibrateHPET(uint64_t freq)
 {
 	if (!Arch_HPETFrequency)
@@ -281,31 +304,88 @@ static OBOS_NO_UBSAN void InitializeHPET()
 	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
 	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
 }
-static atomic_size_t nThreadsEntered = 0;
-static void scheduler_test(size_t maxPasses)
+static void hpet_irq_move_callback(irq* i, irq_vector* from, irq_vector* to, void* userdata)
 {
-	OBOS_Debug("Entered thread %d (work id %d).\n", Core_GetCurrentThread()->tid, nThreadsEntered++);
-	volatile uint8_t* lastPtr = nullptr;
-	volatile size_t lastFree = 0;
-	for (size_t i = 0; i < maxPasses; i++)
-	{
-		volatile size_t sz = random_number() % 0x1000 + 1;
-		volatile uint8_t *buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
-		OBOS_ASSERT(buf);
-		buf[0] = 0xDE;
-		buf[sz - 1] = 0xAD;
-		if (i - lastFree == 3)
+	OBOS_UNUSED(i);
+	OBOS_UNUSED(from);
+	HPET_Timer* timer = (HPET_Timer*)userdata;
+	OBOS_ASSERT(timer);
+	uint32_t gsi = (timer->timerConfigAndCapabilities >> 9) & 0b11111;
+	Arch_IOAPICMapIRQToVector(gsi, to->id+0x20, false, TriggerModeLevelSensitive);
+}
+OBOS_NO_KASAN OBOS_NO_UBSAN void hpet_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+{
+	// HPET_Timer* timer = (HPET_Timer*)i->irqCheckerUserdata;
+	// OBOS_ASSERT(timer);
+	// size_t timerIndex = ((uintptr_t)timer-(uintptr_t)Arch_HPETAddress-offsetof(HPET, timer0))/sizeof(HPET_Timer);
+	// Arch_HPETAddress->generalInterruptStatus &= ~(1<<timerIndex);
+	((irq_handler)userdata)(i, frame, nullptr, oldIrql);
+}
+obos_status CoreS_InitializeTimer(irq_handler handler)
+{
+	static bool initialized = false;
+	OBOS_ASSERT(!initialized);
+	if (initialized)
+		return OBOS_STATUS_ALREADY_INITIALIZED;
+	if (!handler)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, false);
+	if (obos_likely_error(status))
+		return status;
+	Core_TimerIRQ->moveCallback  = hpet_irq_move_callback;
+	Core_TimerIRQ->handler = hpet_irq_handler;
+	Core_TimerIRQ->handlerUserdata = handler;
+	volatile HPET_Timer* timer = &Arch_HPETAddress->timer0;
+	// TODO: Make this support choosing a different timer.
+	if (!(timer->timerConfigAndCapabilities & (1<<4)))
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "HPET Timer does not support periodic mode.");
+	if (!(timer->timerConfigAndCapabilities & (1<<5)))
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "HPET Timer is not a 64-bit timer.");
+	Core_TimerIRQ->irqCheckerUserdata = (void*)timer;
+	Core_TimerIRQ->irqMoveCallbackUserdata = (void*)timer;
+	uint32_t irqRouting = timer->timerConfigAndCapabilities >> 32;
+	if (!irqRouting)
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "HPET Timer does not support irq routing through the I/O APIC.");
+	uint32_t gsi = UINT32_MAX;
+	do {
+		uint32_t cgsi = __builtin_ctz(irqRouting);
+		if (Arch_IOAPICGSIUsed(cgsi) == OBOS_STATUS_SUCCESS)
 		{
-			size_t blkSz = 0;
-			OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, lastPtr, &blkSz);
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, lastPtr, blkSz);
+			gsi = cgsi;
+			break;
 		}
-		lastPtr = buf;
-	}
-	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
-	Core_ExitCurrentThread();
+		irqRouting &= (1<cgsi);
+	} while (irqRouting);
+	if (gsi == UINT32_MAX)
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET.");
+	OBOS_ASSERT(gsi <= 32);
+	timer->timerConfigAndCapabilities |= (1<6)|(1<<3)|((uint8_t)gsi<<9); // Edge-triggered IRQs, set GSI, Periodic timer
+	OBOS_Debug("HPET frequency: %ld, configured HPET frequency: %ld\n", Arch_HPETFrequency, CoreS_TimerFrequency);
+	CoreS_TimerFrequency = 1000;
+	const uint64_t value = Arch_HPETFrequency/CoreS_TimerFrequency;
+	timer->timerComparatorValue = Arch_HPETAddress->mainCounterValue + value;
+	timer->timerComparatorValue = value;
+	timer->timerConfigAndCapabilities |= (1<<1); // Enable IRQs
+	Arch_IOAPICMapIRQToVector(gsi, Core_TimerIRQ->vector->id+0x20, true, TriggerModeEdgeSensitive);
+	Arch_IOAPICMaskIRQ(gsi, false);
+	Arch_HPETAddress->generalConfig = 0b01;
+	initialized = true;
+	Core_TimerDispatchThread->affinity &= ~1;
+	return OBOS_STATUS_SUCCESS;
+}
+timer_tick CoreS_GetTimerTick()
+{
+	static uint64_t cached = 0;
+	if (!cached)
+		cached = Arch_HPETFrequency/CoreS_TimerFrequency;
+	return Arch_HPETAddress->mainCounterValue/cached;
 }
 process* OBOS_KernelProcess;
+void timer_test(void* v)
+{
+	size_t* ticks = (size_t*)v;
+	printf("Tick: %ld, real tick: %ld.\n", ++(*ticks), CoreS_GetTimerTick());
+}
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -350,7 +430,7 @@ void Arch_KernelMainBootstrap()
 	Core_SchedulerIRQ->irqChecker = nullptr;
 	Core_SchedulerIRQ->irqCheckerUserdata = nullptr;
 	// Hopefully this won't cause trouble.
-	Core_SchedulerIRQ->choseVector = false;
+	Core_SchedulerIRQ->choseVector = true;
 	Core_SchedulerIRQ->vector->nIRQsWithChosenID = 1;
 	ipi_lapic_info target = {
 		.isShorthand = true,
@@ -363,26 +443,22 @@ void Arch_KernelMainBootstrap()
 		.info.vector = Core_SchedulerIRQ->vector->id + 0x20
 	};
 	Core_LowerIrql(oldIrql);
-	//Arch_PutInterruptOnIST(Core_SchedulerIRQ->vector->id + 0x20, 1);
 	Arch_LAPICSendIPI(target, vector);
 	while (nCPUsWithInitializedTimer != Core_CpuCount)
 		pause();
-	OBOS_Debug("%s: Testing the scheduler.\n", __func__);
-	for (size_t i = 0; i < 0; i++)
-	{
-		thread_ctx ctx;
-		memzero(&ctx, sizeof(ctx));
-		void* stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 4000, false, stack, 0x4000);
-		thread* thr = CoreH_ThreadAllocate(nullptr);
-		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
-		{
-			CoreH_ThreadReady(thr);
-			Core_ProcessAppendThread(OBOS_KernelProcess, thr);
-		}
-		else
-			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
-	}
+	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
+	if (obos_likely_error(status = Arch_InitializeIOAPICs()))
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
+	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+	Core_InitializeTimerInterface();
+	timer* t = Core_TimerObjectAllocate(nullptr);
+	static size_t ticks = 0;
+	t->handler = timer_test;
+	t->userdata = &ticks;
+	Core_TimerObjectInitialize(t, TIMER_MODE_INTERVAL, 5000000);
+	OBOS_Debug("Period: %ld.\n", t->timing.interval);
+	// OBOS_Debug("%s: Initializing VMM.\n", __func__);
+	// MmH_InitializeKernelContext();
 	OBOS_Log("%s: Done early boot. Boot required %d KiB of memory to finish.\n", __func__, Arch_TotalPhysicalPagesUsed * 4);
 	Core_ExitCurrentThread();
 }

@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/process.h>

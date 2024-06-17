@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -49,6 +50,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			
 			node = node->next;
 		}
+		Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	if (!irq_obj)
 	{

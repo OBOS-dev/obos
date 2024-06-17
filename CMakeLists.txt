@@ -58,5 +58,5 @@ add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")
 
-set(C_STANDARD 17)
-set(C_STANDARD_REQUIRED true)
+set_property(GLOBAL PROPERTY C_STANDARD 17
+				    PROPERTY C_STANDARD_REQUIRED true)

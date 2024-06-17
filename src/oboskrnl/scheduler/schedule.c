@@ -11,6 +11,10 @@
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
 
+#include <irq/irql.h>
+
+#include <locks/spinlock.h>
+
 #define getCurrentThread (CoreS_GetCPULocalPtr()->currentThread)
 #define getIdleThread (CoreS_GetCPULocalPtr()->idleThread)
 #define getSchedulerTicks (CoreS_GetCPULocalPtr()->schedulerTicks)
@@ -20,10 +24,10 @@
 #define threadCanRunThread(thr) ((thr->status == THREAD_STATUS_RUNNING || thr->status == THREAD_STATUS_READY) && verifyAffinity(thr, CoreS_GetCPULocalPtr()->id))
 
 size_t Core_ReadyThreadCount;
-const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE + 1] = {
-	 2, // THREAD_PRIORITY_IDLE
-	 4, // THREAD_PRIORITY_LOW
-	 8, // THREAD_PRIORITY_NORMAL
+const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
+	2, // THREAD_PRIORITY_IDLE
+	4, // THREAD_PRIORITY_LOW
+	8, // THREAD_PRIORITY_NORMAL
 	12, // THREAD_PRIORITY_HIGH
 	12, // THREAD_PRIORITY_URGENT
 };
@@ -38,33 +42,39 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
  * The scheduler must do load balancing.
 */
 
-static void ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
+// Returns false if the quantum is done, otherwise true if the action was completed
+static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
 	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
-		return;
-	list->noStarvationQuantum = 0;
-	// The first (list->nNodes / 4) threads in a priority list will be starving usually because they are at the beginning of the list, and the scheduler starts from the back.
-	for (thread_node* thrN = list->list.head; thrN && i < (list->list.nNodes / 4); )
+		return false;
+	// The last (list->nNodes / 4) threads in a priority list will be starving usually because they are at the end of the list, and the scheduler starts looking from the front.
+	for (thread_node* thrN = list->list.tail; thrN && i < (list->list.nNodes / 4); )
 	{
+		if (thrN->data == CoreS_GetCPULocalPtr()->idleThread)
+		{
+			thrN = thrN->prev;
+			continue;
+		}
 		if (thrN->data->status == THREAD_STATUS_RUNNING)
 		{
-			thrN = thrN->next;
+			thrN = thrN->prev;
 			continue;
 		}
 		OBOS_ASSERT(thrN->data->status == THREAD_STATUS_READY);
 		if (thrN->data->flags & THREAD_FLAGS_PRIORITY_RAISED)
 		{
-			thrN = thrN->next;
+			thrN = thrN->prev;
 			continue;
 		}
-		thread_node* next = thrN->next;
+		thread_node* next = thrN->prev;
 		CoreH_ThreadListRemove(&list->list, thrN);
 		CoreH_ThreadListAppend(&(priorityList(priority + 1)->list), thrN);
 		thrN->data->flags |= THREAD_FLAGS_PRIORITY_RAISED;
 		thrN->data->priority++;
 		thrN = next;
 	}
+	return true;
 }
 static void WorkStealing(thread_priority_list* list, thread_priority priority)
 {
@@ -136,7 +146,7 @@ void Core_Schedule()
 	bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
 	if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		return; // No rescheduling needed, as the thread's quantum isn't finished yet.
-	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
+	static spinlock scheduler_lock = ATOMIC_FLAG_INIT;
 schedule:
 	if (getCurrentThread)
 	{
@@ -146,16 +156,31 @@ schedule:
 		{
 			CoreH_ThreadListRemove(&list->list, getCurrentThread->snode);
 			getCurrentThread->priority--;
+			getCurrentThread->flags &= ~THREAD_FLAGS_PRIORITY_RAISED;
 			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), getCurrentThread->snode);
 		}
 	}
+	thread* oldCurThread = getCurrentThread;
+	getCurrentThread = nullptr;
+	(void)Core_SpinlockAcquireExplicit(&scheduler_lock, IRQL_DISPATCH);
+	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	// Thread starvation prevention and work stealing.
+	// The amount of priority lists with a finished (starvation) quantum.
+	size_t nPriorityListsFQuantum = 0;
 	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
 	{
 		thread_priority_list* list = priorityList(priority);
 		if (priority < THREAD_PRIORITY_MAX_VALUE)
-			ThreadStarvationPrevention(list, priority);
+			nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
 		WorkStealing(list, priority);
+	}
+	if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
+	{
+		for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
+		{
+			thread_priority_list* list = priorityList(priority);
+			list->noStarvationQuantum = 0;
+		}
 	}
 	thread* chosenThread = nullptr;
 	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
@@ -167,6 +192,7 @@ schedule:
 		if (nextPriority < 0)
 			nextPriority = THREAD_PRIORITY_MAX_VALUE;
 		CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(nextPriority);
+		
 	}
 	thread_priority_list* list = CoreS_GetCPULocalPtr()->currentPriorityList;
 	find_list:
@@ -208,9 +234,10 @@ schedule:
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
 switch_thread:
+	Core_SpinlockRelease(&scheduler_lock, IRQL_DISPATCH);
 	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
-	if (getCurrentThread)
-		getCurrentThread->status = THREAD_STATUS_READY;
+	if (oldCurThread)
+		oldCurThread->status = THREAD_STATUS_READY;
 	getCurrentThread = chosenThread;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
@@ -218,15 +245,16 @@ struct irq* Core_SchedulerIRQ;
 uint64_t Core_SchedulerTimerFrequency = 1000;
 void Core_Yield()
 {
-	irql oldIrql = Core_GetIrql() < 2 ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	OBOS_ASSERT(!(oldIrql & ~0xf));
 	if (getCurrentThread)
 	{
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);
-		if (oldIrql != IRQL_INVALID)
-			Core_LowerIrqlNoThread(oldIrql);
+		OBOS_ASSERT(!(oldIrql & ~0xf));
+		Core_LowerIrqlNoThread(oldIrql);
 		return;
 	}
 	Core_Schedule();
-	if (oldIrql != IRQL_INVALID)
-		Core_LowerIrqlNoThread(oldIrql);
+	OBOS_ASSERT(!(oldIrql & ~0xf));
+	Core_LowerIrqlNoThread(oldIrql);
 }

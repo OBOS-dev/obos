@@ -63,4 +63,12 @@ typedef enum
 	/// The resource is already in use.
 	/// </summary>
 	OBOS_STATUS_IN_USE,
+	/// <summary>
+	/// Access has been denied.
+	/// </summary>
+	OBOS_STATUS_ACCESS_DENIED,
+	/// <summary>
+	/// The object has not been initialized yet.
+	/// </summary>
+	OBOS_STATUS_UNINITIALIZED,
 } obos_status;

@@ -4,9 +4,11 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/spinlock.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <error.h>
 
 #include <mm/bare_map.h>
 
@@ -17,6 +19,13 @@
 #include <arch/x86_64/boot_info.h>
 
 #include <elf/elf64.h>
+
+#include <mm/prot.h>
+#include <mm/context.h>
+
+#include <scheduler/cpu_local.h>
+#include <stdatomic.h>
+#include <stdint.h>
 
 static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
 
@@ -221,6 +230,9 @@ static void FreePageTables(uintptr_t* pm, uint8_t level, uint32_t beginIndex, ui
 		Arch_FreePhysicalPages(Arch_MaskPhysicalAddressFromEntry(pm[indices[level]]), 1);
 	}
 }
+uintptr_t MmS_KernelBaseAddress;
+uintptr_t MmS_KernelEndAddress;
+extern uintptr_t Arch_KernelCR3;
 obos_status Arch_InitializeKernelPageTable()
 {
 	obos_status status = OBOS_STATUS_SUCCESS;
@@ -242,6 +254,8 @@ obos_status Arch_InitializeKernelPageTable()
 		if (phdr->p_flags & PF_W)
 			flags |= 2;
 		uintptr_t base = phdr->p_vaddr & ~0xfff;
+		if (base < Arch_KernelInfo->virtual_base)
+			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Fatal error. Bootloader made a whoopsie! (line %d in file %s). Expression: base < Arch_KernelInfo->virtual_base.\n", __LINE__, __FILE__);
 		uintptr_t limit = phdr->p_vaddr + phdr->p_memsz;
 		if (limit & 0xfff)
 			limit = (limit + 0xfff) & ~0xfff;
@@ -249,7 +263,7 @@ obos_status Arch_InitializeKernelPageTable()
 		{
 			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(oldCR3, virt));
 			OBOS_ASSERT(phys);
-			Arch_MapPage(newCR3, virt, phys, flags);
+			Arch_MapPage(newCR3, (void*)virt, phys, flags);
 		}
 	}
 	OBOS_Debug("%s: Mapping HHDM.\n", __func__);
@@ -262,5 +276,44 @@ obos_status Arch_InitializeKernelPageTable()
 	Arch_FreePhysicalPages((uintptr_t)oldCR3, 1);
 	OBOSH_BasicMMAddRegion(&kernel_region, (void*)Arch_KernelInfo->virtual_base, Arch_KernelInfo->size);
 	OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_LdrPlatformInfo->higher_half_base, Arch_PhysicalMemoryBoundaries);
+	Arch_KernelCR3 = newCR3;
 	return OBOS_STATUS_SUCCESS;
+}
+// Both addresses are page-aligned.
+extern char Arch_no_pti_start[];
+extern char Arch_no_pti_end[];
+obos_status MmS_PTContextInitialize(pt_context* ctx)
+{
+	if (!ctx)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	obos_status status = OBOS_STATUS_SUCCESS;
+	*ctx = OBOSS_AllocatePhysicalPages(1, 1, &status);
+	// Isolate kernel PTEs from those of userspace contexts.
+	// We can do this fairly simply, we just need to not map anything in the kernel address space (0xffff'8000'0000'0000) or above.
+	// As a side note, we must keep a couple pages mapped:
+	// The base ISR handlers.
+	// Any pointer to the kernel cr3.
+	// The scheduler context switch function.
+	// Since it's a lot easier to just use a (linker) section for this purpose, that's what we'll do.
+	// Note: It is neccessary to also map IST stacks, or we will triple fault.
+	for (size_t i = 0; i < Core_CpuCount; i++)
+	{
+		if (Core_CpuInfo[i].isBSP)
+			continue;
+		uintptr_t base = (uintptr_t)Core_CpuInfo[i].arch_specific.ist_stack;
+		uintptr_t flags = Arch_GetPML1Entry(getCR3(), base) & ~0xffffffffff000;
+		OBOS_ASSERT(flags & 0b1);
+		uintptr_t phys = Arch_GetPML1Entry(getCR3(), base) & 0xffffffffff000;
+		for(size_t i = 0; i < 0x10000/0x1000; i++)
+			Arch_MapPage(getCR3(), (void*)(base+i*0x1000), phys+i*0x1000, flags);
+	}
+	for (uintptr_t addr = (uintptr_t)Arch_no_pti_start; addr < (uintptr_t)Arch_no_pti_end; addr += 0x1000)
+	{
+		uintptr_t flags = Arch_GetPML1Entry(getCR3(), addr) & ~0xffffffffff000;
+		uintptr_t phys = Arch_GetPML1Entry(getCR3(), addr) & 0xffffffffff000;
+		if (!(flags & 0b1))
+			continue;
+		Arch_MapPage(getCR3(), (void*)addr, phys, flags);
+	}
+	return status;
 }

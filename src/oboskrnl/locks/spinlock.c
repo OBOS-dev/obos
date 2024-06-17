@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <stdatomic.h>
 

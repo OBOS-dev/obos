@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 /// <summary>
 /// Maps a page as Read, Write, and execution disabled. This page should not accessible from user-mode.<para/>

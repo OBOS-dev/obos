@@ -7,15 +7,16 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <scheduler/thread.h>
 
 typedef struct process
 {
-	// TODO: Store VMM context.
 	// If pid==1, this is the kernel process.
 	uint64_t pid;
 	thread_list threads;
+	struct context* ctx;
 } process;
 extern uint64_t Core_NextPID;
 extern process* OBOS_KernelProcess;

@@ -47,11 +47,12 @@ align 8
 .irql: resq 1
 .gs_base: resq 1
 .fs_base: resq 1
-.frame: resq 0x1a
+.frame: resq 0x1b
 endstruc
 %endmacro
 
 extern Core_GetIRQLVar
+section .no.pti.text
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
 	cli
@@ -78,26 +79,27 @@ CoreS_SwitchToThreadContext:
 	mov [rax], rcx
 	add rdi, 8
 	; Restore GS_BASE
-	cmp qword [rdi+16+0xB0], 0x8
+	test qword [rdi+16+0xB8], 0x3
 	je .restore_fs_base
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000101
 	wrmsr
 .restore_fs_base:
-	add rdi, 8
+	add rdi, 0x8
 	; Restore FS_BASE
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000100
 	wrmsr
+	add rdi, 8
 	; Restore thread GPRs.
-	add rdi, 8 ; Skip the saved DS
 	mov rsp, rdi
-	add rsp, 8 ; Skip the saved DS
+	add rsp, 0x10 ; Skip the saved DS and CR3
 	popaq
 	add rsp, 0x18
 	iretq
+section .text
 CoreS_FreeThreadContext:
 	push rbp
 	mov rbp, rsp
@@ -119,14 +121,23 @@ CoreS_SetupThreadContext:
 
 .L1:
 	; Setup the registers.
-	mov [rdi+thread_ctx.frame+0xA8], rsi             ; ctx->frame.rip
-	mov [rdi+thread_ctx.frame+0x58], rdx             ; ctx->frame.rdi
-	mov qword [rdi+thread_ctx.frame+0xB0], 0x8       ; ctx->frame.cs
-	mov qword [rdi+thread_ctx.frame+0xC8], 0x10      ; ctx->frame.ss
-	mov qword [rdi+thread_ctx.frame+0xB8], 0x200202  ; ctx->frame.rflags
+	mov [rdi+thread_ctx.frame+0xB0], rsi             ; ctx->frame.rip
+	mov [rdi+thread_ctx.frame+0x60], rdx             ; ctx->frame.rdi
+	mov qword [rdi+thread_ctx.frame+0xB8], 0x8       ; ctx->frame.cs
+	mov qword [rdi+thread_ctx.frame+0xD0], 0x10      ; ctx->frame.ss
+	mov qword [rdi+thread_ctx.frame+0xC0], 0x200202  ; ctx->frame.rflags
 	lea rax, [r8+r9]
-	mov qword [rdi+thread_ctx.frame+0xC0], rax       ; ctx->frame.rsp
-	; TODO: Add user space transition possible.
+	mov qword [rdi+thread_ctx.frame+0xC8], rax       ; ctx->frame.rsp
+	mov qword [rdi+thread_ctx.extended_ctx_ptr], 0              ; ctx->extended_ctx_ptr
+
+	cmp rcx, 1
+	jne .kmode
+
+.userspace:
+	mov qword [rdi+thread_ctx.frame+0xB8], 0x20|3 ; ctx->frame.cs=user (CPL3) data segment
+	mov qword [rdi+thread_ctx.frame+0xD0], 0x18|3 ; ctx->frame.ss=user (CPL3) code segment
+
+.kmode:
 
 	; Setup the IRQL.
 	mov byte [rdi+thread_ctx.irql], 0 ; Unmasked
@@ -149,7 +160,6 @@ CoreS_CallFunctionOnStack:
 	push rbp
 	mov rbp, rsp
 
-	; TODO: Make thread-safe
 	push rdi
 	push rsi
 	call Arch_GetCPUTempStack
@@ -164,37 +174,39 @@ CoreS_CallFunctionOnStack:
 extern Core_Schedule
 extern Core_GetIRQLVar
 CoreS_SaveRegisterContextAndYield:
-	; Save the current GPRs.
-	mov [rdi+thread_ctx.frame+0x8] , rbp
-	mov qword [rdi+thread_ctx.frame+0x10], 0
-	mov [rdi+thread_ctx.frame+0x18], r8
-	mov [rdi+thread_ctx.frame+0x20], r9
-	mov [rdi+thread_ctx.frame+0x28], r10
-	mov [rdi+thread_ctx.frame+0x30], r11
-	mov [rdi+thread_ctx.frame+0x38], r12
-	mov [rdi+thread_ctx.frame+0x40], r13
-	mov [rdi+thread_ctx.frame+0x48], r14
-	mov [rdi+thread_ctx.frame+0x50], r15
-	mov [rdi+thread_ctx.frame+0x58], rdi
-	mov [rdi+thread_ctx.frame+0x60], rsi
-	mov qword [rdi+thread_ctx.frame+0x68], 0
-	mov [rdi+thread_ctx.frame+0x70], rbx
-	mov [rdi+thread_ctx.frame+0x78], rdx
-	mov [rdi+thread_ctx.frame+0x80], rcx
-	mov [rdi+thread_ctx.frame+0x88], rax
-	mov rax, ds
-	mov [rdi+thread_ctx.frame+0x00], rax ; ds
-	mov rax, [rsp]
-	mov [rdi+thread_ctx.frame+0xA8], rax ; return address
-	mov rax, cs
-	mov [rdi+thread_ctx.frame+0xB0], rax ; cs
 	pushfq
-	pop rax
-	mov [rdi+thread_ctx.frame+0xB8], rax ; rflags
-	lea rax, [rsp+0x8] ; skip the return address
-	mov [rdi+thread_ctx.frame+0xC0], rax ; rsp
+	cli
+	; Save the current GPRs.
+	mov [rdi+thread_ctx.frame+0x10] , rbp
+	mov qword [rdi+thread_ctx.frame+0x18], 0
+	mov [rdi+thread_ctx.frame+0x20], r8
+	mov [rdi+thread_ctx.frame+0x28], r9
+	mov [rdi+thread_ctx.frame+0x30], r10
+	mov [rdi+thread_ctx.frame+0x38], r11
+	mov [rdi+thread_ctx.frame+0x40], r12
+	mov [rdi+thread_ctx.frame+0x48], r13
+	mov [rdi+thread_ctx.frame+0x50], r14
+	mov [rdi+thread_ctx.frame+0x58], r15
+	mov [rdi+thread_ctx.frame+0x60], rdi
+	mov [rdi+thread_ctx.frame+0x68], rsi
+	mov qword [rdi+thread_ctx.frame+0x70], 0
+	mov [rdi+thread_ctx.frame+0x78], rbx
+	mov [rdi+thread_ctx.frame+0x80], rdx
+	mov [rdi+thread_ctx.frame+0x88], rcx
+	mov [rdi+thread_ctx.frame+0x90], rax
+	mov rax, ds
+	mov [rdi+thread_ctx.frame+0x08], rax ; ds
+	mov rax, [rsp+8]
+	mov [rdi+thread_ctx.frame+0xB0], rax ; return address
+	mov rax, cs
+	mov [rdi+thread_ctx.frame+0xB8], rax ; cs
+	pop rax ; see pushfq at the beginning of the function
+	push rax
+	mov [rdi+thread_ctx.frame+0xC0], rax ; rflags
+	lea rax, [rsp+0x10] ; skip the return address
+	mov [rdi+thread_ctx.frame+0xC8], rax ; rsp
 	mov rax, ss
-	mov [rdi+thread_ctx.frame+0xC8], rax ; ss
+	mov [rdi+thread_ctx.frame+0xD0], rax ; ss
 	mov ecx, 0xC0000101
 	rdmsr
 	shl rdx, 32
@@ -207,6 +219,7 @@ CoreS_SaveRegisterContextAndYield:
 	mov [rdi+thread_ctx.fs_base], rax
 	mov rax, cr3
 	mov [rdi+thread_ctx.cr3], rax
+	mov [rdi+thread_ctx.frame+0x00], rax ; cr3
 	
 	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
 	jz .call_scheduler
@@ -214,6 +227,8 @@ CoreS_SaveRegisterContextAndYield:
 	xsave [rax]
 
 .call_scheduler:
+	popfq ; see the rflags saving code at the beginning of the function
+
 	mov rdi, Core_Schedule
 	xor rsi,rsi
 	call CoreS_CallFunctionOnStack

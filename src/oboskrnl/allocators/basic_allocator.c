@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <error.h>
 
 #include <allocators/base.h>
 #include <allocators/basic_allocator.h>

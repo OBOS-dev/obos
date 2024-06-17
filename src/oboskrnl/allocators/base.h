@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 // Defines a struct that defines the base info and interfaces for an allocator.
 
