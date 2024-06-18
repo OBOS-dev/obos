@@ -166,9 +166,9 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId)
+thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 {
-	return (1 << cpuId);
+	return ((thread_affinity)1 << cpuId);
 }
 
 OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)

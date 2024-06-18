@@ -149,7 +149,7 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node);
 /// </summary>
 /// <param name="cpuId">The cpu id.</param>
 /// <returns>The affinity mask.</returns>
-uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId);
+thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId);
 /// <summary>
 /// Exits the current thread.
 /// </summary>

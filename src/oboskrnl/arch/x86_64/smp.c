@@ -144,7 +144,7 @@ void Arch_APEntry(cpu_local* info)
 	void* thr_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
 	CoreS_SetupThreadContext(&ctx, idleTaskBootstrap, 0, false, thr_stack, 0x4000);
 	thread* idleThread = CoreH_ThreadAllocate(nullptr);
-	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), &ctx);
+	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, ((thread_affinity)1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, idleThread);
 	info->idleThread = idleThread;
