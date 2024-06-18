@@ -12,7 +12,7 @@ I was bored...
 ### Build
 1. Clone the repo using git:
 ```sh
-git clone https://github.com/oberrow/obos.git
+git clone https://github.com/OBOS-dev/obos.git
 ```
 2. Enter the newly cloned repo
 3. Run cmake to build the OS
