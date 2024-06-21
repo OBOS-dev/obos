@@ -15,4 +15,4 @@
 /// <summary>
 /// Initializes the kernel context.
 /// </summary>
-void Mm_InitializeKernelContext();
+void Mm_Initialize();

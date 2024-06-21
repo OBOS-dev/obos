@@ -2,10 +2,11 @@
  * oboskrnl/mm/context.c
  *
  * Copyright (c) 2024 Omar Berrow
- */
+*/
 
 #include <int.h>
 #include <error.h>
+#include <klog.h>
 
 #include <utils/tree.h>
 
@@ -21,7 +22,9 @@
 allocator_info* Mm_VMMAllocator;
 int cmp_page_node(page_node* right, page_node* left)
 {
-	return !(right == left);
+	if (right->addr == left->addr)
+		return 0;
+	return right->addr < left->addr ? -1 : 1;
 }
 RB_GENERATE(page_node_tree, page_node, rb_tree_node, cmp_page_node);
 context* MmH_AllocateContext(obos_status* status)

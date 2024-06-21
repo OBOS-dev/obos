@@ -12,6 +12,8 @@
 
 #include <locks/spinlock.h>
 
+#include <irq/irql.h>
+
 // Quote of the VMM:
 // When I wrote this, only God and I understood what I was doing.
 // Now, only God knows.
@@ -42,7 +44,7 @@ static void Unlock(irql oldIrql)
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }
 
-void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
+OBOS_NO_KASAN void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
@@ -211,4 +213,23 @@ OBOS_NO_KASAN void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, siz
 		s_regionList.nNodes++;
 		Unlock(oldIrql);
 	}
+}
+void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
+{
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH);
+	for (basicmm_region* cur = s_regionList.head; cur; )
+	{
+		if (!callback(cur, udata))
+		{
+			Core_SpinlockRelease(&s_regionListLock, oldIrql);
+			return;
+		}
+
+		cur = cur->next;
+	}
+	Core_SpinlockRelease(&s_regionListLock, oldIrql);
+}
+size_t OBOSH_BasicMMGetRegionCount()
+{
+	return s_regionList.nNodes;
 }

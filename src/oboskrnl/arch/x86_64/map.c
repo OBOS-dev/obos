@@ -4,11 +4,12 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/spinlock.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
 #include <error.h>
+
+#include <stdatomic.h>
 
 #include <mm/bare_map.h>
 
@@ -24,7 +25,8 @@
 #include <mm/context.h>
 
 #include <scheduler/cpu_local.h>
-#include <stdatomic.h>
+
+#include <locks/spinlock.h>
 #include <stdint.h>
 
 static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
@@ -167,31 +169,36 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
-{
-	return Arch_MapPage(getCR3(), at_, phys, 0x8000000000000003);
-}
-obos_status OBOSS_UnmapPage(void* at_)
+obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	uintptr_t at = (uintptr_t)at_;
 	if (at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	uintptr_t entry = Arch_GetPML2Entry(getCR3(), at);
+	uintptr_t entry = Arch_GetPML2Entry(cr3, at);
 	if (!(entry & (1 << 0)))
 		return OBOS_STATUS_SUCCESS;
 	bool isHugePage = (entry & (1ULL<<7));
 	if (isHugePage)
-		entry = Arch_GetPML3Entry(getCR3(), at);
+		entry = Arch_GetPML3Entry(cr3, at);
 	if (!(entry & (1<<0)))
 		return OBOS_STATUS_SUCCESS;
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(phys);
 	pt[AddressToIndex(at, (uint8_t)isHugePage)] = 0;
-	Arch_FreePageMapAt(getCR3(), at, 3 - (uint8_t)isHugePage);
+	Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
 	invlpg(at);
 	return OBOS_STATUS_SUCCESS;
+}
+obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
+{
+	return Arch_MapPage(getCR3(), at_, phys, 0x8000000000000003);
+}
+obos_status OBOSS_UnmapPage(void* at_)
+{
+	return Arch_UnmapPage(getCR3(), at_);
+	
 }
 obos_status OBOSS_GetPagePhysicalAddress(void* at_, uintptr_t* oPhys)
 {
@@ -315,5 +322,76 @@ obos_status MmS_PTContextInitialize(pt_context* ctx)
 			continue;
 		Arch_MapPage(getCR3(), (void*)addr, phys, flags);
 	}
+	return status;
+}
+obos_status MmS_PTContextMap(pt_context* ctx, uintptr_t virt, uintptr_t phys, prot_flags prot, bool present, bool isHuge)
+{
+	if (!ctx)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!((virt >> 47) == 0 || (virt >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	uintptr_t cr3 = *ctx;
+	if (!cr3 || cr3 & 0xfff)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	obos_status status = OBOS_STATUS_SUCCESS;
+	uintptr_t flags = 0;
+	if (!(prot & OBOS_PROTECTION_READ_ONLY))
+		flags |= (1UL<<1) /* Write */;
+	if (!(prot & OBOS_PROTECTION_EXECUTABLE))
+		flags |= (1UL<<63) /* XD (execute disable) */;
+	if (prot & OBOS_PROTECTION_USER_PAGE)
+		flags |= (1UL<<2) /* User */;
+	if (prot & OBOS_PROTECTION_CACHE_DISABLE)
+		flags |= (1UL<<4) /* Cache Disable */;
+	if (present)
+	{
+		if (isHuge)
+			status = Arch_MapHugePage(cr3, (void*)virt, phys, flags);
+		else
+			status = Arch_MapPage(cr3, (void*)virt, phys, flags);
+	}
+	else 
+	{
+		status = Arch_UnmapPage(cr3, (void*)virt);
+	}
+	return status;
+}
+obos_status MmS_PTContextQueryPageInfo(pt_context* ctx, uintptr_t virt, pt_context_page_info* info)
+{
+	if (!ctx || !info)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!((virt >> 47) == 0 || (virt >> 47) == 0x1ffff))
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	uintptr_t cr3 = *ctx;
+	if (!cr3 || cr3 & 0xfff)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	virt &= ~0xfff;
+	memzero(info, sizeof(*info));
+	obos_status status = OBOS_STATUS_SUCCESS;
+	uintptr_t entry = Arch_GetPML2Entry(cr3, virt);
+	if (!(entry & (1 << 0)))
+		return OBOS_STATUS_SUCCESS;
+	bool isHugePage = (entry & (1ULL<<7));
+	if (isHugePage)
+		entry = Arch_GetPML3Entry(cr3, virt);
+	if (!(entry & (1<<0)))
+		return OBOS_STATUS_SUCCESS;
+	info->huge_page = isHugePage;
+	info->present = false;
+	info->phys = Arch_MaskPhysicalAddressFromEntry(entry);
+	info->addr = isHugePage ? virt & ~0x1fffff : virt;
+	info->dirty = entry & (1UL<<6);
+	info->accessed = entry & (1UL<<5);
+	prot_flags prot = 0;
+	uintptr_t flags = entry & ~0xffffffffff000;
+	if (!(flags & (1UL<<1)))
+		prot |= OBOS_PROTECTION_READ_ONLY;
+	if (!(flags & (1UL<<63)))
+		prot |= OBOS_PROTECTION_EXECUTABLE;
+	if (flags & (1UL<<2))
+		prot |= OBOS_PROTECTION_USER_PAGE;
+	if (!(flags & (1UL<<4)))
+		prot |= OBOS_PROTECTION_CACHE_DISABLE;
+	info->protection = prot;
 	return status;
 }

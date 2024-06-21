@@ -18,9 +18,10 @@ typedef struct page_node
 	bool present;
 	uintptr_t addr;
 	prot_flags protection;
+	bool huge_page;
 	bool dirty;
 	bool accessed;
-	uint8_t uses;
+	uint8_t uses; // The age
 	RB_ENTRY(page_node) rb_tree_node;
 	struct
 	{

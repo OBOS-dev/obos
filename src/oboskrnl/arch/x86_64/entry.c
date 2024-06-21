@@ -360,8 +360,8 @@ obos_status CoreS_InitializeTimer(irq_handler handler)
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET.");
 	OBOS_ASSERT(gsi <= 32);
 	timer->timerConfigAndCapabilities |= (1<6)|(1<<3)|((uint8_t)gsi<<9); // Edge-triggered IRQs, set GSI, Periodic timer
-	OBOS_Debug("HPET frequency: %ld, configured HPET frequency: %ld\n", Arch_HPETFrequency, CoreS_TimerFrequency);
 	CoreS_TimerFrequency = 1000;
+	OBOS_Debug("HPET frequency: %ld, configured HPET frequency: %ld\n", Arch_HPETFrequency, CoreS_TimerFrequency);
 	const uint64_t value = Arch_HPETFrequency/CoreS_TimerFrequency;
 	timer->timerComparatorValue = Arch_HPETAddress->mainCounterValue + value;
 	timer->timerComparatorValue = value;
@@ -381,11 +381,6 @@ timer_tick CoreS_GetTimerTick()
 	return Arch_HPETAddress->mainCounterValue/cached;
 }
 process* OBOS_KernelProcess;
-void timer_test(void* v)
-{
-	size_t* ticks = (size_t*)v;
-	printf("Tick: %ld, real tick: %ld.\n", ++(*ticks), CoreS_GetTimerTick());
-}
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -451,14 +446,8 @@ void Arch_KernelMainBootstrap()
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
-	timer* t = Core_TimerObjectAllocate(nullptr);
-	static size_t ticks = 0;
-	t->handler = timer_test;
-	t->userdata = &ticks;
-	Core_TimerObjectInitialize(t, TIMER_MODE_INTERVAL, 5000000);
-	OBOS_Debug("Period: %ld.\n", t->timing.interval);
-	// OBOS_Debug("%s: Initializing VMM.\n", __func__);
-	// MmH_InitializeKernelContext();
+	OBOS_Debug("%s: Initializing VMM.\n", __func__);
+	Mm_Initialize();
 	OBOS_Log("%s: Done early boot. Boot required %d KiB of memory to finish.\n", __func__, Arch_TotalPhysicalPagesUsed * 4);
 	Core_ExitCurrentThread();
 }

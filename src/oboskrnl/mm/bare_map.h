@@ -85,3 +85,14 @@ obos_status OBOS_BasicMMFreePages(void *base, size_t sz);
 /// <param name="base">The base of the region.</param>
 /// <param name="sz">The size of the region.</param>
 void OBOSH_BasicMMAddRegion(basicmm_region* nodeBase, void* base, size_t sz);
+/// <summary>
+/// Iterates over regions in the basic mm for OBOS.
+/// </summary>
+/// <param name="callback">The call back. Returns true to continue iteration, otherwise false. Takes in the current region, and the passed user data.</param>
+/// <param name="udata">The user data to pass.</param>
+void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata);
+/// <summary>
+/// Iterates over regions in the basic mm for OBOS.
+/// </summary>
+/// <returns>The region count.</returns>
+size_t OBOSH_BasicMMGetRegionCount();

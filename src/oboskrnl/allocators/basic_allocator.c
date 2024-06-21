@@ -220,7 +220,7 @@ tryAgain:
 #endif
 	return OBOS_NODE_ADDR(freeNode);
 }
-static OBOS_NO_KASAN  void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
+static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{

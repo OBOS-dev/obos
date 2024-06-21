@@ -9,7 +9,6 @@
 #include <int.h>
 #include <error.h>
 
-#include <stdint.h>
 #include <utils/tree.h>
 
 #include <mm/pg_node.h>
@@ -24,6 +23,16 @@ typedef uintptr_t pt_context;
 #else
 #error Unknown architecture.
 #endif
+typedef struct pt_context_page_info
+{
+	uintptr_t addr;
+	uintptr_t phys;
+	bool present : 1;
+	bool huge_page : 1;
+	bool dirty : 1;
+	bool accessed : 1;
+	prot_flags protection;
+} pt_context_page_info;
 /// <summary>
 /// Initializes an empty (user-space) context.
 /// </summary>
@@ -40,7 +49,20 @@ obos_status MmS_PTContextInitialize(pt_context* ctx);
 /// <param name="present">Whether the page should be removed or (re-)mapped.</param>
 /// <param name="isHuge">Whether the page size is that of a large page or that of a normal page. This can be ignored if the arch doesn't support huge pages.</param>
 /// <returns>The status of the function.</returns>
-obos_status MmS_PTContextisHugeMap(pt_context* ctx, uintptr_t virt, uintptr_t phys, prot_flags prot, bool present, bool isHuge);
+obos_status MmS_PTContextMap(pt_context* ctx, uintptr_t virt, uintptr_t phys, prot_flags prot, bool present, bool isHuge);
+/// <summary>
+/// Checks if a page is huge or not.
+/// </summary>
+/// <param name="ctx">A pointer to the context. Cannot be nullptr.</param>
+/// <param name="virt">The virtual address to check. Must be huge-page aligned.</param>
+/// <param name="info">A pointer to the page info struct.</param>
+/// <returns>The status of the function.</returns>
+obos_status MmS_PTContextQueryPageInfo(pt_context* ctx, uintptr_t virt, pt_context_page_info* info);
+/// <summary>
+/// Gets the current pt_context.
+/// </summary>
+/// <returns>The current pt_context.</returns>
+pt_context MmS_PTContextGetCurrent();
 
 RB_HEAD(page_node_tree, page_node);
 typedef struct page_node_list
@@ -57,7 +79,7 @@ typedef struct context
 		page_node_list list;
 		size_t size;
 	} workingSet;
-	pt_context top_level_pt;
+	pt_context pt_ctx;
 } context;
 extern int cmp_page_node(page_node* right, page_node* left);
 RB_PROTOTYPE(page_node_tree, page_node, rb_tree_node, cmp_page_node);

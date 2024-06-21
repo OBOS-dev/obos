@@ -28,6 +28,7 @@ global xsave
 global cli
 global sti
 global hlt
+global MmS_PTContextGetCurrent
 
 getCR0:
 	push rbp
@@ -220,3 +221,5 @@ sti:
 hlt:
 	hlt
 	ret
+MmS_PTContextGetCurrent:
+	jmp getCR3
