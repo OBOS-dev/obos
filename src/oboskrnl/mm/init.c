@@ -37,6 +37,8 @@ struct register_mm_regions_udata
 };
 static bool register_mm_regions(basicmm_region* region, void* udata_)
 {
+    if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+        return true;
     struct register_mm_regions_udata* udata = (struct register_mm_regions_udata*)udata_;
     pt_context ctx = MmS_PTContextGetCurrent();
     for (uintptr_t addr = region->addr & ~0xfff; addr < ((region->addr & ~0xfff) + region->size); )
@@ -61,6 +63,8 @@ static bool register_mm_regions(basicmm_region* region, void* udata_)
 }
 static bool get_page_node_buf_count(basicmm_region* region, void* udata_)
 {
+    if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+        return true;
     size_t* sz = (size_t*)udata_;
     if (region->size < OBOS_HUGE_PAGE_SIZE)
     {
@@ -108,4 +112,5 @@ void Mm_Initialize()
         .i = 0,
     };
     OBOSH_BasicMMIterateRegions(register_mm_regions, &udata);
+    Mm_KernelContext->workingSet.size = 0x400000; // 4 MiB
 }
