@@ -24,7 +24,7 @@ obos_status Mm_HandleAgingFault(context* ctx)
     if (!ctx)
         return OBOS_STATUS_INVALID_ARGUMENT;
     OBOS_ASSERT(ctx->owner->ctx == ctx);
-    if (ctx->cowner->ctx != ctx)
+    if (ctx->owner->ctx != ctx)
         return OBOS_STATUS_INVALID_ARGUMENT; // Wut?
     page_node* i = nullptr;
     RB_FOREACH(i, page_node_tree, &ctx->pageNodeTree)
