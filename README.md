@@ -1,5 +1,5 @@
 # OBOS
-I was bored...
+OBOS uses ***✨ state of the art technology ✨*** to do ***✨  absolutely nothing ✨*** 
 ## Building
 ### Prerequisites
 - NASM
