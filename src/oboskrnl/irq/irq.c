@@ -27,7 +27,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 {
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ < Core_GetIrql())
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"Core_GetIrql() < OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector)\").");
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ < Core_GetIrql()\").");
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	CoreS_EnterIRQHandler(frame);
 	CoreS_SendEOI(frame);
