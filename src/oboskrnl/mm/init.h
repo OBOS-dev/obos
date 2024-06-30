@@ -13,6 +13,15 @@
 #include <mm/prot.h>
 
 /// <summary>
-/// Initializes the kernel context.
+/// Initializes the VMM.
 /// </summary>
 void Mm_Initialize();
+/// <summary>
+/// Initializes the VMM allocator (non-paged pool allocator).
+/// </summary>
+void Mm_InitializeAllocator();
+/// <summary>
+/// Returns whether the VMM is initialized or not.
+/// </summary>
+/// <returns>Whether the VMM is initialized or not.</returns>
+bool Mm_Initialized();

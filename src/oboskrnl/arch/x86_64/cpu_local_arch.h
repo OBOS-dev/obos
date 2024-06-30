@@ -35,4 +35,5 @@ typedef struct cpu_local_arch
 	void* ist_stack; // Size: 0x10000 bytes.
 	void* startup_stack; // Size: 0x4000 bytes, freed after smp initialization.
 	bool initializedSchedulerTimer;
+	bool pf_handler_running;
 } cpu_local_arch;

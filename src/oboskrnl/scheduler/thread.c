@@ -15,10 +15,14 @@
 
 #include <allocators/base.h>
 
+#include <mm/context.h>
+
 static uint64_t s_nextTID = 1;
-cpu_local* Core_CpuInfo;
+OBOS_EXCLUDE_VAR_FROM_MM cpu_local* Core_CpuInfo;
+void* Core_CpuTempStackBase = nullptr;
+size_t Core_CpuTempStackSize = 0;
 thread_affinity Core_DefaultThreadAffinity = 1;
-size_t Core_CpuCount;
+OBOS_EXCLUDE_VAR_FROM_MM size_t Core_CpuCount;
 static void free_thr(thread* thr)
 {
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));

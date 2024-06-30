@@ -71,4 +71,8 @@ typedef enum
 	/// The object has not been initialized yet.
 	/// </summary>
 	OBOS_STATUS_UNINITIALIZED,
+	/// <summary>
+	/// The callback did not handle anything.
+	/// </summary>
+	OBOS_STATUS_UNHANDLED,
 } obos_status;

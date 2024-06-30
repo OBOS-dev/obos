@@ -48,11 +48,13 @@ align 8
 .gs_base: resq 1
 .fs_base: resq 1
 .frame: resq 0x1b
+.stackBase: resq 1
+.stackSize: resq 1
 endstruc
 %endmacro
 
 extern Core_GetIRQLVar
-section .no.pti.text
+section .no.mm.text
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
 	cli
@@ -128,7 +130,9 @@ CoreS_SetupThreadContext:
 	mov qword [rdi+thread_ctx.frame+0xC0], 0x200202  ; ctx->frame.rflags
 	lea rax, [r8+r9]
 	mov qword [rdi+thread_ctx.frame+0xC8], rax       ; ctx->frame.rsp
-	mov qword [rdi+thread_ctx.extended_ctx_ptr], 0              ; ctx->extended_ctx_ptr
+	mov qword [rdi+thread_ctx.extended_ctx_ptr], 0   ; ctx->extended_ctx_ptr
+	mov [rdi+thread_ctx.stackBase], r8
+	mov [rdi+thread_ctx.stackSize], r9
 
 	cmp rcx, 1
 	jne .kmode

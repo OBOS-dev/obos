@@ -13,6 +13,8 @@
 
 #include <UltraProtocol/ultra_protocol.h>
 
+#include <mm/context.h>
+
 extern struct ultra_memory_map_attribute* Arch_MemoryMap;
 extern struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct freelist_node
@@ -20,13 +22,13 @@ struct freelist_node
 	size_t nPages;
 	struct freelist_node *next, *prev;
 };
-static struct freelist_node *s_head;
-static struct freelist_node *s_tail;
-static size_t s_nNodes;
-size_t Arch_TotalPhysicalPages = 0;
-size_t Arch_TotalPhysicalPagesUsed = 0;
-size_t Arch_UsablePhysicalPages = 0;
-uintptr_t Arch_PhysicalMemoryBoundaries;
+static OBOS_EXCLUDE_VAR_FROM_MM struct freelist_node *s_head;
+static OBOS_EXCLUDE_VAR_FROM_MM struct freelist_node *s_tail;
+static OBOS_EXCLUDE_VAR_FROM_MM size_t s_nNodes;
+OBOS_EXCLUDE_VAR_FROM_MM size_t Arch_TotalPhysicalPages = 0;
+OBOS_EXCLUDE_VAR_FROM_MM size_t Arch_TotalPhysicalPagesUsed = 0;
+OBOS_EXCLUDE_VAR_FROM_MM size_t Arch_UsablePhysicalPages = 0;
+OBOS_EXCLUDE_VAR_FROM_MM uintptr_t Arch_PhysicalMemoryBoundaries;
 obos_status Arch_InitializePMM()
 {
 	if (!Arch_MemoryMap)
@@ -70,7 +72,7 @@ obos_status Arch_InitializePMM()
 		Arch_PhysicalMemoryBoundaries = (Arch_PhysicalMemoryBoundaries + 4294967295) & ~4294967295;
 	return OBOS_STATUS_SUCCESS;
 }
-static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)
+static OBOS_EXCLUDE_FUNC_FROM_MM bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)
 {
 	size_t nPagesRequired = nPages;
 	uintptr_t nodePhys = (uintptr_t)node - Arch_LdrPlatformInfo->higher_half_base;
@@ -83,7 +85,7 @@ static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t
 }
 #define MAP_TO_HHDM(addr, type) ((type*)(Arch_LdrPlatformInfo->higher_half_base + (uintptr_t)(addr)))
 #define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LdrPlatformInfo->higher_half_base)
-OBOS_NO_KASAN uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
 {
 	if (!nPages)
 	{
@@ -135,7 +137,7 @@ OBOS_NO_KASAN uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignme
 		*status = OBOS_STATUS_SUCCESS;
 	return phys;
 }
-OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 {
 	OBOS_ASSERT(addr);
 	OBOS_ASSERT(!(addr & 0xfff));
@@ -152,11 +154,11 @@ OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	Arch_TotalPhysicalPagesUsed -= nPages;
 	s_tail = (struct freelist_node*)addr;
 }
-uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status)
+OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status)
 {
 	return Arch_AllocatePhysicalPages(nPages, alignment, status);
 }
-obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
+OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 {
 	base &= ~0xfff;
 	if (!base)
@@ -164,7 +166,7 @@ obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 	Arch_FreePhysicalPages(base, nPages);
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_NO_KASAN void* Arch_MapToHHDM(uintptr_t phys)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
 }

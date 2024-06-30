@@ -2,7 +2,7 @@
  * oboskrnl/mm/page_node.h
  *
  * Copyright (c) 2024 Omar Berrow
- */
+*/
 
 #pragma once
 
@@ -13,15 +13,19 @@
 
 #include <utils/tree.h>
 
+#include <locks/spinlock.h>
+
 typedef struct page_node
 {
-	bool present;
+	bool present : 1;
+	bool huge_page : 1;
+	bool dirty : 1;
+	bool accessed : 1;
+	bool pagedOut : 1;
+	uint8_t uses : 8; // The age
+	spinlock lock;
 	uintptr_t addr;
 	prot_flags protection;
-	bool huge_page;
-	bool dirty;
-	bool accessed;
-	uint8_t uses; // The age
 	RB_ENTRY(page_node) rb_tree_node;
 	struct
 	{

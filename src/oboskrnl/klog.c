@@ -16,6 +16,10 @@
 
 #include <scheduler/process.h>
 
+#include <irq/irql.h>
+
+#include <mm/context.h>
+
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8
@@ -25,9 +29,9 @@
 #	include <arch/x86_64/asm_helpers.h>
 #endif
 
-const char* OBOSH_PanicReasonToStr(panic_reason reason)
+OBOS_EXCLUDE_FUNC_FROM_MM const char* OBOSH_PanicReasonToStr(panic_reason reason)
 {
-	const char* table[] = {
+	static OBOS_EXCLUDE_CONST_VAR_FROM_MM const char* const table[] = {
 		"OBOS_PANIC_EXCEPTION",
 		"OBOS_PANIC_FATAL_ERROR",
 		"OBOS_PANIC_KASAN_VIOLATION",
@@ -48,13 +52,13 @@ void OBOS_SetLogLevel(log_level level)
 {
 	s_logLevel = level;
 }
-log_level OBOS_GetLogLevel()
+OBOS_EXCLUDE_FUNC_FROM_MM log_level OBOS_GetLogLevel()
 {
 	return s_logLevel;
 }
-static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
-static spinlock s_printfLock; bool s_printfLockInitialized = false;
-static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
+static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_loggerLock; OBOS_EXCLUDE_VAR_FROM_MM bool s_loggerLockInitialized = false;
+static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_printfLock; OBOS_EXCLUDE_VAR_FROM_MM bool s_printfLockInitialized = false;
+static OBOS_EXCLUDE_FUNC_FROM_MM void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
 	{
@@ -68,41 +72,41 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
-void OBOS_Debug(const char* format, ...)
+OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Debug(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_DEBUG, "DEBUG", format, list);
 	va_end(list);
 }
-void OBOS_Log(const char* format, ...)
+OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_LOG, "LOG", format, list);
 	va_end(list);
 }
-void OBOS_Warning(const char* format, ...)
+OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_WARNING, "WARN", format, list);
 	va_end(list);
 }
-void OBOS_Error(const char* format, ...)
+OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Error(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_ERROR, "ERROR", format, list);
 	va_end(list);
 }
-static uint32_t getCPUId()
+OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getCPUId()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)0;
 	return CoreS_GetCPULocalPtr()->id;
 }
-static uint32_t getTID()
+OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getTID()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)-1;
@@ -110,7 +114,7 @@ static uint32_t getTID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->tid;
 }
-static uint32_t getPID()
+OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getPID()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)-1;
@@ -120,17 +124,18 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
-volatile bool OBOS_SideEffect = false;
 OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
-	(reason = reason);
 	const char* ascii_art =
-"  _____ _______ ____  _____  \n"
-" / ____|__   __/ __ \\|  __ \\ \n"
-"| (___    | | | |  | | |__) |\n"
-" \\___ \\   | | | |  | |  ___/ \n"
-" ____) |  | | | |__| | |     \n"
-"|_____/   |_|  \\____/|_|     ";
+		"       )\r\n"
+        "    ( /(                        (\r\n"
+        "    )\\())  (   (             (  )\\             )        (\r\n"
+        "   ((_)\\  ))\\  )(    (      ))\\((_)  `  )   ( /(   (    )\\   (\r\n"
+        "  (_ ((_)/((_)(()\\   )\\ )  /((_)_    /(/(   )(_))  )\\ )((_)  )\\\r\n"
+        "  | |/ /(_))   ((_) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n"
+        "  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n"
+        "  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n"
+        "                                    |_|\r\n";
 
 	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
@@ -144,11 +149,11 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* for
 	vprintf(format, list);
 	va_end(list);
 	while (1)
-		OBOS_SideEffect = !OBOS_SideEffect;
+		asm volatile("");
 }
 
 
-static char* outputCallback(const char* buf, void* a, int len)
+static OBOS_EXCLUDE_FUNC_FROM_MM char* outputCallback(const char* buf, void* a, int len)
 {
 	OBOS_UNUSED(a);
 	for (size_t i = 0; i < (size_t)len; i++)
@@ -160,7 +165,7 @@ static char* outputCallback(const char* buf, void* a, int len)
 	}
 	return (char*)buf;
 }
-size_t printf(const char* format, ...)
+OBOS_EXCLUDE_FUNC_FROM_MM size_t printf(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -168,7 +173,7 @@ size_t printf(const char* format, ...)
 	va_end(list);
 	return ret;
 }
-size_t vprintf(const char* format, va_list list)
+OBOS_EXCLUDE_FUNC_FROM_MM size_t vprintf(const char* format, va_list list)
 {
 	if (!s_printfLockInitialized)
 	{
@@ -176,7 +181,7 @@ size_t vprintf(const char* format, va_list list)
 		s_printfLock = Core_SpinlockCreate();
 	}
 	char ch[8];
-	uint8_t oldIrql = Core_SpinlockAcquire(&s_printfLock);
+	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_MASKED, true);
 	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;

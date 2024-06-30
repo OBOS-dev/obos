@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/context.h"
 #include <int.h>
 #include <error.h>
 #include <struct_packing.h>
@@ -28,7 +29,8 @@ struct idtEntry
 	uint16_t offset2;
 	uint32_t offset3;
 	uint32_t resv1;
-} g_idtEntries[256];
+};
+OBOS_EXCLUDE_VAR_FROM_MM struct idtEntry g_idtEntries[256];
 struct idtPointer
 {
 	uint16_t size;
@@ -41,7 +43,7 @@ enum
 	// Max DPL: 3
 	TYPE_ATTRIBUTE_USER_MODE = 0x60
 };
-uintptr_t Arch_IRQHandlers[256];
+OBOS_EXCLUDE_VAR_FROM_MM uintptr_t Arch_IRQHandlers[256];
 extern void Arch_FlushIDT(struct idtPointer* idtptr);
 static void RegisterISRInIDT(uint8_t vec, uintptr_t addr, bool canUsermodeCall, uint8_t ist)
 {
@@ -60,7 +62,7 @@ static int getIntIST(int i)
 		return 0;
 	if (i == 8)
 		return 2;
-	return (i == 14 || i == 2 || i == 8 || i == 18 || i == 13) ? 1 : 0;
+	return i == 2 ? 1 : 0;
 }
 void Arch_InitializeIDT(bool isBSP)
 {

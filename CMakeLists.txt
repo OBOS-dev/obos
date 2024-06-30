@@ -32,8 +32,8 @@ if (NOT DEFINED OUTPUT_DIR)
 	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
 endif()
 
-if (DEFINED OBOS_SLOW_ARTHIMETRIC)
-	add_compile_definitions(OBOS_SLOW_ARTHIMETRIC=1)
+if (DEFINED OBOS_UP)
+	add_compile_definitions(OBOS_UP=1)
 endif()
 
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})

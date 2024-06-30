@@ -4,7 +4,7 @@
 
 bits 64
 
-section .no.pti.text
+section .no.mm.text
 default rel
 
 align 32
@@ -114,9 +114,11 @@ pop rax
 %endmacro
 
 extern Arch_IRQHandlers
+section .no.mm.data
 global Arch_KernelCR3
 Arch_KernelCR3:
 	dq 0
+section .no.mm.text
 
 int_handler_common:
 	pushaq
@@ -167,9 +169,9 @@ Arch_FlushIDT:
 global CoreS_GetIRQL
 global CoreS_SetIRQL
 extern OBOS_Panic
-section .rodata
+section .no.mm.rodata
 panic_format1: db "Invalid IRQL %d passed to CoreS_GetIRQL.", 0xa, 0x0
-section .text
+section .no.mm.text
 ; Takes no registers as input.
 ; Sets rax to the current IRQL (cr8).
 CoreS_GetIRQL:
@@ -200,6 +202,7 @@ CoreS_SetIRQL:
 	
 	leave
 	ret
+section .text
 global Arch_disablePIC
 Arch_disablePIC:
 	mov al, 0xff

@@ -54,3 +54,12 @@ typedef _Bool bool;
 #else
 #	define OBOS_STATIC_ASSERT(expr, msg) 
 #endif
+
+#define BIT_TYPE(b, type) (1##type << (b))
+#define BIT(b) BIT_TYPE(b, U)
+#if __STDC_NO_ATOMICS__
+#	error No atomics supported by the compiler.
+#endif
+#if __STDC_HOSTED__
+#	error Must be compiled as freestanding.
+#endif

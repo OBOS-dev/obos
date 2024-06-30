@@ -30,6 +30,8 @@ global sti
 global hlt
 global MmS_PTContextGetCurrent
 
+section .no.mm.text
+
 getCR0:
 	push rbp
 	mov rbp, rsp

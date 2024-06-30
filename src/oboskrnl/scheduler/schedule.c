@@ -10,6 +10,7 @@
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
+#include <scheduler/process.h>
 
 #include <irq/irql.h>
 
@@ -103,7 +104,7 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 			size_t targetNodeCount = cpu->priorityLists[priority].list.nNodes;
 			size_t ourNodeCount = list->list.nNodes;
 			size_t j = 0;
-			(void)Core_SpinlockAcquireExplicit(&cpu->schedulerLock, IRQL_DISPATCH);
+			(void)Core_SpinlockAcquireExplicit(&cpu->schedulerLock, IRQL_DISPATCH, true);
 			// Steal some work from the target CPU.
 			for (thread_node* thrN = cpu->priorityLists[priority].list.head; thrN && j < ((targetNodeCount - ourNodeCount) / nCoresWithMoreNodes + 1); j++)
 			{
@@ -162,8 +163,8 @@ schedule:
 	}
 	thread* oldCurThread = getCurrentThread;
 	getCurrentThread = nullptr;
-	(void)Core_SpinlockAcquireExplicit(&scheduler_lock, IRQL_DISPATCH);
-	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
+	(void)Core_SpinlockAcquireExplicit(&scheduler_lock, IRQL_DISPATCH, true);
+	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
 	size_t nPriorityListsFQuantum = 0;
@@ -239,6 +240,8 @@ switch_thread:
 	if (oldCurThread)
 		oldCurThread->status = THREAD_STATUS_READY;
 	getCurrentThread = chosenThread;
+	if (chosenThread->proc)
+		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;

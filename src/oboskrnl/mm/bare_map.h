@@ -40,6 +40,7 @@ typedef struct basicmm_region
 		char signature[8];
 	} magic;
 	uintptr_t addr;
+	bool mmioRange;
 	size_t size;
 	struct basicmm_region* next;
 	struct basicmm_region* prev;

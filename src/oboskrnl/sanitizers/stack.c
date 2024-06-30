@@ -7,11 +7,13 @@
 #include <int.h>
 #include <klog.h>
 
+#include <mm/context.h>
+
 // Should be randomly set by kernel entry, but a default value will be provided anyway.
 #if UINTPTR_MAX == UINT64_MAX
-uint64_t __stack_chk_guard = 124770532977999;
+OBOS_EXCLUDE_VAR_FROM_MM uint64_t __stack_chk_guard = 124770532977999;
 #elif UINT32_MAX == UINTPTR_MAX
-uint64_t __stack_chk_guard = 373612817;
+OBOS_EXCLUDE_VAR_FROM_MM uint64_t __stack_chk_guard = 373612817;
 #endif
 
 OBOS_NORETURN void __stack_chk_fail()

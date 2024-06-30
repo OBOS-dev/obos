@@ -49,6 +49,18 @@ Arch_KernelEntryBootstrap:
 	push 0 ; Make sure if the kernel entry returns, it triple faults and doesn't do goofy things.
 	jmp Arch_KernelEntry
 global Arch_IdleTask
+section .no.mm.data
+global Arch_MakeIdleTaskSleep
+Arch_MakeIdleTaskSleep: db 0
+section .no.mm.text
 Arch_IdleTask:
 	hlt
+	cmp byte [Arch_MakeIdleTaskSleep], 1
+	jne Arch_IdleTask
+	cli
+.slp:
+	pause
+	cmp byte [Arch_MakeIdleTaskSleep], 1
+	je .slp
+	sti
 	jmp Arch_IdleTask

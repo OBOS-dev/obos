@@ -44,16 +44,21 @@
 
 #include <mm/bare_map.h>
 #include <mm/init.h>
+#include <mm/swap.h>
+#include <mm/context.h>
+#include <mm/handler.h>
 
 #include <scheduler/process.h>
 
 #include <stdatomic.h>
 
+#include <utils/tree.h>
+
 extern void Arch_InitBootGDT();
 
-static char thr_stack[0x4000];
-static char kmain_thr_stack[0x10000];
-extern char Arch_InitialISTStack[0x10000];
+static OBOS_EXCLUDE_VAR_FROM_MM char thr_stack[0x4000];
+static OBOS_EXCLUDE_VAR_FROM_MM char kmain_thr_stack[0x10000];
+extern OBOS_EXCLUDE_VAR_FROM_MM char Arch_InitialISTStack[0x10000];
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
 
@@ -65,7 +70,7 @@ extern void Arch_IdleTask();
 void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackSize);
 void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
-void pageFaultHandler(interrupt_frame* frame);
+void Arch_PageFaultHandler(interrupt_frame* frame);
 void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
@@ -91,7 +96,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
-	OBOS_SetLogLevel(LOG_LEVEL_LOG);
+	// OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
@@ -109,7 +114,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
-	Arch_RawRegisterInterrupt(0xe, (uintptr_t)pageFaultHandler);
+	Arch_RawRegisterInterrupt(0xe, (uintptr_t)Arch_PageFaultHandler);
 	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
@@ -156,12 +161,12 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	while (1)
 		asm volatile("nop" : : :);
 }
-struct ultra_memory_map_attribute* Arch_MemoryMap;
-struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
-struct ultra_kernel_info_attribute* Arch_KernelInfo;
-struct ultra_module_info_attribute* Arch_KernelBinary;
-struct ultra_framebuffer* Arch_Framebuffer;
-const char* OBOS_KernelCmdLine;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_memory_map_attribute* Arch_MemoryMap;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_kernel_info_attribute* Arch_KernelInfo;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_module_info_attribute* Arch_KernelBinary;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_framebuffer* Arch_Framebuffer;
+OBOS_EXCLUDE_VAR_FROM_MM const char* OBOS_KernelCmdLine;
 static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
 	struct ultra_attribute_header* header = bcontext->attributes;
@@ -184,6 +189,11 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
+			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
+			{
+				MmS_InitialSwapBuffer = (void*)module->address;
+				MmS_InitialSwapBufferSize = module->size;
+			}
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -203,10 +213,52 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
 	if (!Arch_KernelBinary)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
+	if (!MmS_InitialSwapBuffer || !MmS_InitialSwapBufferSize)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initial swap buffer from the bootloader!\nMake sure you have a memory-backed module named INITIAL_SWAP_BUFFER in the hyper.cfg.\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
-void pageFaultHandler(interrupt_frame* frame)
+uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
+static OBOS_EXCLUDE_VAR_FROM_MM spinlock pf_lock;
+OBOS_EXCLUDE_FUNC_FROM_MM void Arch_PageFaultHandler(interrupt_frame* frame)
 {
+	if (Mm_Initialized())
+	{
+		// if (CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running)
+		// 	asm volatile("nop");
+		// OBOS_ASSERT(!CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running);
+		CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
+		// Block the page fault handler.
+		Core_SpinlockRelease(&pf_lock, Core_SpinlockAcquireExplicit(&pf_lock, IRQL_MASKED, true));
+		context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+		uint32_t mm_ec = 0;
+		if (frame->errorCode & BIT(0))
+			mm_ec |= PF_EC_PRESENT;
+		if (frame->errorCode & BIT(1))
+			mm_ec |= PF_EC_RW;
+		if (frame->errorCode & BIT(2))
+			mm_ec |= PF_EC_UM;
+		if (frame->errorCode & BIT(3))
+			mm_ec |= PF_EC_INV_PTE;
+		if (frame->errorCode & BIT(4))
+			mm_ec |= PF_EC_EXEC;
+		uintptr_t virt = getCR2();
+		virt &= ~0xfff;
+		if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
+			virt &= ~0x1fffff;
+		obos_status status = Mm_OnPageFault(ctx, mm_ec, virt);
+		switch (status)
+		{
+			case OBOS_STATUS_SUCCESS:
+				CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
+				OBOS_ASSERT(frame->rsp != 0);
+				return;
+			case OBOS_STATUS_UNHANDLED:
+				break;
+			default:
+				// OBOS_Warning("%s: Handling page fault with error code 0x%x on address %p failed.\n", __func__, mm_ec, getCR2());
+				break;
+		}
+	}
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -235,6 +287,13 @@ void pageFaultHandler(interrupt_frame* frame)
 		getCR0(), getCR2(), getCR3(),
 		getCR4(), Core_GetIrql(), getEFER()
 	);
+}
+OBOS_EXCLUDE_FUNC_FROM_MM void MmS_LockPageFaultHandler(bool lock)
+{
+	if (lock)
+		Core_SpinlockAcquireExplicit(&pf_lock, IRQL_PASSIVE, true);
+	else
+		Core_SpinlockForcedRelease(&pf_lock);
 }
 uint64_t random_number();
 __asm__(
@@ -281,6 +340,7 @@ static OBOS_NO_UBSAN void InitializeHPET()
 {
 	extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 	static basicmm_region hpet_region;
+	hpet_region.mmioRange = true;
 	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
 	bool tables32 = rsdp->Revision == 0;
 	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
@@ -300,7 +360,7 @@ static OBOS_NO_UBSAN void InitializeHPET()
 	if (!hpet_table)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n");
 	uintptr_t phys = hpet_table->baseAddress.address;
-	Arch_HPETAddress = (HPET*)0xffffffffffffe000;
+	Arch_HPETAddress = (HPET*)0xffffffffffffd000;
 	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
 	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
 }
@@ -381,6 +441,7 @@ timer_tick CoreS_GetTimerTick()
 	return Arch_HPETAddress->mainCounterValue/cached;
 }
 process* OBOS_KernelProcess;
+extern bool Arch_MakeIdleTaskSleep;
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -395,6 +456,7 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
+	Mm_InitializeAllocator();
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
 	OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_likely_error(status))
@@ -444,10 +506,15 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
 	if (obos_likely_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
+	OBOS_Debug("%s: Initializing VMM.\n", __func__);
+	// Put the other CPUs to sleep for a bit.
+	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+	Arch_MakeIdleTaskSleep = true;
+	Mm_Initialize();
+	Arch_MakeIdleTaskSleep = false;
+	Core_LowerIrql(oldIrql);
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
-	OBOS_Debug("%s: Initializing VMM.\n", __func__);
-	Mm_Initialize();
-	OBOS_Log("%s: Done early boot. Boot required %d KiB of memory to finish.\n", __func__, Arch_TotalPhysicalPagesUsed * 4);
+	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

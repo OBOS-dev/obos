@@ -9,12 +9,14 @@
 #include <memmanip.h>
 #include <error.h>
 
+#include <mm/context.h>
+
 // Makeshift text renderer.
 
-text_renderer_state OBOS_TextRendererState;
+OBOS_EXCLUDE_VAR_FROM_MM text_renderer_state OBOS_TextRendererState;
 
 // colour is rgbx.
-static void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
+static OBOS_EXCLUDE_FUNC_FROM_MM OBOS_EXCLUDE_FUNC_FROM_MM void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 {
 	switch (fbFmt)
 	{
@@ -39,7 +41,7 @@ static void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 		break;
 	}
 }
-static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
+static OBOS_EXCLUDE_FUNC_FROM_MM void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
 {
 	int cy;
 	int mask[8] = { 128,64,32,16,8,4,2,1 };
@@ -65,7 +67,7 @@ static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, u
 		PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
 	}
 }
-static void newlineHandler(text_renderer_state* state)
+static OBOS_EXCLUDE_FUNC_FROM_MM void newlineHandler(text_renderer_state* state)
 {
 	if (!state->fb.base)
 		return;
@@ -78,7 +80,7 @@ static void newlineHandler(text_renderer_state* state)
 		state->row--;
 	}
 }
-obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
+OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -106,7 +108,7 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)
+OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;

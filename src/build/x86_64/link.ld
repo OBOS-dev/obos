@@ -6,9 +6,12 @@ ENTRY(Arch_KernelEntryBootstrap)
 PHDRS
 {
     text        PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
-    no_pti_text PT_LOAD    FLAGS((1 << 0) | (1 << 1) | (1 << 2)); /* Read + Write + Execute */
     rodata      PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
     data        PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
+    
+    no_mm_text   PT_LOAD    FLAGS((1 << 0) | (1 << 2)); /* Read + Execute */
+    no_mm_data   PT_LOAD    FLAGS((1 << 1) | (1 << 2)); /* Read + Write */
+    no_mm_rodata PT_LOAD    FLAGS((1 << 2));            /* Read only */
 }
 
 SECTIONS
@@ -22,14 +25,7 @@ SECTIONS
 
     . += CONSTANT(MAXPAGESIZE);
 
-    Arch_no_pti_start = .;
-    .no.pti.text : {
-        *(.no.pti.text)
-    } :no_pti_text
-    Arch_no_pti_end = (. + CONSTANT(MAXPAGESIZE)-1) & (CONSTANT(MAXPAGESIZE)-1);
     
-    . += CONSTANT(MAXPAGESIZE);
-
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
@@ -44,6 +40,29 @@ SECTIONS
         *(.bss .bss.*)
         *(COMMON)
     } :data
+
+    . += CONSTANT(MAXPAGESIZE);
+
+    MmS_MMExclusionRangeStart = .;
+    /* Functions */
+    .no.mm.text : {
+        *(.no.mm.text)
+    } :no_mm_text
+    . += CONSTANT(MAXPAGESIZE);
+    /* RW Data. */
+    .no.mm.data : {
+        *(.no.mm.data)
+    } :no_mm_data
+    . += CONSTANT(MAXPAGESIZE);
+    .no.mm.data : {
+        *(.no.mm.bss)
+    } :no_mm_data
+    /* RO Data */
+    .no.mm.rodata : {
+        *(.no.mm.rodata)
+    } :no_mm_rodata
+    . += CONSTANT(MAXPAGESIZE);
+    MmS_MMExclusionRangeEnd = .;
 
     /DISCARD/ : {
         *(.eh_frame)

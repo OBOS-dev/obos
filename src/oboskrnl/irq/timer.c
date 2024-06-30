@@ -117,7 +117,7 @@ static void timer_dispatcher()
             notify_timer(t);
             end:
             (void)0;
-            irql oldIrql = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER);
+            irql oldIrql = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER, false);
             t = t->next;
             Core_SpinlockRelease(&timer_list.lock, oldIrql);
         }
@@ -202,7 +202,7 @@ obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
     }
     obj->lastTimeTicked = CoreS_GetTimerTick();
     obj->mode = mode;
-    irql oldIrql2 = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER);
+    irql oldIrql2 = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER, false);
     if (timer_list.tail)
         timer_list.tail->next = obj;
     if (!timer_list.head)
@@ -222,7 +222,7 @@ obos_status Core_CancelTimer(timer* timer)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (timer->mode == TIMER_EXPIRED)
         return OBOS_STATUS_SUCCESS;
-    irql oldIrql = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER, false);
     // Remove the timer from the list.
     if (timer->next)
         timer->next->prev = timer->prev;

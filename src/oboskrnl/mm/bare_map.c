@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "memmanip.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -98,6 +99,7 @@ OBOS_NO_KASAN void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		}
 		OBOSS_MapPage_RW_XD((void*)addr, mem);
 	}
+	memzero(node, sizeof(*node));
 	Unlock(oldIrql);
 	OBOSH_BasicMMAddRegion(node, node + 1, sz);
 	if (status)
@@ -216,15 +218,18 @@ OBOS_NO_KASAN void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, siz
 }
 void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
 {
-	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
 	for (basicmm_region* cur = s_regionList.head; cur; )
 	{
+		if (cur->mmioRange)
+			goto next;
+		
 		if (!callback(cur, udata))
 		{
 			Core_SpinlockRelease(&s_regionListLock, oldIrql);
 			return;
 		}
-
+		next:
 		cur = cur->next;
 	}
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);

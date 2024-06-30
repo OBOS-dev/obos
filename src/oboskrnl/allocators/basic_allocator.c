@@ -37,7 +37,7 @@ struct safe_spinlock
 };
 static void Lock(struct safe_spinlock* l)
 {
-	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED);
+	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED, false);
 }
 static void Unlock(struct safe_spinlock* l)
 {

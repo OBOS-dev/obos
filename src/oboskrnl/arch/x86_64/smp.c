@@ -25,6 +25,7 @@
 #include <scheduler/thread_context_info.h>
 
 #include <mm/bare_map.h>
+#include <mm/context.h>
 
 #include <arch/x86_64/idt.h>
 
@@ -35,6 +36,7 @@
 #include <allocators/base.h>
 
 #include <scheduler/process.h>
+#include <stdint.h>
 
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
@@ -159,27 +161,37 @@ static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
 {
 	return *OffsetPtr(nullptr, off, uint64_t);
 }
-bool Arch_SMPInitialized = false;
+OBOS_EXCLUDE_VAR_FROM_MM bool Arch_SMPInitialized = false;
 void Arch_SMPStartup()
 {
-	Arch_RawRegisterInterrupt(0x2, nmiHandler);
+	Arch_RawRegisterInterrupt(0x2, (uintptr_t)nmiHandler);
 	ParseMADT();
-	if (s_nLAPICIDs == 1)
-		return; // No work to do.
-	cpu_local* cpu_info = (cpu_local*)OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, s_nLAPICIDs*sizeof(cpu_local), nullptr);
+#ifdef OBOS_UP
+	OBOS_Log("Uniprocessor-build of OBOS. No other cores will be initialized.\n");
+	s_nLAPICIDs = 1;
+#endif
+	// if (s_nLAPICIDs == 1)
+	// 	return; // No work to do.
+	// ^ is not true
+	cpu_local* cpu_info = (cpu_local*)Mm_VMMAllocator->Allocate(Mm_VMMAllocator, s_nLAPICIDs*sizeof(cpu_local), nullptr);
 	memzero(cpu_info, s_nLAPICIDs * sizeof(cpu_local));
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];
-	wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 	Arch_MapPage(getCR3(), nullptr, 0, 0x3);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
 	Core_CpuCount = s_nLAPICIDs;
 	irql oldIrql = Core_RaiseIrql(0xf);
+	Core_CpuTempStackSize = 0x10000;
+	void* temp_stacks = Core_CpuTempStackBase =  OBOS_BasicMMAllocatePages(Core_CpuTempStackSize * Core_CpuCount, nullptr);
 	for (size_t i = 0; i < s_nLAPICIDs; i++)
 	{
 		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
+		{
+			Arch_CPUInitializeGDT(&cpu_info[i], ((uintptr_t)temp_stacks + i*Core_CpuTempStackSize), 0x10000);
+			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 			continue;
+		}
 		memcpy(nullptr, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);
 		for (thread_priority j = 0; j <= THREAD_PRIORITY_MAX_VALUE; j++)
 			cpu_info[i].priorityLists[j].priority = j;
@@ -187,7 +199,7 @@ void Arch_SMPStartup()
 		cpu_info[i].currentIrql = 0;
 		cpu_info[i].isBSP = false;
 		cpu_info[i].schedulerTicks = 0;
-		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x10000, nullptr);
+		cpu_info[i].arch_specific.ist_stack = (void*)((uintptr_t)temp_stacks + i*Core_CpuTempStackSize);
 		cpu_info[i].arch_specific.startup_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
 		Core_DefaultThreadAffinity |= CoreH_CPUIdToAffinity(cpu_info[i].id);
 		SetMemberInSMPTrampoline((uintptr_t)&Arch_SMPTrampolineRSP - (uintptr_t)Arch_SMPTrampolineStart, (uint64_t)cpu_info[i].arch_specific.startup_stack + 0x4000);
@@ -225,10 +237,13 @@ void Arch_SMPStartup()
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage(nullptr);
 }
-bool Arch_HaltCPUs = false;
-uint8_t Arch_CPUsHalted = 0;
-OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
+OBOS_EXCLUDE_VAR_FROM_MM bool Arch_HaltCPUs = false;
+OBOS_EXCLUDE_VAR_FROM_MM uint8_t Arch_CPUsHalted = 0;
+bool Arch_InvlpgIPI(interrupt_frame* frame);
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void nmiHandler(interrupt_frame* frame)
 {
+	if (Arch_InvlpgIPI(frame))
+		return;
 	if (Arch_HaltCPUs)
 	{
 		atomic_fetch_add(&Arch_CPUsHalted, 1);
@@ -238,7 +253,7 @@ OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 	}
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
-OBOS_NO_KASAN static void HaltInitializedCPUs()
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void HaltInitializedCPUs()
 {
 	Arch_HaltCPUs = true;
 	for (size_t i = 0; i < Core_CpuCount; i++)
@@ -257,7 +272,7 @@ OBOS_NO_KASAN static void HaltInitializedCPUs()
 		Arch_LAPICSendIPI(lapic, vector);
 	}
 }
-OBOS_NO_KASAN void OBOSS_HaltCPUs()
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void OBOSS_HaltCPUs()
 {
 	if (Core_CpuCount == 1)
 		return;

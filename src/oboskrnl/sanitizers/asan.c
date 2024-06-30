@@ -13,6 +13,8 @@
 
 #include <sanitizers/asan.h>
 
+#include <mm/context.h>
+
 #define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (((uintptr_t)(base) & ~0xfff) == ((((uintptr_t)(base) + (size)) & ~0xfff)))
 
 #ifdef __x86_64__
@@ -31,7 +33,7 @@ const uint8_t OBOS_ASANPoisonValues[] = {
 	0xDE,
 	0xAA,
 };
-OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
 {
 	switch (type)
 	{
@@ -48,7 +50,7 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 		break;
 	}
 }
-static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
+static OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM bool isAllocated(uintptr_t base, size_t size, bool rw)
 {
 #ifdef __x86_64__
 	base &= ~0xfff;
@@ -72,7 +74,7 @@ static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
 #endif
 	return true;
 }
-static OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, uint8_t poisonIndex, bool abort)
+static OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, uint8_t poisonIndex, bool abort)
 {
 	OBOS_ASSERT(poisonIndex <= ASAN_POISON_MAX);
 	// Verify this memory is actually poisoned and not just coincidentally set to the poison.
@@ -108,7 +110,7 @@ short_circuit2:
 		asan_report(at, size, ip, rw, type, abort);
 	}
 }
-OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
 	/*if (!isAllocated(at, size, rw))
 		asan_report(at, size, ip, rw, InvalidAccess, abort);*/
@@ -128,22 +130,22 @@ OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, b
 #	define __builtin_extract_return_addr(a) a
 #endif
 #define ASAN_LOAD_NOABORT(size)\
-OBOS_NO_KASAN void __asan_load##size##_noabort(uintptr_t addr)\
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_load##size##_noabort(uintptr_t addr)\
 {\
 asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), false, false);\
 }
 #define ASAN_LOAD_ABORT(size)\
-OBOS_NO_KASAN void __asan_load##size(uintptr_t addr)\
+OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_KASAN void __asan_load##size(uintptr_t addr)\
 {\
 asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), false, true);\
 }
 #define ASAN_STORE_NOABORT(size)\
-OBOS_NO_KASAN void __asan_store##size##_noabort(uintptr_t addr)\
+OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_KASAN void __asan_store##size##_noabort(uintptr_t addr)\
 {\
 asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), true, false);\
 }
 #define ASAN_STORE_ABORT(size)\
-OBOS_NO_KASAN void __asan_store##size(uintptr_t addr)\
+OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_KASAN void __asan_store##size(uintptr_t addr)\
 {\
 asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), true, true);\
 }
@@ -169,22 +171,22 @@ ASAN_STORE_NOABORT(4)
 ASAN_STORE_NOABORT(8)
 ASAN_STORE_NOABORT(16)
 
-OBOS_NO_KASAN void __asan_load_n(uintptr_t addr, size_t size)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_load_n(uintptr_t addr, size_t size)
 {
 	asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), false, true);
 }
-OBOS_NO_KASAN void __asan_store_n(uintptr_t addr, size_t size)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_store_n(uintptr_t addr, size_t size)
 {
 	asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), true, true); 
 }
-OBOS_NO_KASAN void __asan_loadN_noabort(uintptr_t addr, size_t size)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_loadN_noabort(uintptr_t addr, size_t size)
 {
 	asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), false, false);
 }
-OBOS_NO_KASAN void __asan_storeN_noabort(uintptr_t addr, size_t size)
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_storeN_noabort(uintptr_t addr, size_t size)
 {
 	asan_verify(addr, size, (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)), true, false);
 }
-OBOS_NO_KASAN void __asan_after_dynamic_init() { return; /* STUB */ }
-OBOS_NO_KASAN void __asan_before_dynamic_init() { return; /* STUB */ }
-OBOS_NO_KASAN void __asan_handle_no_return() { return; /* STUB */ }
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_after_dynamic_init() { return; /* STUB */ }
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_before_dynamic_init() { return; /* STUB */ }
+OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void __asan_handle_no_return() { return; /* STUB */ }
