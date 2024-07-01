@@ -79,6 +79,8 @@ static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priori
 }
 static void WorkStealing(thread_priority_list* list, thread_priority priority)
 {
+	OBOS_ASSERT(priority <= THREAD_PRIORITY_MAX_VALUE);
+	OBOS_ASSERT(list);
 	// Compare the current list's node count to that of other cores, and if it is less than the node count of one quarter of cores, then steal some work from some of the cores.
 	size_t nCoresWithMoreNodes = 0;
 	for (size_t i = 0; i < Core_CpuCount; i++)
@@ -162,7 +164,7 @@ schedule:
 		}
 	}
 	thread* oldCurThread = getCurrentThread;
-	getCurrentThread = nullptr;
+	// getCurrentThread = nullptr;
 	(void)Core_SpinlockAcquireExplicit(&scheduler_lock, IRQL_DISPATCH, true);
 	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
@@ -237,8 +239,8 @@ schedule:
 switch_thread:
 	Core_SpinlockRelease(&scheduler_lock, IRQL_DISPATCH);
 	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
-	if (oldCurThread)
-		oldCurThread->status = THREAD_STATUS_READY;
+	if (getCurrentThread)
+		getCurrentThread->status = THREAD_STATUS_READY;
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;

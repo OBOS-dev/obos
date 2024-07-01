@@ -123,8 +123,8 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 		uintptr_t base;
 	} OBOS_PACK gdtr;
 	gdtr.limit = sizeof(info->arch_specific.gdtEntries) - 1;
-	gdtr.base = info->arch_specific.gdtEntries;
-	Arch_FlushGDT(&gdtr);
+	gdtr.base = (uintptr_t)&info->arch_specific.gdtEntries;
+	Arch_FlushGDT((uintptr_t)&gdtr);
 }
 extern void Arch_IdleTask();
 OBOS_NORETURN extern void Arch_APYield(void* startup_stack, void* temp_stack);
@@ -144,7 +144,7 @@ void Arch_APEntry(cpu_local* info)
 	thread_ctx ctx;
 	memzero(&ctx, sizeof(ctx));
 	void* thr_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
-	CoreS_SetupThreadContext(&ctx, idleTaskBootstrap, 0, false, thr_stack, 0x4000);
+	CoreS_SetupThreadContext(&ctx, (uintptr_t)idleTaskBootstrap, 0, false, thr_stack, 0x4000);
 	thread* idleThread = CoreH_ThreadAllocate(nullptr);
 	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, ((thread_affinity)1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
@@ -237,13 +237,11 @@ void Arch_SMPStartup()
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage(nullptr);
 }
-OBOS_EXCLUDE_VAR_FROM_MM bool Arch_HaltCPUs = false;
-OBOS_EXCLUDE_VAR_FROM_MM uint8_t Arch_CPUsHalted = 0;
+OBOS_EXCLUDE_VAR_FROM_MM _Atomic(bool) Arch_HaltCPUs = false;
+OBOS_EXCLUDE_VAR_FROM_MM _Atomic(uint8_t) Arch_CPUsHalted = 0;
 bool Arch_InvlpgIPI(interrupt_frame* frame);
 OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void nmiHandler(interrupt_frame* frame)
 {
-	if (Arch_InvlpgIPI(frame))
-		return;
 	if (Arch_HaltCPUs)
 	{
 		atomic_fetch_add(&Arch_CPUsHalted, 1);
@@ -251,6 +249,8 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void nmiHandler(interrupt_frame* 
 		while (1) 
 			hlt();
 	}
+	if (Arch_InvlpgIPI(frame))
+		return;
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
 OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void HaltInitializedCPUs()
@@ -298,5 +298,5 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void OBOSS_HaltCPUs()
 }
 uintptr_t Arch_GetCPUTempStack()
 {
-	return CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
+	return (uintptr_t)CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
 }
