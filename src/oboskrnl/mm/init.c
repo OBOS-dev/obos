@@ -174,6 +174,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
         .node_buf_size = nNodes*sizeof(page_node),
         .i = 0,
     };
+    memzero(udata.node_buf, udata.node_buf_size);
     OBOSH_BasicMMIterateRegions(register_mm_regions, &udata);
     OBOS_Debug("%s: Populated tree.\n", __func__);
     OBOS_Debug("%s: Initializing initial swap device...\n", __func__);
@@ -202,8 +203,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
     RB_FOREACH(i, page_node_tree, &Mm_KernelContext->pageNodeTree)
     {
         Core_SpinlockAcquireExplicit(&i->lock, IRQL_MASKED, true);
-        Mm_PageOutPage(Mm_SwapProvider, i);
-     
+        Mm_PageOutPage(Mm_SwapProvider, i);     
         Core_SpinlockForcedRelease(&i->lock);
     }
     // MmS_LockPageFaultHandler(false);
