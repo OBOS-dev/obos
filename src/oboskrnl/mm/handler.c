@@ -58,15 +58,13 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Mm_AgePagesInContext(context* ctx)
             MmH_RegisterUse(i);
             workingSetSize += i->huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         }
-        else
+	    i->uses <<= 1;
+        if (!MmH_LogicalSumOfUses(i->uses))
         {
-            if (!MmH_LogicalSumOfUses(i->uses))
-            {
-                // DDDDDDDDIIIIIIIIIIIIIIIIIIIIIIIIIIIIIEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
-                // Page out the page and remove it from the working set.
-                REMOVE_PAGE_NODE(ctx->workingSet.list, i);
-                Mm_PageOutPage(Mm_SwapProvider, i);
-            }
+            // DDDDDDDDIIIIIIIIIIIIIIIIIIIIIIIIIIIIIEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
+            // Page out the page and remove it from the working set.
+            REMOVE_PAGE_NODE(ctx->workingSet.list, i);
+            Mm_PageOutPage(Mm_SwapProvider, i);
         }
         i = next;
     }
@@ -76,13 +74,12 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Mm_AgePagesInContext(context* ctx)
     while (i && szPagesAdded < threshold)
     {
         page_node *next = i->linked_list_node.next;
-        MmH_RegisterUse(i);
+	    i->uses <<= 1;
         REMOVE_PAGE_NODE(ctx->pagesReferenced, i);
         APPEND_PAGE_NODE(ctx->workingSet.list, i);
         szPagesAdded += i->huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         i = next;
     }
-    memzero(&ctx->pagesReferenced, sizeof(ctx->pagesReferenced));
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
@@ -118,6 +115,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Mm_OnPageFault(context* ctx, uint32_t ec, 
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Page in working-set is swapped out.\n");
         obos_status status = Mm_PageInPage(Mm_SwapProvider, page);    
         APPEND_PAGE_NODE(ctx->pagesReferenced, page);
+        MmH_RegisterUse(page);
         Core_SpinlockRelease(&page->lock, oldIrql2);
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         // TODO: Try to figure out a good number based off the count of pages in the context

@@ -54,7 +54,6 @@ OBOS_EXCLUDE_FUNC_FROM_MM void MmH_RegisterUse(page_node* pg)
 	if (!pg)
 		return;
 	pg->uses |= 1;
-	pg->uses >>= 1;
 }
 OBOS_EXCLUDE_FUNC_FROM_MM uint8_t MmH_LogicalSumOfUses(uint8_t uses)
 {
