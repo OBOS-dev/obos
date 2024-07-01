@@ -47,6 +47,7 @@
 #include <mm/swap.h>
 #include <mm/context.h>
 #include <mm/handler.h>
+#include <mm/alloc.h>
 
 #include <scheduler/process.h>
 
@@ -219,7 +220,7 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 static OBOS_EXCLUDE_VAR_FROM_MM spinlock pf_lock;
-OBOS_EXCLUDE_FUNC_FROM_MM void Arch_PageFaultHandler(interrupt_frame* frame)
+OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
 	if (Mm_Initialized())
 	{
@@ -515,6 +516,17 @@ void Arch_KernelMainBootstrap()
 	Core_LowerIrql(oldIrql);
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
+	OBOS_Debug("%s: Testing VMM.\n", __func__);
+	char* mem = Mm_AllocateVirtualMemory(Mm_KernelContext, (void*)0xfffffff000000000, 0x8000, 0, 0, nullptr);
+	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
+	mem[0x1000] = 0;
+	mem[0x2000] = 0;
+	mem[0x3000] = 0;
+	mem[0x4000] = 0;
+	mem[0x5000] = 0;
+	mem[0x6000] = 0;
+	mem[0x7000] = 0;
+	OBOS_Debug("%p: %s", mem, mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

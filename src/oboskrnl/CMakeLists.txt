@@ -7,7 +7,7 @@ list (APPEND oboskrnl_sources
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
 	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
 	"mm/context.c" "mm/init.c" "irq/timer.c" "mm/handler.c"
-	"mm/swap.c"
+	"mm/swap.c" "mm/alloc.c"
 )
 
 add_executable(oboskrnl)
