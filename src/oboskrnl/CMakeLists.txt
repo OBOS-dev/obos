@@ -6,8 +6,7 @@ list (APPEND oboskrnl_sources
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
 	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
-	"mm/context.c" "mm/init.c" "irq/timer.c" "mm/handler.c"
-	"mm/swap.c" "mm/alloc.c"
+	"irq/timer.c"
 )
 
 add_executable(oboskrnl)
@@ -17,7 +16,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 )
 

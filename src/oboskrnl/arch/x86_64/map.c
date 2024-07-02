@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -20,9 +21,6 @@
 #include <arch/x86_64/boot_info.h>
 
 #include <elf/elf64.h>
-
-#include <mm/prot.h>
-#include <mm/context.h>
 
 #include <scheduler/cpu_local.h>
 
@@ -214,7 +212,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
-	irql oldIrql = Core_SpinlockAcquire(&invlpg_ipi_packet.lock);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&invlpg_ipi_packet.lock, IRQL_MASKED, false);
 	ipi_lapic_info lapic = {
 		.isShorthand=true,
 		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_ALL_BUT_SELF
@@ -335,118 +333,3 @@ obos_status Arch_InitializeKernelPageTable()
 	return OBOS_STATUS_SUCCESS;
 }
 // Both addresses are page-aligned.
-extern char Arch_no_pti_start[];
-extern char Arch_no_pti_end[];
-obos_status MmS_PTContextInitialize(pt_context* ctx)
-{
-	if (!ctx)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	obos_status status = OBOS_STATUS_SUCCESS;
-	*ctx = OBOSS_AllocatePhysicalPages(1, 1, &status);
-	// Isolate kernel PTEs from those of userspace contexts.
-	// We can do this fairly simply, we just need to not map anything in the kernel address space (0xffff'8000'0000'0000) or above.
-	// As a side note, we must keep a couple pages mapped:
-	// The base ISR handlers.
-	// Any pointer to the kernel cr3.
-	// The scheduler context switch function.
-	// Since it's a lot easier to just use a (linker) section for this purpose, that's what we'll do.
-	// Note: It is neccessary to also map IST stacks, or we will triple fault.
-	for (size_t i = 0; i < Core_CpuCount; i++)
-	{
-		if (Core_CpuInfo[i].isBSP)
-			continue;
-		uintptr_t base = (uintptr_t)Core_CpuInfo[i].arch_specific.ist_stack;
-		uintptr_t flags = Arch_GetPML1Entry(getCR3(), base) & ~0xffffffffff000;
-		OBOS_ASSERT(flags & 0b1);
-		uintptr_t phys = Arch_GetPML1Entry(getCR3(), base) & 0xffffffffff000;
-		for(size_t i = 0; i < 0x10000/0x1000; i++)
-			Arch_MapPage(getCR3(), (void*)(base+i*0x1000), phys+i*0x1000, flags);
-	}
-	for (uintptr_t addr = (uintptr_t)MmS_MMExclusionRangeStart; addr < (uintptr_t)MmS_MMExclusionRangeEnd; addr += 0x1000)
-	{
-		uintptr_t flags = Arch_GetPML1Entry(getCR3(), addr) & ~0xffffffffff000;
-		uintptr_t phys = Arch_GetPML1Entry(getCR3(), addr) & 0xffffffffff000;
-		if (!(flags & 0b1))
-			continue;
-		Arch_MapPage(getCR3(), (void*)addr, phys, flags);
-	}
-	return status;
-}
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status MmS_PTContextMap(pt_context* ctx, uintptr_t virt, uintptr_t phys, prot_flags prot, bool present, bool isHuge)
-{
-	if (!ctx)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!((virt >> 47) == 0 || (virt >> 47) == 0x1ffff))
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	uintptr_t cr3 = *ctx;
-	if (!cr3 || cr3 & 0xfff)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	obos_status status = OBOS_STATUS_SUCCESS;
-	uintptr_t flags = 0;
-	if (!(prot & OBOS_PROTECTION_READ_ONLY))
-		flags |= (1UL<<1) /* Write */;
-	if (!(prot & OBOS_PROTECTION_EXECUTABLE))
-		flags |= (1UL<<63) /* XD (execute disable) */;
-	if (prot & OBOS_PROTECTION_USER_PAGE)
-		flags |= (1UL<<2) /* User */;
-	if (prot & OBOS_PROTECTION_CACHE_DISABLE)
-		flags |= (1UL<<4) /* Cache Disable */;
-	if (present)
-	{
-		if (isHuge)
-			status = Arch_MapHugePage(cr3, (void*)virt, phys, flags);
-		else
-			status = Arch_MapPage(cr3, (void*)virt, phys, flags);
-	}
-	else 
-	{
-		status = Arch_UnmapPage(cr3, (void*)virt);
-	}
-	return status;
-}
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status MmS_PTContextQueryPageInfo(const pt_context* ctx, uintptr_t virt, pt_context_page_info* info)
-{
-	if (!ctx || !info)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!((virt >> 47) == 0 || (virt >> 47) == 0x1ffff))
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	uintptr_t cr3 = *ctx;
-	if (!cr3 || cr3 & 0xfff)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	virt &= ~0xfff;
-	memzero(info, sizeof(*info));
-	obos_status status = OBOS_STATUS_SUCCESS;
-	uintptr_t entry = Arch_GetPML2Entry(cr3, virt);
-	if (!(entry & (1 << 0)))
-		return OBOS_STATUS_SUCCESS;
-	bool isHugePage = (entry & (1ULL<<7));
-	if (isHugePage)
-		entry = Arch_GetPML3Entry(cr3, virt);
-	if (!(entry & (1<<0)))
-		return OBOS_STATUS_SUCCESS;
-	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(entry);
-	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(phys);
-	entry = pt[AddressToIndex(virt, (uint8_t)isHugePage)];
-	info->huge_page = isHugePage;
-	info->present = true;
-	info->phys = Arch_MaskPhysicalAddressFromEntry(entry);
-	info->addr = isHugePage ? virt & ~0x1fffff : virt;
-	info->dirty = entry & (1UL<<6);
-	info->accessed = entry & (1UL<<5);
-	prot_flags prot = 0;
-	uintptr_t flags = entry & ~0xffffffffff000;
-	if (!(flags & BIT_TYPE(1, UL)))
-		prot |= OBOS_PROTECTION_READ_ONLY;
-	if (!(flags & BIT_TYPE(63, UL)))
-		prot |= OBOS_PROTECTION_EXECUTABLE;
-	if (flags & BIT_TYPE(2, UL))
-		prot |= OBOS_PROTECTION_USER_PAGE;
-	if (flags & BIT_TYPE(4, UL))
-		prot |= OBOS_PROTECTION_CACHE_DISABLE;
-	info->protection = prot;
-	return status;
-}
-OBOS_EXCLUDE_FUNC_FROM_MM void* MmS_GetDM(uintptr_t phys)
-{
-	return Arch_MapToHHDM(phys);
-}

@@ -20,7 +20,11 @@ static void free_node(thread_node* n)
 process* Core_ProcessAllocate(obos_status* status) 
 {
 	if (!OBOS_KernelAllocator)
-		return OBOS_STATUS_INVALID_INIT_PHASE;
+	{
+		if (status)
+			*status = OBOS_STATUS_INVALID_INIT_PHASE;
+		return nullptr;
+	}
 	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
 }
 obos_status Core_ProcessStart(process* proc, thread* mainThread)

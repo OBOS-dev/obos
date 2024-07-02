@@ -9,8 +9,6 @@
 #include <memmanip.h>
 #include <error.h>
 
-#include <mm/context.h>
-
 // Makeshift text renderer.
 
 OBOS_EXCLUDE_VAR_FROM_MM text_renderer_state OBOS_TextRendererState;

@@ -43,11 +43,6 @@
 #include <irq/irq.h>
 
 #include <mm/bare_map.h>
-#include <mm/init.h>
-#include <mm/swap.h>
-#include <mm/context.h>
-#include <mm/handler.h>
-#include <mm/alloc.h>
 
 #include <scheduler/process.h>
 
@@ -58,7 +53,7 @@
 extern void Arch_InitBootGDT();
 
 static OBOS_EXCLUDE_VAR_FROM_MM char thr_stack[0x4000];
-static OBOS_EXCLUDE_VAR_FROM_MM char kmain_thr_stack[0x10000];
+static OBOS_EXCLUDE_VAR_FROM_MM char kmain_thr_stack[0x40000];
 extern OBOS_EXCLUDE_VAR_FROM_MM char Arch_InitialISTStack[0x10000];
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
@@ -132,26 +127,20 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	thread_ctx ctx1, ctx2;
 	memzero(&ctx1, sizeof(ctx1));
 	memzero(&ctx2, sizeof(ctx2));
-	OBOS_Debug("Setting up thread context.\n");
 	CoreS_SetupThreadContext(&ctx2, (uintptr_t)Arch_KernelMainBootstrap, 0, false, kmain_thr_stack, 0x10000);
 	CoreS_SetupThreadContext(&ctx1, (uintptr_t)Arch_IdleTask, 0, false, thr_stack, 0x4000);
-	OBOS_Debug("Initializing thread.\n");
 	CoreH_ThreadInitialize(&kernelMainThread, THREAD_PRIORITY_NORMAL, 1, &ctx2);
 	CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
 	kernelMainThread.context.gs_base = (uintptr_t)&bsp_cpu;
 	bsp_idleThread.context.gs_base = (uintptr_t)&bsp_cpu;
-	OBOS_Debug("Readying threads for execution.\n");
 	CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
 	CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
 	Core_CpuInfo->idleThread = &bsp_idleThread;
-	OBOS_Debug("Initializing CPU-local GDT.\n");
 	// Initialize the CPU's GDT.
 	Arch_CPUInitializeGDT(&Core_CpuInfo[0], (uintptr_t)Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
-	OBOS_Debug("Initializing GS_BASE.\n");
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
 	Core_CpuInfo[0].arch_specific.ist_stack = Arch_InitialISTStack;
-	OBOS_Debug("Initializing priority lists.\n");
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
 	Core_CpuInfo->initialized = true;
@@ -190,11 +179,6 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
-			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
-			{
-				MmS_InitialSwapBuffer = (void*)module->address;
-				MmS_InitialSwapBufferSize = module->size;
-			}
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -214,52 +198,12 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
 	if (!Arch_KernelBinary)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
-	if (!MmS_InitialSwapBuffer || !MmS_InitialSwapBufferSize)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initial swap buffer from the bootloader!\nMake sure you have a memory-backed module named INITIAL_SWAP_BUFFER in the hyper.cfg.\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 static OBOS_EXCLUDE_VAR_FROM_MM spinlock pf_lock;
 OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
-	if (Mm_Initialized())
-	{
-		// if (CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running)
-		// 	asm volatile("nop");
-		// OBOS_ASSERT(!CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running);
-		CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
-		// Block the page fault handler.
-		Core_SpinlockRelease(&pf_lock, Core_SpinlockAcquireExplicit(&pf_lock, IRQL_MASKED, true));
-		context* ctx = CoreS_GetCPULocalPtr()->currentContext;
-		uint32_t mm_ec = 0;
-		if (frame->errorCode & BIT(0))
-			mm_ec |= PF_EC_PRESENT;
-		if (frame->errorCode & BIT(1))
-			mm_ec |= PF_EC_RW;
-		if (frame->errorCode & BIT(2))
-			mm_ec |= PF_EC_UM;
-		if (frame->errorCode & BIT(3))
-			mm_ec |= PF_EC_INV_PTE;
-		if (frame->errorCode & BIT(4))
-			mm_ec |= PF_EC_EXEC;
-		uintptr_t virt = getCR2();
-		virt &= ~0xfff;
-		if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
-			virt &= ~0x1fffff;
-		obos_status status = Mm_OnPageFault(ctx, mm_ec, virt);
-		switch (status)
-		{
-			case OBOS_STATUS_SUCCESS:
-				CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
-				OBOS_ASSERT(frame->rsp != 0);
-				return;
-			case OBOS_STATUS_UNHANDLED:
-				break;
-			default:
-				// OBOS_Warning("%s: Handling page fault with error code 0x%x on address %p failed.\n", __func__, mm_ec, getCR2());
-				break;
-		}
-	}
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -457,7 +401,6 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
-	Mm_InitializeAllocator();
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
 	OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_likely_error(status))
@@ -511,22 +454,16 @@ void Arch_KernelMainBootstrap()
 	// Put the other CPUs to sleep for a bit.
 	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	Arch_MakeIdleTaskSleep = true;
-	Mm_Initialize();
+	// Mm_Initialize();
 	Arch_MakeIdleTaskSleep = false;
 	Core_LowerIrql(oldIrql);
-	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-	Core_InitializeTimerInterface();
+	// OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+	// Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	char* mem = Mm_AllocateVirtualMemory(Mm_KernelContext, (void*)0xfffffff000000000, 0x8000, 0, 0, nullptr);
+	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
 	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
-	mem[0x1000] = 0;
-	mem[0x2000] = 0;
-	mem[0x3000] = 0;
-	mem[0x4000] = 0;
-	mem[0x5000] = 0;
-	mem[0x6000] = 0;
-	mem[0x7000] = 0;
 	OBOS_Debug("%p: %s", mem, mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }
+// TODO: Fix mysterious stack corruption

@@ -199,6 +199,7 @@ schedule:
 	}
 	thread_priority_list* list = CoreS_GetCPULocalPtr()->currentPriorityList;
 	find_list:
+	OBOS_ASSERT(list);
 	while (!list->list.head)
 	{
 		thread_priority nextPriority = list->priority - 1;
@@ -232,15 +233,17 @@ schedule:
 		list = priorityList(nextPriority);
 		goto find_list;
 	}
+
 	chosenThread = node->data;
+switch_thread:
+	OBOS_ASSERT(chosenThread);
 	chosenThread->status = THREAD_STATUS_RUNNING;
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
-switch_thread:
-	Core_SpinlockRelease(&scheduler_lock, IRQL_DISPATCH);
-	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	if (getCurrentThread)
 		getCurrentThread->status = THREAD_STATUS_READY;
+	Core_SpinlockRelease(&scheduler_lock, IRQL_DISPATCH);
+	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;

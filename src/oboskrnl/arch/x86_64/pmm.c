@@ -13,8 +13,6 @@
 
 #include <UltraProtocol/ultra_protocol.h>
 
-#include <mm/context.h>
-
 extern struct ultra_memory_map_attribute* Arch_MemoryMap;
 extern struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct freelist_node

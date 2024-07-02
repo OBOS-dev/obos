@@ -18,8 +18,6 @@
 
 #include <irq/irql.h>
 
-#include <mm/context.h>
-
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8

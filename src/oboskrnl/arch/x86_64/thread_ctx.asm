@@ -169,7 +169,7 @@ CoreS_CallFunctionOnStack:
 	call Arch_GetCPUTempStack
 	pop rsi
 	pop rdi
-	lea rsp, [rax+0x10000]
+	lea rsp, [rax+0x20000]
 	xchg rdi, rsi
 	call rsi
 

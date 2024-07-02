@@ -13,8 +13,6 @@
 
 #include <locks/spinlock.h>
 
-#include <mm/context.h>
-
 #ifdef __x86_64__
 #	define spinlock_hint() __builtin_ia32_pause()
 #endif

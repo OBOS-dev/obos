@@ -15,8 +15,6 @@
 #include <scheduler/cpu_local.h>
 
 #include <mm/bare_map.h>
-#include <mm/context.h>
-#include <stdint.h>
 
 #define IA32_APIC_BASE 0x1B
 #define APIC_BSP 0x100

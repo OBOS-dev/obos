@@ -57,7 +57,7 @@ OBOS_NO_KASAN void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	uintptr_t found = 0;
 	for (currentNode = s_regionList.head; currentNode;)
 	{
-		uintptr_t currentNodeAddr = currentNode->addr & ~0xfff;
+		uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE);
 		if (currentNodeAddr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
 		{
 			currentNode = currentNode->next;
@@ -76,7 +76,7 @@ OBOS_NO_KASAN void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	{
 		basicmm_region* currentNode = s_regionList.tail;
 		if (currentNode)
-			found = (currentNode->addr & ~0xfff) + currentNode->size;
+			found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + currentNode->size;
 		else
 			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	}

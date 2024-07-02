@@ -37,7 +37,4 @@ typedef struct cpu_local
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
 
-// Must be initialized by the arch.
-extern void* Core_CpuTempStackBase; // The base of the temp stacks (they must be allocated in a contiguous block)
-extern size_t Core_CpuTempStackSize; // The size of one cpu temp stack.
 cpu_local* CoreS_GetCPULocalPtr();

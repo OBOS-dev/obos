@@ -75,4 +75,8 @@ typedef enum
 	/// The callback did not handle anything.
 	/// </summary>
 	OBOS_STATUS_UNHANDLED,
+	/// <summary>
+	/// The page cannot be paged in or out, as it's in the non-paged pool of memory.
+	/// </summary>
+	OBOS_STATUS_UNPAGED_POOL,
 } obos_status;

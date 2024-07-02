@@ -63,3 +63,6 @@ typedef _Bool bool;
 #if __STDC_HOSTED__
 #	error Must be compiled as freestanding.
 #endif
+#define OBOS_EXCLUDE_VAR_FROM_MM __attribute__((section(".no.mm.data")))
+#define OBOS_EXCLUDE_CONST_VAR_FROM_MM __attribute__((section(".no.mm.rodata")))
+#define OBOS_EXCLUDE_FUNC_FROM_MM __attribute__((section(".no.mm.text")))

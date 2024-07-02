@@ -6,7 +6,7 @@
 
 section .no.mm.bss
 Arch_InitialISTStack:
-	resb 0x10000
+	resb 0x20000
 global Arch_InitialISTStack
 section .data
 align 1
@@ -66,7 +66,7 @@ Arch_InitBootGDT:
 	shr rdx, 8
 	mov [GDT.tss_baseHigh], edx
 
-	lea rax, [Arch_InitialISTStack+0x10000]
+	lea rax, [Arch_InitialISTStack+0x20000]
 	mov [TSS.ist0], rax
 
 	lgdt [GDTPtr]
