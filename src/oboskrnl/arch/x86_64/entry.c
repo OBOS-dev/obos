@@ -457,8 +457,8 @@ void Arch_KernelMainBootstrap()
 	// Mm_Initialize();
 	Arch_MakeIdleTaskSleep = false;
 	Core_LowerIrql(oldIrql);
-	// OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-	// Core_InitializeTimerInterface();
+	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
 	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
 	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
@@ -466,4 +466,3 @@ void Arch_KernelMainBootstrap()
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }
-// TODO: Fix mysterious stack corruption

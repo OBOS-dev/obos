@@ -4,7 +4,6 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -13,6 +12,7 @@
 #include <stdatomic.h>
 
 #include <mm/bare_map.h>
+#include <mm/context.h>
 
 #include <arch/x86_64/pmm.h>
 
@@ -29,6 +29,8 @@
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
+
+#include <irq/irql.h>
 
 static OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
 
@@ -332,4 +334,54 @@ obos_status Arch_InitializeKernelPageTable()
 	Arch_KernelCR3 = newCR3;
 	return OBOS_STATUS_SUCCESS;
 }
-// Both addresses are page-aligned.
+obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
+{
+	if (!pt || !ppage)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	page page;
+	memzero(&page, sizeof(page));
+	uintptr_t pml2Entry = Arch_GetPML2Entry(pt, addr);
+	uintptr_t pml1Entry = Arch_GetPML1Entry(pt, addr);
+	page.prot.present = pml2Entry & BIT_TYPE(0, UL);
+	if (!page.prot.present)
+	{
+		ppage->prot = page.prot;
+		return OBOS_STATUS_SUCCESS;
+	}
+	page.prot.huge_page = pml2Entry & BIT_TYPE(7, UL) /* Huge page */;
+	uintptr_t entry = 0;
+	if (page.prot.huge_page)
+	{
+		addr &= ~0x1fffff;
+		entry = pml2Entry;
+	}
+	else
+	{
+		addr &= ~0xfff;
+		page.prot.present = pml1Entry & BIT_TYPE(0, UL);
+		entry = pml1Entry;
+	}
+	page.addr = addr;
+	page.prot.rw = entry & BIT_TYPE(1, UL);
+	page.prot.user = entry & BIT_TYPE(2, UL);
+	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
+	page.prot.executable = !(entry & BIT_TYPE(63, UL));
+	return OBOS_STATUS_SUCCESS;	
+}
+obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)
+{
+	if (!page || !pt)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!page->prot.present)
+		return Arch_UnmapPage(pt, (void*)page->addr);
+	uintptr_t flags = 1;
+	if (page->prot.rw)
+		flags |= BIT_TYPE(1, UL);
+	if (page->prot.user)
+		flags |= BIT_TYPE(2, UL);
+	if (!page->prot.executable)
+		flags |= BIT_TYPE(63, UL);
+	return !page->prot.huge_page ? 
+		Arch_MapPage(pt, (void*)page->addr, phys, flags) : 
+		Arch_MapHugePage(pt, (void*)page->addr, phys, flags);
+}

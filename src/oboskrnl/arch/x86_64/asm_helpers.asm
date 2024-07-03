@@ -28,7 +28,7 @@ global xsave
 global cli
 global sti
 global hlt
-global MmS_PTContextGetCurrent
+global MmS_GetCurrentPageTable
 
 section .no.mm.text
 
@@ -223,5 +223,5 @@ sti:
 hlt:
 	hlt
 	ret
-MmS_PTContextGetCurrent:
+MmS_GetCurrentPageTable:
 	jmp getCR3

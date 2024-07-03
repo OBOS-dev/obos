@@ -8,7 +8,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
-//#include <stdbool.h>
+
+#if UINTPTR_MAX == UINT64_MAX
+#define PTR_BITS 64
+#elif UINTPTR_MAX == UINT32_MAX
+#define PTR_BITS 32
+#elif UINTPTR_MAX == UINT16_MAX
+#define PTR_BITS 16
+#endif
 
 #ifndef __cplusplus
 #	define nullptr ((void*)0)
