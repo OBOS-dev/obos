@@ -20,8 +20,8 @@ git clone https://github.com/OBOS-dev/obos.git
 ```sh
 mkdir build
 alias rem=eval
-rem chmod +x dependencies/hyper/hyper_install-linux-x86_64
 cmake -GNinja -DCMAKE_BUILD_TYPE=Release --toolchain=src/build/x86_64/toolchain.cmake -B build .
+rem chmod +x dependencies/hyper/hyper_install-linux-x86_64
 cmake --build build
 ```
 4. To run the kernel, run the script under scripts/launch_qemu.\[bat,sh\]
