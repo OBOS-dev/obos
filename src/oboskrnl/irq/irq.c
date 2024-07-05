@@ -16,14 +16,18 @@
 
 #include <allocators/base.h>
 
+#include <scheduler/cpu_local.h>
+
+#include <mm/context.h>
+
 irq* Core_IrqObjectAllocate(obos_status* status)
 {
 	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
 }
-static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
-static spinlock s_lock;
-static bool s_irqInterfaceInitialized;
-void Core_IRQDispatcher(interrupt_frame* frame)
+static OBOS_EXCLUDE_VAR_FROM_MM irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
+static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_lock;
+static OBOS_EXCLUDE_VAR_FROM_MM bool s_irqInterfaceInitialized;
+OBOS_EXCLUDE_FUNC_FROM_MM  void Core_IRQDispatcher(interrupt_frame* frame)
 {
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())
@@ -31,8 +35,11 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	CoreS_EnterIRQHandler(frame);
 	CoreS_SendEOI(frame);
+	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
+	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 	irql oldIrql = Core_SpinlockAcquire(&s_lock);
 	irq* irq_obj = nullptr;
+	// Warning: The dispatcher could cause a swap in if any irq objects are not excluded from the VMM.
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
 		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
@@ -55,6 +62,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	if (!irq_obj)
 	{
 		// Spooky actions from a distance...
+		CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 		Core_LowerIrqlNoThread(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
@@ -65,6 +73,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
+	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);
 }

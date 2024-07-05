@@ -49,7 +49,7 @@ list (APPEND oboskrnl_sources
 	"arch/x86_64/asm_helpers.asm" "arch/x86_64/thread_ctx.asm" "arch/x86_64/memmanip.asm"
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
-	"arch/x86_64/ioapic.c"
+	"arch/x86_64/ioapic.c" "arch/x86_64/initial_swap.c"
 )
 
 add_compile_definitions(

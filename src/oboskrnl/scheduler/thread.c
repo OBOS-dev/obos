@@ -110,7 +110,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
+OBOS_EXCLUDE_FUNC_FROM_MM obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -131,7 +131,7 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
+OBOS_EXCLUDE_FUNC_FROM_MM obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;

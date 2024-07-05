@@ -29,6 +29,8 @@
 
 // Taken from OpenBSD, modified for use in oboskrnl.
 
+#include <int.h>
+
 /*
  * This file defines data structures for different types of trees:
  * splay trees and red-black trees.

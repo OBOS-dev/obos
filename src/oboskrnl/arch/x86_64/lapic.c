@@ -56,7 +56,7 @@ void Arch_LAPICInitialize(bool isBSP)
 	Arch_LAPICAddress->lvtTimer = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
 }
-void Arch_LAPICSendEOI()
+OBOS_EXCLUDE_FUNC_FROM_MM  void Arch_LAPICSendEOI()
 {
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;

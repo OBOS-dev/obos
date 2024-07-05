@@ -55,6 +55,7 @@ typedef struct context
     spinlock lock;
     page_table pt;
 } context;
+extern context Mm_KernelContext;
 extern char MmS_MMExclusionRangeStart[];
 extern char MmS_MMExclusionRangeEnd[];
-bool MmH_IsAddressPageable(uintptr_t addr);
+bool MmH_IsAddressUnPageable(uintptr_t addr);

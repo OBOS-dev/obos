@@ -106,9 +106,9 @@ obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	return Arch_IRQHandlers[vector+32] ? OBOS_STATUS_IN_USE : OBOS_STATUS_SUCCESS;
 }
-void CoreS_SendEOI(interrupt_frame* unused)
+OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_SendEOI(interrupt_frame* unused)
 {
 	Arch_LAPICSendEOI();
 }
-void CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); }
-void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }
+OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); }
+OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }

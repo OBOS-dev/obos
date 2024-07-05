@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/context.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -43,6 +44,8 @@
 #include <irq/irq.h>
 
 #include <mm/bare_map.h>
+#include <mm/init.h>
+#include <mm/swap.h>
 
 #include <scheduler/process.h>
 
@@ -57,6 +60,7 @@ static OBOS_EXCLUDE_VAR_FROM_MM char kmain_thr_stack[0x40000];
 extern OBOS_EXCLUDE_VAR_FROM_MM char Arch_InitialISTStack[0x10000];
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
+static OBOS_EXCLUDE_VAR_FROM_MM swap_dev swap;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
@@ -155,8 +159,10 @@ OBOS_EXCLUDE_VAR_FROM_MM struct ultra_memory_map_attribute* Arch_MemoryMap;
 OBOS_EXCLUDE_VAR_FROM_MM struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 OBOS_EXCLUDE_VAR_FROM_MM struct ultra_kernel_info_attribute* Arch_KernelInfo;
 OBOS_EXCLUDE_VAR_FROM_MM struct ultra_module_info_attribute* Arch_KernelBinary;
+OBOS_EXCLUDE_VAR_FROM_MM struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
 OBOS_EXCLUDE_VAR_FROM_MM struct ultra_framebuffer* Arch_Framebuffer;
 OBOS_EXCLUDE_VAR_FROM_MM const char* OBOS_KernelCmdLine;
+extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
 static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
 	struct ultra_attribute_header* header = bcontext->attributes;
@@ -179,6 +185,8 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
+			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
+				Arch_InitialSwapBuffer = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -197,11 +205,12 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 	if (Arch_KernelInfo->partition_type == ULTRA_PARTITION_TYPE_INVALID)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
 	if (!Arch_KernelBinary)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
+	if (!Arch_InitialSwapBuffer)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the initial swap module in the boot context!\n\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
-static OBOS_EXCLUDE_VAR_FROM_MM spinlock pf_lock;
 OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
@@ -233,13 +242,6 @@ OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_fra
 		getCR4(), Core_GetIrql(), getEFER()
 	);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void MmS_LockPageFaultHandler(bool lock)
-{
-	if (lock)
-		Core_SpinlockAcquireExplicit(&pf_lock, IRQL_PASSIVE, true);
-	else
-		Core_SpinlockForcedRelease(&pf_lock);
-}
 uint64_t random_number();
 __asm__(
 	"random_number:; rdrand %rax; ret; "
@@ -249,7 +251,7 @@ static basic_allocator kalloc;
 void Arch_SMPStartup();
 extern uint64_t Arch_FindCounter(uint64_t hz);
 atomic_size_t nCPUsWithInitializedTimer;
-void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
+OBOS_EXCLUDE_FUNC_FROM_MM void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
 	OBOS_UNUSED(obj);
 	OBOS_UNUSED(frame);
@@ -451,18 +453,23 @@ void Arch_KernelMainBootstrap()
 	if (obos_likely_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
 	OBOS_Debug("%s: Initializing VMM.\n", __func__);
-	// Put the other CPUs to sleep for a bit.
-	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
-	Arch_MakeIdleTaskSleep = true;
-	// Mm_Initialize();
-	Arch_MakeIdleTaskSleep = false;
-	Core_LowerIrql(oldIrql);
+	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
+	Mm_SwapProvider = &swap;
+	Mm_Initialize();
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
-	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
-	OBOS_Debug("%p: %s", mem, mem);
+	OBOS_ALIGNAS(0x1000) static uint8_t buf[0x1000];
+	page what = {.addr=(uintptr_t)buf};
+	page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
+	buf[1] = 0xad;
+	Mm_SwapOut(page);
+	Mm_SwapIn(page);
+	buf[0] = 0xde;
+	OBOS_ASSERT(buf[1] == 0xad);
+	// char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
+	// memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
+	// OBOS_Debug("%p: %s", mem, mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

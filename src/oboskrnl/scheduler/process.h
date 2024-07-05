@@ -16,8 +16,10 @@ typedef struct process
 	// If pid==1, this is the kernel process.
 	uint64_t pid;
 	thread_list threads;
+	struct context* ctx;
 } process;
 extern uint64_t Core_NextPID;
+// The first thread in this process must be the kernel main thread.
 extern process* OBOS_KernelProcess;
 /// <summary>
 /// Allocates a process object.

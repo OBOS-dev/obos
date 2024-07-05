@@ -159,6 +159,7 @@ CoreS_SetupThreadContext:
 .finish:
 	leave
 	ret
+section .no.mm.text
 extern Arch_GetCPUTempStack
 CoreS_CallFunctionOnStack:
 	push rbp
@@ -255,3 +256,4 @@ CoreS_GetThreadIRQL:
 
 	leave
 	ret
+section .text

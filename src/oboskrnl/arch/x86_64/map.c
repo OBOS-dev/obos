@@ -366,6 +366,7 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 	page.prot.user = entry & BIT_TYPE(2, UL);
 	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
+	memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
 	return OBOS_STATUS_SUCCESS;	
 }
 obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)
@@ -382,6 +383,6 @@ obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)
 	if (!page->prot.executable)
 		flags |= BIT_TYPE(63, UL);
 	return !page->prot.huge_page ? 
-		Arch_MapPage(pt, (void*)page->addr, phys, flags) : 
-		Arch_MapHugePage(pt, (void*)page->addr, phys, flags);
+		Arch_MapPage(pt, (void*)(page->addr & ~0xfff), phys, flags) : 
+		Arch_MapHugePage(pt, (void*)(page->addr & ~0x1fffff), phys, flags);
 }
