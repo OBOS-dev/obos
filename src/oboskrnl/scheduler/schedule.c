@@ -140,16 +140,13 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void WorkStealing(thread_priority_list* list, t
 //static spinlock s_lock;
 // This should be assumed to be called with the current thread's context saved.
 // It does NOT do that on it's own.
+spinlock Core_SchedulerLock;
 OBOS_EXCLUDE_FUNC_FROM_MM void Core_Schedule()
 {
 	getSchedulerTicks++;
 	if (!getCurrentThread)
 		goto schedule;
 	getCurrentThread->lastRunTick = getSchedulerTicks;
-	bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
-	if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
-		return; // No rescheduling needed, as the thread's quantum isn't finished yet.
-	static spinlock scheduler_lock = ATOMIC_FLAG_INIT;
 schedule:
 	if (getCurrentThread)
 	{
@@ -163,9 +160,9 @@ schedule:
 			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), getCurrentThread->snode);
 		}
 	}
-	thread* oldCurThread = getCurrentThread;
+	// thread* oldCurThread = getCurrentThread;
 	// getCurrentThread = nullptr;
-	(void)Core_SpinlockAcquireExplicit(&scheduler_lock, IRQL_DISPATCH, true);
+	(void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
 	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
@@ -237,12 +234,17 @@ schedule:
 	chosenThread = node->data;
 switch_thread:
 	OBOS_ASSERT(chosenThread);
+	// if (chosenThread == getCurrentThread)
+	// 	return; // We might as well save some time and return.
+	// Or maybe not.....
+	if (chosenThread != getCurrentThread)
+		OBOS_ASSERT(chosenThread->status != THREAD_STATUS_RUNNING);
 	chosenThread->status = THREAD_STATUS_RUNNING;
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
 	if (getCurrentThread)
 		getCurrentThread->status = THREAD_STATUS_READY;
-	Core_SpinlockRelease(&scheduler_lock, IRQL_DISPATCH);
+	Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
 	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
@@ -253,16 +255,33 @@ OBOS_EXCLUDE_VAR_FROM_MM struct irq* Core_SchedulerIRQ;
 OBOS_EXCLUDE_VAR_FROM_MM uint64_t Core_SchedulerTimerFrequency = 1000;
 OBOS_EXCLUDE_FUNC_FROM_MM void Core_Yield()
 {
-	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
-	OBOS_ASSERT(!(oldIrql & ~0xf));
+	irql oldIrql = IRQL_INVALID;
+	if (Core_GetIrql() <= IRQL_DISPATCH)
+	{
+		oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+		OBOS_ASSERT(!(oldIrql & ~0xf));
+	}
 	if (getCurrentThread)
 	{
+		bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
+		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
+		{
+			OBOS_ASSERT(!(oldIrql & ~0xf));
+			Core_LowerIrqlNoThread(oldIrql);
+			return; // No rescheduling needed, as the thread's quantum isn't finished yet.
+		}
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);
-		OBOS_ASSERT(!(oldIrql & ~0xf));
-		Core_LowerIrqlNoThread(oldIrql);
+		if (oldIrql != IRQL_INVALID)
+		{
+			OBOS_ASSERT(!(oldIrql & ~0xf));
+			Core_LowerIrqlNoThread(oldIrql);
+		}
 		return;
 	}
-	Core_Schedule();
-	OBOS_ASSERT(!(oldIrql & ~0xf));
-	Core_LowerIrqlNoThread(oldIrql);
+	CoreS_CallFunctionOnStack((uintptr_t(*)(uintptr_t))Core_Schedule, 0);
+	if (oldIrql != IRQL_INVALID)
+	{
+		OBOS_ASSERT(!(oldIrql & ~0xf));
+		Core_LowerIrqlNoThread(oldIrql);
+	}
 }

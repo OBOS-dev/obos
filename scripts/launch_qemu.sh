@@ -11,7 +11,7 @@ qemu-system-x86_64 \
 -monitor stdio \
 -debugcon file:/dev/stdout \
 -serial tcp:0.0.0.0:1534,server,nowait \
--smp cores=1,threads=1,sockets=1 \
+-smp cores=4,threads=1,sockets=1 \
 -M smm=off \
 -d int \
 -D qemu_log.txt

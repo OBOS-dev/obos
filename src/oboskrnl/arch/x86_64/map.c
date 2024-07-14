@@ -187,7 +187,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (getCR3() == invlpg_ipi_packet.cr3)
 		invlpg(invlpg_ipi_packet.addr);
 	invlpg_ipi_packet.nCPUsRan++;
-	Arch_LAPICAddress->eoi = 0;
+	// Arch_LAPICAddress->eoi = 0;
 	return true;
 }
 extern bool Arch_SMPInitialized;
@@ -230,6 +230,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 	OBOS_ASSERT(obos_unlikely_error(status));
 	while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 		pause();
+	end:
 	invlpg_ipi_packet.active = false;
 	Core_SpinlockRelease(&invlpg_ipi_packet.lock, oldIrql);
 #endif

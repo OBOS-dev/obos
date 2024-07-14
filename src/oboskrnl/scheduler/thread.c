@@ -15,6 +15,8 @@
 
 #include <allocators/base.h>
 
+#include <locks/spinlock.h>
+
 static uint64_t s_nextTID = 1;
 OBOS_EXCLUDE_VAR_FROM_MM cpu_local* Core_CpuInfo;
 thread_affinity Core_DefaultThreadAffinity = 1;
@@ -98,12 +100,14 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
+	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	thread_node* node = thr->snode;
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
 	thr->masterCPU = nullptr;
 	if (thr == Core_GetCurrentThread() && canYield)

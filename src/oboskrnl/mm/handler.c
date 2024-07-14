@@ -13,9 +13,12 @@
 #include <mm/context.h>
 #include <mm/page.h>
 
+#include <utils/tree.h>
+
 obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
 {
-    page* page = ;
+    page what = {.addr=addr};
+    page* page = RB_FIND(page_tree, &ctx->pages, &what);
 }
 obos_status Mm_RunPRE(context* ctx)
 {

@@ -116,9 +116,9 @@ CoreS_SetupThreadContext:
 	;             rdi,             rsi,            rdx,               rcx,              r8,               r9
 	; thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize
 
-	test rdi,rdi
-	jne .L1
-	mov rax, 3 ; OBOS_STATUS_UNIMPLEMENTED
+	cmp rdi, 0
+	jnz .L1
+	mov rax, 2 ; OBOS_STATUS_INVALID_ARGUMENT
 	jmp .finish
 
 .L1:
@@ -184,34 +184,23 @@ CoreS_SaveRegisterContextAndYield:
 	; Save the current GPRs.
 	mov [rdi+thread_ctx.frame+0x10] , rbp
 	mov qword [rdi+thread_ctx.frame+0x18], 0
-	mov [rdi+thread_ctx.frame+0x20], r8
-	mov [rdi+thread_ctx.frame+0x28], r9
-	mov [rdi+thread_ctx.frame+0x30], r10
-	mov [rdi+thread_ctx.frame+0x38], r11
 	mov [rdi+thread_ctx.frame+0x40], r12
 	mov [rdi+thread_ctx.frame+0x48], r13
 	mov [rdi+thread_ctx.frame+0x50], r14
 	mov [rdi+thread_ctx.frame+0x58], r15
-	mov [rdi+thread_ctx.frame+0x60], rdi
-	mov [rdi+thread_ctx.frame+0x68], rsi
 	mov qword [rdi+thread_ctx.frame+0x70], 0
 	mov [rdi+thread_ctx.frame+0x78], rbx
-	mov [rdi+thread_ctx.frame+0x80], rdx
-	mov [rdi+thread_ctx.frame+0x88], rcx
-	mov [rdi+thread_ctx.frame+0x90], rax
 	mov rax, ds
 	mov [rdi+thread_ctx.frame+0x08], rax ; ds
 	mov rax, [rsp+8]
 	mov [rdi+thread_ctx.frame+0xB0], rax ; return address
-	mov rax, cs
-	mov [rdi+thread_ctx.frame+0xB8], rax ; cs
+	mov qword [rdi+thread_ctx.frame+0xB8], 0x08 ; cs
 	pop rax ; see pushfq at the beginning of the function
 	push rax
 	mov [rdi+thread_ctx.frame+0xC0], rax ; rflags
 	lea rax, [rsp+0x10] ; skip the return address
 	mov [rdi+thread_ctx.frame+0xC8], rax ; rsp
-	mov rax, ss
-	mov [rdi+thread_ctx.frame+0xD0], rax ; ss
+	mov qword [rdi+thread_ctx.frame+0xD0], 0x10 ; ss
 	mov ecx, 0xC0000101
 	rdmsr
 	shl rdx, 32
@@ -243,8 +232,7 @@ CoreS_SetThreadIRQL:
 	push rbp
 	mov rbp, rsp
 
-	lea rax, [rdi+thread_ctx.irql]
-	mov [rax], sil
+	mov [rdi+thread_ctx.irql], sil
 
 	leave
 	ret

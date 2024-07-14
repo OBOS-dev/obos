@@ -81,14 +81,14 @@ OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
-	common_log(LOG_LEVEL_LOG, "LOG", format, list);
+	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
 OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
-	common_log(LOG_LEVEL_WARNING, "WARN", format, list);
+	common_log(LOG_LEVEL_WARNING, " WARN", format, list);
 	va_end(list);
 }
 OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Error(const char* format, ...)
@@ -138,7 +138,7 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* for
 	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
-	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
+	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
 	printf("Kernel Panic on CPU %d in thread %d, owned by process %d. Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));

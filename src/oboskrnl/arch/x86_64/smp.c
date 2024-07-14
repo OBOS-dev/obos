@@ -113,8 +113,8 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[5] = *((uint64_t*)&tss_entry + 0);
 	info->arch_specific.gdtEntries[6] = *((uint64_t*)&tss_entry + 1);
 
-	info->arch_specific.tss.ist0 = istStack + istStackSize;
-	info->arch_specific.tss.rsp0 = istStack + istStackSize;
+	info->arch_specific.tss.ist0 = istStack + istStackSize-0x10000 /* see comment as to why we do this */;
+	info->arch_specific.tss.rsp0 = istStack + istStackSize-0x10000 /* see comment as to why we do this */;
 	info->arch_specific.tss.iopb = sizeof(info->arch_specific.tss) - 1;
 	struct
 	{

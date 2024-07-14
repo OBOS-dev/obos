@@ -14,7 +14,7 @@ enum
 {
 	IRQL_PASSIVE,
 	IRQL_DISPATCH = 2,
-	IRQL_TIMER = 2,
+	IRQL_TIMER = 3,
 	IRQL_MASKED = 0xf,
 	IRQL_INVALID = 0xff,
 };

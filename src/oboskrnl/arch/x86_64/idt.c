@@ -59,9 +59,7 @@ static int getIntIST(int i)
 {
 	if (i > 32)
 		return 0;
-	if (i == 8)
-		return 2;
-	return i == 2 ? 1 : 0;
+	return (i == 2 || i == 8) ? 1 : 0;
 }
 void Arch_InitializeIDT(bool isBSP)
 {

@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/context.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -46,6 +45,7 @@
 #include <mm/bare_map.h>
 #include <mm/init.h>
 #include <mm/swap.h>
+#include <mm/context.h>
 
 #include <scheduler/process.h>
 
@@ -71,6 +71,11 @@ void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackS
 void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
 void Arch_PageFaultHandler(interrupt_frame* frame);
+struct stack_frame
+{
+	struct stack_frame* down;
+	void* rip;
+};
 void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
@@ -213,6 +218,7 @@ extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
+	struct stack_frame *sframe = frame->rbp;
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -238,13 +244,15 @@ OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_fra
 		frame->r11, frame->r12, frame->r13,
 		frame->r14, frame->r15, frame->rflags,
 		frame->ss, frame->ds, frame->cs,
-		getCR0(), getCR2(), getCR3(),
+		getCR0(), getCR2(), frame->cr3,
 		getCR4(), Core_GetIrql(), getEFER()
 	);
 }
 uint64_t random_number();
+uint8_t random_number8();
 __asm__(
 	"random_number:; rdrand %rax; ret; "
+	"random_number8:; rdrand %ax; mov $0, %ah; ret; "
 );
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
@@ -367,7 +375,7 @@ obos_status CoreS_InitializeTimer(irq_handler handler)
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET.");
 	OBOS_ASSERT(gsi <= 32);
 	timer->timerConfigAndCapabilities |= (1<6)|(1<<3)|((uint8_t)gsi<<9); // Edge-triggered IRQs, set GSI, Periodic timer
-	CoreS_TimerFrequency = 1000;
+	CoreS_TimerFrequency = 500;
 	OBOS_Debug("HPET frequency: %ld, configured HPET frequency: %ld\n", Arch_HPETFrequency, CoreS_TimerFrequency);
 	const uint64_t value = Arch_HPETFrequency/CoreS_TimerFrequency;
 	timer->timerComparatorValue = Arch_HPETAddress->mainCounterValue + value;
@@ -389,6 +397,31 @@ timer_tick CoreS_GetTimerTick()
 }
 process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
+static void vmm_test_thread(uint8_t* buf)
+{
+	OBOS_Debug("In test thread %d.\n", Core_GetCurrentThread()->tid);
+	page what = {.addr=(uintptr_t)buf };
+	page* p = nullptr;
+	for (uintptr_t addr = what.addr; addr < ((uintptr_t)buf + 0x4000); addr += 0x1000)
+	{
+		what.addr = addr;
+		p = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
+		memset((void*)addr, 0xea, 0x1000);
+		irql oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
+		Mm_SwapOut(p);
+		Core_SpinlockRelease(&p->owner->lock, oldIrql);
+		oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
+		Mm_SwapIn(p);
+		Core_SpinlockRelease(&p->owner->lock, oldIrql);
+		OBOS_ASSERT(memcmp_b((void*)addr, 0xea, 0x1000));
+	}
+	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
+	Core_ExitCurrentThread();
+}
+static thread threads[4];
+static thread_node thread_nodes[4];
+static OBOS_ALIGNAS(0x1000) uint8_t thread_stacks[0x10000*4];
+static OBOS_ALIGNAS(0x1000) uint8_t buf[0x4000*4];
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -459,17 +492,24 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	OBOS_ALIGNAS(0x1000) static uint8_t buf[0x1000];
-	page what = {.addr=(uintptr_t)buf};
-	page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-	buf[1] = 0xad;
-	Mm_SwapOut(page);
-	Mm_SwapIn(page);
-	buf[0] = 0xde;
-	OBOS_ASSERT(buf[1] == 0xad);
-	// char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
-	// memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
-	// OBOS_Debug("%p: %s", mem, mem);
+	memzero(thread_nodes, sizeof(thread_nodes));
+	memzero(threads, sizeof(threads));
+	for (int i = 0; i < 4; i++)
+	{
+		thread_ctx ctx;
+		OBOS_ASSERT(
+			CoreS_SetupThreadContext(&ctx, 
+			(uintptr_t)vmm_test_thread, (uintptr_t)&buf[i*0x4000],
+			 false, 
+			 &thread_stacks[i*0x10000], 0x10000) ==
+			OBOS_STATUS_SUCCESS);
+		CoreH_ThreadInitialize(&threads[i], THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		CoreH_ThreadReadyNode(&threads[i], &thread_nodes[i]);
+		Core_ProcessAppendThread(OBOS_KernelProcess, &threads[i]);
+	}
+	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
+	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
+	OBOS_Debug("%p: %s", mem, mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	Core_ExitCurrentThread();
+	Core_ExitCurrentThread();	
 }

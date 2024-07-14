@@ -39,7 +39,7 @@ static struct
     size_t nNodes;
     spinlock lock;
 } timer_list;
-OBOS_NO_KASAN OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
@@ -87,11 +87,12 @@ static void notify_timer(timer* timer)
 }
 static void timer_dispatcher()
 {
+    can_run_dispatcher = false;
     while(1)
     {
-        while (!can_run_dispatcher);
+        while (!can_run_dispatcher)
+            Core_Yield();
         can_run_dispatcher = false;
-        irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
         // Search for expired timer objects, and notify them.
         for(timer* t = timer_list.head; t; )
         {
@@ -121,25 +122,24 @@ static void timer_dispatcher()
             t = t->next;
             Core_SpinlockRelease(&timer_list.lock, oldIrql);
         }
-        Core_LowerIrql(oldIrql);
     }
 }
 obos_status Core_InitializeTimerInterface()
 {
-    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = Core_RaiseIrql(IRQL_TIMER);
     obos_status status = OBOS_STATUS_SUCCESS;
     thread* thread = CoreH_ThreadAllocate(&status);
     thread_ctx ctx;
     memzero(&ctx, sizeof(ctx));
     if (obos_likely_error(status))
         goto cleanup2;
-    void* stack = OBOS_BasicMMAllocatePages(0x10000, &status);
+    void* stack = OBOS_BasicMMAllocatePages(0x20000, &status);
     if (obos_likely_error(status))
         goto cleanup1;
-    status = CoreS_SetupThreadContext(&ctx, (uintptr_t)timer_dispatcher, 0, false, stack, 0x10000);
+    status = CoreS_SetupThreadContext(&ctx, (uintptr_t)timer_dispatcher, 0, false, stack, 0x20000);
     if (obos_likely_error(status))
         goto cleanup1;
-    status = CoreH_ThreadInitialize(thread, THREAD_PRIORITY_URGENT, Core_DefaultThreadAffinity, &ctx);
+    status = CoreH_ThreadInitialize(thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
     if (obos_likely_error(status))
         goto cleanup1;
     status = CoreH_ThreadReady(thread);
@@ -159,7 +159,7 @@ obos_status Core_InitializeTimerInterface()
     if (obos_likely_error(status))
     {
         if (stack)
-            OBOS_BasicMMFreePages(stack, 0x10000);
+            OBOS_BasicMMFreePages(stack, 0x20000);
         CoreS_FreeThreadContext(&ctx);
         thread->free(thread);
         thread = nullptr;
