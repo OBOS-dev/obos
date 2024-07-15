@@ -24,7 +24,8 @@ typedef enum
 	/// </summary>
 	OBOS_STATUS_INVALID_ARGUMENT,
 	/// <summary>
-	/// A function was called, but an option passed to it had not been implemented yet.
+	/// A function was called, but an option passed to it had not been implemented yet, or
+	/// <para/>the function itself had not been implemented yet.
 	/// </summary>
 	OBOS_STATUS_UNIMPLEMENTED,
 	/// <summary>

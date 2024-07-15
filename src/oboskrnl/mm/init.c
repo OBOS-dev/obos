@@ -4,9 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/timer.h"
-#include "mm/swap.h"
-#include "utils/tree.h"
 #include <int.h>
 #include <memmanip.h>
 #include <error.h>
@@ -16,13 +13,17 @@
 #include <mm/context.h>
 #include <mm/init.h>
 #include <mm/page.h>
+#include <mm/swap.h>
 
 #include <scheduler/cpu_local.h>
+#include <scheduler/process.h>
 
 #include <irq/irql.h>
+#include <irq/timer.h>
 
 #include <locks/spinlock.h>
-#include <stdint.h>
+
+#include <utils/tree.h>
 
 OBOS_EXCLUDE_VAR_FROM_MM static bool initialized;
 OBOS_EXCLUDE_VAR_FROM_MM context Mm_KernelContext;
@@ -97,6 +98,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
     irql oldIrql = Core_SpinlockAcquireExplicit(&Mm_KernelContext.lock, IRQL_DISPATCH, true);
     Mm_KernelContext.owner = CoreS_GetCPULocalPtr()->currentThread->proc;
     Mm_KernelContext.pt = MmS_GetCurrentPageTable();
+    CoreS_GetCPULocalPtr()->currentThread->proc->ctx = &Mm_KernelContext;
     mm_regions_udata udata = { nullptr,0, 0 };
     OBOSH_BasicMMIterateRegions(count_pages, &udata);
     obos_status status = OBOS_STATUS_SUCCESS;

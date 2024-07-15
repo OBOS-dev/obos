@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/handler.c"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -218,7 +219,41 @@ extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
-	struct stack_frame *sframe = frame->rbp;
+	if (Mm_IsInitialized())
+	{
+		CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
+		uint32_t mm_ec = 0;
+		if (frame->errorCode & BIT(0))
+			mm_ec |= PF_EC_PRESENT;
+		if (frame->errorCode & BIT(1))
+			mm_ec |= PF_EC_RW;
+		if (frame->errorCode & BIT(2))
+			mm_ec |= PF_EC_UM;
+		if (frame->errorCode & BIT(3))
+			mm_ec |= PF_EC_INV_PTE;
+		if (frame->errorCode & BIT(4))
+			mm_ec |= PF_EC_EXEC;
+		uintptr_t virt = getCR2();
+		virt &= ~0xfff;
+		if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
+			virt &= ~0x1fffff;
+		obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
+		switch (status)
+		{
+			case OBOS_STATUS_SUCCESS:
+				CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
+				OBOS_ASSERT(frame->rsp != 0);
+				return;
+			case OBOS_STATUS_UNHANDLED:
+				break;
+			default:
+			{
+				OBOS_EXCLUDE_CONST_VAR_FROM_MM static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
+				OBOS_Warning(format, mm_ec, getCR2());
+				break;
+			}
+		}
+	}
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -410,9 +445,9 @@ static void vmm_test_thread(uint8_t* buf)
 		irql oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
 		Mm_SwapOut(p);
 		Core_SpinlockRelease(&p->owner->lock, oldIrql);
-		oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
-		Mm_SwapIn(p);
-		Core_SpinlockRelease(&p->owner->lock, oldIrql);
+		// oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
+		// Mm_SwapIn(p);
+		// Core_SpinlockRelease(&p->owner->lock, oldIrql);
 		OBOS_ASSERT(memcmp_b((void*)addr, 0xea, 0x1000));
 	}
 	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
