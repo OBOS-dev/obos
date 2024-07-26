@@ -1,10 +1,8 @@
 /*
- * oboskrnl/mm/handler.h
+ * oboskrnl/mm/handler.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
-
-#pragma once
 
 #include <int.h>
 #include <error.h>

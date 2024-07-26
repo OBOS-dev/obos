@@ -46,7 +46,7 @@
 #include <mm/init.h>
 #include <mm/swap.h>
 #include <mm/context.h>
-#include <mm/handler.c>
+#include <mm/handler.h>
 
 #include <scheduler/process.h>
 
