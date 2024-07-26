@@ -18,14 +18,14 @@
 
 #include <locks/spinlock.h>
 
-uintptr_t round_up(uintptr_t x, size_t to)
+OBOS_PAGEABLE_FUNCTION static uintptr_t round_up(uintptr_t x, size_t to)
 {
 	if (x % to)
 		return x + (to - (x % to));
 	return x;
 }
 
-static void set_status(obos_status* p, obos_status to)
+static OBOS_PAGEABLE_FUNCTION void set_status(obos_status* p, obos_status to)
 {
 	if (p)
 		*p = to;
@@ -35,16 +35,16 @@ struct safe_spinlock
 	spinlock* lock;
 	uint8_t oldIrql;
 };
-static void Lock(struct safe_spinlock* l)
+static OBOS_PAGEABLE_FUNCTION void Lock(struct safe_spinlock* l)
 {
 	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED, false);
 }
-static void Unlock(struct safe_spinlock* l)
+static OBOS_PAGEABLE_FUNCTION void Unlock(struct safe_spinlock* l)
 {
 	Core_SpinlockRelease(l->lock, l->oldIrql);
 }
 #define makeSafeLock(name, This) struct safe_spinlock name; name.lock = &((This)->lock); Lock(&name);
-static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
 {
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
 	size += sizeof(basicalloc_region) + sizeof(basicalloc_node);
@@ -75,7 +75,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	This->nRegions++;
 	return blk;
 }
-static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
 {
 	if (block->prev)
 		block->prev->next = block->next;
@@ -88,7 +88,7 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 	This->nRegions--;
 	OBOS_BasicMMFreePages(block, block->size);
 }
-static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !size)
 	{
@@ -220,7 +220,7 @@ tryAgain:
 #endif
 	return OBOS_NODE_ADDR(freeNode);
 }
-static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -230,7 +230,7 @@ static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, s
 	size_t size = bytesPerObject * nObjects;
 	return memzero(Allocate(This, size, status), size);
 }
-static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -268,7 +268,7 @@ static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t 
 	set_status(status, This_->Free(This_, base, objSize));
 	return newBlock;
 }
-static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t nBytes)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t nBytes)
 {
 	OBOS_UNUSED(nBytes);
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
@@ -313,13 +313,13 @@ static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t 
 	if (!r->biggestFreeNode || n->size > r->biggestFreeNode->size)
 		r->biggestFreeNode = n;
 #if OBOS_KASAN_ENABLED
-	volatile void* b = base;
+	void* volatile b = base;
 	memset(b, OBOS_ASANPoisonValues[ASAN_POISON_FREED], n->size);
 #endif
 	Unlock(&lock);
 	return OBOS_STATUS_SUCCESS;
 }
-static OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !nBytes || !base)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -335,7 +335,7 @@ static OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base
 #endif
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This)
+OBOS_PAGEABLE_FUNCTION obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This)
 {
 	if (!This)
 		return OBOS_STATUS_INVALID_ARGUMENT;

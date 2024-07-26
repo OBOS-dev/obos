@@ -11,10 +11,10 @@
 
 // Makeshift text renderer.
 
-OBOS_EXCLUDE_VAR_FROM_MM text_renderer_state OBOS_TextRendererState;
+text_renderer_state OBOS_TextRendererState;
 
 // colour is rgbx.
-static OBOS_EXCLUDE_FUNC_FROM_MM OBOS_EXCLUDE_FUNC_FROM_MM void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
+static void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 {
 	switch (fbFmt)
 	{
@@ -39,7 +39,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM OBOS_EXCLUDE_FUNC_FROM_MM void PlotPixel(uint32
 		break;
 	}
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
+static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
 {
 	int cy;
 	int mask[8] = { 128,64,32,16,8,4,2,1 };
@@ -65,7 +65,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void putch(text_renderer_state* state, char ch,
 		PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
 	}
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM void newlineHandler(text_renderer_state* state)
+static void newlineHandler(text_renderer_state* state)
 {
 	if (!state->fb.base)
 		return;
@@ -78,7 +78,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void newlineHandler(text_renderer_state* state)
 		state->row--;
 	}
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
+obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -106,7 +106,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOS_WriteCharacter(text_renderer_state* s
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)
+obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;

@@ -22,13 +22,13 @@
 
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 
-OBOS_EXCLUDE_VAR_FROM_MM lapic* Arch_LAPICAddress;
+lapic* Arch_LAPICAddress;
 static basicmm_region lapic_region;
 static void LAPIC_DefaultIrqHandler(interrupt_frame* frame)
 {
 	Arch_LAPICSendEOI();
 }
-void Arch_LAPICInitialize(bool isBSP)
+OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 {
 	uintptr_t lapic_msr = rdmsr(IA32_APIC_BASE);
 	if (!Arch_LAPICAddress)
@@ -56,12 +56,12 @@ void Arch_LAPICInitialize(bool isBSP)
 	Arch_LAPICAddress->lvtTimer = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM  void Arch_LAPICSendEOI()
+void Arch_LAPICSendEOI()
 {
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
+OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
 {
 	if (!Arch_LAPICAddress)
 		return OBOS_STATUS_INVALID_INIT_PHASE;

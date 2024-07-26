@@ -4,7 +4,7 @@
 
 [BITS 64]
 
-section .no.mm.bss
+section .bss
 Arch_InitialISTStack:
 	resb 0x20000
 global Arch_InitialISTStack

@@ -24,8 +24,8 @@
 #define verifyAffinity(thr, cpuId) (thr->affinity & CoreH_CPUIdToAffinity(cpuId))
 #define threadCanRunThread(thr) ((thr->status == THREAD_STATUS_RUNNING || thr->status == THREAD_STATUS_READY) && verifyAffinity(thr, CoreS_GetCPULocalPtr()->id))
 
-OBOS_EXCLUDE_VAR_FROM_MM size_t Core_ReadyThreadCount;
-OBOS_EXCLUDE_CONST_VAR_FROM_MM const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
+size_t Core_ReadyThreadCount;
+const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
 	2, // THREAD_PRIORITY_IDLE
 	4, // THREAD_PRIORITY_LOW
 	8, // THREAD_PRIORITY_NORMAL
@@ -33,7 +33,7 @@ OBOS_EXCLUDE_CONST_VAR_FROM_MM const uint8_t Core_ThreadPriorityToQuantum[THREAD
 	12, // THREAD_PRIORITY_URGENT
 };
 
-OBOS_EXCLUDE_FUNC_FROM_MM thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
+thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
 
 /*
  * The scheduler is the thing that chooses a thread to run.
@@ -44,7 +44,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM thread* Core_GetCurrentThread() { if (!CoreS_GetCPULoc
 */
 
 // Returns false if the quantum is done, otherwise true if the action was completed
-static OBOS_EXCLUDE_FUNC_FROM_MM bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
+static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
 	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
@@ -77,7 +77,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM bool ThreadStarvationPrevention(thread_priority
 	}
 	return true;
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM void WorkStealing(thread_priority_list* list, thread_priority priority)
+static void WorkStealing(thread_priority_list* list, thread_priority priority)
 {
 	OBOS_ASSERT(priority <= THREAD_PRIORITY_MAX_VALUE);
 	OBOS_ASSERT(list);
@@ -141,7 +141,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void WorkStealing(thread_priority_list* list, t
 // This should be assumed to be called with the current thread's context saved.
 // It does NOT do that on it's own.
 spinlock Core_SchedulerLock;
-OBOS_EXCLUDE_FUNC_FROM_MM void Core_Schedule()
+void Core_Schedule()
 {
 	getSchedulerTicks++;
 	if (!getCurrentThread)
@@ -251,9 +251,9 @@ switch_thread:
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
-OBOS_EXCLUDE_VAR_FROM_MM struct irq* Core_SchedulerIRQ;
-OBOS_EXCLUDE_VAR_FROM_MM uint64_t Core_SchedulerTimerFrequency = 1000;
-OBOS_EXCLUDE_FUNC_FROM_MM void Core_Yield()
+struct irq* Core_SchedulerIRQ;
+uint64_t Core_SchedulerTimerFrequency = 1000;
+void Core_Yield()
 {
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() <= IRQL_DISPATCH)

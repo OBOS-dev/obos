@@ -29,7 +29,7 @@ struct idtEntry
 	uint32_t offset3;
 	uint32_t resv1;
 };
-OBOS_EXCLUDE_VAR_FROM_MM struct idtEntry g_idtEntries[256];
+struct idtEntry g_idtEntries[256];
 struct idtPointer
 {
 	uint16_t size;
@@ -42,9 +42,9 @@ enum
 	// Max DPL: 3
 	TYPE_ATTRIBUTE_USER_MODE = 0x60
 };
-OBOS_EXCLUDE_VAR_FROM_MM uintptr_t Arch_IRQHandlers[256];
+uintptr_t Arch_IRQHandlers[256];
 extern void Arch_FlushIDT(struct idtPointer* idtptr);
-static void RegisterISRInIDT(uint8_t vec, uintptr_t addr, bool canUsermodeCall, uint8_t ist)
+static OBOS_PAGEABLE_FUNCTION void RegisterISRInIDT(uint8_t vec, uintptr_t addr, bool canUsermodeCall, uint8_t ist)
 {
 	struct idtEntry idtEntry = g_idtEntries[vec];
 	idtEntry.ist = ist & 0x7;
@@ -55,13 +55,13 @@ static void RegisterISRInIDT(uint8_t vec, uintptr_t addr, bool canUsermodeCall, 
 	idtEntry.offset3 = (addr >> 32) & 0xffffffff;
 	g_idtEntries[vec] = idtEntry;
 }
-static int getIntIST(int i)
+static OBOS_PAGEABLE_FUNCTION int getIntIST(int i)
 {
 	if (i > 32)
 		return 0;
 	return (i == 2 || i == 8) ? 1 : 0;
 }
-void Arch_InitializeIDT(bool isBSP)
+OBOS_PAGEABLE_FUNCTION void Arch_InitializeIDT(bool isBSP)
 {
 	if (isBSP)
 	{
@@ -76,17 +76,17 @@ void Arch_InitializeIDT(bool isBSP)
 	idtPtr.idt = (uintptr_t)g_idtEntries;
 	Arch_FlushIDT(&idtPtr);
 }
-void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
+OBOS_PAGEABLE_FUNCTION void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
 {
 	Arch_IRQHandlers[vec] = f;
 }
-void Arch_PutInterruptOnIST(uint8_t vec, uint8_t ist)
+OBOS_PAGEABLE_FUNCTION void Arch_PutInterruptOnIST(uint8_t vec, uint8_t ist)
 {
 	if (ist > 8)
 		return;
 	g_idtEntries[vec].ist = ist;
 }
-obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
+OBOS_PAGEABLE_FUNCTION obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
 {
 	obos_status s = OBOS_STATUS_SUCCESS;
 	if ((s = CoreS_IsIRQVectorInUse(vector)) && handler)
@@ -98,15 +98,15 @@ obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interr
 	Arch_IRQHandlers[vector + 32] = (uintptr_t)handler;
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
+OBOS_PAGEABLE_FUNCTION obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 {
 	if (vector > 224)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	return Arch_IRQHandlers[vector+32] ? OBOS_STATUS_IN_USE : OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_SendEOI(interrupt_frame* unused)
+void CoreS_SendEOI(interrupt_frame* unused)
 {
 	Arch_LAPICSendEOI();
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); }
-OBOS_EXCLUDE_FUNC_FROM_MM void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }
+void CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); }
+void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }

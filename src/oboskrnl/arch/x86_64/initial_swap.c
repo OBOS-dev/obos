@@ -48,7 +48,7 @@ typedef struct swap_header
     spinlock lock;
 } swap_header;
 // The allocation id is simply the entry in the swap_page_tree.
-static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_resv(struct swap_device* dev, uintptr_t* id, size_t nPages)
+static obos_status swap_resv(struct swap_device* dev, uintptr_t* id, size_t nPages)
 {
     if (!dev || !id || !nPages) 
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -91,7 +91,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_resv(struct swap_device* dev, 
     *id = (uintptr_t)buf;
     return OBOS_STATUS_SUCCESS;
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPages)
+static obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPages)
 {
     OBOS_UNUSED(nPages);
     if (!dev || !nPages || !id) 
@@ -120,7 +120,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_free(struct swap_device* dev, 
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_write(struct swap_device* dev, uintptr_t id, uintptr_t phys, size_t nPages, size_t offsetBytes)
+static obos_status swap_write(struct swap_device* dev, uintptr_t id, uintptr_t phys, size_t nPages, size_t offsetBytes)
 {
     if (!dev || !id)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -150,7 +150,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_write(struct swap_device* dev,
     memcpy(buf, Arch_MapToHHDM(phys), nPages*OBOS_PAGE_SIZE);
     return OBOS_STATUS_SUCCESS;
 }
-static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_read(struct swap_device* dev, uintptr_t id, uintptr_t phys, size_t nPages, size_t offsetBytes)
+static obos_status swap_read(struct swap_device* dev, uintptr_t id, uintptr_t phys, size_t nPages, size_t offsetBytes)
 {
     if (!dev || !id)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -180,7 +180,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM obos_status swap_read(struct swap_device* dev, 
     memcpy(Arch_MapToHHDM(phys), buf, nPages*OBOS_PAGE_SIZE);
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size)
+obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size)
 {
     if (!buf || size < (sizeof(swap_header) + OBOS_HUGE_PAGE_SIZE))
         return OBOS_STATUS_INVALID_ARGUMENT;

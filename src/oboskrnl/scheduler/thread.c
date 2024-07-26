@@ -18,9 +18,9 @@
 #include <locks/spinlock.h>
 
 static uint64_t s_nextTID = 1;
-OBOS_EXCLUDE_VAR_FROM_MM cpu_local* Core_CpuInfo;
+cpu_local* Core_CpuInfo;
 thread_affinity Core_DefaultThreadAffinity = 1;
-OBOS_EXCLUDE_VAR_FROM_MM size_t Core_CpuCount;
+size_t Core_CpuCount;
 static void free_thr(thread* thr)
 {
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));
@@ -114,7 +114,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
+obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -135,7 +135,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status CoreH_ThreadListAppend(thread_list* list, 
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
+obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -175,7 +175,7 @@ thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 	return ((thread_affinity)1 << cpuId);
 }
 
-OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
@@ -191,7 +191,7 @@ OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }
-OBOS_NORETURN void Core_ExitCurrentThread()
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);

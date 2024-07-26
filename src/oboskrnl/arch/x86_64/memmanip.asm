@@ -12,7 +12,7 @@ global memcmp_b
 global strcmp
 global strlen
 
-section .no.mm.text
+section .text
 
 memset:
 	push rbp

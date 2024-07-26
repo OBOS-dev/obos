@@ -42,6 +42,10 @@ Arch_KernelEntryBootstrap:
 	mov [__stack_chk_guard], rax
 .done:
 	call Arch_disablePIC
+	; Turn on cr0.WP (write protect)
+	mov rax, cr0
+	or rax, (1<<16) ; WP
+	mov cr0, rax
 	; Restore rdi and rsi
 	pop rsi
 	pop rdi
@@ -49,10 +53,10 @@ Arch_KernelEntryBootstrap:
 	push 0 ; Make sure if the kernel entry returns, it triple faults and doesn't do goofy things.
 	jmp Arch_KernelEntry
 global Arch_IdleTask
-section .no.mm.data
+section .data
 global Arch_MakeIdleTaskSleep
 Arch_MakeIdleTaskSleep: db 0
-section .no.mm.text
+section .text
 Arch_IdleTask:
 	hlt
 	cmp byte [Arch_MakeIdleTaskSleep], 1

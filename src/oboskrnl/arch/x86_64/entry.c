@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/handler.c"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -47,6 +46,7 @@
 #include <mm/init.h>
 #include <mm/swap.h>
 #include <mm/context.h>
+#include <mm/handler.c>
 
 #include <scheduler/process.h>
 
@@ -56,12 +56,12 @@
 
 extern void Arch_InitBootGDT();
 
-static OBOS_EXCLUDE_VAR_FROM_MM char thr_stack[0x4000];
-static OBOS_EXCLUDE_VAR_FROM_MM char kmain_thr_stack[0x40000];
-extern OBOS_EXCLUDE_VAR_FROM_MM char Arch_InitialISTStack[0x10000];
+static char thr_stack[0x4000];
+static char kmain_thr_stack[0x40000];
+extern char Arch_InitialISTStack[0x20000];
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
-static OBOS_EXCLUDE_VAR_FROM_MM swap_dev swap;
+static swap_dev swap;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
@@ -72,16 +72,17 @@ void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackS
 void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
 void Arch_PageFaultHandler(interrupt_frame* frame);
+void Arch_DoubleFaultHandler(interrupt_frame* frame);
 struct stack_frame
 {
 	struct stack_frame* down;
 	void* rip;
 };
-void Arch_KernelEntry(struct ultra_boot_context* bcontext)
+OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
-	ParseBootContext(bcontext);
 	Core_GetIrql();
+	ParseBootContext(bcontext);
 	asm("sti");
 	if (!Arch_Framebuffer)
 		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
@@ -121,6 +122,7 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
 	Arch_RawRegisterInterrupt(0xe, (uintptr_t)Arch_PageFaultHandler);
+	Arch_RawRegisterInterrupt(0x8, (uintptr_t)Arch_DoubleFaultHandler);
 	Arch_InitializeIDT(true);
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
@@ -161,15 +163,15 @@ void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 	while (1)
 		asm volatile("nop" : : :);
 }
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_memory_map_attribute* Arch_MemoryMap;
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_kernel_info_attribute* Arch_KernelInfo;
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_module_info_attribute* Arch_KernelBinary;
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
-OBOS_EXCLUDE_VAR_FROM_MM struct ultra_framebuffer* Arch_Framebuffer;
-OBOS_EXCLUDE_VAR_FROM_MM const char* OBOS_KernelCmdLine;
+struct ultra_memory_map_attribute* Arch_MemoryMap;
+struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
+struct ultra_kernel_info_attribute* Arch_KernelInfo;
+struct ultra_module_info_attribute* Arch_KernelBinary;
+struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
+struct ultra_framebuffer* Arch_Framebuffer;
+const char* OBOS_KernelCmdLine;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
-static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
 	struct ultra_attribute_header* header = bcontext->attributes;
 	for (size_t i = 0; i < bcontext->attribute_count; i++, header = ULTRA_NEXT_ATTRIBUTE(header))
@@ -217,7 +219,7 @@ static OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 }
 extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
-OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
 	if (Mm_IsInitialized())
 	{
@@ -248,7 +250,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_fra
 				break;
 			default:
 			{
-				OBOS_EXCLUDE_CONST_VAR_FROM_MM static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
+				static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
 				OBOS_Warning(format, mm_ec, getCR2());
 				break;
 			}
@@ -283,6 +285,32 @@ OBOS_EXCLUDE_FUNC_FROM_MM OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_fra
 		getCR4(), Core_GetIrql(), getEFER()
 	);
 }
+OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
+{
+	static const char format[] = "Double fault\n!"
+		"Register dump:\n"
+		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
+		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
+		"\tRCX: 0x%016lx, RAX: 0x%016lx, RIP: 0x%016lx\n"
+		"\t R8: 0x%016lx,  R9: 0x%016lx, R10: 0x%016lx\n"
+		"\tR11: 0x%016lx, R12: 0x%016lx, R13: 0x%016lx\n"
+		"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
+		"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
+		"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
+		"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n";
+	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
+		format,
+		frame->rdi, frame->rsi, frame->rbp,
+		frame->rsp, frame->rbx, frame->rdx,
+		frame->rcx, frame->rax, frame->rip,
+		frame->r8, frame->r9, frame->r10,
+		frame->r11, frame->r12, frame->r13,
+		frame->r14, frame->r15, frame->rflags,
+		frame->ss, frame->ds, frame->cs,
+		getCR0(), getCR2(), frame->cr3,
+		getCR4(), Core_GetIrql(), getEFER()
+	);
+}
 uint64_t random_number();
 uint8_t random_number8();
 __asm__(
@@ -294,7 +322,7 @@ static basic_allocator kalloc;
 void Arch_SMPStartup();
 extern uint64_t Arch_FindCounter(uint64_t hz);
 atomic_size_t nCPUsWithInitializedTimer;
-OBOS_EXCLUDE_FUNC_FROM_MM void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
+void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
 	OBOS_UNUSED(obj);
 	OBOS_UNUSED(frame);
@@ -326,7 +354,7 @@ uint64_t Arch_CalibrateHPET(uint64_t freq)
 	return compValue;
 }
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
-static OBOS_NO_UBSAN void InitializeHPET()
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN void InitializeHPET()
 {
 	extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 	static basicmm_region hpet_region;
@@ -371,7 +399,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void hpet_irq_handler(struct irq* i, interrupt_frame
 	// Arch_HPETAddress->generalInterruptStatus &= ~(1<<timerIndex);
 	((irq_handler)userdata)(i, frame, nullptr, oldIrql);
 }
-obos_status CoreS_InitializeTimer(irq_handler handler)
+OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 {
 	static bool initialized = false;
 	OBOS_ASSERT(!initialized);
@@ -432,32 +460,7 @@ timer_tick CoreS_GetTimerTick()
 }
 process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
-static void vmm_test_thread(uint8_t* buf)
-{
-	OBOS_Debug("In test thread %d.\n", Core_GetCurrentThread()->tid);
-	page what = {.addr=(uintptr_t)buf };
-	page* p = nullptr;
-	for (uintptr_t addr = what.addr; addr < ((uintptr_t)buf + 0x4000); addr += 0x1000)
-	{
-		what.addr = addr;
-		p = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-		memset((void*)addr, 0xea, 0x1000);
-		irql oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
-		Mm_SwapOut(p);
-		Core_SpinlockRelease(&p->owner->lock, oldIrql);
-		// oldIrql = Core_SpinlockAcquireExplicit(&p->owner->lock, IRQL_MASKED, true);
-		// Mm_SwapIn(p);
-		// Core_SpinlockRelease(&p->owner->lock, oldIrql);
-		OBOS_ASSERT(memcmp_b((void*)addr, 0xea, 0x1000));
-	}
-	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
-	Core_ExitCurrentThread();
-}
-static thread threads[4];
-static thread_node thread_nodes[4];
-static OBOS_ALIGNAS(0x1000) uint8_t thread_stacks[0x10000*4];
-static OBOS_ALIGNAS(0x1000) uint8_t buf[0x4000*4];
-void Arch_KernelMainBootstrap()
+OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
 	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
@@ -527,21 +530,6 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	memzero(thread_nodes, sizeof(thread_nodes));
-	memzero(threads, sizeof(threads));
-	for (int i = 0; i < 4; i++)
-	{
-		thread_ctx ctx;
-		OBOS_ASSERT(
-			CoreS_SetupThreadContext(&ctx, 
-			(uintptr_t)vmm_test_thread, (uintptr_t)&buf[i*0x4000],
-			 false, 
-			 &thread_stacks[i*0x10000], 0x10000) ==
-			OBOS_STATUS_SUCCESS);
-		CoreH_ThreadInitialize(&threads[i], THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-		CoreH_ThreadReadyNode(&threads[i], &thread_nodes[i]);
-		Core_ProcessAppendThread(OBOS_KernelProcess, &threads[i]);
-	}
 	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
 	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
 	OBOS_Debug("%p: %s", mem, mem);

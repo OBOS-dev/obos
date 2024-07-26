@@ -47,3 +47,25 @@ inline static int pg_cmp_pages(const page* left, const page* right)
     return (intptr_t)left->addr - (intptr_t)right->addr;
 }
 RB_PROTOTYPE(page_tree, page, rb_node, pg_cmp_pages);
+#define APPEND_PAGE_NODE(list, node) do {\
+	(node)->next = nullptr;\
+	(node)->prev = nullptr;\
+	if ((list).tail)\
+		(list).tail->next = (node);\
+	if (!(list).head)\
+		(list).head = (node);\
+	(node)->prev = (list.tail);\
+	(list).tail = (node);\
+	(list).nNodes++;\
+} while(0)
+#define REMOVE_PAGE_NODE(list, node) do {\
+	if ((list).tail == (node))\
+		(list).tail = (node)->prev;\
+	if ((list).head == (node))\
+		(list).head = (node)->next;\
+	if ((node)->prev)\
+		(node)->prev->next = (node)->next;\
+	if ((node)->next)\
+		(node)->next->prev = (node)->prev;\
+	(list).nNodes--;\
+} while(0)

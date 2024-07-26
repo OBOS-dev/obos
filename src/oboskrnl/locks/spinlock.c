@@ -22,7 +22,7 @@ spinlock Core_SpinlockCreate()
 	spinlock tmp = ATOMIC_FLAG_INIT;
 	return tmp;
 }
-OBOS_NO_UBSAN OBOS_EXCLUDE_FUNC_FROM_MM irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
+OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
 {
 	if (!lock)
 		return IRQL_INVALID;
@@ -34,11 +34,11 @@ OBOS_NO_UBSAN OBOS_EXCLUDE_FUNC_FROM_MM irql Core_SpinlockAcquireExplicit(spinlo
 	lock->irqlNThrVariant = irqlNthrVariant;
 	return newIrql;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM irql Core_SpinlockAcquire(spinlock* const lock)
+irql Core_SpinlockAcquire(spinlock* const lock)
 {
 	return Core_SpinlockAcquireExplicit(lock, IRQL_MASKED, false);
 }
-OBOS_NO_UBSAN OBOS_EXCLUDE_FUNC_FROM_MM obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
+OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
 	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
 		return OBOS_STATUS_INVALID_IRQL;
@@ -48,7 +48,7 @@ OBOS_NO_UBSAN OBOS_EXCLUDE_FUNC_FROM_MM obos_status Core_SpinlockRelease(spinloc
 	lock->irqlNThrVariant = false;
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_NO_UBSAN OBOS_EXCLUDE_FUNC_FROM_MM void Core_SpinlockForcedRelease(spinlock* const lock)
+OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 {
 	atomic_flag_clear_explicit(&lock->val, memory_order_seq_cst);
 	lock->irqlNThrVariant = false;

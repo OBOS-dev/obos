@@ -47,7 +47,7 @@ static const struct ubsan_source_location unknown_location =
 };
 
 OBOS_NORETURN
-static OBOS_EXCLUDE_FUNC_FROM_MM void ubsan_abort(const struct ubsan_source_location* location,
+static void ubsan_abort(const struct ubsan_source_location* location,
                         const char* violation)
 {
 	if ( !location || !location->filename )
@@ -56,7 +56,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void ubsan_abort(const struct ubsan_source_loca
 }
 
 #define ABORT_VARIANT(name, params, call) \
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM \
+OBOS_NORETURN \
 void __ubsan_handle_##name##_abort params \
 { \
 	__ubsan_handle_##name call; \
@@ -80,7 +80,7 @@ struct ubsan_type_mismatch_data
 	unsigned char type_check_kind;
 };
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_type_mismatch(void* data_raw,
+void __ubsan_handle_type_mismatch(void* data_raw,
                                   void* pointer_raw)
 {
 	struct ubsan_type_mismatch_data* data =
@@ -93,7 +93,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_type_mismatch(void* data_raw,
 		violation = "unaligned access";
 	ubsan_abort(&data->location, violation);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_type_mismatch_v1(void* data_raw,
+void __ubsan_handle_type_mismatch_v1(void* data_raw,
                                   void* pointer_raw)
 {
 	struct ubsan_type_mismatch_data* data =
@@ -115,7 +115,7 @@ struct ubsan_overflow_data
 	struct ubsan_type_descriptor* type;
 };
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_add_overflow(void* data_raw,
+void __ubsan_handle_add_overflow(void* data_raw,
                                  void* lhs_raw,
                                  void* rhs_raw)
 {
@@ -129,7 +129,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_add_overflow(void* data_raw,
 
 ABORT_VARIANT_VP_VP_VP(add_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_sub_overflow(void* data_raw,
+void __ubsan_handle_sub_overflow(void* data_raw,
                                  void* lhs_raw,
                                  void* rhs_raw)
 {
@@ -143,7 +143,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_sub_overflow(void* data_raw,
 
 ABORT_VARIANT_VP_VP_VP(sub_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_mul_overflow(void* data_raw,
+void __ubsan_handle_mul_overflow(void* data_raw,
                                  void* lhs_raw,
                                  void* rhs_raw)
 {
@@ -157,7 +157,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_mul_overflow(void* data_raw,
 
 ABORT_VARIANT_VP_VP_VP(mul_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_negate_overflow(void* data_raw,
+void __ubsan_handle_negate_overflow(void* data_raw,
                                     void* old_value_raw)
 {
 	struct ubsan_overflow_data* data = (struct ubsan_overflow_data*) data_raw;
@@ -168,7 +168,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_negate_overflow(void* data_raw,
 
 ABORT_VARIANT_VP_VP(negate_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_divrem_overflow(void* data_raw,
+void __ubsan_handle_divrem_overflow(void* data_raw,
                                     void* lhs_raw,
                                     void* rhs_raw)
 {
@@ -182,7 +182,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_divrem_overflow(void* data_raw,
 
 ABORT_VARIANT_VP_VP_VP(divrem_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_pointer_overflow(
+void __ubsan_handle_pointer_overflow(
 	void* data_raw,
 	void* lhs_raw,
 	void* rhs_raw)
@@ -197,7 +197,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_pointer_overflow(
 
 ABORT_VARIANT_VP_VP_VP(pointer_overflow);
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_invalid_builtin(struct ubsan_source_location* location)
+void __ubsan_handle_invalid_builtin(struct ubsan_source_location* location)
 {
 	ubsan_abort(location, "invalid builtin");
 }
@@ -209,7 +209,7 @@ struct ubsan_shift_out_of_bounds_data
 	struct ubsan_type_descriptor* rhs_type;
 };
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_shift_out_of_bounds(void* data_raw,
+void __ubsan_handle_shift_out_of_bounds(void* data_raw,
                                         void* lhs_raw,
                                         void* rhs_raw)
 {
@@ -231,7 +231,7 @@ struct ubsan_out_of_bounds_data
 	struct ubsan_type_descriptor* index_type;
 };
 
-OBOS_EXCLUDE_FUNC_FROM_MM void __ubsan_handle_out_of_bounds(void* data_raw,
+void __ubsan_handle_out_of_bounds(void* data_raw,
                                   void* index_raw)
 {
 	struct ubsan_out_of_bounds_data* data =
@@ -248,7 +248,7 @@ struct ubsan_unreachable_data
 	struct ubsan_source_location location;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_builtin_unreachable(void* data_raw)
 {
 	struct ubsan_unreachable_data* data =
@@ -256,7 +256,7 @@ void __ubsan_handle_builtin_unreachable(void* data_raw)
 	ubsan_abort(&data->location, "reached unreachable");
 }
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_missing_return(void* data_raw)
 {
 	struct ubsan_unreachable_data* data =
@@ -270,7 +270,7 @@ struct ubsan_vla_bound_data
 	struct ubsan_type_descriptor* type;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_vla_bound_not_positive(void* data_raw,
                                            void* bound_raw)
 {
@@ -295,7 +295,7 @@ struct ubsan_float_cast_overflow_data
 	struct ubsan_type_descriptor* to_type;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_float_cast_overflow(void* data_raw,
                                         void* from_raw)
 {
@@ -318,7 +318,7 @@ struct ubsan_invalid_value_data
 	struct ubsan_type_descriptor* type;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_load_invalid_value(void* data_raw,
                                        void* value_raw)
 {
@@ -337,7 +337,7 @@ struct ubsan_function_type_mismatch_data
 	struct ubsan_type_descriptor* type;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_function_type_mismatch(void* data_raw,
                                            void* value_raw)
 {
@@ -356,7 +356,7 @@ struct ubsan_nonnull_return_data
 	struct ubsan_source_location attr_location;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_nonnull_return(void* data_raw)
 {
 	struct ubsan_nonnull_return_data* data =
@@ -374,7 +374,7 @@ struct ubsan_nonnull_arg_data
 
 // TODO: GCC's libubsan does not have the second parameter, but its builtin
 //       somehow has it and conflict if we don't match it.
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_nonnull_arg(void* data_raw,
                                 intptr_t index_raw)
 {
@@ -393,7 +393,7 @@ struct ubsan_cfi_bad_icall_data
 	struct ubsan_type_descriptor* type;
 };
 
-OBOS_NORETURN OBOS_EXCLUDE_FUNC_FROM_MM
+OBOS_NORETURN 
 void __ubsan_handle_cfi_bad_icall(void* data_raw,
                                   void* value_raw)
 {

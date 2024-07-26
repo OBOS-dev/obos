@@ -25,13 +25,14 @@
 
 #include <utils/tree.h>
 
-OBOS_EXCLUDE_VAR_FROM_MM static bool initialized;
-OBOS_EXCLUDE_VAR_FROM_MM context Mm_KernelContext;
+static bool initialized;
+context Mm_KernelContext;
 typedef struct 
 {
     page* buf;
     size_t nNodes;
     size_t i;
+    size_t szPageablePages;
 } mm_regions_udata;
 #define round_up(addr) (uintptr_t)((uintptr_t)(addr) + (OBOS_PAGE_SIZE - ((uintptr_t)(addr) % OBOS_PAGE_SIZE)))
 #define round_down(addr) (uintptr_t)((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
@@ -78,6 +79,8 @@ static bool register_pages(basicmm_region* region, void* udatablk)
         pg->pageable = !(MmH_IsAddressUnPageable(addr) ||
                        ((addr >= round_down(udata->buf)) && (addr < round_up(&udata->buf[udata->nNodes]))) ||
                        region->mmioRange); 
+        if (pg->pageable)
+            udata->szPageablePages += (pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         pg->inWorkingSet = false;
         pg->pagedOut = false;
         pg->age = 0;
@@ -90,7 +93,7 @@ static bool register_pages(basicmm_region* region, void* udatablk)
     }
     return true;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
+void Mm_Initialize()
 {
     if (Core_TimerInterfaceInitialized)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", OBOS_STATUS_INVALID_INIT_PHASE);
@@ -99,6 +102,9 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
     Mm_KernelContext.owner = CoreS_GetCPULocalPtr()->currentThread->proc;
     Mm_KernelContext.pt = MmS_GetCurrentPageTable();
     CoreS_GetCPULocalPtr()->currentThread->proc->ctx = &Mm_KernelContext;
+    // CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
+    for (size_t i = 0; i < Core_CpuCount; i++)
+        Core_CpuInfo[i].currentContext = &Mm_KernelContext;
     mm_regions_udata udata = { nullptr,0, 0 };
     OBOSH_BasicMMIterateRegions(count_pages, &udata);
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -109,14 +115,15 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Mm_Initialize()
     if (obos_likely_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate node buffer. Status: %d.\n", status);
     OBOSH_BasicMMIterateRegions(register_pages, &udata);
+    Mm_KernelContext.workingSet.size = udata.szPageablePages/4;
+    initialized = true;
     page* i = nullptr;
     RB_FOREACH(i, page_tree, &Mm_KernelContext.pages)
-        if (i->pageable && false)
+        if (i->pageable)
             Mm_SwapOut(i);
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
-    initialized = true;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM bool Mm_IsInitialized()
+bool Mm_IsInitialized()
 {
     return initialized;
 }

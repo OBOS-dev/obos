@@ -70,6 +70,6 @@ typedef _Bool bool;
 #if __STDC_HOSTED__
 #	error Must be compiled as freestanding.
 #endif
-#define OBOS_EXCLUDE_VAR_FROM_MM __attribute__((section(".no.mm.data")))
-#define OBOS_EXCLUDE_CONST_VAR_FROM_MM __attribute__((section(".no.mm.rodata")))
-#define OBOS_EXCLUDE_FUNC_FROM_MM __attribute__((section(".no.mm.text")))
+#define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#define OBOS_PAGEABLE_RO_VARIABLE _attribute__((section(".pageable.rodata")))
+#define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))

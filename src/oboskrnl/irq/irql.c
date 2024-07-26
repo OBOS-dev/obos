@@ -15,27 +15,27 @@
 
 irql s_irql = IRQL_MASKED;
 
-OBOS_EXCLUDE_FUNC_FROM_MM irql* Core_GetIRQLVar()
+irql* Core_GetIRQLVar()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return &s_irql;
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 
-OBOS_EXCLUDE_FUNC_FROM_MM void Core_LowerIrql(irql to)
+void Core_LowerIrql(irql to)
 {
 	Core_LowerIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM irql Core_RaiseIrql(irql to)
+irql Core_RaiseIrql(irql to)
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 	return oldIrql;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void Core_LowerIrqlNoThread(irql to)
+void Core_LowerIrqlNoThread(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());
@@ -47,7 +47,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM void Core_LowerIrqlNoThread(irql to)
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM irql Core_RaiseIrqlNoThread(irql to)
+irql Core_RaiseIrqlNoThread(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());
@@ -61,7 +61,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM irql Core_RaiseIrqlNoThread(irql to)
 	*Core_GetIRQLVar() = to;
 	return oldIRQL;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM irql Core_GetIrql()
+irql Core_GetIrql()
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());

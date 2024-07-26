@@ -160,7 +160,7 @@ static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
 {
 	return *OffsetPtr(nullptr, off, uint64_t);
 }
-OBOS_EXCLUDE_VAR_FROM_MM bool Arch_SMPInitialized = false;
+bool Arch_SMPInitialized = false;
 void Arch_SMPStartup()
 {
 	Arch_RawRegisterInterrupt(0x2, (uintptr_t)nmiHandler);
@@ -171,11 +171,12 @@ void Arch_SMPStartup()
 #endif
 	// if (s_nLAPICIDs == 1)
 	// 	return; // No work to do.
-	// ^ is not true
+	//             ^ is not true
 	cpu_local* cpu_info = (cpu_local*)OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, s_nLAPICIDs*sizeof(cpu_local), nullptr);
 	memzero(cpu_info, s_nLAPICIDs * sizeof(cpu_local));
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];
+	cpu_info[0].currentPriorityList = cpu_info[0].priorityLists + (Core_CpuInfo[0].currentPriorityList - Core_CpuInfo[0].priorityLists);
 	Arch_MapPage(getCR3(), nullptr, 0, 0x3);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
@@ -185,7 +186,7 @@ void Arch_SMPStartup()
 	{
 		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
 		{
-			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x10000);
+			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);
 			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 			continue;
 		}
@@ -234,10 +235,10 @@ void Arch_SMPStartup()
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage(nullptr);
 }
-OBOS_EXCLUDE_VAR_FROM_MM _Atomic(bool) Arch_HaltCPUs = false;
-OBOS_EXCLUDE_VAR_FROM_MM _Atomic(uint8_t) Arch_CPUsHalted = 0;
+_Atomic(bool) Arch_HaltCPUs = false;
+_Atomic(uint8_t) Arch_CPUsHalted = 0;
 bool Arch_InvlpgIPI(interrupt_frame* frame);
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void nmiHandler(interrupt_frame* frame)
+OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 {
 	if (Arch_HaltCPUs)
 	{
@@ -250,7 +251,7 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void nmiHandler(interrupt_frame* 
 		return;
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void HaltInitializedCPUs()
+OBOS_NO_KASAN static void HaltInitializedCPUs()
 {
 	Arch_HaltCPUs = true;
 	for (size_t i = 0; i < Core_CpuCount; i++)
@@ -269,7 +270,7 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM static void HaltInitializedCPUs()
 		Arch_LAPICSendIPI(lapic, vector);
 	}
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM void OBOSS_HaltCPUs()
+OBOS_NO_KASAN void OBOSS_HaltCPUs()
 {
 	if (Core_CpuCount == 1)
 		return;

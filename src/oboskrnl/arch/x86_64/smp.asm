@@ -10,7 +10,7 @@ global Arch_SMPTrampolineCR3
 global Arch_SMPTrampolineRSP
 global Arch_SMPTrampolineCPULocalPtr
 
-section .data
+section .pageable.data
 
 Arch_SMPTrampolineStart:
 bits 16

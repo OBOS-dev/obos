@@ -56,6 +56,6 @@ typedef struct context
     page_table pt;
 } context;
 extern context Mm_KernelContext;
-extern char MmS_MMExclusionRangeStart[];
-extern char MmS_MMExclusionRangeEnd[];
+extern char MmS_MMPageableRangeStart[];
+extern char MmS_MMPageableRangeEnd[];
 bool MmH_IsAddressUnPageable(uintptr_t addr);

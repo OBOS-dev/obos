@@ -30,7 +30,7 @@ global sti
 global hlt
 global MmS_GetCurrentPageTable
 
-section .no.mm.text
+section .text
 
 getCR0:
 	push rbp

@@ -49,4 +49,4 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec);
 /// </summary>
 /// <param name="ctx">A pointer to the context. Cannot be nullptr.</param>
 /// <returns>The status of the function.</returns>
-obos_status Mm_RunPRE(context* ctx);
+obos_status Mm_RunPRA(context* ctx);

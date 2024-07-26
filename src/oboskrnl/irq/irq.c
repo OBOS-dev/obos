@@ -24,10 +24,10 @@ irq* Core_IrqObjectAllocate(obos_status* status)
 {
 	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
 }
-static OBOS_EXCLUDE_VAR_FROM_MM irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
-static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_lock;
-static OBOS_EXCLUDE_VAR_FROM_MM bool s_irqInterfaceInitialized;
-OBOS_EXCLUDE_FUNC_FROM_MM  void Core_IRQDispatcher(interrupt_frame* frame)
+static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
+static spinlock s_lock;
+static bool s_irqInterfaceInitialized;
+ void Core_IRQDispatcher(interrupt_frame* frame)
 {
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())

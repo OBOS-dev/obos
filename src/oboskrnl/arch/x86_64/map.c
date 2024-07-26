@@ -32,20 +32,20 @@
 
 #include <irq/irql.h>
 
-static OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
+static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
 
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
+OBOS_NO_KASAN uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
 {
 	return phys & 0xffffffffff000;
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	if (!pml4Base)
 		return 0;
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(pml4Base));
 	return arr[AddressToIndex(addr, 3)];
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML4Entry(pml4Base, addr));
 	if (!phys)
@@ -53,7 +53,7 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML3Entry(uintptr_t pm
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(phys);
 	return arr[AddressToIndex(addr, 2)];
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML3Entry(pml4Base, addr));
 	if (!phys)
@@ -61,7 +61,7 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML2Entry(uintptr_t pm
 	uintptr_t* arr = (uintptr_t*)Arch_MapToHHDM(phys);
 	return arr[AddressToIndex(addr, 1)];
 }
-OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML2Entry(pml4Base, addr));
 	if (!phys)
@@ -70,7 +70,7 @@ OBOS_NO_KASAN OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t Arch_GetPML1Entry(uintptr_t pm
 	return arr[AddressToIndex(addr, 0)];
 }
 
-static OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t GetPageMapEntryForDepth(uintptr_t pml4Base, uintptr_t addr, uint8_t depth)
+static uintptr_t GetPageMapEntryForDepth(uintptr_t pml4Base, uintptr_t addr, uint8_t depth)
 {
 	switch (depth)
 	{
@@ -86,7 +86,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t GetPageMapEntryForDepth(uintptr_t pml
 	return 0;
 }
 
-OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
+uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlags, uint8_t depth)
 {
 	if (depth > 3 || depth == 0)
 		return nullptr;
@@ -119,7 +119,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, 
 	}
 	return (uintptr_t*)Arch_MapToHHDM(Arch_MaskPhysicalAddressFromEntry(GetPageMapEntryForDepth(pml4Base, at, (4 - depth))));
 }
-OBOS_EXCLUDE_FUNC_FROM_MM bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
+bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 {
 	if (maxDepth > 3 || maxDepth == 0)
 		return false;
@@ -140,7 +140,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t 
 	return true;
 }
 
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -155,7 +155,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_MapPage(uintptr_t cr3, void* at_, uin
 	pm[AddressToIndex(at, 0)] = phys | flags;
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
+obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -172,14 +172,14 @@ OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_MapHugePage(uintptr_t cr3, void* at_,
 	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
 	return OBOS_STATUS_SUCCESS;
 }
-static OBOS_EXCLUDE_VAR_FROM_MM struct {
+static struct {
 	spinlock lock;
 	uintptr_t addr;
 	uintptr_t cr3;
 	atomic_size_t nCPUsRan;
 	bool active;
 } invlpg_ipi_packet;
-OBOS_EXCLUDE_FUNC_FROM_MM bool Arch_InvlpgIPI(interrupt_frame* frame)
+bool Arch_InvlpgIPI(interrupt_frame* frame)
 {
 	OBOS_UNUSED(frame);
 	if (!invlpg_ipi_packet.active)
@@ -191,7 +191,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM bool Arch_InvlpgIPI(interrupt_frame* frame)
 	return true;
 }
 extern bool Arch_SMPInitialized;
-OBOS_EXCLUDE_FUNC_FROM_MM obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
+obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;

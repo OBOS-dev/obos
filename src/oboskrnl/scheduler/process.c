@@ -13,11 +13,11 @@
 #include <allocators/base.h>
 
 uint64_t Core_NextPID = 1;
-static void free_node(thread_node* n)
+static OBOS_PAGEABLE_FUNCTION void free_node(thread_node* n)
 {
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, n, sizeof(*n));
 }
-process* Core_ProcessAllocate(obos_status* status) 
+OBOS_PAGEABLE_FUNCTION process* Core_ProcessAllocate(obos_status* status) 
 {
 	if (!OBOS_KernelAllocator)
 	{
@@ -27,7 +27,7 @@ process* Core_ProcessAllocate(obos_status* status)
 	}
 	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
 }
-obos_status Core_ProcessStart(process* proc, thread* mainThread)
+OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* mainThread)
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -46,7 +46,7 @@ obos_status Core_ProcessStart(process* proc, thread* mainThread)
 	mainThread->proc = proc;
 	return CoreH_ThreadReady(mainThread);
 }
-obos_status Core_ProcessAppendThread(process* proc, thread* thread)
+OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, thread* thread)
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -64,7 +64,7 @@ obos_status Core_ProcessAppendThread(process* proc, thread* thread)
 	thread->proc = proc;
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status Core_ProcessTerminate(process* proc, bool forced)
+OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessTerminate(process* proc, bool forced)
 {
-
+	return OBOS_STATUS_UNIMPLEMENTED;
 }

@@ -54,7 +54,7 @@ align 8
 endstruc
 
 extern Core_GetIRQLVar
-section .no.mm.text
+section .text
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
 	cli
@@ -101,7 +101,7 @@ CoreS_SwitchToThreadContext:
 	popaq
 	add rsp, 0x18
 	iretq
-section .text
+section .pageable.text
 CoreS_FreeThreadContext:
 	push rbp
 	mov rbp, rsp
@@ -159,7 +159,7 @@ CoreS_SetupThreadContext:
 .finish:
 	leave
 	ret
-section .no.mm.text
+section .text
 extern Arch_GetCPUTempStack
 CoreS_CallFunctionOnStack:
 	push rbp

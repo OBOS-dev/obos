@@ -24,8 +24,6 @@
 #define round_down(addr) (uintptr_t)((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
 bool MmH_IsAddressUnPageable(uintptr_t addr)
 {
-    if (addr >= round_down(&MmS_MMExclusionRangeStart) && addr < round_up(&MmS_MMExclusionRangeEnd))
-		return true;
 	if (addr >= round_down(Core_CpuInfo) && addr < round_up((uintptr_t)(Core_CpuInfo + Core_CpuCount)))
 		return true;
 	if (addr >= round_down(OBOS_TextRendererState.fb.base) && addr < round_up((uintptr_t)OBOS_TextRendererState.fb.base + OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch))
@@ -59,6 +57,8 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 #	error Unknown architecture.
 #endif
 	}
+    if (!(addr >= round_down(&MmS_MMPageableRangeStart) && addr < round_up(&MmS_MMPageableRangeEnd)))
+		return true;
 	return false;
 }
-RB_GENERATE_INTERNAL(page_tree, page, rb_node, pg_cmp_pages, OBOS_EXCLUDE_FUNC_FROM_MM);
+RB_GENERATE(page_tree, page, rb_node, pg_cmp_pages);

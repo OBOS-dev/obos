@@ -27,9 +27,9 @@
 #	include <arch/x86_64/asm_helpers.h>
 #endif
 
-OBOS_EXCLUDE_FUNC_FROM_MM const char* OBOSH_PanicReasonToStr(panic_reason reason)
+const char* OBOSH_PanicReasonToStr(panic_reason reason)
 {
-	static OBOS_EXCLUDE_CONST_VAR_FROM_MM const char* const table[] = {
+	static const char* const table[] = {
 		"OBOS_PANIC_EXCEPTION",
 		"OBOS_PANIC_FATAL_ERROR",
 		"OBOS_PANIC_KASAN_VIOLATION",
@@ -46,17 +46,17 @@ OBOS_EXCLUDE_FUNC_FROM_MM const char* OBOSH_PanicReasonToStr(panic_reason reason
 	return table[reason];
 }
 static log_level s_logLevel;
-void OBOS_SetLogLevel(log_level level)
+OBOS_PAGEABLE_FUNCTION void OBOS_SetLogLevel(log_level level)
 {
 	s_logLevel = level;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM log_level OBOS_GetLogLevel()
+log_level OBOS_GetLogLevel()
 {
 	return s_logLevel;
 }
-static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_loggerLock; OBOS_EXCLUDE_VAR_FROM_MM bool s_loggerLockInitialized = false;
-static OBOS_EXCLUDE_VAR_FROM_MM spinlock s_printfLock; OBOS_EXCLUDE_VAR_FROM_MM bool s_printfLockInitialized = false;
-static OBOS_EXCLUDE_FUNC_FROM_MM void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
+static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
+static spinlock s_printfLock; bool s_printfLockInitialized = false;
+static OBOS_PAGEABLE_FUNCTION void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
 	{
@@ -70,41 +70,41 @@ static OBOS_EXCLUDE_FUNC_FROM_MM void common_log(log_level minimumLevel, const c
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Debug(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Debug(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_DEBUG, "DEBUG", format, list);
 	va_end(list);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Log(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Warning(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_WARNING, " WARN", format, list);
 	va_end(list);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM void OBOS_Error(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Error(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_ERROR, "ERROR", format, list);
 	va_end(list);
 }
-OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getCPUId()
+static uint32_t getCPUId()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)0;
 	return CoreS_GetCPULocalPtr()->id;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getTID()
+static uint32_t getTID()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)-1;
@@ -112,7 +112,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getTID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->tid;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM static uint32_t getPID()
+static uint32_t getPID()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return (uint32_t)-1;
@@ -151,7 +151,7 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* for
 }
 
 
-static OBOS_EXCLUDE_FUNC_FROM_MM char* outputCallback(const char* buf, void* a, int len)
+static char* outputCallback(const char* buf, void* a, int len)
 {
 	OBOS_UNUSED(a);
 	for (size_t i = 0; i < (size_t)len; i++)
@@ -163,7 +163,7 @@ static OBOS_EXCLUDE_FUNC_FROM_MM char* outputCallback(const char* buf, void* a, 
 	}
 	return (char*)buf;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM size_t printf(const char* format, ...)
+size_t printf(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -171,7 +171,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM size_t printf(const char* format, ...)
 	va_end(list);
 	return ret;
 }
-OBOS_EXCLUDE_FUNC_FROM_MM size_t vprintf(const char* format, va_list list)
+size_t vprintf(const char* format, va_list list)
 {
 	if (!s_printfLockInitialized)
 	{
@@ -184,7 +184,7 @@ OBOS_EXCLUDE_FUNC_FROM_MM size_t vprintf(const char* format, va_list list)
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
-size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
+OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -192,7 +192,7 @@ size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 	va_end(list);
 	return ret;
 }
-size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
+OBOS_PAGEABLE_FUNCTION size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
 	return stbsp_vsnprintf(buf, bufSize, format, list);
 }
