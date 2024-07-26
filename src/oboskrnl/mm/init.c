@@ -14,6 +14,7 @@
 #include <mm/init.h>
 #include <mm/page.h>
 #include <mm/swap.h>
+#include <mm/alloc.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>
@@ -24,6 +25,9 @@
 #include <locks/spinlock.h>
 
 #include <utils/tree.h>
+
+#include <allocators/basic_allocator.h>
+#include <allocators/base.h>
 
 static bool initialized;
 context Mm_KernelContext;
@@ -93,8 +97,11 @@ static bool register_pages(basicmm_region* region, void* udatablk)
     }
     return true;
 }
+static basic_allocator non_paged_pool_alloc;
 void Mm_Initialize()
 {
+    OBOSH_ConstructBasicAllocator(&non_paged_pool_alloc);
+    OBOS_NonPagedPoolAllocator = (allocator_info*)&non_paged_pool_alloc;
     if (Core_TimerInterfaceInitialized)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", OBOS_STATUS_INVALID_INIT_PHASE);
     Mm_KernelContext.lock = Core_SpinlockCreate();
