@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/context.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -13,10 +14,16 @@
 #include <allocators/basic_allocator.h>
 
 #include <mm/bare_map.h>
+#include <mm/alloc.h>
+#include <mm/init.h>
 
 #include <sanitizers/asan.h>
 
 #include <locks/spinlock.h>
+
+#if __x86_64__
+#	include <arch/x86_64/pmm.h>
+#endif
 
 OBOS_PAGEABLE_FUNCTION static uintptr_t round_up(uintptr_t x, size_t to)
 {
@@ -44,12 +51,42 @@ static OBOS_PAGEABLE_FUNCTION void Unlock(struct safe_spinlock* l)
 	Core_SpinlockRelease(l->lock, l->oldIrql);
 }
 #define makeSafeLock(name, This) struct safe_spinlock name; name.lock = &((This)->lock); Lock(&name);
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
+static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, obos_status* status)
+{
+	if (Mm_IsInitialized())
+	{
+		// Use the VMA, unless this is the vmm allocator.
+		if ((allocator_info*)This == Mm_Allocator)
+		{
+			size_t nPages = size / OBOS_PAGE_SIZE;
+			if (size % OBOS_PAGE_SIZE)
+				nPages++;
+			uintptr_t phys = Arch_AllocatePhysicalPages(nPages, 1, status);
+			if (!phys)
+				return nullptr;
+			// Arch-specific:
+			// Map the physical address to virtual addresses without the need of page nodes.
+			// On x86-64, this is done using the HHDM.
+#ifdef __x86_64__
+			return Arch_MapToHHDM(phys);
+#else
+#	error Unknown architecture
+#endif
+		}
+		return Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, size, 0, 0, status);
+	}
+	void* blk = OBOS_BasicMMAllocatePages(size, status);
+	if (!blk)
+		return nullptr;
+	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
+	return blk;
+}
+static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
 {
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
 	size += sizeof(basicalloc_region) + sizeof(basicalloc_node);
 	size_t initialSize = size;
-	basicalloc_region* blk = (basicalloc_region*)OBOS_BasicMMAllocatePages(size, status);
+	basicalloc_region* blk = (basicalloc_region*)allocateBlock(This, size, status);
 	if (!blk)
 		return nullptr;
 	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
@@ -75,7 +112,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN basicalloc_region* allocateNewRegion
 	This->nRegions++;
 	return blk;
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
+static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
 {
 	if (block->prev)
 		block->prev->next = block->next;
@@ -88,7 +125,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void freeRegion(basic_allocator* Thi
 	This->nRegions--;
 	OBOS_BasicMMFreePages(block, block->size);
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
+static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !size)
 	{
@@ -220,7 +257,7 @@ tryAgain:
 #endif
 	return OBOS_NODE_ADDR(freeNode);
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
+static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{
@@ -230,7 +267,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* ZeroAllocate(allocator_info* T
 	size_t size = bytesPerObject * nObjects;
 	return memzero(Allocate(This, size, status), size);
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
+static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t newSize, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 	{

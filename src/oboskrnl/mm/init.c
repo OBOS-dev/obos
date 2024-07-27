@@ -98,10 +98,13 @@ static bool register_pages(basicmm_region* region, void* udatablk)
     return true;
 }
 static basic_allocator non_paged_pool_alloc;
+static basic_allocator vmm_alloc;
 void Mm_Initialize()
 {
     OBOSH_ConstructBasicAllocator(&non_paged_pool_alloc);
+    OBOSH_ConstructBasicAllocator(&vmm_alloc);
     OBOS_NonPagedPoolAllocator = (allocator_info*)&non_paged_pool_alloc;
+    Mm_Allocator = (allocator_info*)&vmm_alloc;
     if (Core_TimerInterfaceInitialized)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", OBOS_STATUS_INVALID_INIT_PHASE);
     Mm_KernelContext.lock = Core_SpinlockCreate();
@@ -122,6 +125,10 @@ void Mm_Initialize()
     if (obos_likely_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate node buffer. Status: %d.\n", status);
     OBOSH_BasicMMIterateRegions(register_pages, &udata);
+    // Do any architecture-specific rounding here.
+#ifdef __x86_64__
+    udata.szPageablePages = (udata.szPageablePages + 0x3fff) & ~0x3fff;
+#endif
     Mm_KernelContext.workingSet.size = udata.szPageablePages/4;
     initialized = true;
     page* i = nullptr;

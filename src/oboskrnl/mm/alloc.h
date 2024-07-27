@@ -44,13 +44,14 @@ typedef enum prot_flags
 	/// </summary>
 	OBOS_PROTECTION_CACHE_DISABLE = 0x8,
 	/// <summary>
-	/// Bits from here to OBOS_PROTECTION_PLATFORM_END are reserved for the platform.
+	/// Bits from here to OBOS_PROTECTION_PLATFORM_END are reserved for the architecture.
 	/// </summary>
 	OBOS_PROTECTION_PLATFORM_START = 0x01000000,
 	OBOS_PROTECTION_PLATFORM_END = 0x80000000,
 } prot_flags;
 
 extern allocator_info* OBOS_NonPagedPoolAllocator;
+extern allocator_info* Mm_Allocator;
 
 void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 void* Mm_AllocateVirtualMemory(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, obos_status* status);

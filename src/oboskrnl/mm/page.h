@@ -44,7 +44,10 @@ typedef struct page_list
 typedef RB_HEAD(page_tree, page) page_tree;
 inline static int pg_cmp_pages(const page* left, const page* right)
 {
-    return (intptr_t)left->addr - (intptr_t)right->addr;
+    if (left->addr == right->addr)
+        return 0;
+    return (left->addr < right->addr) ? -1 : 1;
+    // return (intptr_t)left->addr - (intptr_t)right->addr;
 }
 RB_PROTOTYPE(page_tree, page, rb_node, pg_cmp_pages);
 #define APPEND_PAGE_NODE(list, node) do {\

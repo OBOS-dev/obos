@@ -14,18 +14,76 @@
 #include <mm/bare_map.h>
 #include <mm/swap.h>
 
+#include <scheduler/process.h>
+
 #include <utils/tree.h>
 
 #include <irq/irql.h>
 #include <locks/spinlock.h>
 
 allocator_info* OBOS_NonPagedPoolAllocator;
+allocator_info* Mm_Allocator;
 
 #define set_statusp(status, to) (status) ? *(status) = (to) : (void)0
 void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status)
 {
-    set_statusp(status, OBOS_STATUS_UNIMPLEMENTED);
-    return nullptr;
+    if (!ctx)
+    {
+        set_statusp(status, OBOS_STATUS_INVALID_ARGUMENT);
+        return nullptr;
+    }
+    size_t pgSize = flags & VMA_FLAGS_HUGE_PAGE ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    if (size % pgSize)
+        size -= (size % pgSize);
+    uintptr_t base = 
+        ctx->owner->pid == 1 ?
+        OBOS_KERNEL_ADDRESS_SPACE_BASE :
+        OBOS_USER_ADDRESS_SPACE_BASE,
+              limit = 
+        ctx->owner->pid == 1 ?
+        OBOS_KERNEL_ADDRESS_SPACE_LIMIT :
+        OBOS_USER_ADDRESS_SPACE_LIMIT;
+    if (flags & VMA_FLAGS_32BIT)
+    {
+        base = 0x1000;
+        limit = 0xfffff000;
+    }
+	page* currentNode = nullptr;
+	page* lastNode = nullptr;
+	uintptr_t lastAddress = base;
+	uintptr_t found = 0;
+	for (currentNode = RB_MIN(page_tree, &ctx->pages); 
+        currentNode; 
+        currentNode = RB_NEXT(page_tree, &ctx->pages, currentNode))
+    {
+		uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % pgSize);
+		if (currentNodeAddr < base)
+		    continue;
+        if (currentNodeAddr >= limit)
+            break; // Because of the properties of an RB-Tree, we can break here.
+		if ((currentNodeAddr - lastAddress) >= (size + pgSize))
+		{
+			found = lastAddress;
+			break;
+		}
+		lastAddress = currentNodeAddr + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        lastNode = currentNode;
+	}
+    if (!found)
+	{
+		page* currentNode = lastNode;
+		if (currentNode)
+			found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+		else
+			found = base;
+	}
+	if (!found)
+	{
+		if (status)
+			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
+		return nullptr;
+	}
+    return (void*)found;
 }
 void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, obos_status* ustatus)
 {
@@ -87,7 +145,7 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
     size_t nNodes = size / pgSize + (size % pgSize ? 1 : 0);
-    page* nodes = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, nNodes, sizeof(page), &status);
+    page* nodes = Mm_Allocator->ZeroAllocate(Mm_Allocator, nNodes, sizeof(page), &status);
     for (size_t i = 0; i < nNodes; i++)
     {
         uintptr_t phys = OBOSS_AllocatePhysicalPages(pgSize/OBOS_PAGE_SIZE, pgSize/OBOS_PAGE_SIZE, &status);
@@ -121,7 +179,7 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
                     RB_REMOVE(page_tree, &ctx->pages, &nodes[j]);
                 }
                 Core_SpinlockRelease(&ctx->lock, oldIrql);
-                OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, nodes, nNodes*sizeof(page));
+                Mm_Allocator->Free(Mm_Allocator, nodes, nNodes*sizeof(page));
                 set_statusp(ustatus, status);
                 return nullptr;
             }

@@ -531,8 +531,8 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	// char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
-	char* mem = Mm_AllocateVirtualMemory(&Mm_KernelContext, (void*)0xffffffff90000000, 0x8000, 0, 0, nullptr);
+	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
+	// char* mem = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x8000, 0, 0, nullptr);
 	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
 	OBOS_Debug("%p: %s", mem, mem);
 	OBOS_Log("%s: Done early boot.\n", __func__);
