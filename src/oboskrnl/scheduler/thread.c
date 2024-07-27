@@ -31,7 +31,11 @@ static void free_node(thread_node* node)
 }
 thread* CoreH_ThreadAllocate(obos_status* status)
 {
-	thread* thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
+	thread* thr = nullptr;
+	if (!OBOS_NonPagedPoolAllocator)
+		thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
+	else
+		thr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread), status);
 	if (thr)
 		thr->free = free_thr;
 	return thr;

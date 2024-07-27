@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 
@@ -25,7 +26,9 @@ OBOS_PAGEABLE_FUNCTION process* Core_ProcessAllocate(obos_status* status)
 			*status = OBOS_STATUS_INVALID_INIT_PHASE;
 		return nullptr;
 	}
-	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
+	if (!OBOS_NonPagedPoolAllocator)
+		return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
+	return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
 }
 OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* mainThread)
 {

@@ -32,6 +32,8 @@ typedef struct page
     bool pageable : 1;           // If set, the page is pageable.
     bool pagedOut : 1;           // If set, the page is paged out.
     bool inWorkingSet : 1;       // If set, the page is in the working-set of its context.
+    bool isGuardPage : 1;        // If set, the page is a guard page.
+    bool allocated : 1;          // If set, this object was allocated by Mm_Allocator.
     uint8_t age : 8;             // The page's age
     uintptr_t addr : PTR_BITS;   // The page's address.
     uintptr_t swapId : PTR_BITS; // The page's swap allocation id. Only valid if pagedOut == true.

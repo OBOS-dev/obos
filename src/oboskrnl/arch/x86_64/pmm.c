@@ -169,3 +169,7 @@ OBOS_NO_KASAN void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
 }
+uintptr_t Arch_UnmapFromHHDM(void* virt)
+{
+	return UNMAP_FROM_HHDM(virt);
+}

@@ -22,7 +22,9 @@
 
 irq* Core_IrqObjectAllocate(obos_status* status)
 {
-	return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
+	if (!OBOS_NonPagedPoolAllocator)
+		return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
+	return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(irq), status);
 }
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;

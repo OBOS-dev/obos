@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <stdint.h>
 
 extern size_t Arch_TotalPhysicalPages;
 extern size_t Arch_TotalPhysicalPagesUsed;
@@ -35,3 +36,4 @@ uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_
 /// <param name="nPages">The amount of pages to free.</param>
 void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages);
 void* Arch_MapToHHDM(uintptr_t phys);
+uintptr_t Arch_UnmapFromHHDM(void* virt);

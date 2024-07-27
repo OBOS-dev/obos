@@ -50,8 +50,9 @@ typedef enum prot_flags
 	OBOS_PROTECTION_PLATFORM_END = 0x80000000,
 } prot_flags;
 
-extern allocator_info* OBOS_NonPagedPoolAllocator;
 extern allocator_info* Mm_Allocator;
 
 void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 void* Mm_AllocateVirtualMemory(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, obos_status* status);
+// Note: base must be the exact address as returned by AllocateVirtualMemory.
+obos_status Mm_FreeVirtualMemory(context* ctx, void* base, size_t size);

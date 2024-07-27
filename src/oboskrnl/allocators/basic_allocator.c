@@ -51,13 +51,16 @@ static OBOS_PAGEABLE_FUNCTION void Unlock(struct safe_spinlock* l)
 	Core_SpinlockRelease(l->lock, l->oldIrql);
 }
 #define makeSafeLock(name, This) struct safe_spinlock name; name.lock = &((This)->lock); Lock(&name);
-static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, obos_status* status)
+static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int* blockSource, obos_status* status)
 {
+	OBOS_ASSERT(blockSource);
+	*blockSource = BLOCK_SOURCE_INVALID;
 	if (Mm_IsInitialized())
 	{
 		// Use the VMA, unless this is the vmm allocator.
 		if ((allocator_info*)This == Mm_Allocator)
 		{
+			// If this calculation changes, update freeRegion
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
@@ -67,18 +70,30 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, obo
 			// Arch-specific:
 			// Map the physical address to virtual addresses without the need of page nodes.
 			// On x86-64, this is done using the HHDM.
+			void* ret = nullptr;
 #ifdef __x86_64__
-			return Arch_MapToHHDM(phys);
+			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
+			ret = Arch_MapToHHDM(phys);
 #else
 #	error Unknown architecture
 #endif
+			memzero(ret, size);
+			return ret;
 		}
-		return Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, size, 0, 0, status);
+		void* ret = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, size, 0, ((allocator_info*)This == OBOS_NonPagedPoolAllocator ? VMA_FLAGS_NON_PAGED : 0), status);
+		if (!ret)
+			return nullptr;
+		if ((allocator_info*)This == OBOS_NonPagedPoolAllocator)
+			memzero(ret, size); // To avoid unneccessary page faults.
+		*blockSource = BLOCK_SOURCE_VMA;
+		return ret;
 	}
 	void* blk = OBOS_BasicMMAllocatePages(size, status);
 	if (!blk)
 		return nullptr;
+	*blockSource = BLOCK_SOURCE_BASICMM;
 	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
+	memzero(blk, size);
 	return blk;
 }
 static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This, size_t size, obos_status* status)
@@ -86,11 +101,11 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	size = round_up(size, OBOS_PAGE_SIZE * 4);
 	size += sizeof(basicalloc_region) + sizeof(basicalloc_node);
 	size_t initialSize = size;
-	basicalloc_region* blk = (basicalloc_region*)allocateBlock(This, size, status);
+	int blockSource = 0;
+	basicalloc_region* blk = (basicalloc_region*)allocateBlock(This, size, &blockSource, status);
 	if (!blk)
 		return nullptr;
 	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
-	memzero(blk, initialSize + sizeof(basicalloc_node));
 	blk->magic = PAGEBLOCK_MAGIC;
 	blk->size = initialSize + sizeof(basicalloc_node);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);
@@ -110,6 +125,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	blk->prev = This->regionTail;
 	This->regionTail = blk;
 	This->nRegions++;
+	blk->blockSource = blockSource;
 	return blk;
 }
 static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
@@ -123,7 +139,34 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 	if (This->regionTail == block)
 		This->regionTail = block->prev;
 	This->nRegions--;
-	OBOS_BasicMMFreePages(block, block->size);
+	OBOS_ASSERT(block->blockSource != BLOCK_SOURCE_INVALID);
+	switch (block->blockSource) 
+	{
+		case BLOCK_SOURCE_BASICMM:
+		{
+			OBOS_BasicMMFreePages(block, block->size);
+			break;
+		}
+		case BLOCK_SOURCE_VMA:
+		{
+			Mm_FreeVirtualMemory(&Mm_KernelContext, block, block->size);
+			break;
+		}
+		case BLOCK_SOURCE_PHYSICAL_MEMORY:
+		{
+			uintptr_t phys = 0;
+#ifdef __x86_64__
+			phys = Arch_UnmapFromHHDM(block);
+#endif
+			size_t nPages = block->size / OBOS_PAGE_SIZE;
+			if (block->size % OBOS_PAGE_SIZE)
+				nPages++;
+			OBOSS_FreePhysicalPages(phys, nPages);
+			break;
+		}
+		default:
+			OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "(possible?) Region corruption in allocator (struct basic_allocator*) %p, region %p. Invalid block source: %d.\n", This, block, block->blockSource);
+	}
 }
 static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
 {
@@ -305,7 +348,7 @@ static OBOS_NO_KASAN void* Reallocate(allocator_info* This_, void* base, size_t 
 	set_status(status, This_->Free(This_, base, objSize));
 	return newBlock;
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t nBytes)
+static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t nBytes)
 {
 	OBOS_UNUSED(nBytes);
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)

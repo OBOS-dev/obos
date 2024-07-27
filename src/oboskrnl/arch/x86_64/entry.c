@@ -78,7 +78,7 @@ struct stack_frame
 {
 	struct stack_frame* down;
 	void* rip;
-};
+} volatile blahblahblah____;
 OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
@@ -524,17 +524,17 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
 	if (obos_likely_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
+	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Initializing VMM.\n", __func__);
 	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
-	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
 	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
-	// char* mem = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x8000, 0, 0, nullptr);
 	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
 	OBOS_Debug("%p: %s", mem, mem);
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, 0);
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	Core_ExitCurrentThread();	
+	Core_ExitCurrentThread();
 }

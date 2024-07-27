@@ -72,7 +72,7 @@ static bool register_pages(basicmm_region* region, void* udatablk)
         return true;
     mm_regions_udata* udata = (mm_regions_udata*)udatablk;
     for (uintptr_t addr = round_down(region->addr); 
-        addr < round_up(round_down(region->addr) + region->size);
+        addr < round_down(region->addr) + region->size;
         )
     {
         OBOS_ASSERT(udata->i++ < udata->nNodes);
@@ -105,8 +105,8 @@ void Mm_Initialize()
     OBOSH_ConstructBasicAllocator(&vmm_alloc);
     OBOS_NonPagedPoolAllocator = (allocator_info*)&non_paged_pool_alloc;
     Mm_Allocator = (allocator_info*)&vmm_alloc;
-    if (Core_TimerInterfaceInitialized)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", OBOS_STATUS_INVALID_INIT_PHASE);
+    // if (Core_TimerInterfaceInitialized)
+    //     OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", __func__, OBOS_STATUS_INVALID_INIT_PHASE);
     Mm_KernelContext.lock = Core_SpinlockCreate();
     irql oldIrql = Core_SpinlockAcquireExplicit(&Mm_KernelContext.lock, IRQL_DISPATCH, true);
     Mm_KernelContext.owner = CoreS_GetCPULocalPtr()->currentThread->proc;
