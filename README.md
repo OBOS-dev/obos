@@ -91,6 +91,7 @@ Most code in this repository is licensed under the MIT license.<br>
 Any code from other projects that require a license notice will be put below.
 ### src/oboskrnl/utils/tree.h
 Taken from sys/tree.h from OpenBSD, and is licensed under this:
+```
  Copyright 2002 Niels Provos <provos@citi.umich.edu>
  All rights reserved.
  
@@ -113,3 +114,4 @@ Taken from sys/tree.h from OpenBSD, and is licensed under this:
  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
