@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 # OBOS
 OBOS uses ***✨ state of the art technology ✨*** to do ***✨  absolutely nothing ✨*** 
 ## Building
