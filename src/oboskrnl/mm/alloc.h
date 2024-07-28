@@ -19,11 +19,11 @@
 typedef enum vma_flags
 {
     VMA_FLAGS_HUGE_PAGE = BIT(0),
-    VMA_FLAGS_KERNEL_STACK = BIT(1),
     VMA_FLAGS_GUARD_PAGE = BIT(2),
     VMA_FLAGS_32BIT = BIT(3),
     VMA_FLAGS_HINT = BIT(4),
     VMA_FLAGS_NON_PAGED = BIT(5),
+    VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_NON_PAGED,
 } vma_flags;
 typedef enum prot_flags
 {

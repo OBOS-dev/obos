@@ -266,8 +266,11 @@ void Core_Yield()
 		bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
 		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		{
-			OBOS_ASSERT(!(oldIrql & ~0xf));
-			Core_LowerIrqlNoThread(oldIrql);
+			if (oldIrql != IRQL_INVALID)
+			{
+				OBOS_ASSERT(!(oldIrql & ~0xf));
+				Core_LowerIrqlNoThread(oldIrql);
+			}
 			return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 		}
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);

@@ -214,6 +214,8 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
+	extern bool Arch_HaltCPUs;
+	Arch_HaltCPUs = false;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&invlpg_ipi_packet.lock, IRQL_MASKED, false);
 	ipi_lapic_info lapic = {
 		.isShorthand=true,

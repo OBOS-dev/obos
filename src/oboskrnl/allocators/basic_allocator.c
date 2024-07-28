@@ -25,14 +25,14 @@
 #	include <arch/x86_64/pmm.h>
 #endif
 
-OBOS_PAGEABLE_FUNCTION static uintptr_t round_up(uintptr_t x, size_t to)
+static uintptr_t round_up(uintptr_t x, size_t to)
 {
 	if (x % to)
 		return x + (to - (x % to));
 	return x;
 }
 
-static OBOS_PAGEABLE_FUNCTION void set_status(obos_status* p, obos_status to)
+static void set_status(obos_status* p, obos_status to)
 {
 	if (p)
 		*p = to;
@@ -42,11 +42,11 @@ struct safe_spinlock
 	spinlock* lock;
 	uint8_t oldIrql;
 };
-static OBOS_PAGEABLE_FUNCTION void Lock(struct safe_spinlock* l)
+static void Lock(struct safe_spinlock* l)
 {
 	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED, false);
 }
-static OBOS_PAGEABLE_FUNCTION void Unlock(struct safe_spinlock* l)
+static void Unlock(struct safe_spinlock* l)
 {
 	Core_SpinlockRelease(l->lock, l->oldIrql);
 }
@@ -105,7 +105,6 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	basicalloc_region* blk = (basicalloc_region*)allocateBlock(This, size, &blockSource, status);
 	if (!blk)
 		return nullptr;
-	blk = (basicalloc_region*)(((uintptr_t)blk + 0xf) & ~0xf);
 	blk->magic = PAGEBLOCK_MAGIC;
 	blk->size = initialSize + sizeof(basicalloc_node);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);
@@ -118,6 +117,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	blk->free.tail = blk->free.head = n;
 	blk->free.nNodes++;
 	blk->nFreeBytes += n->size;
+	blk->blockSource = blockSource;
 	if (This->regionTail)
 		This->regionTail->next = blk;
 	if (!This->regionHead)
@@ -125,7 +125,6 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	blk->prev = This->regionTail;
 	This->regionTail = blk;
 	This->nRegions++;
-	blk->blockSource = blockSource;
 	return blk;
 }
 static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
@@ -399,7 +398,7 @@ static OBOS_NO_KASAN obos_status Free(allocator_info* This_, void* base, size_t 
 	Unlock(&lock);
 	return OBOS_STATUS_SUCCESS;
 }
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
+static OBOS_NO_KASAN obos_status QueryBlockSize(allocator_info* This, void* base, size_t* nBytes)
 {
 	if (!This || This->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !nBytes || !base)
 		return OBOS_STATUS_INVALID_ARGUMENT;

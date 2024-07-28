@@ -34,6 +34,7 @@
 #include <arch/x86_64/pmm.h>
 
 #include <allocators/basic_allocator.h>
+#include <allocators/base.h>
 
 #include <arch/x86_64/boot_info.h>
 
@@ -222,6 +223,10 @@ extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
+	uintptr_t virt = getCR2();
+	virt &= ~0xfff;
+	if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
+		virt &= ~0x1fffff;
 	if (Mm_IsInitialized())
 	{
 		CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
@@ -236,10 +241,6 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 			mm_ec |= PF_EC_INV_PTE;
 		if (frame->errorCode & BIT(4))
 			mm_ec |= PF_EC_EXEC;
-		uintptr_t virt = getCR2();
-		virt &= ~0xfff;
-		if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
-			virt &= ~0x1fffff;
 		obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
 		switch (status)
 		{
@@ -256,6 +257,13 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 				break;
 			}
 		}
+	}
+	page* volatile pg = nullptr;
+	if (CoreS_GetCPULocalPtr()->currentContext)
+	{
+		page what;
+		what.addr = virt;
+		pg = RB_FIND(page_tree, &CoreS_GetCPULocalPtr()->currentContext->pages, &what);
 	}
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
@@ -288,7 +296,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 }
 OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
 {
-	static const char format[] = "Double fault\n!"
+	static const char format[] = "Double fault!\n"
 		"Register dump:\n"
 		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
 		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
@@ -461,6 +469,34 @@ timer_tick CoreS_GetTimerTick()
 }
 process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
+static atomic_size_t nThreadsEntered = 0;
+static atomic_size_t nThreadsExited = 0;
+static OBOS_PAGEABLE_FUNCTION void scheduler_test(size_t maxPasses)
+{
+	OBOS_Debug("Entered thread %d (work id %d).\n", Core_GetCurrentThread()->tid, nThreadsEntered++);
+	volatile uint8_t* lastPtr = nullptr;
+	volatile size_t lastFree = 0;
+	allocator_info* const allocator = OBOS_KernelAllocator;
+	for (size_t i = 0; i < maxPasses; i++)
+	{
+		obos_status status = OBOS_STATUS_SUCCESS;
+		volatile size_t sz = random_number() % 0x1000 + 1;
+		volatile uint8_t *buf = allocator->Allocate(allocator, sz, &status);
+		OBOS_ASSERT(buf);
+		buf[0] = 0xDE;
+		buf[sz - 1] = 0xAD;
+		if (i - lastFree == 3)
+		{
+			size_t blkSz = 0;
+			allocator->QueryBlockSize(allocator, lastPtr, &blkSz);
+			allocator->Free(allocator, lastPtr, blkSz);
+		}
+		lastPtr = buf;
+	}
+	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
+	nThreadsExited++;
+	Core_ExitCurrentThread();
+}
 OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -531,10 +567,34 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
 	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	char* mem = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x8000, nullptr);
-	memcpy(mem, "Hello, world!\n", sizeof("Hello, world!\n"));
-	OBOS_Debug("%p: %s", mem, mem);
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, 0);
+	OBOS_Debug("Running a single-threaded test with two fixed-size allocations...\n");
+	char* mem1 = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x4000, 0, 0, nullptr);
+	char* mem2 = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x4000, 0, 0, nullptr);
+	memcpy(mem1, "Hello, world!\n", sizeof("Hello, world!\n"));
+	memcpy(mem2, "Hello, world!\n", sizeof("Hello, world!\n"));
+	Mm_FreeVirtualMemory(&Mm_KernelContext, mem1, 0x4000);
+	Mm_FreeVirtualMemory(&Mm_KernelContext, mem2, 0x4000);
+	OBOS_Debug("Success.\n");
+	const size_t threadCount = 8;
+	OBOS_Debug("Running a multi-threaded test with many randomly-sized allocations on %d threads...\n", threadCount);
+	for (size_t i = 0; i < threadCount; i++)
+	{
+		thread_ctx ctx;
+		memzero(&ctx, sizeof(ctx));
+		void* stack = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 1000, false, stack, 0x10000);
+		thread* thr = CoreH_ThreadAllocate(nullptr);
+		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
+		{
+			Core_ProcessAppendThread(CoreS_GetCPULocalPtr()->currentThread->proc, thr);
+			CoreH_ThreadReady(thr);
+		}
+		else
+			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
+	}
+	while(nThreadsExited != threadCount);
+	Core_Yield();
+	OBOS_Debug("Success.\n");
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

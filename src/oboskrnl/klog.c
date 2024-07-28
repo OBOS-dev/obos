@@ -88,7 +88,7 @@ OBOS_PAGEABLE_FUNCTION void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
-	common_log(LOG_LEVEL_WARNING, " WARN", format, list);
+	common_log(LOG_LEVEL_WARNING, "WARN ", format, list);
 	va_end(list);
 }
 OBOS_PAGEABLE_FUNCTION void OBOS_Error(const char* format, ...)

@@ -15,6 +15,9 @@
 typedef struct {
 	atomic_flag val;
 	bool irqlNThrVariant; // Value of irqlNthrVariant
+#ifdef OBOS_DEBUG
+	struct thread* owner; // for debugging purposes only
+#endif
 } spinlock;
 
 spinlock Core_SpinlockCreate();

@@ -105,6 +105,7 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
         size += (pgSize-(size%pgSize));
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size += pgSize;
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
     top:
     if (!base)
     {
@@ -112,6 +113,7 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
         if (obos_likely_error(status))
         {
             set_statusp(ustatus, status);
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
             return nullptr;
         }
     }
@@ -139,10 +141,10 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
         else
         {
             set_statusp(ustatus, OBOS_STATUS_IN_USE);
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
             return nullptr;
         }
     }
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
     size_t nNodes = size / pgSize + (size % pgSize ? 1 : 0);
     page** nodes = Mm_Allocator->ZeroAllocate(Mm_Allocator, nNodes, sizeof(page*), &status);
@@ -259,6 +261,8 @@ obos_status Mm_FreeVirtualMemory(context* ctx, void* base_, size_t size)
     // We've possibly located a guard page that we need to free with the rest of the buffer.
     // Now we must unmap the pages and dereference them.
 
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+
     offset = 0;
     curr = nullptr;
     page* next = nullptr;
@@ -278,10 +282,16 @@ obos_status Mm_FreeVirtualMemory(context* ctx, void* base_, size_t size)
             MmS_SetPageMapping(ctx->pt, curr, 0); // Unmap the page.
         }
         RB_REMOVE(page_tree, &ctx->pages, curr);
+        if (curr->inWorkingSet)
+            REMOVE_PAGE_NODE(ctx->workingSet.pages, &curr->ln_node);
+        if (curr->age == 1 /* it's in the referenced list */)
+            REMOVE_PAGE_NODE(ctx->referenced, &curr->ln_node);
         if (curr->allocated)
             Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
+
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
 
     return OBOS_STATUS_SUCCESS;
 }
