@@ -28,14 +28,15 @@ static void LAPIC_DefaultIrqHandler(interrupt_frame* frame)
 {
 	Arch_LAPICSendEOI();
 }
-void Arch_LAPICInitialize(bool isBSP)
+OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 {
 	uintptr_t lapic_msr = rdmsr(IA32_APIC_BASE);
 	if (!Arch_LAPICAddress)
 	{
 		uintptr_t phys = lapic_msr & ~0xfff;
-		Arch_LAPICAddress = (lapic*)(0xfffffffffffff000);
+		Arch_LAPICAddress = (lapic*)(0xffffffffffffe000);
 		Arch_MapPage(getCR3(), Arch_LAPICAddress, phys, 0x8000000000000013);
+		lapic_region.mmioRange = true;
 		OBOSH_BasicMMAddRegion(&lapic_region, Arch_LAPICAddress, 0x1000);
 	}
 	lapic_msr |= APIC_ENABLE;
@@ -47,7 +48,7 @@ void Arch_LAPICInitialize(bool isBSP)
 		Arch_LAPICAddress->lvtLINT0 = 0x7fe /* Vector 0xFE, ExtInt, Unmasked */;
 	else
 		Arch_LAPICAddress->lvtLINT0 = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
-	Arch_LAPICAddress->lvtLINT1 = 0x400 /* NMI, Unmasked */;
+	Arch_LAPICAddress->lvtLINT1 = isBSP ? 0x400 /* NMI, Unmasked */ : 0xfe;
 	Arch_LAPICAddress->lvtCMCI = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtError = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtPerformanceMonitoringCounters = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
@@ -76,20 +77,10 @@ OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_inf
 	}
 	else
 		icr |= ((uint64_t)lapic.info.lapicId << 56);
-	switch (vector.deliveryMode)
-	{
-	case LAPIC_DELIVERY_MODE_FIXED: 
+	if (vector.deliveryMode == LAPIC_DELIVERY_MODE_FIXED)
 		icr |= vector.info.vector;
-		break;
-	case LAPIC_DELIVERY_MODE_SIPI:
+	else if (vector.deliveryMode == LAPIC_DELIVERY_MODE_SIPI)
 		icr |= (vector.info.address >> 12);
-		break;
-	case LAPIC_DELIVERY_MODE_SMI: break;
-	case LAPIC_DELIVERY_MODE_NMI: break;
-	case LAPIC_DELIVERY_MODE_INIT: break;
-	default:
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	}
 	icr |= ((uint64_t)vector.deliveryMode << 8);
 	Arch_LAPICAddress->interruptCommand32_63 = icr >> 32;
 	Arch_LAPICAddress->interruptCommand0_31 = icr & UINT32_MAX;

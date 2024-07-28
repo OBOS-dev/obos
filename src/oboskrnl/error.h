@@ -24,7 +24,8 @@ typedef enum
 	/// </summary>
 	OBOS_STATUS_INVALID_ARGUMENT,
 	/// <summary>
-	/// A function was called, but an option passed to it had not been implemented yet.
+	/// A function was called, but an option passed to it had not been implemented yet, or
+	/// <para/>the function itself had not been implemented yet.
 	/// </summary>
 	OBOS_STATUS_UNIMPLEMENTED,
 	/// <summary>
@@ -63,4 +64,20 @@ typedef enum
 	/// The resource is already in use.
 	/// </summary>
 	OBOS_STATUS_IN_USE,
+	/// <summary>
+	/// Access has been denied.
+	/// </summary>
+	OBOS_STATUS_ACCESS_DENIED,
+	/// <summary>
+	/// The object has not been initialized yet.
+	/// </summary>
+	OBOS_STATUS_UNINITIALIZED,
+	/// <summary>
+	/// The callback did not handle anything.
+	/// </summary>
+	OBOS_STATUS_UNHANDLED,
+	/// <summary>
+	/// The page cannot be paged in or out, as it's in the non-paged pool of memory.
+	/// </summary>
+	OBOS_STATUS_UNPAGED_POOL,
 } obos_status;

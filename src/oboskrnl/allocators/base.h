@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 // Defines a struct that defines the base info and interfaces for an allocator.
 
@@ -62,3 +63,4 @@ typedef struct allocator_info
 	obos_status(*QueryBlockSize)(struct allocator_info* This, void* base, size_t* nBytes);
 } allocator_info;
 extern allocator_info* OBOS_KernelAllocator;
+extern allocator_info* OBOS_NonPagedPoolAllocator;

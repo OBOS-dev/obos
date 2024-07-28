@@ -32,8 +32,8 @@ if (NOT DEFINED OUTPUT_DIR)
 	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
 endif()
 
-if (DEFINED OBOS_SLOW_ARTHIMETRIC)
-	add_compile_definitions(OBOS_SLOW_ARTHIMETRIC=1)
+if (DEFINED OBOS_UP)
+	add_compile_definitions(OBOS_UP=1)
 endif()
 
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
@@ -58,5 +58,5 @@ add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/isogen")
 
-set(C_STANDARD 17)
-set(C_STANDARD_REQUIRED true)
+set_property(GLOBAL PROPERTY C_STANDARD 17
+				    PROPERTY C_STANDARD_REQUIRED true)

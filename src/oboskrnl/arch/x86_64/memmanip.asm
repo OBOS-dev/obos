@@ -12,6 +12,8 @@ global memcmp_b
 global strcmp
 global strlen
 
+section .text
+
 memset:
 	push rbp
 	mov rbp, rsp

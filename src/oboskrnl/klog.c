@@ -14,6 +14,10 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 
+#include <scheduler/process.h>
+
+#include <irq/irql.h>
+
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8
@@ -25,7 +29,7 @@
 
 const char* OBOSH_PanicReasonToStr(panic_reason reason)
 {
-	const char* table[] = {
+	static const char* const table[] = {
 		"OBOS_PANIC_EXCEPTION",
 		"OBOS_PANIC_FATAL_ERROR",
 		"OBOS_PANIC_KASAN_VIOLATION",
@@ -42,7 +46,7 @@ const char* OBOSH_PanicReasonToStr(panic_reason reason)
 	return table[reason];
 }
 static log_level s_logLevel;
-void OBOS_SetLogLevel(log_level level)
+OBOS_PAGEABLE_FUNCTION void OBOS_SetLogLevel(log_level level)
 {
 	s_logLevel = level;
 }
@@ -52,7 +56,7 @@ log_level OBOS_GetLogLevel()
 }
 static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
 static spinlock s_printfLock; bool s_printfLockInitialized = false;
-static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
+static OBOS_PAGEABLE_FUNCTION void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
 	{
@@ -66,28 +70,28 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
-void OBOS_Debug(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Debug(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_DEBUG, "DEBUG", format, list);
 	va_end(list);
 }
-void OBOS_Log(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
-	common_log(LOG_LEVEL_LOG, "LOG", format, list);
+	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
-void OBOS_Warning(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
-	common_log(LOG_LEVEL_WARNING, "WARN", format, list);
+	common_log(LOG_LEVEL_WARNING, "WARN ", format, list);
 	va_end(list);
 }
-void OBOS_Error(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION void OBOS_Error(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -97,7 +101,7 @@ void OBOS_Error(const char* format, ...)
 static uint32_t getCPUId()
 {
 	if (!CoreS_GetCPULocalPtr())
-		return (uint32_t)-1;
+		return (uint32_t)0;
 	return CoreS_GetCPULocalPtr()->id;
 }
 static uint32_t getTID()
@@ -108,31 +112,42 @@ static uint32_t getTID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->tid;
 }
-volatile bool OBOS_SideEffect = false;
+static uint32_t getPID()
+{
+	if (!CoreS_GetCPULocalPtr())
+		return (uint32_t)-1;
+	if (!CoreS_GetCPULocalPtr()->currentThread)
+		return (uint32_t)-1;
+	if (!CoreS_GetCPULocalPtr()->currentThread->proc)
+		return (uint32_t)-1;
+	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
+}
 OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
-	(reason = reason);
 	const char* ascii_art =
-"  _____ _______ ____  _____  \n"
-" / ____|__   __/ __ \\|  __ \\ \n"
-"| (___    | | | |  | | |__) |\n"
-" \\___ \\   | | | |  | |  ___/ \n"
-" ____) |  | | | |__| | |     \n"
-"|_____/   |_|  \\____/|_|     ";
+		"       )\r\n"
+        "    ( /(                        (\r\n"
+        "    )\\())  (   (             (  )\\             )        (\r\n"
+        "   ((_)\\  ))\\  )(    (      ))\\((_)  `  )   ( /(   (    )\\   (\r\n"
+        "  (_ ((_)/((_)(()\\   )\\ )  /((_)_    /(/(   )(_))  )\\ )((_)  )\\\r\n"
+        "  | |/ /(_))   ((_) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n"
+        "  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n"
+        "  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n"
+        "                                    |_|\r\n";
 
 	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
-	uint8_t oldIrql = Core_RaiseIrql(IRQL_MASKED);
+	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
-	printf("Kernel Panic on CPU %d in thread %d! Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), OBOSH_PanicReasonToStr(reason));
+	printf("Kernel Panic on CPU %d in thread %d, owned by process %d. Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
 	va_list list;
 	va_start(list, format);
 	vprintf(format, list);
 	va_end(list);
 	while (1)
-		OBOS_SideEffect = !OBOS_SideEffect;
+		asm volatile("");
 }
 
 
@@ -164,12 +179,12 @@ size_t vprintf(const char* format, va_list list)
 		s_printfLock = Core_SpinlockCreate();
 	}
 	char ch[8];
-	uint8_t oldIrql = Core_SpinlockAcquire(&s_printfLock);
+	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_MASKED, true);
 	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
-size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
+OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -177,7 +192,7 @@ size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 	va_end(list);
 	return ret;
 }
-size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
+OBOS_PAGEABLE_FUNCTION size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
 	return stbsp_vsnprintf(buf, bufSize, format, list);
 }

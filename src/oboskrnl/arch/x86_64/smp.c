@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -32,6 +33,9 @@
 #include <arch/x86_64/pmm.h>
 
 #include <allocators/base.h>
+
+#include <scheduler/process.h>
+#include <stdint.h>
 
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
@@ -67,7 +71,6 @@ static OBOS_NO_UBSAN void ParseMADT()
 				break; // make continue if more types are parsed
 			s_lapicIDs[s_nLAPICIDs++] = mLapicId->apicID;
 		}
-		
 	}
 }
 extern uint8_t Arch_SMPTrampolineStart[];
@@ -75,7 +78,7 @@ extern uint8_t Arch_SMPTrampolineEnd[];
 extern uint64_t Arch_SMPTrampolineCR3;
 extern uint64_t Arch_SMPTrampolineRSP;
 extern uint64_t Arch_SMPTrampolineCPULocalPtr;
-static bool ap_initialized;
+static _Atomic(bool) ap_initialized;
 static void nmiHandler(interrupt_frame* frame);
 extern void Arch_FlushGDT(uintptr_t gdtr);
 void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackSize)
@@ -86,7 +89,7 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
 	info->arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
 	info->arch_specific.gdtEntries[3] = 0x00aff3000000ffff; // 64-bit user-mode data
-	info->arch_specific.gdtEntries[4] = 0x00affb000000ffff; // 64-bit user-mode code
+	info->arch_specific.gdtEntries[4] = 0x00cff3000000ffff; // 64-bit user-mode code
 	struct
 	{
 		uint16_t limitLow;
@@ -110,8 +113,8 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[5] = *((uint64_t*)&tss_entry + 0);
 	info->arch_specific.gdtEntries[6] = *((uint64_t*)&tss_entry + 1);
 
-	info->arch_specific.tss.ist0 = istStack + istStackSize;
-	info->arch_specific.tss.rsp0 = istStack + istStackSize;
+	info->arch_specific.tss.ist0 = istStack + istStackSize-0x10000 /* see comment as to why we do this */;
+	info->arch_specific.tss.rsp0 = istStack + istStackSize-0x10000 /* see comment as to why we do this */;
 	info->arch_specific.tss.iopb = sizeof(info->arch_specific.tss) - 1;
 	struct
 	{
@@ -119,8 +122,8 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 		uintptr_t base;
 	} OBOS_PACK gdtr;
 	gdtr.limit = sizeof(info->arch_specific.gdtEntries) - 1;
-	gdtr.base = info->arch_specific.gdtEntries;
-	Arch_FlushGDT(&gdtr);
+	gdtr.base = (uintptr_t)&info->arch_specific.gdtEntries;
+	Arch_FlushGDT((uintptr_t)&gdtr);
 }
 extern void Arch_IdleTask();
 OBOS_NORETURN extern void Arch_APYield(void* startup_stack, void* temp_stack);
@@ -132,18 +135,19 @@ static void idleTaskBootstrap()
 }
 void Arch_APEntry(cpu_local* info)
 {
-	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x10000);
+	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
 	wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
 	Arch_InitializeIDT(false);
 	(void)Core_RaiseIrql(0xf);
 	// Setup the idle thread.
 	thread_ctx ctx;
 	memzero(&ctx, sizeof(ctx));
-	void* thr_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
-	CoreS_SetupThreadContext(&ctx, idleTaskBootstrap, 0, false, thr_stack, 0x4000);
+	void* thr_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr);
+	CoreS_SetupThreadContext(&ctx, (uintptr_t)idleTaskBootstrap, 0, false, thr_stack, 0x20000);
 	thread* idleThread = CoreH_ThreadAllocate(nullptr);
-	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, (1<<info->id), &ctx);
+	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, ((thread_affinity)1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
+	Core_ProcessAppendThread(OBOS_KernelProcess, idleThread);
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
@@ -159,15 +163,20 @@ static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
 bool Arch_SMPInitialized = false;
 void Arch_SMPStartup()
 {
-	Arch_RawRegisterInterrupt(0x2, nmiHandler);
+	Arch_RawRegisterInterrupt(0x2, (uintptr_t)nmiHandler);
 	ParseMADT();
-	if (s_nLAPICIDs == 1)
-		return; // No work to do.
+#ifdef OBOS_UP
+	OBOS_Log("Uniprocessor-build of OBOS. No other cores will be initialized.\n");
+	s_nLAPICIDs = 1;
+#endif
+	// if (s_nLAPICIDs == 1)
+	// 	return; // No work to do.
+	//             ^ is not true
 	cpu_local* cpu_info = (cpu_local*)OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, s_nLAPICIDs*sizeof(cpu_local), nullptr);
 	memzero(cpu_info, s_nLAPICIDs * sizeof(cpu_local));
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];
-	wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
+	cpu_info[0].currentPriorityList = cpu_info[0].priorityLists + (Core_CpuInfo[0].currentPriorityList - Core_CpuInfo[0].priorityLists);
 	Arch_MapPage(getCR3(), nullptr, 0, 0x3);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
@@ -176,7 +185,11 @@ void Arch_SMPStartup()
 	for (size_t i = 0; i < s_nLAPICIDs; i++)
 	{
 		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
+		{
+			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);
+			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 			continue;
+		}
 		memcpy(nullptr, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);
 		for (thread_priority j = 0; j <= THREAD_PRIORITY_MAX_VALUE; j++)
 			cpu_info[i].priorityLists[j].priority = j;
@@ -184,7 +197,7 @@ void Arch_SMPStartup()
 		cpu_info[i].currentIrql = 0;
 		cpu_info[i].isBSP = false;
 		cpu_info[i].schedulerTicks = 0;
-		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x10000, nullptr);
+		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr);
 		cpu_info[i].arch_specific.startup_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
 		Core_DefaultThreadAffinity |= CoreH_CPUIdToAffinity(cpu_info[i].id);
 		SetMemberInSMPTrampoline((uintptr_t)&Arch_SMPTrampolineRSP - (uintptr_t)Arch_SMPTrampolineStart, (uint64_t)cpu_info[i].arch_specific.startup_stack + 0x4000);
@@ -222,8 +235,9 @@ void Arch_SMPStartup()
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage(nullptr);
 }
-bool Arch_HaltCPUs = false;
-uint8_t Arch_CPUsHalted = 0;
+_Atomic(bool) Arch_HaltCPUs = false;
+_Atomic(uint8_t) Arch_CPUsHalted = 0;
+bool Arch_InvlpgIPI(interrupt_frame* frame);
 OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 {
 	if (Arch_HaltCPUs)
@@ -233,6 +247,8 @@ OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 		while (1) 
 			hlt();
 	}
+	if (Arch_InvlpgIPI(frame))
+		return;
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
 OBOS_NO_KASAN static void HaltInitializedCPUs()
@@ -280,5 +296,5 @@ OBOS_NO_KASAN void OBOSS_HaltCPUs()
 }
 uintptr_t Arch_GetCPUTempStack()
 {
-	return CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
+	return (uintptr_t)CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
 }

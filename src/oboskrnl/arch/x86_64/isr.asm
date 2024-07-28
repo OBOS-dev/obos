@@ -2,6 +2,8 @@
 ;
 ; Copyright (c) 2024 Omar Berrow
 
+bits 64
+
 section .text
 default rel
 
@@ -112,6 +114,11 @@ pop rax
 %endmacro
 
 extern Arch_IRQHandlers
+section .data
+global Arch_KernelCR3
+Arch_KernelCR3:
+	dq 0
+section .text
 
 int_handler_common:
 	pushaq
@@ -120,15 +127,19 @@ int_handler_common:
 	mov rax, ds
 	push rax
 
-	mov rax, [rsp+0x98]
+	mov rax, cr3
+	push rax
+
+	test qword [rsp+0xB8], 0x3 ; User code
+	je .no_swapgs1
+	mov rax, [Arch_KernelCR3]
+	mov cr3, rax
+	swapgs
+.no_swapgs1:
+	mov rax, [rsp+0xA0]
 	cmp rax, 255
 	ja .finished
 	mov rax, [Arch_IRQHandlers+rax*8]
-	
-	cmp qword [rsp+0xB0], 0x8 ; Kernel code
-	je .no_swapgs1
-	swapgs
-.no_swapgs1:
 
 	test rax,rax
 	jz .finished
@@ -136,11 +147,12 @@ int_handler_common:
 	mov rdi, rsp
 	call rax
 
-
 .finished:
+	test qword [rsp+0xB8], 0x3 ; User code
 
-	cmp qword [rsp+0xB0], 0x8 ; Kernel code
+	pop rax
 	je .no_swapgs2
+	mov cr3, rax
 	swapgs
 .no_swapgs2:
 
@@ -150,7 +162,7 @@ int_handler_common:
 	add rsp, 0x18
 
 	iretq
-
+section .text
 Arch_FlushIDT:
 	lidt [rdi]
 	ret
@@ -190,6 +202,7 @@ CoreS_SetIRQL:
 	
 	leave
 	ret
+section .text
 global Arch_disablePIC
 Arch_disablePIC:
 	mov al, 0xff

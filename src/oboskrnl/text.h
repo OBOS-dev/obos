@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 // Makeshift text renderer.
 

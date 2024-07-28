@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -112,7 +113,9 @@ OBOS_NO_KASAN uintptr_t Arch_AllocatePhysicalPages(size_t nPages, size_t alignme
 			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
 		return 0;
 	}
+	OBOS_ASSERT(node->nPages >= nPagesRequired);
 	node->nPages -= nPagesRequired;
+	Arch_TotalPhysicalPagesUsed += nPagesRequired;
 	if (!node->nPages)
 	{
 		if (node->next)
@@ -147,6 +150,7 @@ OBOS_NO_KASAN void Arch_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	if (!s_head)
 		s_head = (struct freelist_node*)addr;
 	node->prev = s_tail;
+	Arch_TotalPhysicalPagesUsed -= nPages;
 	s_tail = (struct freelist_node*)addr;
 }
 uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status)
@@ -164,4 +168,8 @@ obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 OBOS_NO_KASAN void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
+}
+uintptr_t Arch_UnmapFromHHDM(void* virt)
+{
+	return UNMAP_FROM_HHDM(virt);
 }

@@ -5,7 +5,10 @@
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
-	"text.c" "sanitizers/stack.c" "irq/irq.c"
+	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
+	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
+	"mm/handler.c" "mm/alloc.c"
+	
 )
 
 add_executable(oboskrnl)
@@ -15,9 +18,13 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 )
+
+target_link_libraries(oboskrnl PRIVATE gcc)
+
+set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 
 target_include_directories(oboskrnl 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
@@ -25,7 +32,7 @@ target_include_directories(oboskrnl
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
-	PRIVATE "-T" PRIVATE "${CMAKE_SOURCE_DIR}/src/build/x86_64/link.ld"
+	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )
 
@@ -54,6 +61,8 @@ target_compile_definitions(oboskrnl
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
 	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
 	PRIVATE $<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
-	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>)
+	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
+	PRIVATE FIXEDPT_BITS=64
+	PRIVATE FIXEDPT_WBITS=32)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

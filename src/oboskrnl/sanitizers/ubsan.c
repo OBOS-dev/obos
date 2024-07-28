@@ -248,7 +248,7 @@ struct ubsan_unreachable_data
 	struct ubsan_source_location location;
 };
 
-OBOS_NORETURN
+OBOS_NORETURN 
 void __ubsan_handle_builtin_unreachable(void* data_raw)
 {
 	struct ubsan_unreachable_data* data =
@@ -256,7 +256,7 @@ void __ubsan_handle_builtin_unreachable(void* data_raw)
 	ubsan_abort(&data->location, "reached unreachable");
 }
 
-OBOS_NORETURN
+OBOS_NORETURN 
 void __ubsan_handle_missing_return(void* data_raw)
 {
 	struct ubsan_unreachable_data* data =
@@ -270,6 +270,7 @@ struct ubsan_vla_bound_data
 	struct ubsan_type_descriptor* type;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_vla_bound_not_positive(void* data_raw,
                                            void* bound_raw)
 {
@@ -294,6 +295,7 @@ struct ubsan_float_cast_overflow_data
 	struct ubsan_type_descriptor* to_type;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_float_cast_overflow(void* data_raw,
                                         void* from_raw)
 {
@@ -316,6 +318,7 @@ struct ubsan_invalid_value_data
 	struct ubsan_type_descriptor* type;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_load_invalid_value(void* data_raw,
                                        void* value_raw)
 {
@@ -334,6 +337,7 @@ struct ubsan_function_type_mismatch_data
 	struct ubsan_type_descriptor* type;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_function_type_mismatch(void* data_raw,
                                            void* value_raw)
 {
@@ -352,6 +356,7 @@ struct ubsan_nonnull_return_data
 	struct ubsan_source_location attr_location;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_nonnull_return(void* data_raw)
 {
 	struct ubsan_nonnull_return_data* data =
@@ -369,6 +374,7 @@ struct ubsan_nonnull_arg_data
 
 // TODO: GCC's libubsan does not have the second parameter, but its builtin
 //       somehow has it and conflict if we don't match it.
+OBOS_NORETURN 
 void __ubsan_handle_nonnull_arg(void* data_raw,
                                 intptr_t index_raw)
 {
@@ -387,6 +393,7 @@ struct ubsan_cfi_bad_icall_data
 	struct ubsan_type_descriptor* type;
 };
 
+OBOS_NORETURN 
 void __ubsan_handle_cfi_bad_icall(void* data_raw,
                                   void* value_raw)
 {

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <allocators/base.h>
 
@@ -31,6 +32,13 @@ typedef struct basicalloc_node_list
 	basicalloc_node* head, *tail;
 	size_t nNodes;
 } basicalloc_node_list;
+enum blockSource
+{
+	BLOCK_SOURCE_INVALID = -1, // It is an error to get this.
+	BLOCK_SOURCE_PHYSICAL_MEMORY, // See allocateBlock "if ((allocator_info*)This == Mm_Allocator)"
+	BLOCK_SOURCE_BASICMM, // OBOS_BasicMMAllocatePages
+	BLOCK_SOURCE_VMA, // Mm_AllocateVirtualMemory
+};
 typedef struct basicalloc_region
 {
 	OBOS_ALIGNAS(0x10) uint32_t magic /* Must be PAGEBLOCK_MAGIC */;
@@ -38,6 +46,7 @@ typedef struct basicalloc_region
 	OBOS_ALIGNAS(0x10) size_t nFreeBytes;
 	OBOS_ALIGNAS(0x10) basicalloc_node_list free, allocated;
 	OBOS_ALIGNAS(0x10) basicalloc_node* biggestFreeNode;
+	OBOS_ALIGNAS(0x10) int blockSource; // See 'enum blockSource'
 
 	OBOS_ALIGNAS(0x10) struct basicalloc_region *next, *prev;
 } basicalloc_region;

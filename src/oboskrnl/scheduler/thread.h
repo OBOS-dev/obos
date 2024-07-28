@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <scheduler/thread_context_info.h>
 
@@ -53,7 +54,7 @@ typedef enum
 } thread_status;
 typedef __uint128_t thread_affinity;
 extern thread_affinity Core_DefaultThreadAffinity;
-extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE + 1];
+extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
 typedef struct thread
 {
 	uint64_t tid;
@@ -69,6 +70,7 @@ typedef struct thread
 	uint64_t lastRunTick;
 	struct cpu_local* masterCPU /* the cpu that contain this thread's priority list. */;
 	struct thread_node* snode;
+	struct process* proc;
 	
 	thread_ctx context;
 } thread;
@@ -147,7 +149,7 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node);
 /// </summary>
 /// <param name="cpuId">The cpu id.</param>
 /// <returns>The affinity mask.</returns>
-uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId);
+thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId);
 /// <summary>
 /// Exits the current thread.
 /// </summary>

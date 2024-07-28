@@ -19,4 +19,6 @@ struct thread_context_info
 	uint8_t irql;
 	uint64_t gs_base, fs_base;
 	interrupt_frame frame;
+	void* stackBase;
+	size_t stackSize;
 } OBOS_ALIGN(8);

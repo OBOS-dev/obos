@@ -8,8 +8,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <error.h>
-//#include <stdbool.h>
+
+#if UINTPTR_MAX == UINT64_MAX
+#define PTR_BITS 64
+#elif UINTPTR_MAX == UINT32_MAX
+#define PTR_BITS 32
+#elif UINTPTR_MAX == UINT16_MAX
+#define PTR_BITS 16
+#endif
 
 #ifndef __cplusplus
 #	define nullptr ((void*)0)
@@ -34,13 +40,13 @@ typedef _Bool bool;
 #	undef NULL
 #endif
 
-#define OBOS_NORETURN [[_Noreturn]]
-#define OBOS_NODISCARD [[__nodiscard__]]
-#define OBOS_NODISCARD_REASON(why) [[__nodiscard__(why)]]
-#define OBOS_UNUSED(x) (void)(sizeof((x), 0))
+#define OBOS_NORETURN [[noreturn]]
+#define OBOS_UNUSED(x) (void)(x)
 #ifdef __GNUC__
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
+#	define OBOS_NODISCARD __attribute__ ((warn_unused_result))
+#	define OBOS_NODISCARD_REASON(why) 
 #elif _MSC_VER
 #	define OBOS_NO_KASAN
 #	define OBOS_NO_UBSAN
@@ -55,3 +61,15 @@ typedef _Bool bool;
 #else
 #	define OBOS_STATIC_ASSERT(expr, msg) 
 #endif
+
+#define BIT_TYPE(b, type) (1##type << (b))
+#define BIT(b) BIT_TYPE(b, U)
+#if __STDC_NO_ATOMICS__
+#	error No atomics supported by the compiler.
+#endif
+#if __STDC_HOSTED__
+#	error Must be compiled as freestanding.
+#endif
+#define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#define OBOS_PAGEABLE_RO_VARIABLE _attribute__((section(".pageable.rodata")))
+#define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))

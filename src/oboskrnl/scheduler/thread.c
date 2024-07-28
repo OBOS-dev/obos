@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <error.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/cpu_local.h>
@@ -13,6 +14,8 @@
 #include <scheduler/thread.h>
 
 #include <allocators/base.h>
+
+#include <locks/spinlock.h>
 
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
@@ -28,14 +31,18 @@ static void free_node(thread_node* node)
 }
 thread* CoreH_ThreadAllocate(obos_status* status)
 {
-	thread* thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
+	thread* thr = nullptr;
+	if (!OBOS_NonPagedPoolAllocator)
+		thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
+	else
+		thr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread), status);
 	if (thr)
 		thr->free = free_thr;
 	return thr;
 }
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx)
 {
-	if (!thr || !ctx || priority < 0 || priority >= THREAD_PRIORITY_MAX_VALUE || !affinity)
+	if (!thr || !ctx || priority < 0 || priority > THREAD_PRIORITY_MAX_VALUE || !affinity)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	thr->priority = priority;
 	thr->status = THREAD_STATUS_READY;
@@ -67,6 +74,8 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
 		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->masterCPU)
+		return OBOS_STATUS_SUCCESS;
 	cpu_local* cpuFound = nullptr;
 	for (size_t cpui = 0; cpui < Core_CpuCount; cpui++)
 	{
@@ -79,6 +88,7 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	if (!cpuFound)
 		return OBOS_STATUS_INVALID_AFFINITY;
 	node->data = thr;
+	thr->snode = node;
 	thr->masterCPU = cpuFound;
 	thr->status = THREAD_STATUS_READY;
 	thread_list* priorityList = &cpuFound->priorityLists[thr->priority].list;
@@ -94,13 +104,16 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
+	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	thread_node* node = thr->snode;
+	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
-	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	thr->masterCPU = nullptr;
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
@@ -119,7 +132,6 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	node->prev = list->tail;
 	list->tail = node;
 	list->nNodes++;
-	node->data->snode = node;
 	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
 	{
 		Core_LowerIrql(oldIrql);
@@ -162,12 +174,12 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 	}
 	return OBOS_STATUS_SUCCESS;
 }
-uint32_t CoreH_CPUIdToAffinity(uint32_t cpuId)
+thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 {
-	return (1 << cpuId);
+	return ((thread_affinity)1 << cpuId);
 }
 
-OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
@@ -183,7 +195,7 @@ OBOS_NORETURN static uintptr_t ExitCurrentThread(uintptr_t unused)
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }
-OBOS_NORETURN void Core_ExitCurrentThread()
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);

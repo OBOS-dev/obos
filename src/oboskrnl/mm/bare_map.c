@@ -5,11 +5,19 @@
 */
 
 #include <int.h>
+#include <memmanip.h>
+#include <error.h>
 #include <klog.h>
 
 #include <mm/bare_map.h>
 
 #include <locks/spinlock.h>
+
+#include <irq/irql.h>
+
+// Quote of the VMM:
+// When I wrote this, only God and I understood what I was doing.
+// Now, only God knows.
 
 #define REGION_MAGIC_INT 0x4F424F534253434D
 #define REGION_MAGIC "OBOSBSCM"
@@ -22,7 +30,7 @@ static struct
 } s_regionList;
 static spinlock s_regionListLock;
 static bool s_regionListLockInitialized;
-static irql Lock()
+static OBOS_PAGEABLE_FUNCTION irql Lock()
 {
 	if (!s_regionListLockInitialized)
 	{
@@ -31,13 +39,13 @@ static irql Lock()
 	}
 	return Core_SpinlockAcquire(&s_regionListLock);
 }
-static void Unlock(irql oldIrql)
+static OBOS_PAGEABLE_FUNCTION void Unlock(irql oldIrql)
 {
 	OBOS_ASSERT(s_regionListLockInitialized);
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }
 
-void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
+OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
@@ -49,7 +57,7 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	uintptr_t found = 0;
 	for (currentNode = s_regionList.head; currentNode;)
 	{
-		uintptr_t currentNodeAddr = currentNode->addr & ~0xfff;
+		uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE);
 		if (currentNodeAddr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
 		{
 			currentNode = currentNode->next;
@@ -68,7 +76,7 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 	{
 		basicmm_region* currentNode = s_regionList.tail;
 		if (currentNode)
-			found = (currentNode->addr & ~0xfff) + currentNode->size;
+			found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + currentNode->size;
 		else
 			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
 	}
@@ -91,13 +99,14 @@ void* OBOS_NO_KASAN OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 		}
 		OBOSS_MapPage_RW_XD((void*)addr, mem);
 	}
+	memzero(node, sizeof(*node));
 	Unlock(oldIrql);
 	OBOSH_BasicMMAddRegion(node, node + 1, sz);
 	if (status)
 		*status = OBOS_STATUS_SUCCESS;
 	return (node + 1);
 }
-OBOS_NO_KASAN obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
+OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 {
 	sz += sizeof(basicmm_region);
 	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
@@ -133,7 +142,7 @@ OBOS_NO_KASAN obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 	return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_NO_KASAN void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, size_t sz)
+OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, size_t sz)
 {
 	uintptr_t base = (uintptr_t)base_;
 	node->magic.integer = REGION_MAGIC_INT;
@@ -206,4 +215,26 @@ OBOS_NO_KASAN void OBOSH_BasicMMAddRegion(basicmm_region* node, void* base_, siz
 		s_regionList.nNodes++;
 		Unlock(oldIrql);
 	}
+}
+OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
+{
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
+	for (basicmm_region* cur = s_regionList.head; cur; )
+	{
+		if (cur->mmioRange)
+			goto next;
+		
+		if (!callback(cur, udata))
+		{
+			Core_SpinlockRelease(&s_regionListLock, oldIrql);
+			return;
+		}
+		next:
+		cur = cur->next;
+	}
+	Core_SpinlockRelease(&s_regionListLock, oldIrql);
+}
+OBOS_PAGEABLE_FUNCTION size_t OBOSH_BasicMMGetRegionCount()
+{
+	return s_regionList.nNodes;
 }

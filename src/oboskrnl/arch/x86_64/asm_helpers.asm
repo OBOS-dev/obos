@@ -28,6 +28,9 @@ global xsave
 global cli
 global sti
 global hlt
+global MmS_GetCurrentPageTable
+
+section .text
 
 getCR0:
 	push rbp
@@ -190,6 +193,7 @@ xsave:
 	xsave [rdi]
 	ret
 global CoreS_GetCPULocalPtr
+extern Arch_SMPInitialized
 CoreS_GetCPULocalPtr:
 	push rbp
 	mov rbp, rsp
@@ -198,6 +202,15 @@ CoreS_GetCPULocalPtr:
 	rdmsr
 	shl rdx, 32
 	or rax, rdx
+
+	cmp byte [Arch_SMPInitialized], 1
+	jne .done
+	cmp rax, 0
+	jne .done
+	mov rdi, 0xA50E7707 ; ASMERROR
+	mov dword [rdi], 0xDEADBEEF
+
+.done:
 
 	leave 
 	ret
@@ -210,3 +223,5 @@ sti:
 hlt:
 	hlt
 	ret
+MmS_GetCurrentPageTable:
+	jmp getCR3

@@ -1,6 +1,8 @@
 ﻿/.vs
+/.vscode
 /CMakePresets.json
 /out
+/build
 /dependencies/hyper
 /dependencies/UltraProtocol
 /dependencies/include/

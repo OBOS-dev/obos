@@ -11,6 +11,8 @@
 #include <scheduler/thread.h>
 #include <scheduler/cpu_local.h>
 
+#include <locks/spinlock.h>
+
 /// <summary>
 /// Gets the current thread.
 /// </summary>
@@ -29,3 +31,4 @@ void Core_Yield();
 extern size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;
 extern uint64_t Core_SchedulerTimerFrequency;
+extern spinlock Core_SchedulerLock;

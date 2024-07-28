@@ -6,7 +6,7 @@ del qemu_log.txt
 
 qemu-system-x86_64 ^
 -drive file=out/obos.iso,format=raw ^
--m 512M ^
+-m 1G ^
 -gdb tcp:0.0.0.0:1234 -S ^
 -accel tcg ^
 -cpu "Haswell" ^

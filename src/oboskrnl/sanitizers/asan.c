@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -12,7 +13,10 @@
 
 #include <sanitizers/asan.h>
 
-#define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (((uintptr_t)(base) & ~0xfff) == ((((uintptr_t)(base) + (size)) & ~0xfff)))
+#include <mm/context.h>
+
+#define round_down_to_page(addr) ((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
+#define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (round_down_to_page(base) == round_down_to_page((uintptr_t)(base) + (size)))
 
 #ifdef __x86_64__
 #include <arch/x86_64/asm_helpers.h>

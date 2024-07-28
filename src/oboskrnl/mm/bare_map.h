@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 /// <summary>
 /// Maps a page as Read, Write, and execution disabled. This page should not accessible from user-mode.<para/>
@@ -39,6 +40,7 @@ typedef struct basicmm_region
 		char signature[8];
 	} magic;
 	uintptr_t addr;
+	bool mmioRange;
 	size_t size;
 	struct basicmm_region* next;
 	struct basicmm_region* prev;
@@ -84,3 +86,14 @@ obos_status OBOS_BasicMMFreePages(void *base, size_t sz);
 /// <param name="base">The base of the region.</param>
 /// <param name="sz">The size of the region.</param>
 void OBOSH_BasicMMAddRegion(basicmm_region* nodeBase, void* base, size_t sz);
+/// <summary>
+/// Iterates over regions in the basic mm for OBOS.
+/// </summary>
+/// <param name="callback">The call back. Returns true to continue iteration, otherwise false. Takes in the current region, and the passed user data.</param>
+/// <param name="udata">The user data to pass.</param>
+void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata);
+/// <summary>
+/// Iterates over regions in the basic mm for OBOS.
+/// </summary>
+/// <returns>The region count.</returns>
+size_t OBOSH_BasicMMGetRegionCount();
