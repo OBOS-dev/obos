@@ -62,6 +62,7 @@ execute_process(COMMAND
 add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 
 add_subdirectory("src/oboskrnl")
+add_subdirectory("src/uACPI")
 add_subdirectory("src/isogen")
 
 set_property(GLOBAL PROPERTY C_STANDARD 17

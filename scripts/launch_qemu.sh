@@ -7,8 +7,8 @@ qemu-system-x86_64 \
 -m 2G \
 -gdb tcp:0.0.0.0:1234 -S \
 -M q35 \
--cpu host \
--accel kvm \
+-cpu Haswell \
+-accel tcg \
 -monitor stdio \
 -debugcon file:/dev/stdout \
 -serial tcp:0.0.0.0:1534,server,nowait \

@@ -22,7 +22,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 )
 
-target_link_libraries(oboskrnl PRIVATE gcc)
+target_link_libraries(oboskrnl PRIVATE gcc PRIVATE uacpi)
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 

@@ -17,10 +17,13 @@
 #define PTR_BITS 16
 #endif
 
-#ifndef __cplusplus
-#	define nullptr ((void*)0)
+#if !defined(__cplusplus) && !defined(true) && !defined(false)
 #	define true (1)
 #	define false (0)
+typedef _Bool bool;
+#endif
+#ifndef __cplusplus
+#	define nullptr ((void*)0)
 #	undef NULL
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
@@ -34,7 +37,6 @@
 #	else
 #		define OBOS_ALIGNAS(x) alignas(x)
 #	endif
-typedef _Bool bool;
 #else
 #	define OBOS_ALIGNAS(x) alignas(x)
 #	undef NULL

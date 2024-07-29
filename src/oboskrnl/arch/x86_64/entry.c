@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "uacpi/kernel_api.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -55,6 +56,11 @@
 #include <stdatomic.h>
 
 #include <utils/tree.h>
+
+#include <external/fixedptc.h>
+
+#include <uacpi/uacpi.h>
+#include <uacpi/sleep.h>
 
 extern void Arch_InitBootGDT();
 
@@ -460,12 +466,22 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	Core_TimerDispatchThread->affinity &= ~1;
 	return OBOS_STATUS_SUCCESS;
 }
+static uint64_t cached_divisor = 0;
 timer_tick CoreS_GetTimerTick()
 {
-	static uint64_t cached = 0;
-	if (!cached)
-		cached = Arch_HPETFrequency/CoreS_TimerFrequency;
-	return Arch_HPETAddress->mainCounterValue/cached;
+	if (!cached_divisor)
+		cached_divisor = Arch_HPETFrequency/CoreS_TimerFrequency;
+	return Arch_HPETAddress->mainCounterValue/cached_divisor;
+}
+uint64_t CoreS_TimerTickToNS(timer_tick tp)
+{
+	// 1/freq*1000000000*tp
+    fixedptd ns = fixedpt_fromint(1); // 1.0
+    const fixedptd divisor = fixedpt_fromint(CoreS_TimerFrequency); // freq
+    ns = fixedpt_xdiv(ns, divisor);
+    ns = fixedpt_xmul(ns, fixedpt_fromint(1000000000));
+    ns = fixedpt_xmul(ns, fixedpt_fromint(tp));
+	return fixedpt_toint(ns);	
 }
 process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
@@ -566,35 +582,28 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
-	OBOS_Debug("%s: Testing VMM.\n", __func__);
-	OBOS_Debug("Running a single-threaded test with two fixed-size allocations...\n");
-	char* mem1 = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x4000, 0, 0, nullptr);
-	char* mem2 = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x4000, 0, 0, nullptr);
-	memcpy(mem1, "Hello, world!\n", sizeof("Hello, world!\n"));
-	memcpy(mem2, "Hello, world!\n", sizeof("Hello, world!\n"));
-	Mm_FreeVirtualMemory(&Mm_KernelContext, mem1, 0x4000);
-	Mm_FreeVirtualMemory(&Mm_KernelContext, mem2, 0x4000);
-	OBOS_Debug("Success.\n");
-	const size_t threadCount = 8;
-	OBOS_Debug("Running a multi-threaded test with many randomly-sized allocations on %d threads...\n", threadCount);
-	for (size_t i = 0; i < threadCount; i++)
-	{
-		thread_ctx ctx;
-		memzero(&ctx, sizeof(ctx));
-		void* stack = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)scheduler_test, (i + 1) * 1000, false, stack, 0x10000);
-		thread* thr = CoreH_ThreadAllocate(nullptr);
-		if (obos_unlikely_error(CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx)))
-		{
-			Core_ProcessAppendThread(CoreS_GetCPULocalPtr()->currentThread->proc, thr);
-			CoreH_ThreadReady(thr);
-		}
-		else
-			OBOS_Warning("%s: Could not initialize thread.\n", __func__);
-	}
-	while(nThreadsExited != threadCount);
-	Core_Yield();
-	OBOS_Debug("Success.\n");
+	OBOS_Debug("%s: Initializing uACPI\n", __func__);
+	#define verify_status(st, in) \
+if (st != UACPI_STATUS_OK)\
+	OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "uACPI Failed in %s! Status code: %d, error message: %s\n", #in, st, uacpi_status_to_string(st));
+	uintptr_t rsdp = 0;
+#ifdef __x86_64__
+	rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
+#endif
+	uacpi_init_params params = {
+		rsdp,
+		UACPI_LOG_INFO,
+		0
+	};
+	uacpi_status st = uacpi_initialize(&params);
+	verify_status(st, uacpi_initialize);
+
+	st = uacpi_namespace_load();
+	verify_status(st, uacpi_namespace_load);
+
+	st = uacpi_namespace_initialize();
+	verify_status(st, uacpi_namespace_initialize);
+	
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }
