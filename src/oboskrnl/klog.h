@@ -48,45 +48,45 @@ void OBOS_SetLogLevel(log_level level);
 /// Gets the current log level.
 /// </summary>
 /// <returns>The current log level.</returns>
-log_level OBOS_GetLogLevel();
+OBOS_EXPORT log_level OBOS_GetLogLevel();
 /// <summary>
 /// Prints a debug log.
 /// </summary>
 /// <param name="format">The printf-style format string.</param>
 /// <param name="...">Any variadic arguments.</param>
-void OBOS_Debug(const char* format, ...);
+OBOS_EXPORT void OBOS_Debug(const char* format, ...);
 /// <summary>
 /// Prints a general log.
 /// </summary>
 /// <param name="format">The printf-style format string.</param>
 /// <param name="...">Any variadic arguments.</param>
-void OBOS_Log(const char* format, ...);
+OBOS_EXPORT void OBOS_Log(const char* format, ...);
 /// <summary>
 /// Prints a warning.
 /// </summary>
 /// <param name="format">The printf-style format string.</param>
 /// <param name="...">Any variadic arguments.</param>
-void OBOS_Warning(const char* format, ...);
+OBOS_EXPORT void OBOS_Warning(const char* format, ...);
 /// <summary>
 /// Prints a non-fatal error.
 /// </summary>
 /// <param name="format">The printf-style format string.</param>
 /// <param name="...">Any variadic arguments.</param>
-void OBOS_Error(const char* format, ...);
+OBOS_EXPORT void OBOS_Error(const char* format, ...);
 /// <summary>
 /// Panics.
 /// </summary>
 /// <param name="reason">The reason for the panic.</param>
 /// <param name="format">The printf-style format string describing how the fail happened..</param>
 /// <param name="...">Any variadic arguments.</param>
-OBOS_NORETURN void OBOS_Panic(panic_reason reason, const char* format, ...);
+OBOS_NORETURN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* format, ...);
 /// <summary>
 /// Halts all other CPUs.
 /// </summary>
 void OBOSS_HaltCPUs();
 
 // printf-Style functions.
-size_t printf(const char* format, ...);
-size_t vprintf(const char* format, va_list list);
-size_t snprintf(char* buf, size_t bufSize, const char* format, ...);
-size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list);
+OBOS_EXPORT size_t printf(const char* format, ...);
+OBOS_EXPORT size_t vprintf(const char* format, va_list list);
+OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...);
+OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list);

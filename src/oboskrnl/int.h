@@ -9,6 +9,26 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef OBOS_KERNEL
+#	define OBOS_EXPORT __attribute__((visibility("default")))
+// Usually redundant.
+#	define OBOS_LOCAL __attribute__((visibility("hidden")))
+
+#	define DRV_EXPORT
+// Usually redundant.
+#	define DRV_LOCAL
+#elif defined(OBOS_DRIVER)
+#	define OBOS_EXPORT 
+// Usually redundant.
+#	define OBOS_LOCAL
+
+#	define DRV_EXPORT __attribute__((visibility("default")))
+// Usually redundant.
+#	define DRV_LOCAL __attribute__((visibility("hidden")))
+#else
+#	error Only the kernel and drivers can access kernel headers.
+#endif
+
 #if UINTPTR_MAX == UINT64_MAX
 #define PTR_BITS 64
 #elif UINTPTR_MAX == UINT32_MAX

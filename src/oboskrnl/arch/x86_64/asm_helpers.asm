@@ -4,30 +4,30 @@
 
 [BITS 64]
 
-global getCR0
-global getCR2
-global getCR3
-global getCR4
-global getCR4
-global getCR8
-global getDR6
-global pause
-global getEFER
-global rdmsr
-global wrmsr
-global outb
-global outw
-global outd
-global inb
-global inw
-global ind
-global __cpuid__
-global invlpg
-global wbinvd
-global xsave
-global cli
-global sti
-global hlt
+global getCR0:function default
+global getCR2:function default
+global getCR3:function default
+global getCR4:function default
+global getCR4:function default
+global getCR8:function default
+global getDR6:function default
+global pause:function default
+global getEFER:function default
+global rdmsr:function default
+global wrmsr:function default
+global outb:function default
+global outw:function default
+global outd:function default
+global inb:function default
+global inw:function default
+global ind:function default
+global __cpuid__:function default
+global invlpg:function default
+global wbinvd:function default
+global xsave:function default
+global cli:function default
+global sti:function default
+global hlt:function default
 global MmS_GetCurrentPageTable
 
 section .text
@@ -192,7 +192,7 @@ xsave:
 	xgetbv
 	xsave [rdi]
 	ret
-global CoreS_GetCPULocalPtr
+global CoreS_GetCPULocalPtr:function default
 extern Arch_SMPInitialized
 CoreS_GetCPULocalPtr:
 	push rbp

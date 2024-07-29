@@ -4,7 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "uacpi/event.h"
 #include "uacpi/kernel_api.h"
+#include "uacpi/types.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -513,6 +515,13 @@ static OBOS_PAGEABLE_FUNCTION void scheduler_test(size_t maxPasses)
 	nThreadsExited++;
 	Core_ExitCurrentThread();
 }
+static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
+{
+	uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+	asm("cli");
+	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
+	return UACPI_INTERRUPT_HANDLED;
+}
 OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -604,6 +613,14 @@ if (st != UACPI_STATUS_OK)\
 	st = uacpi_namespace_initialize();
 	verify_status(st, uacpi_namespace_initialize);
 	
+	// uacpi_status ret = uacpi_install_fixed_event_handler(
+    //     UACPI_FIXED_EVENT_POWER_BUTTON,
+	// handle_power_button, UACPI_NULL
+	// );
+
+	st = uacpi_finalize_gpe_initialization();
+	verify_status(st, uacpi_finalize_gpe_initialization);
+
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }

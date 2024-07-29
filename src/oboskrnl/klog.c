@@ -50,7 +50,7 @@ OBOS_PAGEABLE_FUNCTION void OBOS_SetLogLevel(log_level level)
 {
 	s_logLevel = level;
 }
-log_level OBOS_GetLogLevel()
+OBOS_EXPORT log_level OBOS_GetLogLevel()
 {
 	return s_logLevel;
 }
@@ -70,28 +70,28 @@ static OBOS_PAGEABLE_FUNCTION void common_log(log_level minimumLevel, const char
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
-OBOS_PAGEABLE_FUNCTION void OBOS_Debug(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Debug(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_DEBUG, "DEBUG", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION void OBOS_Log(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION void OBOS_Warning(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_WARNING, "WARN ", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION void OBOS_Error(const char* format, ...)
+OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Error(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -122,7 +122,7 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
-OBOS_NORETURN OBOS_NO_KASAN void OBOS_Panic(panic_reason reason, const char* format, ...)
+OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	const char* ascii_art =
 		"       )\r\n"
@@ -163,7 +163,7 @@ static char* outputCallback(const char* buf, void* a, int len)
 	}
 	return (char*)buf;
 }
-size_t printf(const char* format, ...)
+OBOS_EXPORT size_t printf(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -171,7 +171,7 @@ size_t printf(const char* format, ...)
 	va_end(list);
 	return ret;
 }
-size_t vprintf(const char* format, va_list list)
+OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 {
 	if (!s_printfLockInitialized)
 	{
@@ -184,7 +184,7 @@ size_t vprintf(const char* format, va_list list)
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
-OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
+OBOS_EXPORT OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -192,7 +192,7 @@ OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* fo
 	va_end(list);
 	return ret;
 }
-OBOS_PAGEABLE_FUNCTION size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
+OBOS_EXPORT OBOS_PAGEABLE_FUNCTION size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
 	return stbsp_vsnprintf(buf, bufSize, format, list);
 }

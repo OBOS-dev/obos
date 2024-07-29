@@ -13,13 +13,13 @@
 ; void CoreS_SetThreadIRQL(thread_ctx* ctx, irql newIRQL);
 ; irql CoreS_GetThreadIRQL(const thread_ctx* ctx);
 
-global CoreS_SetupThreadContext
-global CoreS_SwitchToThreadContext
-global CoreS_SaveRegisterContextAndYield
-global CoreS_FreeThreadContext
-global CoreS_CallFunctionOnStack
-global CoreS_SetThreadIRQL
-global CoreS_GetThreadIRQL
+global CoreS_SetupThreadContext:function default
+global CoreS_SwitchToThreadContext:function hidden
+global CoreS_SaveRegisterContextAndYield:function hidden
+global CoreS_FreeThreadContext:function hidden
+global CoreS_CallFunctionOnStack:function default
+global CoreS_SetThreadIRQL:function hidden
+global CoreS_GetThreadIRQL:function hidden
 
 %macro popaq 0
 pop rbp

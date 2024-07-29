@@ -4,7 +4,7 @@
 
 [BITS 64]
 
-global Arch_FindCounter
+global Arch_FindCounter:function hidden
 extern Arch_LAPICAddress
 extern Arch_HPETAddress
 extern Arch_CalibrateHPET

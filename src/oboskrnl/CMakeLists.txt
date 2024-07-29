@@ -13,6 +13,8 @@ list (APPEND oboskrnl_sources
 
 add_executable(oboskrnl)
 
+set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
+
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
@@ -20,6 +22,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 )
 
 target_link_libraries(oboskrnl PRIVATE gcc PRIVATE uacpi)
@@ -32,6 +35,7 @@ target_include_directories(oboskrnl
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
+#	PRIVATE "-fvisibility=hidden"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )
@@ -63,6 +67,7 @@ target_compile_definitions(oboskrnl
 	PRIVATE $<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
 	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 	PRIVATE FIXEDPT_BITS=64
+	PRIVATE OBOS_KERNEL=1
 	PRIVATE FIXEDPT_WBITS=32)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

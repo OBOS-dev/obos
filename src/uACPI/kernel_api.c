@@ -574,6 +574,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 #if defined(__x86_64__)
     if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
         return UACPI_STATUS_INTERNAL_ERROR;
+    Arch_IOAPICMaskIRQ(irq, false);
 #endif
     uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uintptr_t), nullptr);
     udata[0] = (uintptr_t)ctx;
