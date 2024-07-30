@@ -657,7 +657,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler
     thread* dpc = CoreH_ThreadAllocate(nullptr);
     thread_ctx thrctx;
     // TODO: Free these stacks on thread exit.
-    void* stack = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
+    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
     CoreS_SetupThreadContext(&thrctx, (uintptr_t)work_handler, (uintptr_t)work, false, stack, 0x20000);
     CoreH_ThreadInitialize(dpc, THREAD_PRIORITY_URGENT, CoreH_CPUIdToAffinity(on->id), &ctx);
     return UACPI_STATUS_OK;

@@ -16,6 +16,7 @@
 
 #include <scheduler/process.h>
 
+#include <stdint.h>
 #include <utils/tree.h>
 
 #include <irq/irql.h>
@@ -85,7 +86,7 @@ void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_
 	}
     return (void*)found;
 }
-void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, obos_status* ustatus)
+void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     set_statusp(ustatus, status);
@@ -205,7 +206,7 @@ void* Mm_AllocateVirtualMemory(context* ctx, void* base_, size_t size, prot_flag
         base += pgSize;
     return (void*)base;
 }
-obos_status Mm_FreeVirtualMemory(context* ctx, void* base_, size_t size)
+obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 {
     uintptr_t base = (uintptr_t)base_;
     if (base % OBOS_PAGE_SIZE)
@@ -288,6 +289,86 @@ obos_status Mm_FreeVirtualMemory(context* ctx, void* base_, size_t size)
             REMOVE_PAGE_NODE(ctx->referenced, &curr->ln_node);
         if (curr->allocated)
             Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
+
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
+
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot_flags prot, int isPageable)
+{
+    uintptr_t base = (uintptr_t)base_;
+    if (base % OBOS_PAGE_SIZE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!ctx || !base || !size)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
+    
+    page what;
+    memzero(&what, sizeof(what));
+    what.addr = base;
+
+    // Verify each pages' existence
+
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+
+    uintptr_t offset = 0;
+    page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 
+    if (!baseNode)
+    {
+        Core_SpinlockRelease(&ctx->lock, oldIrql);
+        return OBOS_STATUS_NOT_FOUND;
+    }
+    page* curr = nullptr;
+    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    {
+        what.addr = addr;
+        if (addr == base)
+            curr = baseNode;
+        else
+            curr = RB_NEXT(page_tree, &ctx->pages, curr);
+        if (!curr || curr->addr != addr)
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            return OBOS_STATUS_NOT_FOUND;
+        }
+        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
+
+
+    offset = 0;
+    curr = nullptr;
+    page* next = nullptr;
+    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    {
+        what.addr = addr;
+        if (addr == base)
+            curr = baseNode;
+        else
+            curr = next;
+        next = RB_NEXT(page_tree, &ctx->pages, curr);
+        if (!curr || curr->addr != addr)
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            return OBOS_STATUS_NOT_FOUND;
+        }
+        curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+        curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+        curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+        if (curr->pagedOut && !isPageable)
+        {
+            // Page in curr if:
+            // The current page is paged out, and we need to change the pageable property from true to false.
+            Mm_SwapIn(curr);
+        }
+        if (isPageable < 2)
+            curr->pageable = isPageable;
+        uintptr_t phys = 0;
+        OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
+        MmS_SetPageMapping(ctx->pt, curr, phys);
+
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
 

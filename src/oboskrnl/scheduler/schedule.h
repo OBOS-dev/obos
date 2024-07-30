@@ -17,7 +17,7 @@
 /// Gets the current thread.
 /// </summary>
 /// <returns>The current thread.</returns>
-thread* Core_GetCurrentThread();
+OBOS_EXPORT thread* Core_GetCurrentThread();
 /// <summary>
 /// Schedules a thread.
 /// Only provided for documentation purposes, never call directly without saving the current thread's context first
@@ -26,9 +26,9 @@ void Core_Schedule();
 /// <summary>
 /// Yields the current thread. This will save the current thread context, then call Core_Schedule after raising the IRQL (if needed).
 /// </summary>
-void Core_Yield();
+OBOS_EXPORT void Core_Yield();
 
-extern size_t Core_ReadyThreadCount;
+extern OBOS_EXPORT size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;
-extern uint64_t Core_SchedulerTimerFrequency;
+extern OBOS_EXPORT uint64_t Core_SchedulerTimerFrequency;
 extern spinlock Core_SchedulerLock;

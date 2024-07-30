@@ -9,14 +9,14 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#ifdef OBOS_KERNEL
+#if OBOS_KERNEL
 #	define OBOS_EXPORT __attribute__((visibility("default")))
 // Usually redundant.
 #	define OBOS_LOCAL __attribute__((visibility("hidden")))
 
-#	define DRV_EXPORT
+#	define DRV_EXPORT __attribute__((visibility("default")))
 // Usually redundant.
-#	define DRV_LOCAL
+#	define DRV_LOCAL __attribute__((visibility("hidden")))
 #elif defined(OBOS_DRIVER)
 #	define OBOS_EXPORT 
 // Usually redundant.

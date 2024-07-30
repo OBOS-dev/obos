@@ -62,8 +62,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         page->age |= 1;
         page->prot.touched = false;
         APPEND_PAGE_NODE(ctx->referenced, &page->ln_node);
-        // TODO: Try to figure out a good number based off the count of pages in the context/working-set.
-        const size_t threshold = 10;
+        // TODO: Try to figure out a better number based off the count of pages in the context/working-set.
+        const size_t threshold = (ctx->workingSet.size / 4) / OBOS_PAGE_SIZE;
         if (ctx->referenced.nNodes >= threshold)
             Mm_RunPRA(ctx);
         Core_SpinlockRelease(&ctx->lock, oldIrql);

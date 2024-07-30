@@ -1,23 +1,27 @@
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
 
-ENTRY(Arch_KernelEntryBootstrap)
+ENTRY(OBOS_DriverEntry)
 
 PHDRS
 {
-    text        PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
-    rodata      PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
-    data        PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
+    headers     PT_PHDR PHDRS;
+    text        PT_LOAD FILEHDR PHDRS FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
+    rodata      PT_LOAD FLAGS((1 << 2))            ; /* Read only */
+    data        PT_LOAD FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
     
-    pageable_text   PT_LOAD    FLAGS((1 << 0) | (1 << 2)); /* Read + Execute */
-    pageable_data   PT_LOAD    FLAGS((1 << 1) | (1 << 2)); /* Read + Write */
-    pageable_rodata PT_LOAD    FLAGS((1 << 2));            /* Read only */
+/* 0x00010000=PF_OBOS_PAGEABLE */
+    pageable_text   PT_LOAD FLAGS((1 << 0) | (1 << 2) | 0x00010000); /* Read + Execute + Pageable */
+    pageable_data   PT_LOAD FLAGS((1 << 1) | (1 << 2) | 0x00010000); /* Read + Write + Pageable  */
+    pageable_rodata PT_LOAD FLAGS((1 << 2) | 0x00010000);            /* Read only + Pageable */
+
+    dynamic PT_DYNAMIC;
 }
 
 SECTIONS
 {
-    . = 0xffffffff80000000;
-    KERNEL_BASE = .;
+    Drv_Base = .;
+    . = 0x0000000000000000 + SIZEOF_HEADERS;
 
     .text : {
         *(.text .text.*)
@@ -25,7 +29,6 @@ SECTIONS
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
-    
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
@@ -43,7 +46,6 @@ SECTIONS
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
-    MmS_MMPageableRangeStart = .;
     /* Functions */
     .pageable.text : {
         *(.pageable.text)
@@ -62,12 +64,16 @@ SECTIONS
         *(.pageable.rodata)
     } :pageable_rodata
     . = ALIGN(CONSTANT(MAXPAGESIZE));
-    MmS_MMPageableRangeEnd = .;
 
     /DISCARD/ : {
         *(.eh_frame)
         *(.note .note.*)
         *(.comment)
     }
-    KERNEL_TOP = .;
+    
+    .dynamic : {
+        *(.dynamic)
+    } :data :dynamic
+
+    Drv_Top = .;
 }

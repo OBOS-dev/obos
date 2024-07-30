@@ -23,26 +23,26 @@ enum
 /// Lowers the IRQL. Panics if 'to' > Core_GetIrql().
 /// </summary>
 /// <param name="to">The new irql.</param>
-void Core_LowerIrql(irql to);
+OBOS_EXPORT void Core_LowerIrql(irql to);
 /// <summary>
 /// Raises the IRQL. Panics if 'to' < Core_GetIrql().
 /// </summary>
 /// <param name="to">The new irql.</param>
 /// <returns>The old irql.</returns>
 OBOS_NODISCARD_REASON("You must save the return value of Core_RaiseIrql to be passed to Core_LowerIrql later on.")
-irql Core_RaiseIrql(irql to);
+OBOS_EXPORT irql Core_RaiseIrql(irql to);
 // Does the same as Core_LowerIrql, except it doesn't use CoreS_SetThreadIrql.
 // For internal use only.
-void Core_LowerIrqlNoThread(irql to);
+OBOS_EXPORT void Core_LowerIrqlNoThread(irql to);
 // Does the same as Core_RaiseIrql, except it doesn't use CoreS_SetThreadIrql.
 // For internal use only.
 OBOS_NODISCARD_REASON("You must save the return value of Core_RaiseIrqlNoThread to be passed to Core_LowerIrqlNoThread later on.")
-irql Core_RaiseIrqlNoThread(irql to);
+OBOS_EXPORT irql Core_RaiseIrqlNoThread(irql to);
 /// <summary>
 /// Gets the current IRQL.
 /// </summary>
 /// <returns>The current IRQL.</returns>
-irql Core_GetIrql();
+OBOS_EXPORT irql Core_GetIrql();
 // These functions are arch-specific.
 // Do not use unless you know what you're doing.
 

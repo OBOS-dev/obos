@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "driver_interface/loader.h"
 #include "uacpi/event.h"
 #include "uacpi/kernel_api.h"
 #include "uacpi/types.h"
@@ -35,6 +36,8 @@
 #include <arch/x86_64/asm_helpers.h>
 
 #include <arch/x86_64/pmm.h>
+
+#include <driver_interface/driverId.h>
 
 #include <allocators/basic_allocator.h>
 #include <allocators/base.h>
@@ -178,6 +181,7 @@ struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
+struct ultra_module_info_attribute* Arch_TestDriverModule;
 struct ultra_framebuffer* Arch_Framebuffer;
 const char* OBOS_KernelCmdLine;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
@@ -205,6 +209,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_b
 				Arch_KernelBinary = module;
 			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
 				Arch_InitialSwapBuffer = module;
+			else if (strcmp(module->name, "test_driver"))
+				Arch_TestDriverModule = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -487,42 +493,15 @@ uint64_t CoreS_TimerTickToNS(timer_tick tp)
 }
 process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
-static atomic_size_t nThreadsEntered = 0;
-static atomic_size_t nThreadsExited = 0;
-static OBOS_PAGEABLE_FUNCTION void scheduler_test(size_t maxPasses)
-{
-	OBOS_Debug("Entered thread %d (work id %d).\n", Core_GetCurrentThread()->tid, nThreadsEntered++);
-	volatile uint8_t* lastPtr = nullptr;
-	volatile size_t lastFree = 0;
-	allocator_info* const allocator = OBOS_KernelAllocator;
-	for (size_t i = 0; i < maxPasses; i++)
-	{
-		obos_status status = OBOS_STATUS_SUCCESS;
-		volatile size_t sz = random_number() % 0x1000 + 1;
-		volatile uint8_t *buf = allocator->Allocate(allocator, sz, &status);
-		OBOS_ASSERT(buf);
-		buf[0] = 0xDE;
-		buf[sz - 1] = 0xAD;
-		if (i - lastFree == 3)
-		{
-			size_t blkSz = 0;
-			allocator->QueryBlockSize(allocator, lastPtr, &blkSz);
-			allocator->Free(allocator, lastPtr, blkSz);
-		}
-		lastPtr = buf;
-	}
-	OBOS_Debug("Exiting thread %d.\n", Core_GetCurrentThread()->tid);
-	nThreadsExited++;
-	Core_ExitCurrentThread();
-}
 static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 {
+	OBOS_UNUSED(ctx);
 	uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
 	asm("cli");
 	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
 	return UACPI_INTERRUPT_HANDLED;
 }
-OBOS_PAGEABLE_FUNCTION void Arch_KernelMainBootstrap()
+void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
 	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
@@ -620,7 +599,79 @@ if (st != UACPI_STATUS_OK)\
 
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
-
+	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
+	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
+	Elf64_Shdr* sectionTable = (Elf64_Shdr*)(Arch_KernelBinary->address + ehdr->e_shoff);
+	if (!sectionTable)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the section table from oboskrnl.\n");
+	const char* shstr_table = (const char*)(Arch_KernelBinary->address + (sectionTable + ehdr->e_shstrndx)->sh_offset);
+	// Look for .symtab
+	Elf64_Shdr* symtab = nullptr;
+	const char* strtable = nullptr;
+	for (size_t i = 0; i < ehdr->e_shnum; i++)
+	{
+		const char* section = shstr_table + sectionTable[i].sh_name;
+		if (strcmp(section, ".symtab"))
+			symtab = &sectionTable[i];
+		if (strcmp(section, ".strtab"))
+			strtable = (const char*)(Arch_KernelBinary->address + sectionTable[i].sh_offset);
+		if (strtable && symtab)
+			break;
+	}
+	if (!symtab)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the symbol table from oboskrnl.\n");
+	Elf64_Sym* symbolTable = (Elf64_Sym*)(Arch_KernelBinary->address + symtab->sh_offset);
+	for (size_t i = 0; i < symtab->sh_size/sizeof(Elf64_Sym); i++)
+	{
+		Elf64_Sym* esymbol = &symbolTable[i];
+		int symbolType = -1;
+		switch (ELF64_ST_TYPE(esymbol->st_info)) 
+		{
+			case STT_FUNC:
+				symbolType = SYMBOL_TYPE_FUNCTION;
+				break;
+			case STT_FILE:
+				symbolType = SYMBOL_TYPE_FILE;
+				break;
+			case STT_OBJECT:
+				symbolType = SYMBOL_TYPE_VARIABLE;
+				break;
+			default:
+				continue;
+		}
+		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		const char* name = strtable + esymbol->st_name;
+		size_t szName = strlen(name);
+		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->address = esymbol->st_value;
+		symbol->size = esymbol->st_size;
+		symbol->type = symbolType;
+		switch (esymbol->st_other)
+		{
+			case STV_DEFAULT:
+			case STV_EXPORTED:
+			// since this is the kernel, everyone already gets the same object
+			case STV_SINGLETON: 
+				symbol->visibility = SYMBOL_VISIBILITY_DEFAULT;
+				break;
+			case STV_PROTECTED:
+			case STV_HIDDEN:
+				symbol->visibility = SYMBOL_VISIBILITY_HIDDEN;
+				break;
+			default:
+				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unrecognized visibility %d.\n", esymbol->st_other);
+		}
+		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
+	}
+	OBOS_Debug("Loading test driver.\n");
+	void* test_driver_bin = (void*)Arch_TestDriverModule->address;
+	size_t sizeof_test_driver_bin = Arch_TestDriverModule->size;
+	status = OBOS_STATUS_SUCCESS;
+	driver_id* drv = Drv_LoadDriver(test_driver_bin, sizeof_test_driver_bin, &status);
+	if (obos_likely_error(status))
+		OBOS_Error("Could not load test driver. Status: %d.\n", status);
+	Drv_StartDriver(drv, nullptr);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
+
 }

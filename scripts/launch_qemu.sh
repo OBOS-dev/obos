@@ -4,11 +4,11 @@ rm qemu_log.txt
 
 qemu-system-x86_64 \
 -drive file=out/obos.iso,format=raw \
--m 2G \
+-m 1G \
 -gdb tcp:0.0.0.0:1234 -S \
 -M q35 \
--cpu Haswell \
--accel tcg \
+-cpu host \
+-accel kvm \
 -monitor stdio \
 -debugcon file:/dev/stdout \
 -serial tcp:0.0.0.0:1534,server,nowait \

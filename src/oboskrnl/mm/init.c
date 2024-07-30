@@ -129,7 +129,7 @@ void Mm_Initialize()
 #ifdef __x86_64__
     udata.szPageablePages = (udata.szPageablePages + 0x3fff) & ~0x3fff;
 #endif
-    Mm_KernelContext.workingSet.size = udata.szPageablePages/4;
+    Mm_KernelContext.workingSet.size = udata.szPageablePages;
     initialized = true;
     page* i = nullptr;
     RB_FOREACH(i, page_tree, &Mm_KernelContext.pages)

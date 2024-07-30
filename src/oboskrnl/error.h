@@ -80,4 +80,24 @@ typedef enum
 	/// The page cannot be paged in or out, as it's in the non-paged pool of memory.
 	/// </summary>
 	OBOS_STATUS_UNPAGED_POOL,
+	/// <summary>
+	/// The file has an invalid format.
+	/// </summary>
+	OBOS_STATUS_INVALID_FILE,
+	/// <summary>
+	/// The driver put an invalid value for a field in its header.
+	/// </summary>
+	OBOS_STATUS_INVALID_HEADER,
+	/// <summary>
+	/// The driver's code referenced an undefined symbol in the kernel.
+	/// </summary>
+	OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL,
+	/// <summary>
+	/// The driver's code referenced a variable that had a different size in the kernel.
+	/// </summary>
+	OBOS_STATUS_DRIVER_SYMBOL_MISMATCH,
+	/// <summary>
+	/// The driver does not have an entry point.
+	/// </summary>
+	OBOS_STATUS_NO_ENTRY_POINT,
 } obos_status;

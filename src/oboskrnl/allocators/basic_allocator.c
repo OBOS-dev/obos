@@ -80,7 +80,7 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			memzero(ret, size);
 			return ret;
 		}
-		void* ret = Mm_AllocateVirtualMemory(&Mm_KernelContext, nullptr, size, 0, ((allocator_info*)This == OBOS_NonPagedPoolAllocator ? VMA_FLAGS_NON_PAGED : 0), status);
+		void* ret = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, size, 0, ((allocator_info*)This == OBOS_NonPagedPoolAllocator ? VMA_FLAGS_NON_PAGED : 0), status);
 		if (!ret)
 			return nullptr;
 		if ((allocator_info*)This == OBOS_NonPagedPoolAllocator)
@@ -148,7 +148,7 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 		}
 		case BLOCK_SOURCE_VMA:
 		{
-			Mm_FreeVirtualMemory(&Mm_KernelContext, block, block->size);
+			Mm_VirtualMemoryFree(&Mm_KernelContext, block, block->size);
 			break;
 		}
 		case BLOCK_SOURCE_PHYSICAL_MEMORY:
