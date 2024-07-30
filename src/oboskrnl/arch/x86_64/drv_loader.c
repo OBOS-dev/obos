@@ -175,6 +175,8 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
                 file, base, symbolTable, hashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
+            if (sym->st_shndx == 0)
+                goto unresolved;
             internal_symbol.address = OffsetPtr(base, sym->st_value, uintptr_t);
             internal_symbol.size = sym->st_size;
             internal_symbol.visibility = SYMBOL_VISIBILITY_DEFAULT;
@@ -194,6 +196,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             }
             Symbol = &internal_symbol;
         }
+        unresolved:
         if (!Symbol) 
         {
             if (status)

@@ -203,7 +203,7 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
         }
 		size_t szName = strlen(name);
 		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
-		symbol->address = esymbol->st_value;
+		symbol->address = OffsetPtr(driver->base, esymbol->st_value, uintptr_t);
 		symbol->size = esymbol->st_size;
 		symbol->type = symbolType;
         if (forceHidden)
@@ -228,7 +228,9 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
 				symbol->visibility = SYMBOL_VISIBILITY_HIDDEN;
 				break;
 		}
+        RB_INSERT(symbol_table, &driver->symbols, symbol);
     }
+    driver->node.data = driver;
     APPEND_DRIVER_NODE(Drv_LoadedDrivers, &driver->node);
     return driver;
 }
@@ -295,6 +297,7 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
         sym = RB_FIND(symbol_table, &drv->symbols, &what );
         if (sym)
         {
+            OBOS_Debug("Found symbol %s in driver %d.\n", name, drv->id);
             *driver = drv; // the current driver.
             return sym;
         }

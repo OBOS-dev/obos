@@ -93,6 +93,7 @@ add_compile_definitions(
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")
 add_subdirectory("src/drivers/test_driver")
+add_subdirectory("src/drivers/test_driver2")
 add_subdirectory("src/isogen")
 
 set_property(GLOBAL PROPERTY C_STANDARD 17

@@ -182,6 +182,7 @@ struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
 struct ultra_module_info_attribute* Arch_TestDriverModule;
+struct ultra_module_info_attribute* Arch_TestDriver2Module;
 struct ultra_framebuffer* Arch_Framebuffer;
 const char* OBOS_KernelCmdLine;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
@@ -211,6 +212,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_b
 				Arch_InitialSwapBuffer = module;
 			else if (strcmp(module->name, "test_driver"))
 				Arch_TestDriverModule = module;
+			else if (strcmp(module->name, "test_driver2"))
+				Arch_TestDriver2Module = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -665,12 +668,18 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_Debug("Loading test driver.\n");
 	void* test_driver_bin = (void*)Arch_TestDriverModule->address;
+	void* test_driver2_bin = (void*)Arch_TestDriver2Module->address;
 	size_t sizeof_test_driver_bin = Arch_TestDriverModule->size;
+	size_t sizeof_test_driver2_bin = Arch_TestDriver2Module->size;
 	status = OBOS_STATUS_SUCCESS;
-	driver_id* drv = Drv_LoadDriver(test_driver_bin, sizeof_test_driver_bin, &status);
+	driver_id* drv1 = Drv_LoadDriver(test_driver_bin, sizeof_test_driver_bin, &status);
 	if (obos_likely_error(status))
-		OBOS_Error("Could not load test driver. Status: %d.\n", status);
-	Drv_StartDriver(drv, nullptr);
+		OBOS_Error("Could not load test driver #1. Status: %d.\n", status);
+	driver_id* drv2 = Drv_LoadDriver(test_driver2_bin, sizeof_test_driver2_bin, &status);
+	if (obos_likely_error(status))
+		OBOS_Error("Could not load test driver #2. Status: %d.\n", status);
+	Drv_StartDriver(drv1, nullptr);
+	Drv_StartDriver(drv2, nullptr);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 
