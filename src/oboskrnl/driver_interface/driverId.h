@@ -14,6 +14,8 @@
 
 #include <uacpi/platform/libc.h>
 
+#include <scheduler/thread.h>
+
 enum
 {
     SYMBOL_TYPE_FUNCTION,
@@ -77,6 +79,7 @@ typedef struct driver_id
 {
     uint32_t id;
     void* base;
+    void* top;
     symbol_table symbols;
     // A copy of the driver's header.
     driver_header header;
@@ -88,6 +91,7 @@ typedef struct driver_id
     driver_list dependencies;
     // The node in Drv_LoadedDrivers
     driver_node node;
+    thread* main_thread;
 } driver_id;
 // To be filled out by the arch-specific code of the kernel before the driver interface is called.
 extern driver_list Drv_LoadedDrivers;

@@ -4,28 +4,30 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "allocators/base.h"
-#include "elf/elf64.h"
-#include "klog.h"
-#include "mm/alloc.h"
-#include "mm/context.h"
-#include "scheduler/thread.h"
-#include "scheduler/thread_context_info.h"
 #include <int.h>
 #include <error.h>
+#include <klog.h>
 #include <memmanip.h>
+#include <stdint.h>
 #include <struct_packing.h>
 
-#include <stdint.h>
 #include <utils/tree.h>
+
+#include <scheduler/thread.h>
+#include <scheduler/thread_context_info.h>
+#include <scheduler/schedule.h>
+
+#include <allocators/base.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/loader.h>
 #include <driver_interface/driverId.h>
 
-#if OBOS_ARCHITECTURE_BITS == 64
+#include <mm/alloc.h>
+#include <mm/context.h>
+#include <mm/page.h>
+
 #   include <elf/elf.h>
-#endif
 
 // Do it in two passes so that any macros can be expanded
 #define token_concat_impl(tok1, tok2) tok1 ##tok2
@@ -148,14 +150,27 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
     Elf_Sym* dynamicSymbolTable = nullptr;
     size_t nEntriesDynamicSymbolTable = 0;
     const char* dynstrtab = nullptr;
-    driver->base = DrvS_LoadRelocatableElf(driver, file, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, status);
+    void* top = nullptr;
+    driver->base = DrvS_LoadRelocatableElf(driver, file, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
     if (!driver->base)
     {
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
         return nullptr;
     }
+    driver->top = top;
     driver->id = nextDriverId++;
     driver->refCnt++;
+    // Find the header within memory.
+    {
+        if (driverHeaderSection)
+            header = OffsetPtr(driver->base, driverHeaderSection->sh_addr, driver_header*);
+        else
+        {
+            header = find_header(driver->base, (uintptr_t)driver->top - (uintptr_t)driver->base);
+            OBOS_ASSERT(header); // If this fails, something scuffed has happened.
+        }
+    }
+    driver->header = *header;
     if (!(header->flags & DRIVER_HEADER_FLAGS_NO_ENTRY))
         driver->entryAddr = OffsetPtr(driver->base, ehdr->e_entry, uintptr_t);
     for (size_t i = 0; i < nEntriesDynamicSymbolTable; i++)
@@ -264,9 +279,40 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;
     }
-    CoreH_ThreadReady(thr); // very low chance of failure.
     if (mainThread)
+    {
         *mainThread = thr;
+        thr->references++;
+    }
+    driver->main_thread = thr;
+    thr->references++;
+    CoreH_ThreadReady(thr); // very low chance of failure.
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Drv_UnloadDriver(driver_id* driver)
+{
+    if (!driver)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (driver->refCnt > 1)
+        return OBOS_STATUS_IN_USE;
+    while (!(driver->main_thread->flags & THREAD_FLAGS_DIED))
+		Core_Yield();
+    if (!(--driver->main_thread->references) && driver->main_thread->free)
+        driver->main_thread->free(driver->main_thread);
+    driver->header.ftable.driver_cleanup_callback();
+    for (driver_node* node = driver->dependencies.head; node; )
+    {
+        node->data->refCnt--;
+
+        node = node->next;
+    }
+    REMOVE_DRIVER_NODE(Drv_LoadedDrivers, &driver->node);
+    size_t size = ((uintptr_t)driver->top-(uintptr_t)driver->base);
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
+    Mm_VirtualMemoryFree(&Mm_KernelContext, driver->base, size);
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -290,7 +336,6 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
         sym = RB_FIND(symbol_table, &drv->symbols, &what );
         if (sym)
         {
-            OBOS_Debug("Found symbol %s in driver %d.\n", name, drv->id);
             *driver = drv; // the current driver.
             return sym;
         }

@@ -4,10 +4,8 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "allocators/base.h"
-#include "elf/elf64.h"
-#include "klog.h"
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <memmanip.h>
 
@@ -23,6 +21,8 @@
 #include <driver_interface/driverId.h>
 
 #include <elf/elf.h>
+
+#include <allocators/base.h>
 
 #define OffsetPtr(ptr, off, type) (type)(((uintptr_t)ptr) + ((intptr_t)off))
 // Please forgive me for this
@@ -345,7 +345,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     return true;
 }
 
-void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, obos_status* status)
+void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
 {
     Elf64_Ehdr* ehdr = Cast(file, Elf64_Ehdr*);
     Elf64_Phdr* phdr_table = OffsetPtr(ehdr, ehdr->e_phoff, Elf64_Phdr*);
@@ -575,5 +575,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_
     }
     if (dynstrtab)
         *dynstrtab = OffsetPtr(base, stringTable, const char*);
+    if (top)
+        *top = OffsetPtr(base, top, void*);
     return base;
 }

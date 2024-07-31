@@ -6,9 +6,12 @@
 
 #include <scheduler/thread.h>
 
+void cleanup()
+{ /* Nothing to do */ }
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = 0,
+    .ftable.driver_cleanup_callback = cleanup
 };
 
 driver_id* this_driver;

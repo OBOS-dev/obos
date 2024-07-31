@@ -103,16 +103,17 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
-	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
+	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	thread_node* node = thr->snode;
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
+	thr->flags &= ~THREAD_FLAGS_PRIORITY_RAISED;
 	thr->status = THREAD_STATUS_BLOCKED;
 	thr->quantum = 0;
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
-	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	thr->masterCPU = nullptr;
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();

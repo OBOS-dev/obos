@@ -680,8 +680,22 @@ if (st != UACPI_STATUS_OK)\
 	driver_id* drv2 = Drv_LoadDriver(test_driver2_bin, sizeof_test_driver2_bin, &status);
 	if (obos_likely_error(status))
 		OBOS_Error("Could not load test driver #2. Status: %d.\n", status);
+	// thread* drv1_main = nullptr;
+	// thread* drv2_main = nullptr;
 	Drv_StartDriver(drv1, nullptr);
 	Drv_StartDriver(drv2, nullptr);
+	// while (!(drv1_main->flags & THREAD_FLAGS_DIED) || !(drv2_main->flags & THREAD_FLAGS_DIED))
+	// 	Core_Yield();
+	// if (!(--drv1_main->references) && drv1_main->free)
+    //     drv1_main->free(drv1_main);
+	// if (!(--drv2_main->references) && drv2_main->free)
+    //     drv2_main->free(drv2_main);
+	status = Drv_UnloadDriver(drv2);
+	if (obos_likely_error(status))
+		OBOS_Error("Could not unload test driver #2. Status: %d.\n", status);
+	status = Drv_UnloadDriver(drv1);
+	if (obos_likely_error(status))
+		OBOS_Error("Could not unload test driver #1. Status: %d.\n", status);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 
