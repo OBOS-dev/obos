@@ -87,13 +87,18 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	}
 	if (!cpuFound)
 		return OBOS_STATUS_INVALID_AFFINITY;
+	irql oldIrql = Core_SpinlockAcquire(&Core_SchedulerLock);
+	irql oldIrql2 = Core_SpinlockAcquire(&cpuFound->schedulerLock);
 	node->data = thr;
 	thr->snode = node;
 	thr->masterCPU = cpuFound;
 	thr->status = THREAD_STATUS_READY;
 	thread_list* priorityList = &cpuFound->priorityLists[thr->priority].list;
 	Core_ReadyThreadCount++;
-	return CoreH_ThreadListAppend(priorityList, node);
+	obos_status status = CoreH_ThreadListAppend(priorityList, node);
+	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql2);
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql);
+	return status;
 }
 obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 {

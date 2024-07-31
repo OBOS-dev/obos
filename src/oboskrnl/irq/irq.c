@@ -39,9 +39,8 @@ static bool s_irqInterfaceInitialized;
 	CoreS_SendEOI(frame);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
-	irql oldIrql = Core_SpinlockAcquire(&s_lock);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);
 	irq* irq_obj = nullptr;
-	// Warning: The dispatcher could cause a swap in if any irq objects are not excluded from the VMM.
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
 		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
@@ -70,11 +69,13 @@ static bool s_irqInterfaceInitialized;
 		return;
 	}
 	if (irq_obj->handler)
+	{
 		irq_obj->handler(
 			irq_obj,
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
+	}
 	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);

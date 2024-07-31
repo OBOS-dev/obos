@@ -281,7 +281,7 @@ void Core_Yield()
 		}
 		return;
 	}
-	CoreS_CallFunctionOnStack((uintptr_t(*)(uintptr_t))Core_Schedule, 0);
+	CoreS_CallFunctionOnStack((uintptr_t(*)(uintptr_t))(void*)Core_Schedule, 0);
 	if (oldIrql != IRQL_INVALID)
 	{
 		OBOS_ASSERT(!(oldIrql & ~0xf));

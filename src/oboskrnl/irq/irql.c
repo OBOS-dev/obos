@@ -43,7 +43,7 @@ void Core_LowerIrqlNoThread(irql to)
 	if ((to & ~0xf))
 		return;
 	if (to > *Core_GetIRQLVar())
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL.\n", __func__, to);
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to);
 }
@@ -55,7 +55,7 @@ irql Core_RaiseIrqlNoThread(irql to)
 	if ((to & ~0xf))
 		return IRQL_INVALID;
 	if (to < *Core_GetIRQLVar())
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL.\n", __func__, to);
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	irql oldIRQL = Core_GetIrql();
 	CoreS_SetIRQL(to);
 	*Core_GetIRQLVar() = to;

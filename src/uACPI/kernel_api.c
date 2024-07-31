@@ -93,6 +93,26 @@ uacpi_status uacpi_kernel_raw_memory_write(uacpi_phys_addr address, uacpi_u8 byt
     static uint32_t(*raw_io_readD)(uacpi_io_addr address) = raw_io_readD_impl;
     static uint64_t(*raw_io_readQ)(uacpi_io_addr address) = nullptr;
 #endif
+// struct stack_frame
+// {
+// 	struct stack_frame* down;
+// 	void* rip;
+// };
+// void spin_hung()
+// {
+//     OBOS_Warning("Spinlock could be hanging!\n");
+//     struct stack_frame* curr = (struct stack_frame*)__builtin_frame_address(0);
+//     OBOS_Debug("Stack trace:\n");
+//     for (int i = 0; curr; )
+//     {
+//         OBOS_Debug("\t%i: %p\n", i, curr->rip);
+//         curr = curr->down;
+//     }
+// }
+void spin_hung()
+{
+    // Use to report a lock hanging.
+}
 uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
 {
     uint8_t (*readB)(uacpi_io_addr address) = raw_io_readB;
@@ -504,9 +524,13 @@ uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
         wakeTime = CoreS_GetTimerTick() + t * 4;
     else
         wakeTime = 0xffffffffffffffff;
-    const bool expected = false;
+    size_t spin = 0;
     while (atomic_flag_test_and_set_explicit(&mut->locked, memory_order_seq_cst))
-		spinlock_hint();
+	{
+        if (spin++ == 10000)
+            spin_hung();
+        spinlock_hint();
+    }
     mut->owner = Core_GetCurrentThread();
     return UACPI_TRUE;
 }
@@ -570,17 +594,22 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 )
 {
     struct irq* irqHnd = Core_IrqObjectAllocate(nullptr);
-    Core_IrqObjectInitializeIRQL(irqHnd, IRQL_DISPATCH, false, true);
-#if defined(__x86_64__)
-    if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
-        return UACPI_STATUS_INTERNAL_ERROR;
-    Arch_IOAPICMaskIRQ(irq, false);
-#endif
+    obos_status status = Core_IrqObjectInitializeIRQL(irqHnd, IRQL_DISPATCH, false, true);
+    if (obos_likely_error(status))
+    {
+        OBOS_Debug("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
+        return UACPI_STATUS_INVALID_ARGUMENT;
+    }
     uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uintptr_t), nullptr);
     udata[0] = (uintptr_t)ctx;
     udata[1] = (uintptr_t)handler;
     irqHnd->handler = bootstrap_irq_handler;
     irqHnd->handlerUserdata = udata;
+#if defined(__x86_64__)
+    if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
+        return UACPI_STATUS_INTERNAL_ERROR;
+    Arch_IOAPICMaskIRQ(irq, false);
+#endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;
 }
@@ -660,12 +689,18 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler
     void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
     CoreS_SetupThreadContext(&thrctx, (uintptr_t)work_handler, (uintptr_t)work, false, stack, 0x20000);
     CoreH_ThreadInitialize(dpc, THREAD_PRIORITY_URGENT, CoreH_CPUIdToAffinity(on->id), &ctx);
+    CoreH_ThreadReady(dpc);
     return UACPI_STATUS_OK;
 }
 uacpi_status uacpi_kernel_wait_for_work_completion(void)
 {
+	size_t spin = 0;
     while (s_nWork > 0)
+    {
+        if (spin++ > 10000)
+			spin_hung();
         spinlock_hint();
+    }
     return UACPI_STATUS_OK;
 }
 

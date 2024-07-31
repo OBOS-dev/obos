@@ -248,6 +248,7 @@ static obos_status invlpg_impl(uintptr_t at)
 	invlpg_ipi_packet.active = false;
 	Core_SpinlockRelease(&invlpg_ipi_packet.lock, oldIrql);
 #endif
+	return OBOS_STATUS_SUCCESS;
 }
 obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 {

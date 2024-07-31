@@ -138,6 +138,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	OBOSS_HaltCPUs();
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
+	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
 	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);

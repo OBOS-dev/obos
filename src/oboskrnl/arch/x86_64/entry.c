@@ -4,10 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "driver_interface/loader.h"
-#include "uacpi/event.h"
-#include "uacpi/kernel_api.h"
-#include "uacpi/types.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -38,6 +34,7 @@
 #include <arch/x86_64/pmm.h>
 
 #include <driver_interface/driverId.h>
+#include <driver_interface/loader.h>
 
 #include <allocators/basic_allocator.h>
 #include <allocators/base.h>
@@ -65,7 +62,9 @@
 #include <external/fixedptc.h>
 
 #include <uacpi/uacpi.h>
+#include <uacpi/namespace.h>
 #include <uacpi/sleep.h>
+#include <uacpi/event.h>
 
 extern void Arch_InitBootGDT();
 
@@ -362,6 +361,10 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 		nCPUsWithInitializedTimer++;
+		// TODO: Move the PAT initialization code somewhere else.
+		wrmsr(0x277, 0x0001040600070406);
+		// UC UC- WT WB UC WC WT WB
+
 	}
 	else
 		Core_Yield();
@@ -574,6 +577,58 @@ void Arch_KernelMainBootstrap()
 	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
+	if (Arch_Framebuffer->physical_address)
+	{
+		// for (volatile bool b = true; b;)
+		// 	;
+		OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
+		size_t size = (Arch_Framebuffer->height*Arch_Framebuffer->pitch + OBOS_HUGE_PAGE_SIZE - 1) & ~(OBOS_HUGE_PAGE_SIZE - 1);
+		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr);
+		uintptr_t base = (uintptr_t)base_;
+		if (base)
+		{
+			// We got memory for the framebuffer.
+			// Now modify the physical pages
+			page what;
+			memzero(&what, sizeof(what));
+			what.addr = base;
+
+			uintptr_t offset = 0;
+			page* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
+			OBOS_ASSERT(baseNode);
+			page* curr = nullptr;
+			extern obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+			for (uintptr_t addr = base; addr < (base + size); addr += offset)
+			{
+				what.addr = addr;
+				if (addr == base)
+					curr = baseNode;
+				else
+					curr = RB_NEXT(page_tree, &ctx->pages, curr);
+				if (!curr || curr->addr != addr)
+					OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find page node at address 0x%p.\n", addr);
+				uintptr_t oldPhys = 0, phys = Arch_Framebuffer->physical_address + (addr-base);
+				OBOSS_GetPagePhysicalAddress((void*)curr->addr, &oldPhys);
+				// Present,Write,XD,Write-Combining (PAT: 0b110)
+				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
+				offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+				OBOSS_FreePhysicalPages(oldPhys, offset);
+			}
+		}
+		OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(
+			&Mm_KernelContext, 
+			(void*)(0xffffa00000000000+size), size, 
+			0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
+			nullptr);
+		memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
+		OBOS_TextRendererState.fb.base = base_;
+		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
+			OBOS_KernelAllocator,
+			get_line_bitmap_size(OBOS_TextRendererState.fb.height),
+			sizeof(uint32_t),
+			nullptr
+		);
+	}
 	OBOS_Debug("%s: Initializing uACPI\n", __func__);
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\
@@ -584,7 +639,7 @@ if (st != UACPI_STATUS_OK)\
 #endif
 	uacpi_init_params params = {
 		rsdp,
-		UACPI_LOG_INFO,
+		UACPI_LOG_TRACE,
 		0
 	};
 	uacpi_status st = uacpi_initialize(&params);
@@ -604,6 +659,7 @@ if (st != UACPI_STATUS_OK)\
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
 
+    Arch_IOAPICMaskIRQ(9, false);
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
 	Elf64_Shdr* sectionTable = (Elf64_Shdr*)(Arch_KernelBinary->address + ehdr->e_shoff);
