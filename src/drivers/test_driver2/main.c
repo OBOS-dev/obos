@@ -6,7 +6,7 @@
 
 #include <scheduler/thread.h>
 
-static OBOS_PAGEABLE_VARIABLE driver_header drv_hdr = {
+__attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = 0,
 };

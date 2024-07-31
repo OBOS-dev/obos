@@ -25,7 +25,8 @@ target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
 target_include_directories(uacpi PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 target_include_directories(uacpi PUBLIC "${CMAKE_SOURCE_DIR}/src/uACPI")
 
-target_link_libraries(uacpi PRIVATE ${LIBGCC})
+target_link_libraries(uacpi PRIVATE gcc
+)
 
 target_compile_definitions(uacpi
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
@@ -40,11 +41,3 @@ target_compile_definitions(uacpi
 target_link_options(uacpi
 	PRIVATE "-nostdlib"
 )
-
-if (DEFINED OBOS_ENABLE_KASAN)
-	target_compile_options(uacpi PRIVATE $<$<COMPILE_LANGUAGE:CXX,C>:-fsanitize=kernel-address>)
-	set (OBOS_ENABLE_KASAN "1")
-else()
-	set (OBOS_ENABLE_KASAN "0")
-endif()
-target_compile_definitions(uacpi PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})

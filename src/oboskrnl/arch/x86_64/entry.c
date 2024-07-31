@@ -499,6 +499,7 @@ extern bool Arch_MakeIdleTaskSleep;
 static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 {
 	OBOS_UNUSED(ctx);
+	OBOS_Log("%s: Power button pressed. Requesting system shutdown...\n", __func__);
 	uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
 	asm("cli");
 	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
@@ -574,7 +575,7 @@ void Arch_KernelMainBootstrap()
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
 	OBOS_Debug("%s: Initializing uACPI\n", __func__);
-	#define verify_status(st, in) \
+#define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\
 	OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "uACPI Failed in %s! Status code: %d, error message: %s\n", #in, st, uacpi_status_to_string(st));
 	uintptr_t rsdp = 0;
@@ -595,13 +596,14 @@ if (st != UACPI_STATUS_OK)\
 	st = uacpi_namespace_initialize();
 	verify_status(st, uacpi_namespace_initialize);
 	
-	// uacpi_status ret = uacpi_install_fixed_event_handler(
-    //     UACPI_FIXED_EVENT_POWER_BUTTON,
-	// handle_power_button, UACPI_NULL
-	// );
+	uacpi_status ret = uacpi_install_fixed_event_handler(
+        UACPI_FIXED_EVENT_POWER_BUTTON,
+	handle_power_button, UACPI_NULL
+	);
 
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
+
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
 	Elf64_Shdr* sectionTable = (Elf64_Shdr*)(Arch_KernelBinary->address + ehdr->e_shoff);

@@ -104,7 +104,6 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
     }
     // First, search for the section containing the driver header.
     Elf_Shdr* driverHeaderSection = nullptr;
-
     {
         Elf_Shdr* sectionTable = OffsetPtr(ehdr, ehdr->e_shoff, Elf_Shdr*);
         if (!sectionTable)
@@ -140,12 +139,6 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
     // We've found the header.
     // Verify its contents.
     if (header->magic != OBOS_DRIVER_MAGIC)
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_HEADER;
-        return nullptr;
-    }
-    if ((header->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI) && (header->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_PCI))
     {
         if (status)
             *status = OBOS_STATUS_INVALID_HEADER;
