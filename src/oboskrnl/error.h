@@ -6,8 +6,8 @@
 
 #pragma once
 
-#define obos_likely_error(status) ((status) != OBOS_STATUS_SUCCESS)
-#define obos_unlikely_error(status) ((status) == OBOS_STATUS_SUCCESS)
+#define obos_is_error(status) ((status) != OBOS_STATUS_SUCCESS)
+#define obos_is_success(status) ((status) == OBOS_STATUS_SUCCESS)
 
 typedef enum
 {
@@ -100,4 +100,13 @@ typedef enum
 	/// The driver does not have an entry point.
 	/// </summary>
 	OBOS_STATUS_NO_ENTRY_POINT,
+	/// <summary>
+	/// The caller of driver->header.ftable.ioctl gave an invalid request.
+	/// </summary>
+	OBOS_STATUS_INVALID_IOCTL,
+	/// <summary>
+	/// The driver received an invalid operation.
+	/// <para/>An example is if a pipe-style device called get_max_blk_count.
+	/// </summary>
+	OBOS_STATUS_INVALID_OPERATION,
 } obos_status;

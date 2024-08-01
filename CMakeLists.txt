@@ -90,10 +90,13 @@ add_compile_definitions(
 	$<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 )
 
+# Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")
-add_subdirectory("src/drivers/test_driver")
-add_subdirectory("src/drivers/test_driver2")
+# Include drivers
+if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+	add_subdirectory("src/drivers/x86_64/uart")
+endif()
 add_subdirectory("src/isogen")
 
 set_property(GLOBAL PROPERTY C_STANDARD 17

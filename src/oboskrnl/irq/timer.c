@@ -55,19 +55,19 @@ static void notify_timer(timer* timer)
     // thread* thread = CoreH_ThreadAllocate(&status);
     // thread_ctx ctx;
     // memzero(&ctx, sizeof(ctx));
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     //     return;
     // void* stack = OBOS_BasicMMAllocatePages(0x10000, &status);
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     //     goto cleanup;
     // status = CoreS_SetupThreadContext(&ctx, (uintptr_t)timer->handler, (uintptr_t)timer->userdata, false, stack, 0x10000);
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     //     goto cleanup;
     // status = CoreH_ThreadInitialize(thread, THREAD_PRIORITY_URGENT, Core_DefaultThreadAffinity, &ctx);
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     //     goto cleanup;
     // status = CoreH_ThreadReady(thread);
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     //     goto cleanup;
     // // TODO: Use the owning process of the timer object instead of the kernel process.
     // Core_ProcessAppendThread(OBOS_KernelProcess, thread);
@@ -76,7 +76,7 @@ static void notify_timer(timer* timer)
         Core_CancelTimer(timer);
     timer->handler(timer->userdata);
     // cleanup:
-    // if (obos_likely_error(status))
+    // if (obos_is_error(status))
     // {
     //     if (stack)
     //         OBOS_BasicMMFreePages(stack, 0x10000);
@@ -131,32 +131,32 @@ obos_status Core_InitializeTimerInterface()
     thread* thread = CoreH_ThreadAllocate(&status);
     thread_ctx ctx;
     memzero(&ctx, sizeof(ctx));
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup2;
     void* stack = OBOS_BasicMMAllocatePages(0x20000, &status);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     status = CoreS_SetupThreadContext(&ctx, (uintptr_t)timer_dispatcher, 0, false, stack, 0x20000);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     status = CoreH_ThreadInitialize(thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     status = CoreH_ThreadReady(thread);
     Core_ProcessAppendThread(OBOS_KernelProcess, thread);
     thread->proc = OBOS_KernelProcess;
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     Core_TimerDispatchThread = thread;
     Core_TimerIRQ = Core_IrqObjectAllocate(&status);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     status = CoreS_InitializeTimer(timer_irq);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         goto cleanup1;
     Core_TimerInterfaceInitialized = true;
     cleanup1:
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
     {
         if (stack)
             OBOS_BasicMMFreePages(stack, 0x20000);

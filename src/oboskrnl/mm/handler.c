@@ -53,7 +53,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         // If this assertion fails, something stupid has happened.
         OBOS_ASSERT(!page->inWorkingSet);
         obos_status status = Mm_SwapIn(page);
-        if (obos_likely_error(status))
+        if (obos_is_error(status))
         {
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             return status;
@@ -118,7 +118,7 @@ obos_status Mm_RunPRA(context* ctx)
         page_node* next = node->next;
         REMOVE_PAGE_NODE(ctx->workingSet.pages, node);
         obos_status status = Mm_SwapOut(page);
-        if (obos_likely_error(status))
+        if (obos_is_error(status))
         {
             static const char format1[] = 
                 "Could not swap out page. Status: %d. Ignoring...\n";

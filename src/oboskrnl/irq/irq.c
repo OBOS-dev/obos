@@ -184,7 +184,7 @@ static obos_status register_irq_vector(irq* obj, irq_vector_id id, bool allowWor
 		vector->allowWorkSharing = allowWorkSharing;
 		
 		obos_status status = register_irq_vector_handler(vector->id, Core_IRQDispatcher);
-		if (obos_likely_error(status))
+		if (obos_is_error(status))
 			return status;
 		status = register_irq_vector_handler(newVector->id, Core_IRQDispatcher);
 		return status;
@@ -246,7 +246,7 @@ find:
 	vector->allowWorkSharing = false;
 	append_irq_to_vector(vector, obj);
 	obos_status status = register_irq_vector_handler(vector->id, Core_IRQDispatcher);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		return status;
 	status = register_irq_vector_handler(newVector->id, Core_IRQDispatcher);
 	return status;

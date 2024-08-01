@@ -595,7 +595,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 {
     struct irq* irqHnd = Core_IrqObjectAllocate(nullptr);
     obos_status status = Core_IrqObjectInitializeIRQL(irqHnd, IRQL_DISPATCH, false, true);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
     {
         OBOS_Debug("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
         return UACPI_STATUS_INVALID_ARGUMENT;

@@ -111,7 +111,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if (!base)
     {
         base = (uintptr_t)MmH_FindAvaliableAddress(ctx, size, flags & ~VMA_FLAGS_GUARD_PAGE, &status);
-        if (obos_likely_error(status))
+        if (obos_is_error(status))
         {
             set_statusp(ustatus, status);
             Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -176,7 +176,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             node->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
             node->pageable = !(flags & VMA_FLAGS_NON_PAGED);
             status = MmS_SetPageMapping(ctx->pt, node, phys);
-            if (obos_likely_error(status))
+            if (obos_is_error(status))
             {
                 // We need to clean up.
                 for (size_t j = 0; j < i; j++)

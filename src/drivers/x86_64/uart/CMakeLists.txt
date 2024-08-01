@@ -1,10 +1,10 @@
-# drivers/test_driver/CMakeLists.txt
+# drivers/x86_64/uart/CMakeLists.txt
 # 
 # Copyright (c) 2024 Omar Berrow
 
-add_executable(test_driver "main.c")
+add_executable(uart "main.c" "serial_port.c")
 
-target_compile_options(test_driver
+target_compile_options(uart
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
@@ -15,13 +15,13 @@ target_compile_options(test_driver
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
 )
 
-set_property(TARGET test_driver PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
+set_property(TARGET uart PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
 
-target_include_directories(test_driver 
+target_include_directories(uart 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
-target_link_options(test_driver
+target_link_options(uart
 	PRIVATE "-nostdlib"
 	PRIVATE "-fPIC"
 	PRIVATE "-Wl,-shared"
@@ -29,4 +29,4 @@ target_link_options(test_driver
     PRIVATE "-T" PRIVATE ${DRIVER_LINKER_SCRIPT}
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
-target_compile_definitions(test_driver PRIVATE OBOS_DRIVER=1)
+target_compile_definitions(uart PRIVATE OBOS_DRIVER=1)

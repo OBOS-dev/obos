@@ -252,7 +252,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         return OBOS_STATUS_NO_ENTRY_POINT;
     obos_status status = OBOS_STATUS_SUCCESS;
     thread* thr = CoreH_ThreadAllocate(&status);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         return status;
     thread_ctx ctx;
     memzero(&ctx, sizeof(ctx));
@@ -268,13 +268,13 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         false,
         stack,
         stackSize);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;
     }
     status = CoreH_ThreadInitialize(thr, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;

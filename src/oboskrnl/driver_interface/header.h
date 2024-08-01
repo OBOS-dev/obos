@@ -71,7 +71,7 @@ typedef enum file_type
 // Represents a driver-specific object.
 // This could be a disk, partition, file, etc.
 // This must be unique per-driver.
-typedef int dev_desc;
+typedef uintptr_t dev_desc;
 typedef struct driver_ftable
 {
     // Note: If there is not an OBOS_STATUS for an error that a driver needs to return, rather choose the error closest to the error that you want to report,
@@ -84,8 +84,8 @@ typedef struct driver_ftable
 
     obos_status(*get_blk_size)(dev_desc desc, size_t* blkSize);
     obos_status(*get_max_blk_count)(dev_desc desc, size_t* count);
-    obos_status(*read_sync)(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset);
-    obos_status(*write_sync)(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset);
+    obos_status(*read_sync)(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
+    obos_status(*write_sync)(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
     obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.

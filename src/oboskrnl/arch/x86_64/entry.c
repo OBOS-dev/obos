@@ -180,8 +180,7 @@ struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
-struct ultra_module_info_attribute* Arch_TestDriverModule;
-struct ultra_module_info_attribute* Arch_TestDriver2Module;
+struct ultra_module_info_attribute* Arch_UARTDriver;
 struct ultra_framebuffer* Arch_Framebuffer;
 const char* OBOS_KernelCmdLine;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
@@ -209,10 +208,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_b
 				Arch_KernelBinary = module;
 			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
 				Arch_InitialSwapBuffer = module;
-			else if (strcmp(module->name, "test_driver"))
-				Arch_TestDriverModule = module;
-			else if (strcmp(module->name, "test_driver2"))
-				Arch_TestDriver2Module = module;
+			else if (strcmp(module->name, "uart_driver"))
+				Arch_UARTDriver = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -437,7 +434,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	if (!handler)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, false);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		return status;
 	Core_TimerIRQ->moveCallback  = hpet_irq_move_callback;
 	Core_TimerIRQ->handler = hpet_irq_handler;
@@ -516,7 +513,7 @@ void Arch_KernelMainBootstrap()
 	Arch_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	bsp_idleThread.context.cr3 = getCR3();
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
@@ -524,7 +521,7 @@ void Arch_KernelMainBootstrap()
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
 	OBOS_KernelProcess = Core_ProcessAllocate(&status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
 	OBOS_KernelProcess->pid = Core_NextPID++;
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
@@ -537,15 +534,15 @@ void Arch_KernelMainBootstrap()
 	bsp_idleThread.masterCPU = CoreS_GetCPULocalPtr();
 	Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
 	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
-	if (obos_likely_error(status = Core_InitializeIRQInterface()))
+	if (obos_is_error(status = Core_InitializeIRQInterface()))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
 	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
 	InitializeHPET();
 	Core_SchedulerIRQ = Core_IrqObjectAllocate(&status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
 	status = Core_IrqObjectInitializeIRQL(Core_SchedulerIRQ, IRQL_DISPATCH, false, true);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize the scheduler IRQ. Status: %d.\n", status);
 	Core_SchedulerIRQ->handler = Arch_SchedulerIRQHandlerEntry;
 	Core_SchedulerIRQ->handlerUserdata = nullptr;
@@ -569,7 +566,7 @@ void Arch_KernelMainBootstrap()
 	while (nCPUsWithInitializedTimer != Core_CpuCount)
 		pause();
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
-	if (obos_likely_error(status = Arch_InitializeIOAPICs()))
+	if (obos_is_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
@@ -639,7 +636,7 @@ if (st != UACPI_STATUS_OK)\
 #endif
 	uacpi_init_params params = {
 		rsdp,
-		UACPI_LOG_TRACE,
+		UACPI_LOG_INFO,
 		0
 	};
 	uacpi_status st = uacpi_initialize(&params);
@@ -725,34 +722,52 @@ if (st != UACPI_STATUS_OK)\
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
 	OBOS_Debug("Loading test driver.\n");
-	void* test_driver_bin = (void*)Arch_TestDriverModule->address;
-	void* test_driver2_bin = (void*)Arch_TestDriver2Module->address;
-	size_t sizeof_test_driver_bin = Arch_TestDriverModule->size;
-	size_t sizeof_test_driver2_bin = Arch_TestDriver2Module->size;
+	void* driver_bin = (void*)Arch_UARTDriver->address;
+	size_t sizeof_driver_bin = Arch_UARTDriver->size;
 	status = OBOS_STATUS_SUCCESS;
-	driver_id* drv1 = Drv_LoadDriver(test_driver_bin, sizeof_test_driver_bin, &status);
-	if (obos_likely_error(status))
+	driver_id* drv1 = Drv_LoadDriver(driver_bin, sizeof_driver_bin, &status);
+	if (obos_is_error(status))
 		OBOS_Error("Could not load test driver #1. Status: %d.\n", status);
-	driver_id* drv2 = Drv_LoadDriver(test_driver2_bin, sizeof_test_driver2_bin, &status);
-	if (obos_likely_error(status))
-		OBOS_Error("Could not load test driver #2. Status: %d.\n", status);
-	// thread* drv1_main = nullptr;
-	// thread* drv2_main = nullptr;
-	Drv_StartDriver(drv1, nullptr);
-	Drv_StartDriver(drv2, nullptr);
-	// while (!(drv1_main->flags & THREAD_FLAGS_DIED) || !(drv2_main->flags & THREAD_FLAGS_DIED))
-	// 	Core_Yield();
-	// if (!(--drv1_main->references) && drv1_main->free)
-    //     drv1_main->free(drv1_main);
-	// if (!(--drv2_main->references) && drv2_main->free)
-    //     drv2_main->free(drv2_main);
-	status = Drv_UnloadDriver(drv2);
-	if (obos_likely_error(status))
-		OBOS_Error("Could not unload test driver #2. Status: %d.\n", status);
-	status = Drv_UnloadDriver(drv1);
-	if (obos_likely_error(status))
-		OBOS_Error("Could not unload test driver #1. Status: %d.\n", status);
+	thread* main = nullptr;
+	Drv_StartDriver(drv1, &main);
+	while (!(main->flags & THREAD_FLAGS_DIED))
+		Core_Yield();
+	dev_desc connection = 0;
+    status =
+    drv1->header.ftable.ioctl(6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
+        1,
+        115200,
+        /* EIGHT_DATABITS */ 3,
+        /* ONE_STOPBIT */ 0,
+        /* PARITYBIT_NONE */ 0,
+        &connection
+    );
+	if (obos_is_error(status))
+	{
+		OBOS_Error("Could not open COM1. Status: %d.\n", status);
+		goto done;
+	}
+	char ch = 0;
+	size_t nRead = 0;
+	while(1)
+	{
+		status = drv1->header.ftable.read_sync(connection, &ch, 1, 0, &nRead);
+		if (nRead != 1)
+			continue;
+		if (obos_is_error(status))
+		{
+			OBOS_Error("Could not read from COM1. Status: %d.\n", status);
+			goto done;
+		}
+		status = drv1->header.ftable.write_sync(connection, &ch, 1, 0, &nRead);
+		if (obos_is_error(status))
+		{
+			OBOS_Error("Could not write to COM1. Status: %d.\n", status);
+			goto done;
+		}
+	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
+	done:
 	Core_ExitCurrentThread();
 
 }

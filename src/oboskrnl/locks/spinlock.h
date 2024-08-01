@@ -20,8 +20,8 @@ typedef struct {
 #endif
 } spinlock;
 
-spinlock Core_SpinlockCreate();
-irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant);
-irql Core_SpinlockAcquire(spinlock* const lock);
-obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);
-void Core_SpinlockForcedRelease(spinlock* const lock);
+OBOS_EXPORT spinlock Core_SpinlockCreate();
+OBOS_EXPORT irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant);
+OBOS_EXPORT irql Core_SpinlockAcquire(spinlock* const lock);
+OBOS_EXPORT obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);
+OBOS_EXPORT void Core_SpinlockForcedRelease(spinlock* const lock);

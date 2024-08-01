@@ -122,7 +122,7 @@ void Mm_Initialize()
     udata.nNodes += sz/sizeof(page);
     udata.i = 0;
     udata.buf = OBOS_BasicMMAllocatePages(udata.nNodes*sizeof(page), &status); 
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate node buffer. Status: %d.\n", status);
     OBOSH_BasicMMIterateRegions(register_pages, &udata);
     // Do any architecture-specific rounding here.

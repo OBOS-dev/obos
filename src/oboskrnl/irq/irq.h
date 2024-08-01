@@ -111,7 +111,7 @@ obos_status Core_InitializeIRQInterface();
 /// </summary>
 /// <param name="status">[out, optional] The status of the function.</param>
 /// <returns>The object, or nullptr on failure.</returns>
-irq* Core_IrqObjectAllocate(obos_status* status);
+OBOS_EXPORT irq* Core_IrqObjectAllocate(obos_status* status);
 /// <summary>
 /// Constructs an IRQ object.
 /// </summary>
@@ -121,7 +121,7 @@ irq* Core_IrqObjectAllocate(obos_status* status);
 /// <param name="allowWorkSharing">Whether to allow work sharing of the vector. Shouldn't be used if it can be avoided, as it takes up more IRQ vectors, which could cause the system to run out.</param>
 /// <param name="force">Whether to force work sharing to be disabled.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allowWorkSharing, bool force);
+OBOS_EXPORT obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allowWorkSharing, bool force);
 /// <summary>
 /// Constructs an IRQ object.
 /// </summary>
@@ -132,14 +132,14 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 /// <param name="allowWorkSharing">See allowWorkSharing parameter for Core_IrqObjectInitializeIRQL</param>
 /// <param name="force">See force parameter for Core_IrqObjectInitializeIRQL.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_IrqObjectInitializeVector(irq* obj, irq_vector_id vector, bool allowWorkSharing, bool force);
+OBOS_EXPORT obos_status Core_IrqObjectInitializeVector(irq* obj, irq_vector_id vector, bool allowWorkSharing, bool force);
 /// <summary>
 /// Frees and dereferences an IRQ object.<para/>
 /// It is UB to use the irq object after.
 /// </summary>
 /// <param name="obj">The irq object.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_IrqObjectFree(irq* obj);
+OBOS_EXPORT obos_status Core_IrqObjectFree(irq* obj);
 
 /// <summary>
 /// Registers an IRQ handler for the specified irq vector id.

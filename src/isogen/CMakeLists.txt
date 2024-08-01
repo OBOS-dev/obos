@@ -25,8 +25,7 @@ add_custom_target(isogen ALL
 	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/config/hyper.cfg ${ISODIR}/ ${SUPPRESS_OUTPUT}
 	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot ${ISODIR} ${SUPPRESS_OUTPUT}
 	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/config/hyper_uefi_boot.bin ${ISODIR} ${SUPPRESS_OUTPUT}
-	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/out/test_driver ${ISODIR} ${SUPPRESS_OUTPUT}
-	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/out/test_driver2 ${ISODIR} ${SUPPRESS_OUTPUT}
+	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/out/uart ${ISODIR} ${SUPPRESS_OUTPUT}
 	COMMAND	xorriso -as mkisofs -b hyper_iso_boot -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot hyper_uefi_boot.bin -efi-boot-part --efi-boot-image --protective-msdos-label out/isodir -o ${OUTPUT_DIR}/obos.iso ${SUPPRESS_OUTPUT}
 	COMMAND	${hyper_install} ${OUTPUT_DIR}/obos.iso ${SUPPRESS_OUTPUT}
 	SOURCES ${CMAKE_SOURCE_DIR}/config/hyper.cfg ${CMAKE_SOURCE_DIR}/config/hyper_uefi_boot.bin ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot
@@ -40,5 +39,4 @@ add_custom_target(isogen ALL
 	COMMENT "Generating ${OUTPUT_DIR}/obos.iso"
 )
 add_dependencies(isogen oboskrnl)
-add_dependencies(isogen test_driver)
-add_dependencies(isogen test_driver2)
+add_dependencies(isogen uart)

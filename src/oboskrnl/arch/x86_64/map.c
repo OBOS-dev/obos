@@ -241,7 +241,7 @@ static obos_status invlpg_impl(uintptr_t at)
 	invlpg_ipi_packet.cr3 = getCR3();
 	invlpg_ipi_packet.nCPUsRan = 1;
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
-	OBOS_ASSERT(obos_unlikely_error(status));
+	OBOS_ASSERT(obos_is_success(status));
 	while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 		pause();
 	end:

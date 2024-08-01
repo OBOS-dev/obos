@@ -62,5 +62,5 @@ typedef struct allocator_info
 	/// <returns>The status of the function.</returns>
 	obos_status(*QueryBlockSize)(struct allocator_info* This, void* base, size_t* nBytes);
 } allocator_info;
-extern allocator_info* OBOS_KernelAllocator;
-extern allocator_info* OBOS_NonPagedPoolAllocator;
+extern OBOS_EXPORT allocator_info* OBOS_KernelAllocator;
+extern OBOS_EXPORT allocator_info* OBOS_NonPagedPoolAllocator;

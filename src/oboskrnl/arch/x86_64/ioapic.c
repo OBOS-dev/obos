@@ -66,10 +66,10 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
         return OBOS_STATUS_INTERNAL_ERROR;
     obos_status status = OBOS_STATUS_SUCCESS;
     Arch_IRQRedirectionEntries = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, Arch_SizeofIRQRedirectionEntries, sizeof(ioapic_irq_redirection_entry), &status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
         return status;
     Arch_IOAPICs = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, Arch_IOAPICCount, sizeof(ioapic_descriptor), &status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
         return status;
     size_t ioapic_index = 0;
     size_t ioapic_redir_index = 0;
@@ -119,7 +119,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
 {
     obos_status status = ParseMADT();
-    if (obos_likely_error(status))
+    if (obos_is_error(status))
         return status;
     OBOS_ASSERT(Arch_IOAPICCount <= 16);
     // Initialize each I/O APIC.
@@ -128,7 +128,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
         ioapic_descriptor* ioapic = &Arch_IOAPICs[i];
         ArchH_IOAPICWriteRegister(ioapic->address, 0, i<<24);
         for (uint32_t gsi = ioapic->gsi; gsi <= ioapic->gsi+ioapic->maxRedirectionEntries; gsi++)
-            OBOS_ASSERT(obos_unlikely_error(Arch_IOAPICMapIRQToVector(gsi, 0, false, TriggerModeEdgeSensitive)));
+            OBOS_ASSERT(obos_is_success(Arch_IOAPICMapIRQToVector(gsi, 0, false, TriggerModeEdgeSensitive)));
     }
     return status;
 }

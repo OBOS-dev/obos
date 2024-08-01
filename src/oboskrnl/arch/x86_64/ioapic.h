@@ -98,7 +98,7 @@ obos_status Arch_InitializeIOAPICs();
 /// <param name="gsi">The gsi to mask.</param>
 /// <param name="mask">false to unmask, true to mask.</param>
 /// <returns>The status of the function.</returns>
-obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask);
+OBOS_EXPORT obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask);
 /// <summary>
 /// Registers a GSI, redirecting it to a specific vector.
 /// </summary>
@@ -107,13 +107,13 @@ obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask);
 /// <param name="polarity">The polarity of the IRQ. true: active-low, false: active-high</param>
 /// <param name="tm">The trigger mode of the IRQ.</param>
 /// <returns>The status of the function.</returns>
-obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, bool polarity, ioapic_trigger_mode tm);
+OBOS_EXPORT obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, bool polarity, ioapic_trigger_mode tm);
 /// <summary>
 /// Checks if a GSI is in use or not.
 /// </summary>
 /// <param name="gsi">The gsi to check.</param>
 /// <returns>OBOS_STATUS_SUCCESS if it is unused, OBOS_STATUS_IN_USE if it is used, otherwise the status is an error.</returns>
-obos_status Arch_IOAPICGSIUsed(uint32_t gsi);
+OBOS_EXPORT obos_status Arch_IOAPICGSIUsed(uint32_t gsi);
 /// <summary>
 /// Writes an I/O APIC register.
 /// </summary>
