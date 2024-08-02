@@ -59,7 +59,7 @@ RB_PROTOTYPE(page_tree, page, rb_node, pg_cmp_pages);
 		(list).tail->next = (node);\
 	if (!(list).head)\
 		(list).head = (node);\
-	(node)->prev = (list.tail);\
+	(node)->prev = ((list).tail);\
 	(list).tail = (node);\
 	(list).nNodes++;\
 } while(0)

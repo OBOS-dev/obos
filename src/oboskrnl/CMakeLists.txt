@@ -7,11 +7,13 @@ list (APPEND oboskrnl_sources
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
 	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
-	"mm/handler.c" "mm/alloc.c"
-	
+	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
+	"driver_interface/pnp.c" "scheduler/dpc.c"
 )
 
 add_executable(oboskrnl)
+
+set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -20,9 +22,10 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 )
 
-target_link_libraries(oboskrnl PRIVATE gcc)
+target_link_libraries(oboskrnl PRIVATE gcc PRIVATE uacpi)
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 
@@ -32,37 +35,14 @@ target_include_directories(oboskrnl
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
+#	PRIVATE "-fvisibility=hidden"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )
 
-if (DEFINED OBOS_ENABLE_UBSAN)
-	list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
-	target_compile_options(oboskrnl
-		PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
-	)
-	set(OBOS_ENABLE_UBSAN "1")
-else()
-	set(OBOS_ENABLE_UBSAN "0")
-endif()
-target_compile_definitions(oboskrnl PRIVATE OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
-if (DEFINED OBOS_ENABLE_KASAN)
-	list (APPEND oboskrnl_sources "sanitizers/asan.c")
-	target_compile_options(oboskrnl
-		PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
-	)
-	set(OBOS_ENABLE_KASAN "1")
-else()
-	set(OBOS_ENABLE_KASAN "0")
-endif()
-target_compile_definitions(oboskrnl PRIVATE OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
-
 target_compile_definitions(oboskrnl
-	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
-	PRIVATE $<$<CONFIG:Release>:OBOS_RELEASE>
-	PRIVATE $<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
-	PRIVATE $<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 	PRIVATE FIXEDPT_BITS=64
+	PRIVATE OBOS_KERNEL=1
 	PRIVATE FIXEDPT_WBITS=32)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

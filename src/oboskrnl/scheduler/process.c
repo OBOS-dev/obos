@@ -41,7 +41,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->pid = Core_NextPID++;
 	obos_status status = OBOS_STATUS_SUCCESS;
 	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		return status;
 	node->free = free_node;
 	node->data = mainThread;
@@ -59,7 +59,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	obos_status status = OBOS_STATUS_SUCCESS;
 	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
-	if (obos_likely_error(status))
+	if (obos_is_error(status))
 		return status;
 	node->free = free_node;
 	node->data = thread;

@@ -16,6 +16,7 @@
 #define OBOS_FB_FORMAT_RGBX8888 3
 #define OBOS_FB_FORMAT_XRGB8888 4
 
+#define get_line_bitmap_size(height) (height/512+((height%512 == 0) ? 0 : 1))
 typedef struct
 {
 	uint32_t column;
@@ -24,6 +25,10 @@ typedef struct
 	struct
 	{
 		void* base;
+		void* backbuffer_base;
+		// Size is height/512
+		// Only is valid if backbuffer_base is non-null.
+		uint32_t* modified_line_bitmap;
 		uint32_t pitch;
 		uint32_t width;
 		uint32_t height;

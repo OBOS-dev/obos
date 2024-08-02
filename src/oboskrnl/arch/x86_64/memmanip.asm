@@ -4,13 +4,13 @@
 
 [BITS 64]
 
-global memset
-global memzero
-global memcpy
-global memcmp
-global memcmp_b
-global strcmp
-global strlen
+global memset:function default
+global memzero:function default
+global memcpy:function default
+global memcmp:function default
+global memcmp_b:function default
+global strcmp:function default
+global strlen:function default
 
 section .text
 

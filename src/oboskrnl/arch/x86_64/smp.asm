@@ -4,11 +4,11 @@
 
 [BITS 64]
 
-global Arch_SMPTrampolineStart
-global Arch_SMPTrampolineEnd
-global Arch_SMPTrampolineCR3
-global Arch_SMPTrampolineRSP
-global Arch_SMPTrampolineCPULocalPtr
+global Arch_SMPTrampolineStart:data hidden
+global Arch_SMPTrampolineEnd:data hidden
+global Arch_SMPTrampolineCR3:data hidden
+global Arch_SMPTrampolineRSP:data hidden
+global Arch_SMPTrampolineCPULocalPtr:data hidden
 
 section .pageable.data
 
@@ -90,7 +90,7 @@ extern Arch_APEntry
 	mov rax, Arch_APEntry
 	call rax
 Arch_SMPTrampolineEnd:
-global Arch_APYield
+global Arch_APYield:function hidden
 extern Core_Yield
 extern OBOS_BasicMMFreePages
 extern OBOS_Panic

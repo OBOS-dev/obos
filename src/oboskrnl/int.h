@@ -9,6 +9,28 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if OBOS_KERNEL
+#	define OBOS_EXPORT __attribute__((visibility("default")))
+// Usually redundant.
+#	define OBOS_LOCAL __attribute__((visibility("hidden")))
+
+#	define DRV_EXPORT __attribute__((visibility("default")))
+// Usually redundant.
+#	define DRV_LOCAL __attribute__((visibility("hidden")))
+#elif defined(OBOS_DRIVER)
+#	define OBOS_EXPORT 
+// Usually redundant.
+#	define OBOS_LOCAL
+
+#	define DRV_EXPORT __attribute__((visibility("default")))
+// Usually redundant.
+#	define DRV_LOCAL __attribute__((visibility("hidden")))
+#else
+#	error Only the kernel and drivers can access kernel headers.
+#endif
+
+#define OBOS_WEAK __attribute__((weak))
+
 #if UINTPTR_MAX == UINT64_MAX
 #define PTR_BITS 64
 #elif UINTPTR_MAX == UINT32_MAX
@@ -17,10 +39,13 @@
 #define PTR_BITS 16
 #endif
 
-#ifndef __cplusplus
-#	define nullptr ((void*)0)
+#if !defined(__cplusplus) && !defined(true) && !defined(false)
 #	define true (1)
 #	define false (0)
+typedef _Bool bool;
+#endif
+#ifndef __cplusplus
+#	define nullptr ((void*)0)
 #	undef NULL
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
@@ -34,7 +59,6 @@
 #	else
 #		define OBOS_ALIGNAS(x) alignas(x)
 #	endif
-typedef _Bool bool;
 #else
 #	define OBOS_ALIGNAS(x) alignas(x)
 #	undef NULL

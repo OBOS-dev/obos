@@ -18,7 +18,6 @@ typedef uint64_t timer_frequency;
 extern struct irq* Core_TimerIRQ;
 extern timer_frequency CoreS_TimerFrequency;
 extern bool Core_TimerInterfaceInitialized;
-extern struct thread* Core_TimerDispatchThread;
 
 /// <summary>
 /// Handles a timer.

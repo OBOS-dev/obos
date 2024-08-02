@@ -18,13 +18,19 @@ endif()
 set (OBOSKRNL_EXTERNAL_INCLUDES "${CMAKE_SOURCE_DIR}/dependencies/include")
 if (OBOS_REFRESH_DEPENDENCIES)
 	file(MAKE_DIRECTORY "dependencies/include")
+	message("Fetching Hyper.")
 	include("dependencies/hyper.cmake")
+	message("Fetching uACPI.")
+	include ("dependencies/uacpi.cmake")
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
 else()
 	if (NOT EXISTS hyper_install)
 		include("dependencies/hyper.cmake")
+	endif()
+	if (NOT EXISTS uacpi_cmake_file)
+        include("dependencies/uacpi.cmake")
 	endif()
 endif()
 
@@ -54,8 +60,43 @@ execute_process(COMMAND
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
+add_compile_definitions (OBOS_ARCHITECTURE_ENDIANNESS="${OBOS_ARCHITECTURE_ENDIANNESS}")
 
+if (DEFINED OBOS_ENABLE_UBSAN)
+	list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
+	)
+	set(OBOS_ENABLE_UBSAN "1")
+else()
+	set(OBOS_ENABLE_UBSAN "0")
+endif()
+add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
+if (DEFINED OBOS_ENABLE_KASAN)
+	list (APPEND oboskrnl_sources "sanitizers/asan.c")
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
+	)
+	set(OBOS_ENABLE_KASAN "1")
+else()
+	set(OBOS_ENABLE_KASAN "0")
+endif()
+add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+
+add_compile_definitions(
+	$<$<CONFIG:Debug>:OBOS_DEBUG>
+	$<$<CONFIG:Release>:OBOS_RELEASE>
+	$<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
+	$<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
+)
+
+# Include the kernel
 add_subdirectory("src/oboskrnl")
+add_subdirectory("src/uACPI")
+# Include drivers
+if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+	add_subdirectory("src/drivers/x86_64/uart")
+endif()
 add_subdirectory("src/isogen")
 
 set_property(GLOBAL PROPERTY C_STANDARD 17

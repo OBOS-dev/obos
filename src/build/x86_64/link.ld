@@ -23,14 +23,14 @@ SECTIONS
         *(.text .text.*)
     } :text
 
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
 
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .data : {
         *(.data .data.*)
@@ -41,27 +41,27 @@ SECTIONS
         *(COMMON)
     } :data
 
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     MmS_MMPageableRangeStart = .;
     /* Functions */
     .pageable.text : {
         *(.pageable.text)
     } :pageable_text
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
     /* RW Data. */
-    .pageable_data : {
+    .pageable.data : {
         *(.pageable.data)
     } :pageable_data
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
     .pageable.bss : {
-        *(.no.mm.bss)
+        *(.pageable.bss)
     } :pageable_data
     /* RO Data */
     .pageable.rodata : {
         *(.pageable.rodata)
     } :pageable_rodata
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
     MmS_MMPageableRangeEnd = .;
 
     /DISCARD/ : {

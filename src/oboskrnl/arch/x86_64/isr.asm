@@ -8,9 +8,9 @@ section .text
 default rel
 
 align 32
-global Arch_b_isr_handler
-global Arch_e_isr_handler
-global Arch_FlushIDT
+global Arch_b_isr_handler:function hidden
+global Arch_e_isr_handler:function hidden
+global Arch_FlushIDT:function hidden
 Arch_b_isr_handler:
 %macro isr_handler_no_ec 1
 align 32
@@ -115,7 +115,7 @@ pop rax
 
 extern Arch_IRQHandlers
 section .data
-global Arch_KernelCR3
+global Arch_KernelCR3:data hidden
 Arch_KernelCR3:
 	dq 0
 section .text
@@ -166,8 +166,8 @@ section .text
 Arch_FlushIDT:
 	lidt [rdi]
 	ret
-global CoreS_GetIRQL
-global CoreS_SetIRQL
+global CoreS_GetIRQL:function hidden
+global CoreS_SetIRQL:function hidden
 extern OBOS_Panic
 section .rodata
 panic_format1: db "Invalid IRQL %d passed to CoreS_GetIRQL.", 0xa, 0x0
@@ -203,7 +203,7 @@ CoreS_SetIRQL:
 	leave
 	ret
 section .text
-global Arch_disablePIC
+global Arch_disablePIC:function hidden
 Arch_disablePIC:
 	mov al, 0xff
 	out 0x21, al

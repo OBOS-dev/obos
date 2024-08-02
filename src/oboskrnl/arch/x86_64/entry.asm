@@ -9,7 +9,7 @@
 extern __stack_chk_guard
 extern Arch_disablePIC
 extern Arch_KernelEntry
-global Arch_KernelEntryBootstrap
+global Arch_KernelEntryBootstrap:function hidden
 Arch_KernelEntryBootstrap:
 	cmp rsi, 0x554c5442
 	je .ok ; should triple fault on failure
@@ -52,9 +52,9 @@ Arch_KernelEntryBootstrap:
 	; Call into the kernel entry.
 	push 0 ; Make sure if the kernel entry returns, it triple faults and doesn't do goofy things.
 	jmp Arch_KernelEntry
-global Arch_IdleTask
+global Arch_IdleTask:function hidden
 section .data
-global Arch_MakeIdleTaskSleep
+global Arch_MakeIdleTaskSleep:data hidden
 Arch_MakeIdleTaskSleep: db 0
 section .text
 Arch_IdleTask:

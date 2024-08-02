@@ -20,7 +20,7 @@
 
 #include <arch/x86_64/boot_info.h>
 
-#include <elf/elf64.h>
+#include <elf/elf.h>
 
 #include <scheduler/cpu_local.h>
 
@@ -140,6 +140,8 @@ bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 	return true;
 }
 
+static obos_status invlpg_impl(uintptr_t at);
+
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
@@ -152,7 +154,10 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 3);
+	bool shouldInvplg = pm[AddressToIndex(at, 0)] & 0b1;
 	pm[AddressToIndex(at, 0)] = phys | flags;
+	if (shouldInvplg)
+		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
@@ -169,7 +174,10 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 2);
+	bool shouldInvplg = pm[AddressToIndex(at, 0)] & 0b1;
 	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
+	if (shouldInvplg)
+		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
 }
 static struct {
@@ -210,6 +218,10 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 	uintptr_t* pt = (uintptr_t*)Arch_MapToHHDM(phys);
 	pt[AddressToIndex(at, (uint8_t)isHugePage)] = 0;
 	Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
+	return invlpg_impl(at);
+}
+static obos_status invlpg_impl(uintptr_t at)
+{
 	invlpg(at);
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
@@ -229,7 +241,7 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 	invlpg_ipi_packet.cr3 = getCR3();
 	invlpg_ipi_packet.nCPUsRan = 1;
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
-	OBOS_ASSERT(obos_unlikely_error(status));
+	OBOS_ASSERT(obos_is_success(status));
 	while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 		pause();
 	end:

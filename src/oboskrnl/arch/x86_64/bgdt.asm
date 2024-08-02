@@ -7,7 +7,7 @@
 section .bss
 Arch_InitialISTStack:
 	resb 0x20000
-global Arch_InitialISTStack
+global Arch_InitialISTStack:data hidden
 section .data
 align 1
 TSS:
@@ -29,7 +29,7 @@ TSS:
 	.iopb: dw 103
 .end:
 TSS_Len equ TSS.end-TSS
-global GDT
+global GDT:data hidden
 GDT:
 	.null: dq 0
 	.kcode: dq 0x00af9b000000ffff
@@ -48,7 +48,7 @@ GDTPtr:
 	.base: dq GDT
 section .text
 
-global Arch_InitBootGDT
+global Arch_InitBootGDT:function hidden
 
 Arch_InitBootGDT:
 	push rbp
@@ -86,7 +86,7 @@ Arch_InitBootGDT:
 	push 0x8
 	push rax
 	retfq
-global Arch_FlushGDT
+global Arch_FlushGDT:function hidden
 Arch_FlushGDT:
 	push rbp
 	mov rbp, rsp

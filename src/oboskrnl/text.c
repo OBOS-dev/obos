@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <text.h>
 #include <memmanip.h>
 #include <error.h>
@@ -51,10 +52,11 @@ static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, u
 	if (y >= state->fb.height)
 		y = state->fb.height - 16;
 	const uint32_t bytesPerPixel = state->fb.bpp / 8;
+	void* fb = state->fb.backbuffer_base ? state->fb.backbuffer_base : state->fb.base;
 	for (cy = 0; cy < 16; cy++)
 	{
 		uint32_t realY = y + cy - 12;
-		uint8_t* framebuffer = (uint8_t*)state->fb.base + realY * state->fb.pitch;
+		uint8_t* framebuffer = (uint8_t*)fb + realY * state->fb.pitch;
 		PlotPixel((glyph[cy] & mask[0]) ? fc : bc, framebuffer + ((x + 0) * bytesPerPixel), state->fb.format);
 		PlotPixel((glyph[cy] & mask[1]) ? fc : bc, framebuffer + ((x + 1) * bytesPerPixel), state->fb.format);
 		PlotPixel((glyph[cy] & mask[2]) ? fc : bc, framebuffer + ((x + 2) * bytesPerPixel), state->fb.format);
@@ -65,6 +67,27 @@ static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, u
 		PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
 	}
 }
+static void flush_buffers(text_renderer_state* state)
+{
+	if (!state->fb.backbuffer_base)
+		return;
+	uintptr_t currentLine = (uintptr_t)state->fb.base;
+	uintptr_t currentLineBackbuffer = (uintptr_t)state->fb.backbuffer_base;
+	for (size_t j = 0; j < get_line_bitmap_size(state->fb.height); j++)
+	{
+		int limit = 32;
+		if (j == (get_line_bitmap_size(state->fb.height) - 1))
+			limit = (state->fb.height / 16) % 32;
+		for (int i = 0; i < limit; i++)
+		{
+			bool wasModified = state->fb.modified_line_bitmap[j] & BIT(i);
+			if (wasModified)
+				memcpy((void*)currentLine, (void*)currentLineBackbuffer, state->fb.pitch*16);
+			currentLine += state->fb.pitch*16;
+			currentLineBackbuffer += state->fb.pitch*16;
+		}
+	}
+}
 static void newlineHandler(text_renderer_state* state)
 {
 	if (!state->fb.base)
@@ -72,11 +95,15 @@ static void newlineHandler(text_renderer_state* state)
 	state->column = 0;
 	if (++state->row == (state->fb.height / 16))
 	{
-		memset(state->fb.base, 0, (size_t)state->fb.pitch / 4 * 16);
-		memcpy(state->fb.base, (uint8_t*)state->fb.base + (state->fb.pitch * 16), (size_t)state->fb.pitch * ((size_t)state->fb.height - 16));
-		memset((uint8_t*)state->fb.base + (size_t)state->fb.pitch * ((size_t)state->fb.height - 16), 0, (size_t)state->fb.pitch * 16);
+		void* fb = state->fb.backbuffer_base ? state->fb.backbuffer_base : state->fb.base;
+		memset(fb, 0, (size_t)state->fb.pitch / 4 * 16);
+		memcpy(fb, (uint8_t*)fb + (state->fb.pitch * 16), (size_t)state->fb.pitch * ((size_t)state->fb.height - 16));
+		memset((uint8_t*)fb + (size_t)state->fb.pitch * ((size_t)state->fb.height - 16), 0, (size_t)state->fb.pitch * 16);
 		state->row--;
+		memset(state->fb.modified_line_bitmap, 0xff, get_line_bitmap_size(state->fb.height)*4);
+		state->fb.modified_line_bitmap[get_line_bitmap_size(state->fb.height)-1] &= ~BIT(31);
 	}
+	flush_buffers(state);
 }
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {
@@ -104,6 +131,11 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 		putch(state, ch, state->column++, state->row, 0xcccccccc, 0);
 		break;
 	}
+	if (state->fb.backbuffer_base)
+	{
+		OBOS_ASSERT(state->fb.modified_line_bitmap);
+		state->fb.modified_line_bitmap[state->row / 32] |= BIT(state->row % 32);
+	}
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)
@@ -127,6 +159,11 @@ obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t 
 	default:
 		putch(state, ch, column, row, 0xcccccccc, 0);
 		break;
+	}
+	if (state->fb.backbuffer_base)
+	{
+		OBOS_ASSERT(state->fb.modified_line_bitmap);
+		state->fb.modified_line_bitmap[row / 32] |= BIT(row % 32);
 	}
 	return OBOS_STATUS_SUCCESS;
 }

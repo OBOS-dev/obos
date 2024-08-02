@@ -53,7 +53,7 @@ typedef enum
 	THREAD_STATUS_BLOCKED,
 } thread_status;
 typedef __uint128_t thread_affinity;
-extern thread_affinity Core_DefaultThreadAffinity;
+extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
 extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
 typedef struct thread
 {
@@ -98,7 +98,7 @@ typedef struct thread_priority_list
 /// </summary>
 /// <param name="status">[out,opt] The status of the function.</param>
 /// <returns>The newly allocated thread.</returns>
-thread* CoreH_ThreadAllocate(obos_status* status);
+OBOS_EXPORT thread* CoreH_ThreadAllocate(obos_status* status);
 /// <summary>
 /// Initializes a thread.<para/>
 /// The thread will not be processed by the scheduler until it is readied.
@@ -108,20 +108,20 @@ thread* CoreH_ThreadAllocate(obos_status* status);
 /// <param name="affinity">The affinity of the thread.</param>
 /// <param name="ctx">The thread context.</param>
 /// <returns>The function status.</returns>
-obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx);
+OBOS_EXPORT obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx);
 /// <summary>
 /// Readies a thread.
 /// </summary>
 /// <param name="thr">The thread to ready.</param>
 /// <returns>The status of the function.</returns>
-obos_status CoreH_ThreadReady(thread* thr);
+OBOS_EXPORT obos_status CoreH_ThreadReady(thread* thr);
 /// <summary>
 /// Readies a thread, but uses a preallocated node.
 /// </summary>
 /// <param name="thr">The thread to ready.</param>
 /// <param name="node">The node to use.</param>
 /// <returns>The status of the function.</returns>
-obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
+OBOS_EXPORT obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
 /// <summary>
 /// Blocks a thread.<para/>
 /// Yields if the thread is the current thread, unless otherwise specified.
@@ -129,28 +129,28 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
 /// <param name="thr">The thread to block.</param>
 /// <param name="canYield">Whether the function is allowed to yield into the scheduler manually.</param>
 /// <returns>The status of the function.</returns>
-obos_status CoreH_ThreadBlock(thread* thr, bool canYield);
+OBOS_EXPORT obos_status CoreH_ThreadBlock(thread* thr, bool canYield);
 /// <summary>
 /// Appends a thread to a thread list.
 /// </summary>
 /// <param name="list">The thread list.</param>
 /// <param name="node">A node containing the thread.</param>
 /// <returns>The function's status.</returns>
-obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node);
+OBOS_EXPORT obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node);
 /// <summary>
 /// Removes a thread from a thread list.
 /// </summary>
 /// <param name="list">The thread list.</param>
 /// <param name="node">The node containing the thread.</param>
 /// <returns>The function's status/</returns>
-obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node);
+OBOS_EXPORT obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node);
 /// <summary>
 /// Converts a cpu id to an affinity mask.
 /// </summary>
 /// <param name="cpuId">The cpu id.</param>
 /// <returns>The affinity mask.</returns>
-thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId);
+OBOS_EXPORT thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId);
 /// <summary>
 /// Exits the current thread.
 /// </summary>
-OBOS_NORETURN void Core_ExitCurrentThread();
+OBOS_NORETURN OBOS_EXPORT void Core_ExitCurrentThread();
