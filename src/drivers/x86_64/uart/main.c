@@ -284,15 +284,5 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             continue;
         }
     }
-    // dev_desc connection = 0;
-    // obos_status status =
-    // ioctl(6, IOCTL_OPEN_SERIAL_CONENCTION, 
-    //     1,
-    //     115200,
-    //     EIGHT_DATABITS,
-    //     ONE_STOPBIT,
-    //     PARITYBIT_NONE,
-    //     &connection
-    // );
     Core_ExitCurrentThread();
 }

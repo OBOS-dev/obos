@@ -85,11 +85,11 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
 {
     if (!port || !baudRate)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (port->isFaulty)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     uint16_t divisor = 115200 / baudRate;
     if (divisor == 0)
         return OBOS_STATUS_INTERNAL_ERROR;
+    // NOTE: You still should allow initialization of the port, even if it was deduced to be faulty,
+    // as it seems as if disconnected serial ports fail in the same way.
     irql oldIrql = Core_RaiseIrql(IRQL_COM_IRQ);
     // Disable serial IRQs (temporarily)
     outb(port->port_base + IRQ_ENABLE, 0);
@@ -102,11 +102,13 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     outb(port->port_base + IO_BUFFER, 0xde);
     if (inb(port->port_base + IO_BUFFER) != 0xde)
     {
+	    // OBOS_Debug("Port COM%d is faulty or disconnected.", port->com_port);
         port->isFaulty = true; // bruh
         Core_LowerIrql(oldIrql);
         return OBOS_STATUS_INTERNAL_ERROR;
     }
     // Enter normal transmission mode.
+    port->isFaulty = false;
     outb(port->port_base + FIFO_CTRL, 0x47 /* FIFO Enabled, IRQ when four bytes are received, other flags */);
     outb(port->port_base + MODEM_CTRL, 0xF /* DTR+RTS+OUT2+OUT1*/);
     outb(port->port_base + IRQ_ENABLE, 1);
