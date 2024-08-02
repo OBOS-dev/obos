@@ -18,6 +18,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
+#include <scheduler/dpc.h>
 
 #include <locks/spinlock.h>
 
@@ -525,7 +526,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
         return UACPI_STATUS_INTERNAL_ERROR;
     // TODO: Fix issue where some hardware gets infinite GPEs.
     // NOTE(oberrow): It's quite a funny issue, except it's kinda annoying.
-    Arch_IOAPICMaskIRQ(irq, /* false */ true);
+    Arch_IOAPICMaskIRQ(irq, /* false */ false);
 #endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;
@@ -545,15 +546,17 @@ typedef struct uacpi_work
     uacpi_work_type type;
     uacpi_work_handler cb; 
     uacpi_handle ctx;
-    thread* dpc;
+    dpc* work;
     struct uacpi_work *next, *prev;
 } uacpi_work;
 static uacpi_work *s_workHead = nullptr, *s_workTail = nullptr;
 static size_t s_nWork = 0;
 static spinlock s_workQueueLock;
 static bool s_isWorkQueueLockInit = false;
-static void work_handler(uacpi_work* work)
+static struct dpc* work_handler(dpc* dpc, void* userdata)
 {
+    OBOS_UNUSED(dpc);
+    uacpi_work* work = (uacpi_work*)userdata;
     work->cb(work->ctx);
     // Remove the work from the queue.
     irql oldIrql = Core_SpinlockAcquire(&s_workQueueLock);
@@ -567,9 +570,8 @@ static void work_handler(uacpi_work* work)
         s_workHead = work->next;
     s_nWork--;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
-    // Kill ourself.
-    Core_ExitCurrentThread();
-    while(1); 
+    CoreH_FreeDPC(dpc);
+    return nullptr;
 }
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
 {
@@ -589,24 +591,14 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler
     s_workTail = work;
     s_nWork++;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
-    // Make the DPC.
-    cpu_local *on = nullptr;
+    thread_affinity affinity = 0;
     if (type == UACPI_WORK_GPE_EXECUTION)
-    {
-        // Find the BSP in the cpu info list.
-        for (size_t i = 0; i < Core_CpuCount && !on; i++)
-            if (Core_CpuInfo[i].isBSP)
-                on = &Core_CpuInfo[i];
-    }
+        affinity = 1;
     else
-        on = CoreS_GetCPULocalPtr();
-    thread* dpc = CoreH_ThreadAllocate(nullptr);
-    thread_ctx thrctx;
-    // TODO: Free these stacks on thread exit.
-    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr);
-    CoreS_SetupThreadContext(&thrctx, (uintptr_t)work_handler, (uintptr_t)work, false, stack, 0x20000);
-    CoreH_ThreadInitialize(dpc, THREAD_PRIORITY_URGENT, CoreH_CPUIdToAffinity(on->id), &ctx);
-    CoreH_ThreadReady(dpc);
+        affinity = Core_DefaultThreadAffinity;
+    work->work = CoreH_AllocateDPC(nullptr);
+    work->work->userdata = work;
+    CoreH_InitializeDPC(work->work, work_handler, affinity);
     return UACPI_STATUS_OK;
 }
 uacpi_status uacpi_kernel_wait_for_work_completion(void)

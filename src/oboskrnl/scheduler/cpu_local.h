@@ -9,6 +9,7 @@
 #include <int.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/dpc.h>
 
 #include <irq/irql.h>
 
@@ -33,6 +34,7 @@ typedef struct cpu_local
 	uint64_t schedulerTicks;
 	irql currentIrql;
 	bool initialized;
+	dpc_queue dpcs;
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;

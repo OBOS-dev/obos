@@ -15,11 +15,14 @@
 
 #include <arch/x86_64/ioapic.h>
 
+#include <scheduler/dpc.h>
+
 #include <driver_interface/header.h>
 
 #include <irq/irql.h>
 
 #include "serial_port.h"
+#include "scheduler/thread.h"
 
 
 void append_to_buffer_char(buffer* buf, char what)
@@ -118,12 +121,9 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     return OBOS_STATUS_SUCCESS;
 }
 
-void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+dpc* com_dpc_handler(struct dpc* work, void* userdata)
 {
-    OBOS_UNUSED(i);
-    OBOS_UNUSED(frame);
-    OBOS_UNUSED(oldIrql);
-    serial_port* port = (serial_port*)userdata;
+    serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
     if (lineStatusRegister & BIT(0))
     {
@@ -137,9 +137,20 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     {
         // Send all the data in the output buffer.
         irql oldIrql = Core_SpinlockAcquireExplicit(&port->out_buffer.lock, IRQL_COM_IRQ, false);
-        flush_out_buffer(&port);
+        flush_out_buffer(port);
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
+    CoreH_FreeDPC(work);
+    return nullptr;
+}
+void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+{
+    OBOS_UNUSED(i);
+    OBOS_UNUSED(frame);
+    OBOS_UNUSED(oldIrql);
+    dpc *work = CoreH_AllocateDPC(nullptr);
+    work->userdata = userdata;
+    CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

@@ -476,7 +476,6 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	Arch_IOAPICMaskIRQ(gsi, false);
 	Arch_HPETAddress->generalConfig = 0b01;
 	initialized = true;
-	Core_TimerDispatchThread->affinity &= ~1;
 	return OBOS_STATUS_SUCCESS;
 }
 static uint64_t cached_divisor = 0;
@@ -570,8 +569,6 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
 	if (obos_is_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
-	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Initializing VMM.\n", __func__);
 	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
 	Mm_SwapProvider = &swap;
@@ -628,6 +625,8 @@ void Arch_KernelMainBootstrap()
 			nullptr
 		);
 	}
+	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+	Core_InitializeTimerInterface();
 	OBOS_Debug("%s: Initializing uACPI\n", __func__);
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\

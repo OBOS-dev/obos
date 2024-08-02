@@ -12,6 +12,9 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
+#include <scheduler/dpc.h>
+
+#include <utils/list.h>
 
 irql s_irql = IRQL_MASKED;
 
@@ -46,6 +49,22 @@ void Core_LowerIrqlNoThread(irql to)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to);
+	if (to < IRQL_DISPATCH)
+	{
+		CoreS_SetIRQL(IRQL_DISPATCH);
+		*Core_GetIRQLVar() = IRQL_DISPATCH;
+		// Run pending DPCs on the current CPU.
+		for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
+		{
+			dpc* next = LIST_GET_NEXT(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
+			if (cur->handler(cur, cur->userdata) == cur)
+				if (!LIST_IS_NODE_UNLINKED(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur))
+					LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur); // If the DPC still exists.
+			cur = next;
+		}
+		*Core_GetIRQLVar() = to;
+		CoreS_SetIRQL(to);
+	}
 }
 irql Core_RaiseIrqlNoThread(irql to)
 {
