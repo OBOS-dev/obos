@@ -54,31 +54,21 @@ static OBOS_NO_UBSAN driver_header* find_header(void* file, size_t szFile)
     }
     return nullptr;
 }
-driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
+obos_status Drv_LoadDriverHeader(void* file_, size_t szFile, driver_header* header)
 {
-    if (status) *status = OBOS_STATUS_SUCCESS;
-    if (szFile < sizeof(Elf_Ehdr))
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+    if (!header)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (szFile < sizeof(Elf_Ehdr) || !file_)
+        return OBOS_STATUS_INVALID_FILE;
+    
     uint8_t* file = (uint8_t*)file_;
     Elf_Ehdr* ehdr = Cast(file, Elf_Ehdr*);
     if (ehdr->e_ident[0] != ELFMAG0 || ehdr->e_ident[1] != ELFMAG1 ||
         ehdr->e_ident[2] != ELFMAG2 || ehdr->e_ident[3] != ELFMAG3
     )
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+        return OBOS_STATUS_INVALID_FILE;
     if (ehdr->e_ident[EI_CLASS] != GetCurrentElfClass())
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+        return OBOS_STATUS_INVALID_FILE;
     uint8_t ei_data_val = 0;
 	if (strcmp(OBOS_ARCHITECTURE_ENDIANNESS, "Little-Endian"))
 		ei_data_val = ELFDATA2LSB;
@@ -87,23 +77,11 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
 	else
 		ei_data_val = ELFDATANONE;
     if (ehdr->e_ident[EI_DATA] != ei_data_val)
-	{
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+        return OBOS_STATUS_INVALID_FILE;
     if (ehdr->e_machine != EM_CURRENT)
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+        return OBOS_STATUS_INVALID_FILE;
     if (ehdr->e_type != ET_DYN)
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_FILE;
-        return nullptr;
-    }
+        return OBOS_STATUS_INVALID_FILE;
     // First, search for the section containing the driver header.
     Elf_Shdr* driverHeaderSection = nullptr;
     {
@@ -125,25 +103,32 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
         }
     }
 	noSectionTable:
-    driver_header* header = nullptr;
+    (void)0;
+    driver_header* header_ = nullptr;
     if (!driverHeaderSection)
         goto manualSearch;
-    header = OffsetPtr(ehdr, driverHeaderSection->sh_offset, driver_header*);
+    header_ = OffsetPtr(ehdr, driverHeaderSection->sh_offset, driver_header*);
     manualSearch:
-    if (!header)
-        header = find_header(file, szFile);
-    if (!header)
-    {
-        if (status)
-            *status = OBOS_STATUS_NOT_FOUND;
-        return nullptr;
-    }
+    if (!header_)
+        header_ = find_header(file, szFile);
+    if (!header_)
+        return OBOS_STATUS_NOT_FOUND;
     // We've found the header.
     // Verify its contents.
-    if (header->magic != OBOS_DRIVER_MAGIC)
+    if (header_->magic != OBOS_DRIVER_MAGIC)
+        return OBOS_STATUS_INVALID_HEADER;
+    memcpy(header, header_, sizeof(*header));
+    return OBOS_STATUS_SUCCESS;
+}
+driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
+{
+    driver_header* header;
+    driver_header header_;
+    obos_status st = Drv_LoadDriverHeader(file_, szFile, &header_);
+    if (obos_is_error(st))
     {
         if (status)
-            *status = OBOS_STATUS_INVALID_HEADER;
+            *status = st;
         return nullptr;
     }
     driver_id* driver = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_id), nullptr);
@@ -151,12 +136,34 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
     size_t nEntriesDynamicSymbolTable = 0;
     const char* dynstrtab = nullptr;
     void* top = nullptr;
-    driver->base = DrvS_LoadRelocatableElf(driver, file, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
+    driver->base = DrvS_LoadRelocatableElf(driver, file_, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
     if (!driver->base)
     {
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
         return nullptr;
     }
+    Elf_Shdr* driverHeaderSection = nullptr;
+    uint8_t* file = (uint8_t*)file_;
+    Elf_Ehdr* ehdr = Cast(file, Elf_Ehdr*);
+    {
+        Elf_Shdr* sectionTable = OffsetPtr(ehdr, ehdr->e_shoff, Elf_Shdr*);
+        if (!sectionTable)
+        {
+            // No section table!
+            // Skip.
+            goto noSectionTable;
+        }
+        const char* shstr_table = (const char*)(((uintptr_t)file) + (sectionTable + ehdr->e_shstrndx)->sh_offset);
+        for (size_t i = 0; i < ehdr->e_shnum; i++)
+        {
+            const char* section = shstr_table + sectionTable[i].sh_name;
+            if (strcmp(section, OBOS_DRIVER_HEADER_SECTION))
+                driverHeaderSection = &sectionTable[i];
+            if (driverHeaderSection)
+                break;
+        }
+    }
+    noSectionTable:
     driver->top = top;
     driver->id = nextDriverId++;
     driver->refCnt++;

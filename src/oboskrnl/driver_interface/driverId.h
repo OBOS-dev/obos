@@ -59,7 +59,7 @@ typedef struct driver_list
 		(list).tail->next = (node);\
 	if (!(list).head)\
 		(list).head = (node);\
-	(node)->prev = (list.tail);\
+	(node)->prev = ((list).tail);\
 	(list).tail = (node);\
 	(list).nNodes++;\
 } while(0)

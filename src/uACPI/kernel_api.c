@@ -34,6 +34,8 @@
 #include <mm/alloc.h>
 #include <mm/context.h>
 
+#include <driver_interface/pci.h>
+
 #ifdef __x86_64__
 #include <arch/x86_64/pmm.h>
 #include <arch/x86_64/asm_helpers.h>
@@ -204,91 +206,6 @@ uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth
     }
     return status;
 }
-#ifdef __x86_64__
-void pciWriteByteRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint8_t data)
-{
-    uint32_t address;
-    uint32_t lbus = (uint32_t)bus;
-    uint32_t lslot = (uint32_t)slot;
-    uint32_t lfunc = (uint32_t)func;
-
-    address = (uint32_t)((lbus << 16) | (lslot << 11) |
-        (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-    outd(0xCF8, address);
-    outb(0xCFC, data);
-}
-void pciWriteWordRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint16_t data)
-{
-    uint32_t address;
-    uint32_t lbus = (uint32_t)bus;
-    uint32_t lslot = (uint32_t)slot;
-    uint32_t lfunc = (uint32_t)func;
-
-    address = (uint32_t)((lbus << 16) | (lslot << 11) |
-        (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-    outd(0xCF8, address);
-    outw(0xCFC, data);
-}
-void pciWriteDwordRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint32_t data)
-{
-    uint32_t address;
-    uint32_t lbus = (uint32_t)bus;
-    uint32_t lslot = (uint32_t)slot;
-    uint32_t lfunc = (uint32_t)func;
-
-    address = (uint32_t)((lbus << 16) | (lslot << 11) |
-        (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-    outd(0xCF8, address);
-    outd(0xCFC, data);
-}
-    uint8_t pciReadByteRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset)
-    {
-        uint32_t address;
-        uint32_t lbus = (uint32_t)bus;
-        uint32_t lslot = (uint32_t)slot;
-        uint32_t lfunc = (uint32_t)func;
-
-        address = (uint32_t)((lbus << 16) | (lslot << 11) |
-            (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-        outd(0xCF8, address);
-
-        uint8_t ret = (uint16_t)((ind(0xCFC) >> ((offset & 2) * 8)) & 0xFFFFFF);
-        return ret;
-    }
-    uint16_t pciReadWordRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset)
-    {
-        uint32_t address;
-        uint32_t lbus = (uint32_t)bus;
-        uint32_t lslot = (uint32_t)slot;
-        uint32_t lfunc = (uint32_t)func;
-
-        address = (uint32_t)((lbus << 16) | (lslot << 11) |
-            (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-        outd(0xCF8, address);
-
-        uint16_t ret = (uint16_t)((ind(0xCFC) >> ((offset & 2) * 8)) & 0xFFFF);
-        return ret;
-    }
-    uint32_t pciReadDwordRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset)
-    {
-        uint32_t address;
-        uint32_t lbus = (uint32_t)bus;
-        uint32_t lslot = (uint32_t)slot;
-        uint32_t lfunc = (uint32_t)func;
-
-        address = (uint32_t)((lbus << 16) | (lslot << 11) |
-            (lfunc << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-
-        outd(0xCF8, address);
-
-        return ((ind(0xCFC) >> ((offset & 2) * 8)));
-    }
-#endif
 uacpi_status uacpi_kernel_pci_read(
     uacpi_pci_address *address, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 *value
@@ -296,14 +213,13 @@ uacpi_status uacpi_kernel_pci_read(
 {
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
-    switch (byte_width)
-    {
-        case 1: *value = pciReadByteRegister(address->bus, address->device, address->function, offset); break;
-        case 2: *value = pciReadWordRegister(address->bus, address->device, address->function, offset); break;
-        case 4: *value = pciReadDwordRegister(address->bus, address->device, address->function, offset); break;
-        default: return UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    return UACPI_STATUS_OK;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    obos_status status = DrvS_ReadPCIRegister(loc, offset, byte_width, value);
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
 uacpi_status uacpi_kernel_pci_write(
     uacpi_pci_address *address, uacpi_size offset,
@@ -312,14 +228,13 @@ uacpi_status uacpi_kernel_pci_write(
 {
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
-    switch (byte_width)
-    {
-        case 1: pciWriteByteRegister(address->bus, address->device, address->function, offset, value & 0xff); break;
-        case 2: pciWriteWordRegister(address->bus, address->device, address->function, offset, value & 0xffff); break;
-        case 4: pciWriteDwordRegister(address->bus, address->device, address->function, offset, value & 0xffffffff); break;
-        default: return UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    return UACPI_STATUS_OK;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    obos_status status = DrvS_WritePCIRegister(loc, offset, byte_width, value);
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
 // static allocators::BasicAllocator s_uACPIAllocator;
 // static bool s_uACPIAllocatorInitialized = false;
@@ -608,7 +523,9 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 #if defined(__x86_64__)
     if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
         return UACPI_STATUS_INTERNAL_ERROR;
-    Arch_IOAPICMaskIRQ(irq, false);
+    // TODO: Fix issue where some hardware gets infinite GPEs.
+    // NOTE(oberrow): It's quite a funny issue, except it's kinda annoying.
+    Arch_IOAPICMaskIRQ(irq, /* false */ true);
 #endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;

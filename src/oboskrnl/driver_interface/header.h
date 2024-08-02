@@ -10,6 +10,8 @@
 #include <error.h>
 #include <struct_packing.h>
 
+#include <driver_interface/pci.h>
+
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
 // Not required, but can speed up loading times if the driver header is put in here.
 #define OBOS_DRIVER_HEADER_SECTION ".driverheader"
@@ -44,6 +46,14 @@ typedef enum driver_header_flags
     /// If this flag is set, any blkOffset parameter should be ignored. 
     /// </summary>
     DRIVER_HEADER_PIPE_STYLE_DEVICE = 0x20,
+    /// <summary>
+    /// Set if PnP should use the vendor id in the pciId field of the header.
+    /// </summary>
+    DRIVER_HEADER_PCI_HAS_VENDOR_ID = 0x40,
+    /// <summary>
+    /// Set if PnP should use the device id in the pciId field of the header.
+    /// </summary>
+    DRIVER_HEADER_PCI_HAS_DEVICE_ID = 0x80,
 } driver_header_flags;
 typedef enum iterate_decision
 {
@@ -121,24 +131,7 @@ typedef struct driver_header
 {
     uint64_t magic;
     uint32_t flags;
-    struct
-    {
-        uint32_t classCode;
-        /// <summary>
-        /// If a bit is set, the bit number will be the value.
-        /// <para></para>
-        /// This bitfield can have more than bit set (for multiple values).
-        /// </summary>
-        __uint128_t subclass;
-        /// <summary>
-        /// If a bit is set, the bit number will be the value.
-        /// <para></para>
-        /// This bitfield can have more than bit set (for multiple values).
-        /// <para></para>
-        /// If no bit is set any prog if is assumed.
-        /// </summary>
-        __uint128_t progIf;
-    } pciId;
+    pci_device pciId;
     struct
     {
         // These strings are not null-terminated.
@@ -151,4 +144,37 @@ typedef struct driver_header
     } acpiId;
     size_t stackSize; // If DRIVER_HEADER_FLAGS_REQUEST_STACK_SIZE is set.
     driver_ftable ftable;
+    char driverName[64];
 } driver_header;
+typedef struct driver_header_node
+{
+    struct driver_header_node *next, *prev;
+    driver_header* data;
+} driver_header_node;
+typedef struct driver_header_list
+{
+    struct driver_header_node *head, *tail;
+    size_t nNodes;
+} driver_header_list;
+#define APPEND_DRIVER_HEADER_NODE(list, node) do {\
+	(node)->next = nullptr;\
+	(node)->prev = nullptr;\
+	if ((list).tail)\
+		(list).tail->next = (node);\
+	if (!(list).head)\
+		(list).head = (node);\
+	(node)->prev = ((list).tail);\
+	(list).tail = (node);\
+	(list).nNodes++;\
+} while(0)
+#define REMOVE_DRIVER_HEADER_NODE(list, node) do {\
+	if ((list).tail == (node))\
+		(list).tail = (node)->prev;\
+	if ((list).head == (node))\
+		(list).head = (node)->next;\
+	if ((node)->prev)\
+		(node)->prev->next = (node)->next;\
+	if ((node)->next)\
+		(node)->next->prev = (node)->prev;\
+	(list).nNodes--;\
+} while(0)

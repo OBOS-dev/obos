@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "elf/elf64.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -197,7 +198,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             Symbol = &internal_symbol;
         }
         unresolved:
-        if (!Symbol) 
+        if (!Symbol && ELF64_ST_BIND(Unresolved_Symbol->st_info) != STB_WEAK) 
         {
             if (status)
                 *status = OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL;
@@ -206,7 +207,27 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             return false;
         }
         add_dependency(drv, dependency);
-        // TODO: add driver dependency to list.
+        if (ELF64_ST_BIND(Unresolved_Symbol->st_info) == STB_WEAK)
+        {
+            internal_symbol.size = Unresolved_Symbol->st_size;
+            internal_symbol.address = 0;
+            switch (ELF64_ST_TYPE(Unresolved_Symbol->st_info)) 
+            {
+                case STT_FUNC:
+                    internal_symbol.type = SYMBOL_TYPE_FUNCTION;
+                    break;
+                case STT_FILE:
+                    internal_symbol.type = SYMBOL_TYPE_FILE;
+                    break;
+                case STT_OBJECT:
+                    internal_symbol.type = SYMBOL_TYPE_VARIABLE;
+                    break;
+                default:
+                    break;
+            }
+            internal_symbol.visibility = SYMBOL_VISIBILITY_DEFAULT;
+            Symbol = &internal_symbol;
+        }
         if (Unresolved_Symbol->st_size != Symbol->size && i.relocationType == R_AMD64_COPY)
         {
             // Oh no!

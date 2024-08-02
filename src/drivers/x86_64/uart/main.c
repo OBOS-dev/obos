@@ -136,7 +136,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
 obos_status ioctl(size_t nParameters, uint64_t request, ...);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE,
+    .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
     .acpiId.nPnpIds = 2,
     .acpiId.pnpIds = {
         "PNP0500", // Standard PC COM port
@@ -151,7 +151,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .foreach_device = foreach_device,
         .read_sync = read_sync,
         .write_sync = write_sync,
-    }
+    },
+    .driverName = "COM Driver"
 };
 
 uacpi_resource_iteration_decision resource_iterator(void *user, uacpi_resource *resource)

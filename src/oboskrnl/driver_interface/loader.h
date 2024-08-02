@@ -10,11 +10,14 @@
 #include <error.h>
 
 #include <driver_interface/driverId.h>
+#include <driver_interface/header.h>
 
 #include <elf/elf.h>
 
 #include <scheduler/thread.h>
 
+// gets the driver header of an unloaded driver
+obos_status Drv_LoadDriverHeader(void* file, size_t szFile, driver_header* header);
 driver_id *Drv_LoadDriver(void* file, size_t szFile, obos_status* status);
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread);
 obos_status Drv_UnloadDriver(driver_id* driver);

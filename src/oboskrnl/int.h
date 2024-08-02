@@ -29,6 +29,8 @@
 #	error Only the kernel and drivers can access kernel headers.
 #endif
 
+#define OBOS_WEAK __attribute__((weak))
+
 #if UINTPTR_MAX == UINT64_MAX
 #define PTR_BITS 64
 #elif UINTPTR_MAX == UINT32_MAX

@@ -35,6 +35,8 @@
 
 #include <driver_interface/driverId.h>
 #include <driver_interface/loader.h>
+#include <driver_interface/header.h>
+#include <driver_interface/pnp.h>
 
 #include <allocators/basic_allocator.h>
 #include <allocators/base.h>
@@ -724,10 +726,26 @@ if (st != UACPI_STATUS_OK)\
 	OBOS_Debug("Loading test driver.\n");
 	void* driver_bin = (void*)Arch_UARTDriver->address;
 	size_t sizeof_driver_bin = Arch_UARTDriver->size;
-	status = OBOS_STATUS_SUCCESS;
-	driver_id* drv1 = Drv_LoadDriver(driver_bin, sizeof_driver_bin, &status);
+	driver_header header;
+	status = Drv_LoadDriverHeader(driver_bin, sizeof_driver_bin, &header);
 	if (obos_is_error(status))
 		OBOS_Error("Could not load test driver #1. Status: %d.\n", status);
+	driver_header_node node = {.data = &header};
+	driver_header_list list = {.head=&node,.tail=&node,.nNodes=1};
+	driver_header_list toLoad;
+	status = Drv_PnpDetectDrivers(list, &toLoad);
+	if (obos_is_error(status))
+		OBOS_Error("PnP failed. Status: %d.\n", status);
+	driver_id* drv1 = nullptr;
+	for (driver_header_node* node = toLoad.head; node; )
+	{
+		OBOS_Debug("Loading driver '%s'.\n", node->data->driverName);
+		if (&header == node->data)
+			drv1 = Drv_LoadDriver(driver_bin, sizeof_driver_bin, nullptr);
+
+		node = node->next;
+	}
+
 	thread* main = nullptr;
 	Drv_StartDriver(drv1, &main);
 	while (!(main->flags & THREAD_FLAGS_DIED))
