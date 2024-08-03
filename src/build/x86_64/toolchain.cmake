@@ -50,7 +50,7 @@ list (APPEND oboskrnl_sources
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
 	"arch/x86_64/ioapic.c" "arch/x86_64/initial_swap.c" "arch/x86_64/drv_loader.c"
-	"arch/x86_64/pci.c"
+	"arch/x86_64/pci.c" "arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
 )
 
 add_compile_definitions(

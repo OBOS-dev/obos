@@ -100,6 +100,8 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     outb(port->port_base + DIVISOR_LOW_BYTE, divisor & 0xff);
     outb(port->port_base + DIVISOR_HIGH_BYTE, divisor >> 8);
     outb(port->port_base + LINE_CTRL, dataBits | stopbits | parityBit);
+    while (inb(port->port_base + LINE_STATUS) & BIT(0))
+        inb(port->port_base + IO_BUFFER);
     // Enter loop back mode.
     outb(port->port_base + MODEM_CTRL, 0x1B /* RTS+Out1+Out2+Loop */);
     outb(port->port_base + IO_BUFFER, 0xde);
@@ -112,7 +114,7 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     }
     // Enter normal transmission mode.
     port->isFaulty = false;
-    outb(port->port_base + FIFO_CTRL, 0x47 /* FIFO Enabled, IRQ when four bytes are received, other flags */);
+    outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when one byte is received, other flags */);
     outb(port->port_base + MODEM_CTRL, 0xF /* DTR+RTS+OUT2+OUT1*/);
     outb(port->port_base + IRQ_ENABLE, 1);
     Arch_IOAPICMaskIRQ(port->gsi, false);
@@ -121,7 +123,8 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     return OBOS_STATUS_SUCCESS;
 }
 
-dpc* com_dpc_handler(struct dpc* work, void* userdata)
+bool workPending = false;
+void com_dpc_handler(struct dpc* work, void* userdata)
 {
     serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
@@ -141,16 +144,21 @@ dpc* com_dpc_handler(struct dpc* work, void* userdata)
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
     CoreH_FreeDPC(work);
-    return nullptr;
+    workPending = false;
 }
 void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
     OBOS_UNUSED(oldIrql);
-    dpc *work = CoreH_AllocateDPC(nullptr);
-    work->userdata = userdata;
-    CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
+    if (!workPending)
+    {
+        // TODO: Is this a good idea?
+        dpc *work = CoreH_AllocateDPC(nullptr);
+        work->userdata = userdata;
+        CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
+        workPending = true; 
+    }
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

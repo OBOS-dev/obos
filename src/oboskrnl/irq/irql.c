@@ -57,9 +57,8 @@ void Core_LowerIrqlNoThread(irql to)
 		for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
 		{
 			dpc* next = LIST_GET_NEXT(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
-			if (cur->handler(cur, cur->userdata) == cur)
-				if (!LIST_IS_NODE_UNLINKED(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur))
-					LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur); // If the DPC still exists.
+			LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
+			cur->handler(cur, cur->userdata);
 			cur = next;
 		}
 		*Core_GetIRQLVar() = to;

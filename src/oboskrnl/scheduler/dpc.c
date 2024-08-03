@@ -28,10 +28,12 @@ dpc* CoreH_AllocateDPC(obos_status* status)
     }
     return OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, sizeof(dpc), status);
 }
-obos_status CoreH_InitializeDPC(dpc* dpc, struct dpc*(*handler)(struct dpc* obj, void* userdata), thread_affinity affinity)
+obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* userdata), thread_affinity affinity)
 {
     if (!dpc || !handler)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (dpc->cpu && LIST_IS_NODE_UNLINKED(dpc_queue, &dpc->cpu->dpcs, dpc))
+        return OBOS_STATUS_DPC_ALREADY_ENQUEUED;
     affinity &= Core_DefaultThreadAffinity;
     if (!affinity)
         affinity = Core_DefaultThreadAffinity;

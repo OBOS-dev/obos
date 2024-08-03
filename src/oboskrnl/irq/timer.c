@@ -39,7 +39,7 @@ static struct
     size_t nNodes;
     spinlock lock;
 } timer_list;
-static dpc* timer_dispatcher(dpc* obj, void* userdata);
+static void timer_dispatcher(dpc* obj, void* userdata);
 dpc* work = nullptr;
 OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
@@ -59,7 +59,7 @@ static void notify_timer(timer* timer)
         Core_CancelTimer(timer);
     timer->handler(timer->userdata);
 }
-static dpc* timer_dispatcher(dpc* obj, void* userdata)
+static void timer_dispatcher(dpc* obj, void* userdata)
 {
     // Search for expired timer objects, and notify them.
     for(timer* t = timer_list.head; t; )
@@ -90,7 +90,6 @@ static dpc* timer_dispatcher(dpc* obj, void* userdata)
         t = t->next;
         Core_SpinlockRelease(&timer_list.lock, oldIrql);
     }
-    return obj;
 }
 obos_status Core_InitializeTimerInterface()
 {
