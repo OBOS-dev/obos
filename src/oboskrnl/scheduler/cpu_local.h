@@ -9,7 +9,7 @@
 #include <int.h>
 
 #include <scheduler/thread.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <irq/irql.h>
 

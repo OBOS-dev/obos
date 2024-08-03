@@ -28,7 +28,7 @@
 #include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 bool Core_TimerInterfaceInitialized;
 irq* Core_TimerIRQ;

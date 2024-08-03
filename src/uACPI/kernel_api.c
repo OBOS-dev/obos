@@ -18,7 +18,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <locks/spinlock.h>
 

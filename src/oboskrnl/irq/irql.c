@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/spinlock.h"
 #include <int.h>
 #include <klog.h>
 
@@ -12,7 +13,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <utils/list.h>
 
@@ -25,12 +26,6 @@ irql* Core_GetIRQLVar()
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 
-void Core_LowerIrql(irql to)
-{
-	Core_LowerIrqlNoThread(to);
-	if (Core_GetCurrentThread())
-		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
-}
 irql Core_RaiseIrql(irql to)
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(to);
@@ -38,21 +33,17 @@ irql Core_RaiseIrql(irql to)
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 	return oldIrql;
 }
+void Core_LowerIrql(irql to)
+{
+	Core_LowerIrqlNoThread(to);
+	if (Core_GetCurrentThread())
+		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
+}
 void Core_LowerIrqlNoThread(irql to)
 {
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar());
-	OBOS_ASSERT((to & ~0xf) == 0);
-	if ((to & ~0xf))
-		return;
-	if (to > *Core_GetIRQLVar())
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
-	*Core_GetIRQLVar() = to;
-	CoreS_SetIRQL(to);
-	if (to < IRQL_DISPATCH)
+	Core_LowerIrqlNoDPCDispatch(to);
+	if (to < IRQL_DISPATCH && CoreS_GetCPULocalPtr())
 	{
-		CoreS_SetIRQL(IRQL_DISPATCH);
-		*Core_GetIRQLVar() = IRQL_DISPATCH;
 		// Run pending DPCs on the current CPU.
 		for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
 		{
@@ -64,6 +55,18 @@ void Core_LowerIrqlNoThread(irql to)
 		*Core_GetIRQLVar() = to;
 		CoreS_SetIRQL(to);
 	}
+}
+void Core_LowerIrqlNoDPCDispatch(irql to)
+{
+	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+		CoreS_SetIRQL(*Core_GetIRQLVar());
+	OBOS_ASSERT((to & ~0xf) == 0);
+	if ((to & ~0xf))
+		return;
+	if (to > *Core_GetIRQLVar())
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
+	*Core_GetIRQLVar() = to;
+	CoreS_SetIRQL(to);
 }
 irql Core_RaiseIrqlNoThread(irql to)
 {

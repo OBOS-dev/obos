@@ -15,7 +15,7 @@
 
 #include <arch/x86_64/ioapic.h>
 
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <driver_interface/header.h>
 
@@ -131,15 +131,18 @@ void com_dpc_handler(struct dpc* work, void* userdata)
     if (lineStatusRegister & BIT(0))
     {
         // Receive all the avaliable data.
-        irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+        irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_DISPATCH, false);
         while (inb(port->port_base + LINE_STATUS) & BIT(0))
+        {
             append_to_buffer_char(&port->in_buffer, inb(port->port_base + IO_BUFFER));
+            printf("%c", port->in_buffer.buf[port->in_buffer.szBuf - 1]);
+        }
         Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
     }
     if (lineStatusRegister & BIT(5))
     {
         // Send all the data in the output buffer.
-        irql oldIrql = Core_SpinlockAcquireExplicit(&port->out_buffer.lock, IRQL_COM_IRQ, false);
+        irql oldIrql = Core_SpinlockAcquireExplicit(&port->out_buffer.lock, IRQL_DISPATCH, false);
         flush_out_buffer(port);
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
@@ -151,14 +154,16 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
     OBOS_UNUSED(oldIrql);
-    if (!workPending)
-    {
-        // TODO: Is this a good idea?
-        dpc *work = CoreH_AllocateDPC(nullptr);
-        work->userdata = userdata;
-        CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
-        workPending = true; 
-    }
+    // TODO: Is this a good idea?
+    // NOTE(oberrow): Whether having the "workPending" variable exist or not.
+    // NOTE(oberrow): It wasn't
+    // if (!workPending)
+    // {
+    dpc *work = CoreH_AllocateDPC(nullptr);
+    work->userdata = userdata;
+    CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
+    workPending = true; 
+    // }
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

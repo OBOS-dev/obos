@@ -4,11 +4,12 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "uacpi/acpi.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
 #include <memmanip.h>
+
+#include <stdarg.h>
 
 #include <driver_interface/header.h>
 
@@ -256,4 +257,18 @@ obos_status Kdbg_ConnectionSetAck(gdb_connection* conn, bool ack)
     else
         conn->flags &= ~FLAGS_ENABLE_ACK;
     return OBOS_STATUS_SUCCESS;
+}
+
+char* KdbgH_FormatResponse(const char* format, ...)
+{
+    va_list list;
+    va_list list2;
+    va_start(list, format);
+    va_copy(list2, list);
+    size_t bufSize = vsnprintf(nullptr, 0, format, list);
+    va_end(list);
+    char* buf = Kdbg_Calloc(bufSize+1, sizeof(char));
+    vsnprintf(buf, bufSize+1, format, list2);
+    va_end(list2);
+    return buf;
 }

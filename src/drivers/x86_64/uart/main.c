@@ -102,6 +102,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t i = 0;
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+    // TODO: Make sync instead of async.
     for (; i < blkCount && i < port->in_buffer.szBuf; i++)
         ((char*)buf)[i] = pop_from_buffer(&port->in_buffer);
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
@@ -130,6 +131,8 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         }
         outb(port->port_base + IO_BUFFER, ((char*)buf)[i]);
     }
+    if (nBlkWritten)
+        *nBlkWritten = blkCount;
     Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }

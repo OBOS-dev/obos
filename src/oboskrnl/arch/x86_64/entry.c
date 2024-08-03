@@ -70,6 +70,8 @@
 
 #include "gdbstub/connection.h"
 #include "gdbstub/packet_dispatcher.h"
+#include "gdbstub/debug.h"
+#include "gdbstub/general_query.h"
 
 extern void Arch_InitBootGDT();
 
@@ -776,16 +778,16 @@ if (st != UACPI_STATUS_OK)\
 		OBOS_Error("Could not open COM1. Status: %d.\n", status);
 		goto done;
 	}
-	// for (volatile bool b = true; b; );
 	gdb_connection gdb_conn = {};
 	Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
-	while(1)
-	{
-		char* packet = nullptr;
-		size_t packetLen = 0;
-		Kdbg_ConnectionRecvPacket(&gdb_conn, &packet, &packetLen);
-		Kdbg_DispatchPacket(&gdb_conn, packet, packetLen);
-	}
+	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
+	Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
+	Kdbg_CurrentConnection = &gdb_conn;
+	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
+	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
+	asm("int3");
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	done:
 	Core_ExitCurrentThread();

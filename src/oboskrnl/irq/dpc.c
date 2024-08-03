@@ -1,5 +1,5 @@
 /*
- * oboskrnl/scheduler/dpc.c
+ * oboskrnl/irq/dpc.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
@@ -10,11 +10,13 @@
 
 #include <utils/list.h>
 
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 
 #include <allocators/base.h>
+
+#include <locks/spinlock.h>
 
 LIST_GENERATE(dpc_queue, dpc, node);
 
@@ -38,10 +40,10 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     if (!affinity)
         affinity = Core_DefaultThreadAffinity;
     dpc->handler = handler;
-    cpu_local* target = nullptr;
-    for (size_t i = 0; i < Core_CpuCount; i++)
-        if (!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes)
-            target = (affinity & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)) ? &Core_CpuInfo[i] : nullptr;
+    cpu_local* target = CoreS_GetCPULocalPtr();
+    // for (size_t i = 0; i < Core_CpuCount; i++)
+    //     if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes))
+    //         target = (affinity & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)) ? &Core_CpuInfo[i] : nullptr;
     // If this fails, something stupid has happened.
     OBOS_ASSERT(target);
     LIST_APPEND(dpc_queue, &target->dpcs, dpc);

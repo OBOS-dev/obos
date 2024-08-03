@@ -242,7 +242,7 @@ switch_thread:
 	chosenThread->status = THREAD_STATUS_RUNNING;
 	chosenThread->masterCPU = CoreS_GetCPULocalPtr();
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
-	if (getCurrentThread)
+	if (getCurrentThread && threadCanRunThread(getCurrentThread))
 		getCurrentThread->status = THREAD_STATUS_READY;
 	Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
 	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);

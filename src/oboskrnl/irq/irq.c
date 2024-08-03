@@ -29,7 +29,7 @@ irq* Core_IrqObjectAllocate(obos_status* status)
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
- void Core_IRQDispatcher(interrupt_frame* frame)
+void Core_IRQDispatcher(interrupt_frame* frame)
 {
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())
@@ -64,7 +64,7 @@ static bool s_irqInterfaceInitialized;
 	{
 		// Spooky actions from a distance...
 		CoreS_GetCPULocalPtr()->currentContext = oldCtx;
-		Core_LowerIrqlNoThread(oldIrql2);
+		Core_LowerIrqlNoDPCDispatch(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
 	}
@@ -77,8 +77,11 @@ static bool s_irqInterfaceInitialized;
 			oldIrql2);
 	}
 	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
+	// Core_LowerIrqlNoDPCDispatch(oldIrql2);
+	// We can't really do that
+	// otherwise DPCs have no other way to execute when the kernel idles.
+	Core_LowerIrqlNoThread(oldIrql2);	
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoThread(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

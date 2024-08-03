@@ -1,5 +1,5 @@
 /*
- * oboskrnl/scheduler/dpc.h
+ * oboskrnl/irq/dpc.h
  *
  * Copyright (c) 2024 Omar Berrow
 */
