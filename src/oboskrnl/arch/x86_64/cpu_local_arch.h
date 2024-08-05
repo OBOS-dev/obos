@@ -12,6 +12,8 @@
 
 #include <arch/x86_64/gdbstub/connection.h>
 
+#include <irq/dpc.h>
+
 typedef struct cpu_local_arch
 {
 	uint64_t gdtEntries[7];
@@ -39,4 +41,5 @@ typedef struct cpu_local_arch
 	bool initializedSchedulerTimer;
 	bool pf_handler_running;
 	gdb_ctx dbg_ctx;
+	dpc dbg_dpc;
 } cpu_local_arch;

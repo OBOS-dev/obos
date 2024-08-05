@@ -46,9 +46,9 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 	lock->locked = true;
 	return newIrql;
 }
-irql Core_SpinlockAcquire(spinlock* const lock)
+OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
 {
-	return Core_SpinlockAcquireExplicit(lock, IRQL_MASKED, false);
+	return Core_SpinlockAcquireExplicit(lock, IRQL_DISPATCH, false);
 }
 OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {

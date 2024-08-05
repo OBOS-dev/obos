@@ -162,7 +162,7 @@ struct hashmap *hashmap_new_with_allocator(void *(*_malloc)(size_t),
     memset(map->buckets, 0, map->bucketsz*map->nbuckets);
     map->growpower = 1;
     map->loadfactor = fixedpt_xmul(clamp_load_factor(HASHMAP_LOAD_FACTOR, GROW_AT), fixedpt_fromint(100));
-    map->growat = map->nbuckets * fixedpt_xdiv(fixedpt_fromint(map->loadfactor), fixedpt_fromint(100));
+    map->growat = fixedpt_toint(fixedpt_xmul(fixedpt_fromint(map->nbuckets), fixedpt_xdiv(fixedpt_fromint(map->loadfactor), fixedpt_fromint(100))));
     map->shrinkat = fixedpt_xmul(map->nbuckets, SHRINK_AT);
     map->malloc = _malloc;
     map->realloc = _realloc;

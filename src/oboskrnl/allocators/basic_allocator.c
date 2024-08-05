@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/irql.h"
 #include "mm/context.h"
 #include <int.h>
 #include <klog.h>
@@ -44,7 +45,7 @@ struct safe_spinlock
 };
 static void Lock(struct safe_spinlock* l)
 {
-	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED, false);
+	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_DISPATCH, false);
 }
 static void Unlock(struct safe_spinlock* l)
 {

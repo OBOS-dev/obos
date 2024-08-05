@@ -31,6 +31,7 @@ LIST_PROTOTYPE_INTERNAL(name, type, field, )
 LIST_PROTOTYPE_INTERNAL(name, type, field, static)
 #define LIST_PROTOTYPE_INTERNAL(name, type, field, attrib) \
 attrib void name##_LIST_APPEND(name* list, type* what);\
+attrib void name##_LIST_PREPEND(name* list, type* what);\
 attrib void name##_LIST_REMOVE(name* list, type* what);\
 attrib type* name##_LIST_GET_NEXT(name* list, type* what);\
 attrib type* name##_LIST_GET_PREV(name* list, type* what)
@@ -52,6 +53,18 @@ attrib void name##_LIST_APPEND(name* list, type* what)\
 	(list)->tail = what;\
 	(list)->nNodes++;\
 }\
+attrib void name##_LIST_PREPEND(name* list, type* what)\
+{\
+    (what)->field.next = nullptr;\
+	(what)->field.prev = nullptr;\
+	if ((list)->head)\
+		(list)->head->field.prev = what;\
+	if (!(list)->tail)\
+		(list)->tail = (what);\
+	(what)->field.next = (list->head);\
+	(list)->head = what;\
+	(list)->nNodes++;\
+}\
 attrib void name##_LIST_REMOVE(name* list, type* what)\
 {\
     if ((list)->tail == what)\
@@ -62,9 +75,9 @@ attrib void name##_LIST_REMOVE(name* list, type* what)\
 		(what->field).prev->field.next = (what->field).next;\
 	if ((what->field).next)\
 		(what->field).next->field.prev = (what->field).prev;\
+	(list)->nNodes--;\
 	what->field.next = 0;\
 	what->field.prev = 0;\
-	(list)->nNodes--;\
 }\
 attrib type* name##_LIST_GET_NEXT(name* list, type* what)\
 {\
@@ -79,6 +92,8 @@ attrib type* name##_LIST_GET_PREV(name* list, type* what)\
 
 #define LIST_APPEND(name, list, x)\
 name##_LIST_APPEND(list, x)
+#define LIST_PREPEND(name, list, x)\
+name##_LIST_PREPEND(list, x)
 #define LIST_REMOVE(name, list, x)\
 name##_LIST_REMOVE(list, x)
 #define LIST_GET_NODE_COUNT(name, list)\

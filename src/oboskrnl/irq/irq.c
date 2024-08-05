@@ -39,12 +39,12 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	CoreS_SendEOI(frame);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
-	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);
+	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
 		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
-		Core_SpinlockRelease(&s_lock, oldIrql);
+		// Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	else
 	{
@@ -58,7 +58,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			
 			node = node->next;
 		}
-		Core_SpinlockRelease(&s_lock, oldIrql);
+		// Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	if (!irq_obj)
 	{
@@ -348,4 +348,8 @@ obos_status Core_IrqObjectFree(irq* obj)
 	}
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 	return OBOS_STATUS_SUCCESS;
+}
+bool Core_IrqInterfaceInitialized()
+{
+	return s_irqInterfaceInitialized;
 }

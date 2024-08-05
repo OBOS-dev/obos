@@ -266,7 +266,7 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             OBOS_Warning("Could not allocate irq object for COM%d. Status: %d.\n", port->com_port, status);
             continue;
         }
-        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, false);
+        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, true);
         if (obos_is_error(status))
         {
             OBOS_Warning("Could not initialize irq object for COM%d. Status: %d.\n", port->com_port, status);

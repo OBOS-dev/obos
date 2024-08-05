@@ -141,6 +141,9 @@ OBOS_EXPORT obos_status Core_IrqObjectInitializeVector(irq* obj, irq_vector_id v
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status Core_IrqObjectFree(irq* obj);
 
+// Not exported, as drivers are guaranteed to have this subsystem initialized.
+bool Core_IrqInterfaceInitialized();
+
 /// <summary>
 /// Registers an IRQ handler for the specified irq vector id.
 /// </summary>

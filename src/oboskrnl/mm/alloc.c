@@ -262,7 +262,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     // We've possibly located a guard page that we need to free with the rest of the buffer.
     // Now we must unmap the pages and dereference them.
 
-    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
 
     offset = 0;
     curr = nullptr;
@@ -276,7 +276,10 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             curr = next;
         next = RB_NEXT(page_tree, &ctx->pages, curr);
         if (!curr || curr->addr != addr)
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
             return OBOS_STATUS_NOT_FOUND;
+        }
         if (curr->prot.present)
         {
             curr->prot.present = false;
@@ -312,7 +315,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
 
     // Verify each pages' existence
 
-    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
 
     uintptr_t offset = 0;
     page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 

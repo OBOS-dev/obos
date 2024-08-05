@@ -43,11 +43,10 @@ obos_status Kdbg_GDB_qC(gdb_connection* con, const char* arguments, size_t argum
 {
     NO_ARGUMENTS;
     NO_USERDATA;
-    uint32_t tid = __builtin_bswap32(dbg_ctx->interrupted_thread->tid);
-    uint32_t pid = __builtin_bswap32(dbg_ctx->interrupted_thread->proc->pid);
-    char* response = KdbgH_FormatResponse("p%08x.%08x", pid, tid);
+    uint32_t tid = dbg_ctx->interrupted_thread->tid > 255 ?  __builtin_bswap32(dbg_ctx->interrupted_thread->tid) : dbg_ctx->interrupted_thread->tid;
+    uint32_t pid = dbg_ctx->interrupted_thread->proc->pid > 255 ? __builtin_bswap32(dbg_ctx->interrupted_thread->proc->pid) : dbg_ctx->interrupted_thread->proc->pid;
+    char* response = KdbgH_FormatResponse("QCp%x.%x", pid, tid);
     Kdbg_ConnectionSendPacket(con, response);
-    OBOS_Debug("Responding to qC with %s.\n", response);
     Kdbg_Free(response);
     return OBOS_STATUS_SUCCESS;
 }
@@ -57,7 +56,7 @@ obos_status Kdbg_GDB_q_ThreadInfo(gdb_connection* con, const char* arguments, si
     NO_RESPONSE;
     NO_USERDATA;
     NO_CTX;
-    uint32_t tids[4] = {};
+    uint32_t tids[1] = {};
     uint8_t nTids = 0;
     char* response = nullptr;
     bool shouldFreeResponse = true;
@@ -72,46 +71,30 @@ obos_status Kdbg_GDB_q_ThreadInfo(gdb_connection* con, const char* arguments, si
     for (con->q_ThreadInfo_ctx.received_first ? 0 : (con->q_ThreadInfo_ctx.last_thread = OBOS_KernelProcess->threads.head);
         con->q_ThreadInfo_ctx.last_thread && nTids < (sizeof(tids)/sizeof(*tids)); )
     {
-        tids[nTids++] = __builtin_bswap32(con->q_ThreadInfo_ctx.last_thread->data->tid);
+        if (con->q_ThreadInfo_ctx.last_thread->data->flags & THREAD_FLAGS_DIED)
+            goto down;
+        tids[nTids++] = con->q_ThreadInfo_ctx.last_thread->data->tid > 255 ? __builtin_bswap32(con->q_ThreadInfo_ctx.last_thread->data->tid) : con->q_ThreadInfo_ctx.last_thread->data->tid;
 
+        down:
         con->q_ThreadInfo_ctx.last_thread = con->q_ThreadInfo_ctx.last_thread->next;
     }
     OBOS_ASSERT(nTids > 0);
-    if (!con->q_ThreadInfo_ctx.received_first)
+    if (nTids == 1)
+        response = KdbgH_FormatResponse("mp01.%x", tids[0]);
+    else
     {
-        if (nTids == 1)
-            response = KdbgH_FormatResponse("mp%08x.%08x", __builtin_bswap32(OBOS_KernelProcess->pid), tids[0]);
-        else
+        // size is the 'm' + ppid.tid,ppid.tid,ppid.tid,ppid.tid\0
+        response = Kdbg_Calloc(1+18*nTids+nTids, sizeof(char));
+        for (uint8_t i = 0; i < nTids; i++)
         {
-            // size is the 'm' + ppid.tid,ppid.tid,ppid.tid,ppid.tid\0
-            response = Kdbg_Calloc(1+18*nTids+nTids, sizeof(char));
-            for (uint8_t i = 0; i < nTids; i++)
-            {
-                char delimiter = ',';
-                if (i == (nTids - 1))
-                    delimiter = 0;
-                char* tid = KdbgH_FormatResponse("p%08x.%08x%c", OBOS_KernelProcess->pid, tids[i], delimiter);
-                memcpy(response + 1+18*i+i, tid, 18 + (delimiter == ','));
-            }
-            response[0] = 'm';
+            char delimiter = ',';
+            if (i == (nTids - 1))
+                delimiter = 0;
+            char* tid = KdbgH_FormatResponse("p%08x.%08x%c", OBOS_KernelProcess->pid, tids[i], delimiter);
+            memcpy(response + 1+18*i+i, tid, 18 + (delimiter == ','));
         }
+        response[0] = 'm';
     }
-    else 
-    {
-        if (nTids == 1)
-            response = KdbgH_FormatResponse("p%08x.%08x", OBOS_KernelProcess->pid, tids[0]);
-        else
-        {
-            // size is ppid.tid,ppid.tid,ppid.tid,ppid.tid\0
-            response = Kdbg_Calloc(18*nTids+nTids, sizeof(char));
-            for (uint8_t i = 0; i < nTids; i++)
-            {
-                char* tid = KdbgH_FormatResponse("p%08x.%08x%c", OBOS_KernelProcess->pid, tids[i], i == (nTids - 1) ? '\0' : ',');
-                memcpy(response + 1+18*i+((i > 0) ? 1 : 0), tid, 18 + (i == nTids-1));
-            }
-        }
-    }
-    OBOS_Debug("Responding to q_ThreadInfo with %s.\n", response);
     OBOS_ASSERT(response != nullptr);
     if (!con->q_ThreadInfo_ctx.received_first)
         con->q_ThreadInfo_ctx.received_first = true;
@@ -155,28 +138,35 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
     const size_t packet_size = 4096;
     size_t responseLen = 0;
     char* response = nullptr;
-    for (size_t i = 0; i < argumentsLen; )
+    for (size_t i = 0; arguments[i]; )
     {
-        size_t feature_len = strchr(arguments + i, ';');
+        size_t feature_len = strchr(arguments + i, ';')-1;
+        if (arguments[i+feature_len-1] == '+')
+            feature_len--;
         bool isSupported = false;
         size_t j = 0;
-        for (; j < sizeof(supported)/sizeof(supported[0]) && isSupported; j++)
-            if (uacpi_strncmp(arguments + i, supported[j], feature_len))
+        for (; j < sizeof(supported)/sizeof(supported[0]) && !isSupported; j++)
+            if (uacpi_strncmp(arguments + i, supported[j], feature_len) == 0)
                 isSupported = true;
         if (isSupported)
         {
+            // This bitfield was made specifically to match the indices of the supported array and have the same meaning.
+            con->gdb_supported |= (1<<j);
             size_t off = responseLen;
-            response = Kdbg_Realloc(response, (responseLen += (feature_len + 1)) + 1);
+            response = Kdbg_Realloc(response, (responseLen += (feature_len + 2)) + 1);
             memcpy(response + off, &arguments[i], feature_len);
-            response[off + feature_len-1] = '+';
-            response[off + feature_len]   = '\0';
+            response[off + feature_len] = '+';
+            response[off + feature_len+1] = ';';
         }
+        if (arguments[i+feature_len] == '+')
+            feature_len++;
         i += (feature_len + 1);
     }
     size_t featureLen = snprintf(nullptr, 0, "PacketSize=%lu", packet_size);
-    response = Kdbg_Realloc(response, responseLen+featureLen);
-    snprintf(response + responseLen, featureLen, "PacketSize=%lu", packet_size);
+    response = Kdbg_Realloc(response, responseLen+featureLen+1);
+    snprintf(response + responseLen, featureLen+1, "PacketSize=%lu", packet_size);
     responseLen += featureLen;
+    obos_status status = Kdbg_ConnectionSendPacket(con, response);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Kdbg_GDB_qAttached(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
@@ -186,11 +176,20 @@ obos_status Kdbg_GDB_qAttached(gdb_connection* con, const char* arguments, size_
     NO_CTX;
     return Kdbg_ConnectionSendPacket(con, "1");
 }
+obos_status Kdbg_GDB_vMustReplyEmpty(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
+{
+    NO_ARGUMENTS;
+    NO_USERDATA;
+    NO_CTX;
+    // TODO: Monitor commands.
+    return Kdbg_ConnectionSendPacket(con, "");
+}
 obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
     NO_ARGUMENTS;
+    NO_CTX;
     NO_RESPONSE;
     NO_USERDATA;
-    NO_CTX;
-    return OBOS_STATUS_SUCCESS;
+    // Monitor is unsupported on OBOS.
+    return Kdbg_ConnectionSendPacket(con, "4D6F6E69746F7220697320756E737570706F72746564206F6E204F424F532E0A");
 }

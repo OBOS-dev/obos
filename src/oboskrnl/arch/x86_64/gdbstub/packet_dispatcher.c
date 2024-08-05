@@ -43,7 +43,7 @@ static void initialize_hashmap()
     packet_handlers = hashmap_new_with_allocator(
         Kdbg_Malloc, Kdbg_Realloc, Kdbg_Free,
         sizeof(gdb_packet), 
-        0, 0, 0, 
+        64, 0, 0, 
         hash_packet, cmp_packet, 
         Kdbg_Free, 
         nullptr);
@@ -71,6 +71,7 @@ obos_status Kdbg_DispatchPacket(gdb_connection* con, const char* packet, size_t 
         return OBOS_STATUS_INVALID_ARGUMENT;
     char* name = nullptr;
     size_t nameLen = 1;
+    size_t argsOffset = 0;
     switch (*packet) {
         case 'v':
         {
@@ -84,29 +85,42 @@ obos_status Kdbg_DispatchPacket(gdb_connection* con, const char* packet, size_t 
         case 'Q':
         case 'q':
         {
-            nameLen = strchr(packet, ':');
-            if (nameLen != packetLen)
-                nameLen--;
+            nameLen = strchr(packet, ':') == packetLen ? strchr(packet, ',')-1 : strchr(packet, ':')-1;
             name = Kdbg_Calloc(nameLen + 1, sizeof(char));
             memcpy(name, packet, nameLen);
+            argsOffset = nameLen + (nameLen!=packetLen);
+            break;
+        }
+        case 'z':
+        case 'Z':
+        {
+            nameLen = 2;
+            name = Kdbg_Calloc(nameLen + 1, sizeof(char));
+            memcpy(name, packet, nameLen);
+            argsOffset = nameLen+(nameLen!=packetLen);
             break;
         }
         default:
         {
+            argsOffset = 1;
             name = Kdbg_Calloc(nameLen + 1, sizeof(char));
             name[0] = *packet;
             break;
         }
     }
-    const char* arguments = packet + nameLen;
-    size_t szArguments = packetLen - nameLen;
-	OBOS_Debug("%s\n", name);
-    const gdb_packet key = {
+    const char* arguments = packet + argsOffset;
+    size_t szArguments = packetLen - argsOffset;
+	const gdb_packet key = {
         .packet = name,
         .strlen_packet = nameLen,
     };
     const gdb_packet *found_packet = hashmap_get(packet_handlers, &key);
     if (!found_packet)
+    {
+        Kdbg_ConnectionSendPacket(con, "");
+        return OBOS_STATUS_UNHANDLED;
+    }
+    if (!strcmp(found_packet->packet, name))
     {
         Kdbg_ConnectionSendPacket(con, "");
         return OBOS_STATUS_UNHANDLED;

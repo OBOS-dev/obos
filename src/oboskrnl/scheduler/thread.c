@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -203,7 +204,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 }
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
 }

@@ -180,7 +180,7 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 		s_printfLock = Core_SpinlockCreate();
 	}
 	char ch[8];
-	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_MASKED, true);
+	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
 	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;

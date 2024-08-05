@@ -19,6 +19,8 @@ enum
 	IRQL_INVALID = 0xff,
 };
 
+// Internal-use only pls
+void CoreH_DispatchDPCs();
 /// <summary>
 /// Lowers the IRQL. Panics if 'to' > Core_GetIrql().
 /// </summary>

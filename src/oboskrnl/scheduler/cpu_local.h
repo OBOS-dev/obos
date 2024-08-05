@@ -35,8 +35,9 @@ typedef struct cpu_local
 	irql currentIrql;
 	bool initialized;
 	dpc_queue dpcs;
+	spinlock dpc_queue_lock;
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
 
-cpu_local* CoreS_GetCPULocalPtr();
+OBOS_EXPORT cpu_local* CoreS_GetCPULocalPtr();

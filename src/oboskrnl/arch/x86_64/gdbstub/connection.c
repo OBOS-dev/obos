@@ -28,7 +28,7 @@ static uint8_t mod256(const char* data, size_t len)
         checksum += data[i];
     return checksum;
 }
-static uintptr_t hex2bin(const char* str, unsigned size)
+uintptr_t KdbgH_hex2bin(const char* str, unsigned size)
 {
     uintptr_t ret = 0;
     str += *str == '\n';
@@ -118,12 +118,15 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
             return status;
         size_t nRead = 0;
         char ack = 0;
+        size_t spin = 0;
         try_again:
         status = conn->pipe_interface->read_sync(
             conn->pipe,
             &ack, 1,
             0,&nRead
         );
+        if ((spin++) >= 1000)
+            return OBOS_STATUS_SUCCESS;
         if (nRead != 1)
             goto try_again;
         if (obos_is_error(status))
@@ -137,115 +140,82 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
     }
     return OBOS_STATUS_RETRY;
 }
+static char recv_char(gdb_connection* conn)
+{
+    size_t nRead = 0;
+    const size_t nToRead = 1;
+    char ret = 0;
+    while(nRead < 1)
+        conn->pipe_interface->read_sync(conn->pipe, &ret, nToRead, 0, &nRead);
+    return ret;
+}
 obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_t* szPacket_)
 {
     if (!conn || !packet || !szPacket_)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // Read the raw packet.
     retry:
     (void)0;
-    char* raw_packet = nullptr;
-    size_t offset = 0;
-    size_t szPacket = 0;
-    obos_status status = OBOS_STATUS_SUCCESS;
-    bool foundChecksum = false;
-    size_t szChecksum = 0;
-    size_t checksumOffset = 0;
-    bool isEscaped = false;
-    bool foundEscapedChar = false;
-    size_t nRetries = 0;
-    if (nRetries == 5)
-        return OBOS_STATUS_INTERNAL_ERROR;
-    while (szChecksum < 2)
+    char* rawPacket = nullptr;
+    size_t szRawPacket = 0;
+    size_t capRawPacket = 0;
+    const size_t step = 8;
+    char ch = 0;
+    uint8_t calculatedChecksum = 0;
+    uint8_t remoteChecksum = 0;
+    char checksum[2] = {};
+    bool ack = true;
+    size_t spin = 0;
+    while((ch = recv_char(conn)) != '$' && spin++ < 500000)
+        __builtin_ia32_pause();
+    if (ch != '$')
     {
-        char ch = 0;
-        size_t nRead = 0;
-        status = conn->pipe_interface->read_sync(
-            conn->pipe,
-            &ch, 1,
-            0,&nRead
-        );
-        if (nRead != 1)
-            continue;
-        if (obos_is_error(status))
-            return status;
-        if (!isEscaped)
-            if (ch == '}')
-                isEscaped = true;
-            else {}
+        ack = false;
+        goto acknowledge;
+    }
+    bool isEscaped = false;
+    while((ch = recv_char(conn)) != '#')
+    {
+        if (szRawPacket >= capRawPacket)
+        {
+            capRawPacket += step;
+            rawPacket = Kdbg_Realloc(rawPacket, capRawPacket);
+        }
+        calculatedChecksum += ch;
+        if (ch == '}' && !isEscaped)
+            isEscaped = true;
         else
         {
-            foundEscapedChar = true;
-            // ch ^= 0x20;
-        }
-        raw_packet = Kdbg_Realloc(raw_packet, ++szPacket);
-        raw_packet[szPacket - 1] = ch;
-        if (foundChecksum)
-            szChecksum++;
-        if (ch == '#' && !isEscaped)
-        {
-            foundChecksum = true;
-            checksumOffset = szPacket;
-        }
-        if (foundEscapedChar && isEscaped)
-        {
-            foundEscapedChar = false;
-            isEscaped = false;
+            if (isEscaped)
+            {
+                isEscaped = false;
+                ch ^= 0x20; // unescape the character.
+            }
+            rawPacket[szRawPacket++] = ch;
         }
     }
-    char ack = '+';
-    while(offset < szPacket && raw_packet[0] != '$')
+    checksum[0] = recv_char(conn);
+    checksum[1] = recv_char(conn);
+    remoteChecksum = KdbgH_hex2bin(checksum, 2);
+    ack = remoteChecksum == calculatedChecksum;
+    acknowledge:
+    (void)0;
+    char ackCh = ack ? '+' : '-';
+    conn->pipe_interface->write_sync(conn->pipe, &ackCh, 1, 0, nullptr);
+    if (!ack)
     {
-        raw_packet++;
-        offset++;
-    }
-    checksumOffset -= offset;
-    if (offset == szPacket)
-    {
-        ack = '-';
-        goto acknoledge;
-    }
-    uint8_t checksum = hex2bin(&raw_packet[checksumOffset], 2);
-    size_t packetSz = checksumOffset-2;
-    uint8_t calculatedChecksum = mod256(&raw_packet[1], packetSz);
-    if (checksum != calculatedChecksum)
-        ack = '-';
-    acknoledge:
-    status = conn->pipe_interface->write_sync(
-        conn->pipe,
-        &ack, 1,
-        0,nullptr
-    );
-    if (obos_is_error(status))
-        return status;
-    if (ack == '-' && (conn->flags & FLAGS_ENABLE_ACK))
-    {
-        Kdbg_Free(raw_packet - offset);
-        raw_packet = nullptr;
-        packetSz = 0;
+        Kdbg_Free(rawPacket);
+        capRawPacket = 0;
+        szRawPacket = 0;
         goto retry;
     }
-    *packet = Kdbg_Calloc(packetSz+1, sizeof(char));
-    for (size_t i = 0; i < packetSz; i++)
+    if (szRawPacket >= capRawPacket)
     {
-        bool canAdd = false;
-        if (!isEscaped)
-            if (raw_packet[i+1] == '}')
-                isEscaped = true;
-            else
-                canAdd = true;
-        else
-        {
-            raw_packet[i+1] ^= 0x20;
-            canAdd = true;
-        }
-        if (canAdd)
-        {
-            (*packet)[i-isEscaped] = raw_packet[i+1];
-            (*szPacket_)++;
-        }
+        capRawPacket += step;
+        rawPacket = Kdbg_Realloc(rawPacket, capRawPacket);
     }
-    Kdbg_Free(raw_packet - offset);
+    rawPacket[szRawPacket] = 0;
+    *packet = rawPacket;
+    *szPacket_ = szRawPacket;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Kdbg_ConnectionSetAck(gdb_connection* conn, bool ack)
@@ -270,5 +240,14 @@ char* KdbgH_FormatResponse(const char* format, ...)
     char* buf = Kdbg_Calloc(bufSize+1, sizeof(char));
     vsnprintf(buf, bufSize+1, format, list2);
     va_end(list2);
+    return buf;
+}
+char* KdbgH_FormatResponseSized(size_t bufSize, const char* format, ...)
+{
+    va_list list;
+    va_start(list, format);
+    char* buf = Kdbg_Calloc(bufSize+1, sizeof(char));
+    vsnprintf(buf, bufSize+1, format, list);
+    va_end(list);
     return buf;
 }

@@ -19,44 +19,51 @@
 
 irql s_irql = IRQL_MASKED;
 
-irql* Core_GetIRQLVar()
+OBOS_NO_UBSAN OBOS_NO_KASAN irql* Core_GetIRQLVar()
 {
 	if (!CoreS_GetCPULocalPtr())
 		return &s_irql;
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 
-irql Core_RaiseIrql(irql to)
+OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrql(irql to)
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 	return oldIrql;
 }
-void Core_LowerIrql(irql to)
+OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrql(irql to)
 {
 	Core_LowerIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 }
-void Core_LowerIrqlNoThread(irql to)
+OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
+{
+	// Run pending DPCs on the current CPU.
+	for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
+	{
+		dpc* next = LIST_GET_NEXT(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
+		LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
+		cur->cpu = nullptr;
+		cur->handler(cur, cur->userdata);
+		cur = next;
+	}
+}
+OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoThread(irql to)
 {
 	Core_LowerIrqlNoDPCDispatch(to);
 	if (to < IRQL_DISPATCH && CoreS_GetCPULocalPtr())
 	{
-		// Run pending DPCs on the current CPU.
-		for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
-		{
-			dpc* next = LIST_GET_NEXT(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
-			LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
-			cur->handler(cur, cur->userdata);
-			cur = next;
-		}
+		CoreS_SetIRQL(IRQL_DISPATCH);
+		*Core_GetIRQLVar() = IRQL_DISPATCH;
+		CoreH_DispatchDPCs();
 		*Core_GetIRQLVar() = to;
 		CoreS_SetIRQL(to);
 	}
 }
-void Core_LowerIrqlNoDPCDispatch(irql to)
+OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());
@@ -68,7 +75,7 @@ void Core_LowerIrqlNoDPCDispatch(irql to)
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to);
 }
-irql Core_RaiseIrqlNoThread(irql to)
+OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());
@@ -82,7 +89,7 @@ irql Core_RaiseIrqlNoThread(irql to)
 	*Core_GetIRQLVar() = to;
 	return oldIRQL;
 }
-irql Core_GetIrql()
+OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_GetIrql()
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar());

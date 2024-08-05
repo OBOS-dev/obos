@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "scheduler/thread_context_info.h"
 #include <int.h>
 #include <klog.h>
 
@@ -162,7 +163,7 @@ schedule:
 	}
 	// thread* oldCurThread = getCurrentThread;
 	// getCurrentThread = nullptr;
-	(void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
+	// (void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
 	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
@@ -244,7 +245,7 @@ switch_thread:
 	chosenThread->quantum = 0 /* should be zero, but reset it anyway */;
 	if (getCurrentThread && threadCanRunThread(getCurrentThread))
 		getCurrentThread->status = THREAD_STATUS_READY;
-	Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
+	// Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
 	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
@@ -258,7 +259,7 @@ void Core_Yield()
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() <= IRQL_DISPATCH)
 	{
-		oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+		oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 		OBOS_ASSERT(!(oldIrql & ~0xf));
 	}
 	if (getCurrentThread)
@@ -269,7 +270,7 @@ void Core_Yield()
 			if (oldIrql != IRQL_INVALID)
 			{
 				OBOS_ASSERT(!(oldIrql & ~0xf));
-				Core_LowerIrqlNoThread(oldIrql);
+				Core_LowerIrql(oldIrql);
 			}
 			return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 		}
@@ -277,7 +278,7 @@ void Core_Yield()
 		if (oldIrql != IRQL_INVALID)
 		{
 			OBOS_ASSERT(!(oldIrql & ~0xf));
-			Core_LowerIrqlNoThread(oldIrql);
+			Core_LowerIrql(oldIrql);
 		}
 		return;
 	}
@@ -285,6 +286,6 @@ void Core_Yield()
 	if (oldIrql != IRQL_INVALID)
 	{
 		OBOS_ASSERT(!(oldIrql & ~0xf));
-		Core_LowerIrqlNoThread(oldIrql);
+		Core_LowerIrql(oldIrql);
 	}
 }

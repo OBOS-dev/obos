@@ -1,6 +1,6 @@
 /*
  * drivers/x86_64/uart/serial_port.c
- * 
+ *
  * Copyright (c) 2024 Omar Berrow
 */
 
@@ -15,6 +15,11 @@
 
 #include <arch/x86_64/ioapic.h>
 
+#include <arch/x86_64/gdbstub/debug.h>
+
+#include <scheduler/thread.h>
+#include <scheduler/cpu_local.h>
+
 #include <irq/dpc.h>
 
 #include <driver_interface/header.h>
@@ -22,7 +27,6 @@
 #include <irq/irql.h>
 
 #include "serial_port.h"
-#include "scheduler/thread.h"
 
 
 void append_to_buffer_char(buffer* buf, char what)
@@ -84,6 +88,7 @@ void flush_out_buffer(serial_port* port)
         outb(port->port_base + IO_BUFFER, pop_from_buffer(&port->out_buffer));
 }
 
+const size_t irq_rate = 1;
 obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit, dev_desc* connection)
 {
     if (!port || !baudRate)
@@ -114,7 +119,7 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     }
     // Enter normal transmission mode.
     port->isFaulty = false;
-    outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when one byte is received, other flags */);
+    outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when four bytes are received, other flags */);
     outb(port->port_base + MODEM_CTRL, 0xF /* DTR+RTS+OUT2+OUT1*/);
     outb(port->port_base + IRQ_ENABLE, 1);
     Arch_IOAPICMaskIRQ(port->gsi, false);
@@ -123,47 +128,45 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     return OBOS_STATUS_SUCCESS;
 }
 
-bool workPending = false;
-void com_dpc_handler(struct dpc* work, void* userdata)
+static dpc com_dpc;
+static dpc kdbg_int_dpc;
+static bool should_break;
+static void dpc_handler(dpc* obj, void* userdata)
 {
     serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
-    if (lineStatusRegister & BIT(0))
-    {
-        // Receive all the avaliable data.
-        irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_DISPATCH, false);
-        while (inb(port->port_base + LINE_STATUS) & BIT(0))
-        {
-            append_to_buffer_char(&port->in_buffer, inb(port->port_base + IO_BUFFER));
-            printf("%c", port->in_buffer.buf[port->in_buffer.szBuf - 1]);
-        }
-        Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
-    }
     if (lineStatusRegister & BIT(5))
     {
         // Send all the data in the output buffer.
-        irql oldIrql = Core_SpinlockAcquireExplicit(&port->out_buffer.lock, IRQL_DISPATCH, false);
+        irql oldIrql = Core_SpinlockAcquireExplicit(&port->out_buffer.lock, IRQL_COM_IRQ, false);
         flush_out_buffer(port);
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
-    CoreH_FreeDPC(work);
-    workPending = false;
+    if (should_break)
+    {
+        // OBOS_Debug("GDB requested break.\n");
+        should_break = false;
+        Kdbg_Break();
+    }
 }
-void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql_)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
-    OBOS_UNUSED(oldIrql);
-    // TODO: Is this a good idea?
-    // NOTE(oberrow): Whether having the "workPending" variable exist or not.
-    // NOTE(oberrow): It wasn't
-    // if (!workPending)
-    // {
-    dpc *work = CoreH_AllocateDPC(nullptr);
-    work->userdata = userdata;
-    CoreH_InitializeDPC(work, com_dpc_handler, Core_DefaultThreadAffinity);
-    workPending = true; 
-    // }
+    OBOS_UNUSED(oldIrql_);
+    serial_port *port = userdata;
+    com_dpc.userdata = userdata;
+    CoreH_InitializeDPC(&com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
+    // Receive all the avaliable data.
+    irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+    while (inb(port->port_base + LINE_STATUS) & BIT(0))
+    {
+        char ch = inb(port->port_base+IO_BUFFER);
+        append_to_buffer_char(&port->in_buffer, ch);
+        if (ch == '\x03')
+            should_break = Kdbg_CurrentConnection->connection_active;
+    }
+    Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {
