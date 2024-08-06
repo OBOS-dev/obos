@@ -4,7 +4,7 @@
 
 cmake_minimum_required(VERSION 3.7)
 
-project(OBOS C CXX)
+project(OBOS C CXX ASM)
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	enable_language(ASM_NASM)
 else()
