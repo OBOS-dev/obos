@@ -192,3 +192,33 @@ typedef struct
 	Elf32_Half e_shnum;
 	Elf32_Half e_shstrndx;
 } Elf32_Ehdr, Elf_Ehdr;
+
+
+#ifdef __m68k__
+// refer to sysv-m68k-abi-part3.pdf page 6 for info on relocations
+enum
+{
+	R_68K_NONE,
+	R_68K_32,
+	R_68K_16,
+	R_68K_8,
+	R_68K_PC32,
+	R_68K_PC16,
+	R_68K_GOT32,
+	R_68K_GOT16,
+	R_68K_GOT8,
+	R_68K_GOT320,
+	R_68K_GOT160,
+	R_68K_GOT80,
+	R_68K_PLT32,
+	R_68K_PLT16,
+	R_68K_PLT8,
+	R_68K_PLT320,
+	R_68K_PLT160,
+	R_68K_PLT80,
+	R_68K_COPY,
+	R_68K_GLOB_DAT,
+	R_68K_JUMP_SLOT,
+	R_68K_RELATIVE,
+};
+#endif
