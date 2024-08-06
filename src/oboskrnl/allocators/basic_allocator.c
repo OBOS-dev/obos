@@ -64,7 +64,7 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
-			uintptr_t phys = Arch_AllocatePhysicalPages(nPages, 1, status);
+			uintptr_t phys = OBOSS_AllocatePhysicalPages(nPages, 1, status);
 			if (!phys)
 				return nullptr;
 			// Arch-specific:
@@ -74,6 +74,9 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 #ifdef __x86_64__
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
+#elif defined(__m68k__)
+			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
+			ret = 0;
 #else
 #	error Unknown architecture
 #endif

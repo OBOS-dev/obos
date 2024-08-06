@@ -191,7 +191,7 @@ driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
             "Drv_Top",
         };
         int symbolType = -1;
-		switch (ELF64_ST_TYPE(esymbol->st_info)) 
+		switch (ELF_ST_TYPE(esymbol->st_info)) 
 		{
 			case STT_FUNC:
 				symbolType = SYMBOL_TYPE_FUNCTION;

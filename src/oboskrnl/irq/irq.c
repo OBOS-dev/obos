@@ -29,13 +29,14 @@ irq* Core_IrqObjectAllocate(obos_status* status)
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
- void Core_IRQDispatcher(interrupt_frame* frame)
+void Core_IRQDispatcher(interrupt_frame* frame)
 {
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ <= Core_GetIrql()\").");
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
-	CoreS_EnterIRQHandler(frame);
+	if (!CoreS_EnterIRQHandler(frame))
+		return;
 	CoreS_SendEOI(frame);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;

@@ -4,7 +4,12 @@
 
 cmake_minimum_required(VERSION 3.7)
 
-project(OBOS C ASM_NASM)
+project(OBOS C CXX)
+if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+	enable_language(ASM_NASM)
+else()
+	enable_language(ASM-ATT)
+endif()
 
 # Download dependencies.
 # NOTE: As dependencies are added, please add them to the .gitignore file.
@@ -18,18 +23,22 @@ endif()
 set (OBOSKRNL_EXTERNAL_INCLUDES "${CMAKE_SOURCE_DIR}/dependencies/include")
 if (OBOS_REFRESH_DEPENDENCIES)
 	file(MAKE_DIRECTORY "dependencies/include")
-	message("Fetching Hyper.")
-	include("dependencies/hyper.cmake")
-	message("Fetching uACPI.")
-	include ("dependencies/uacpi.cmake")
+	if (OBOS_ARCHITECTURE STREQUAL "x86_64")
+		message("Fetching Hyper.")
+		include("dependencies/hyper.cmake")
+	endif()
+	if (OBOS_ARCHITECTURE_HAS_ACPI)
+		message("Fetching uACPI.")
+		include ("dependencies/uacpi.cmake")
+	endif()
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
 else()
-	if (NOT EXISTS hyper_install)
+	if (NOT EXISTS hyper_install AND OBOS_ARCHITECTURE STREQUAL "x86_64")
 		include("dependencies/hyper.cmake")
 	endif()
-	if (NOT EXISTS uacpi_cmake_file)
+	if (NOT EXISTS uacpi_cmake_file AND OBOS_ARCHITECTURE_HAS_ACPI)
         include("dependencies/uacpi.cmake")
 	endif()
 endif()
@@ -82,6 +91,7 @@ else()
 	set(OBOS_ENABLE_KASAN "0")
 endif()
 add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})
 
 add_compile_definitions(
 	$<$<CONFIG:Debug>:OBOS_DEBUG>
@@ -89,6 +99,9 @@ add_compile_definitions(
 	$<$<CONFIG:RelWithDebInfo>:OBOS_RELEASE>
 	$<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 )
+
+set_property(GLOBAL PROPERTY C_STANDARD 17
+					PROPERTY C_STANDARD_REQUIRED true)
 
 # Include the kernel
 add_subdirectory("src/oboskrnl")
@@ -98,6 +111,6 @@ if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86_64/uart")
 endif()
 add_subdirectory("src/isogen")
-
-set_property(GLOBAL PROPERTY C_STANDARD 17
-				    PROPERTY C_STANDARD_REQUIRED true)
+if (OBOS_ARCHITECTURE STREQUAL "m68k")
+	add_subdirectory("src/oboskrnl/arch/m68k/loader")
+endif()

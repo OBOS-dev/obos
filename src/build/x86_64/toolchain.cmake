@@ -7,9 +7,10 @@ if (NOT HAS_CROSS_COMPILER)
 endif()
 
 set(CMAKE_C_COMPILER "x86_64-elf-gcc")
-set(CMAKE_ASM-ATT_COMPILER "x86_64-elf-gcc")
+set(CMAKE_CXX_COMPILER "x86_64-elf-g++")
 set(CMAKE_ASM_NASM_COMPILER "nasm")
 set(CMAKE_C_COMPILER_WORKS true)
+set(CMAKE_CXX_COMPILER_WORKS true)
 set(CMAKE_ASM_NASM_COMPILER_WORKS true)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
@@ -66,3 +67,5 @@ set (OBOS_ARCHITECTURE_BITS 64) # 64-bit architecture.
 set (OBOS_ARCHITECTURE_ENDIANNESS "Little-Endian") # Little-Endian architecture.
 set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/x86_64/link.ld")
 set (DRIVER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/x86_64/driver_link.ld")
+set (OBOS_ARCHITECTURE_HAS_ACPI 1)
+set (OBOS_IRQL_COUNT 16)

@@ -16,20 +16,20 @@
 /// <param name="at">The address of the page to map.</param>
 /// <param name="phys">The physical address that should correspond to said page.</param>
 /// <returns>The status of the function.</returns>
-obos_status OBOSS_MapPage_RW_XD(void* at, uintptr_t phys);
+OBOS_WEAK obos_status OBOSS_MapPage_RW_XD(void* at, uintptr_t phys);
 /// <summary>
 /// Unmaps a page.
 /// </summary>
 /// <param name="at">The address of the page to unmap.</param>
 /// <returns>The status of the function.</returns>
-obos_status OBOSS_UnmapPage(void* at);
+OBOS_WEAK obos_status OBOSS_UnmapPage(void* at);
 /// <summary>
 /// Queries the physical address of an address.
 /// </summary>
 /// <param name="at">The address to query.</param>
 /// <param name="oPhys">[out] The physical address.</param>
 /// <returns>The status of the function.</returns>
-obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
+OBOS_WEAK obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
 
 
 typedef struct basicmm_region
@@ -53,14 +53,14 @@ typedef struct basicmm_region
 /// <param name="alignment">The alignment (in pages) of the address returned. Must be a power of two.</param>
 /// <param name="status">[out,optional] The function's status. Can be nullptr.</param>
 /// <returns>The address of the allocated region.</returns>
-uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status);
+OBOS_WEAK uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status);
 /// <summary>
 /// Frees physical pages.
 /// </summary>
 /// <param name="base">The base of said pages.</param>
 /// <param name="nPages">The amount of pages to free.</param>
 /// <returns>The status of the function.</returns>
-obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages);
+OBOS_WEAK obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages);
 
 /// <summary>
 /// Allocates pages as RW XD.<para/>

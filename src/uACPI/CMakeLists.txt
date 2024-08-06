@@ -2,9 +2,10 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-include (${uacpi_cmake_file})
-
-uacpi_add_sources()
+if (OBOS_ARCHITECTURE_HAS_ACPI)
+	include (${uacpi_cmake_file})
+	uacpi_add_sources()
+endif()
 
 add_library(uacpi STATIC ${UACPI_SOURCES} "kernel_api.c")
 
@@ -25,8 +26,7 @@ target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
 target_include_directories(uacpi PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 target_include_directories(uacpi PUBLIC "${CMAKE_SOURCE_DIR}/src/uACPI")
 
-target_link_libraries(uacpi PRIVATE gcc
-)
+target_link_libraries(uacpi PRIVATE ${LIBGCC})
 
 target_compile_definitions(uacpi
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>
@@ -37,7 +37,8 @@ target_compile_definitions(uacpi
 	PUBLIC UACPI_OVERRIDE_ARCH_HELPERS=1
     PUBLIC UACPI_FORMATTED_LOGGING=1
     PUBLIC OBOS_KERNEL=1
-	)
+	PRIVATE OBOS_ARCHITECTURE_HAS_ACPI=${OBOS_ARCHITECTURE_HAS_ACPI}
+)
 target_link_options(uacpi
 	PRIVATE "-nostdlib"
 )
