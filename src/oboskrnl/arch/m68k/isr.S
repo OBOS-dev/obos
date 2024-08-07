@@ -40,7 +40,7 @@ isr_stub:
 
 // Call the handler
     mulu #4, %d0
-    move.l (%d0,Arch_IrqHandlers), %a0
+    move.l (%d0,Arch_IRQHandlers), %a0
     
     move.l %sp, %d0
     move.l %d0, -(%sp)
