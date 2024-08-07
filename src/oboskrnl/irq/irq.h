@@ -28,9 +28,8 @@
 #	include <arch/x86_64/interrupt_frame.h>
 #	define OBOS_MAX_INTERRUPT_VECTORS (256-32)
 #elif defined(__m68k__)
+#	include <arch/m68k/interrupt_frame.h>
 typedef uint8_t irq_vector_id;
-// TODO:
-typedef struct interrupt_frame {irq_vector_id vector;} interrupt_frame;
 #	define OBOS_MAX_INTERRUPT_VECTORS (256-64)
 #	define OBOS_IRQ_VECTOR_ID_MAX (256)
 #	define OBOS_IRQ_VECTOR_ID_COUNT_PER_IRQL (32)

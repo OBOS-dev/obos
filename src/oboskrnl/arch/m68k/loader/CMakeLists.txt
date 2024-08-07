@@ -13,7 +13,7 @@ target_sources(m68k_bootloader PRIVATE
 add_dependencies(m68k_bootloader oboskrnl)
 
 set_source_files_properties(
-    "Main.cpp"
+    "Loader.cpp"
     PROPERTIES
     OBJECT_DEPENDS "${OUTPUT_DIR}/oboskrnl"
 )

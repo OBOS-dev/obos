@@ -33,13 +33,14 @@ if (HAS_x86_64_elf_nm)
 else()
 	set(NM "nm")
 endif()
-set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040)
-set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040)
-set(TARGET_LINKER_OPTIONS)
-set(TARGET_DRIVER_LINKER_OPTIONS)
+set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040 -msoft-float)
+set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040 -msoft-float)
+set(TARGET_LINKER_OPTIONS -march=68040)
+set(TARGET_DRIVER_LINKER_OPTIONS -march=68040)
 
 list (APPEND oboskrnl_sources 
-	"arch/m68k/entry.c" "arch/m68k/memmanip.c"
+	"arch/m68k/entry.c" "arch/m68k/memmanip.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c"
+	"arch/m68k/irq.c" "arch/m68k/isr.S"
 )
 
 add_compile_definitions(
@@ -56,3 +57,4 @@ set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/link.ld")
 set (DRIVER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/driver_link.ld")
 set (OBOS_ARCHITECTURE_HAS_ACPI 0)
 set (OBOS_IRQL_COUNT 8)
+set (OBOS_UP 1) # The m68k doesn't support SMP, so we disable it as a [POSSIBLE] optimization
