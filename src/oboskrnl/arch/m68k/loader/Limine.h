@@ -568,6 +568,27 @@ struct limine_dtb_request {
     LIMINE_PTR(struct limine_dtb_response *) response;
 };
 
+#ifdef __m68k__
+
+/* Address of the boot info */
+
+#define LIMINE_BOOT_INFO_REQUEST { LIMINE_COMMON_MAGIC, 0x53aa5a53e788b, 0x1dbf43fc4704ea }
+
+struct limine_boot_info_response
+{
+    uint64_t revision;
+    uintptr_t phys_base;
+    uintptr_t uart_phys_base;
+};
+
+struct limine_boot_info_request {
+    uint64_t id[4];
+    uint64_t revision;
+    LIMINE_PTR(struct limine_boot_info_response *) response;
+};
+
+#endif
+
 #ifdef __cplusplus
 }
 #endif

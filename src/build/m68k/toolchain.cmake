@@ -33,19 +33,31 @@ if (HAS_x86_64_elf_nm)
 else()
 	set(NM "nm")
 endif()
-set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040 -msoft-float)
-set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -fasan-shadow-offset=0 -march=68040 -msoft-float)
+set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
+set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
 set(TARGET_LINKER_OPTIONS -march=68040)
 set(TARGET_DRIVER_LINKER_OPTIONS -march=68040)
 
+if (DEFINED OBOS_ENABLE_KASAN)
+	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fasan-shadow-offset=0>)
+endif()
+
+add_compile_options("-march=68040")
+
 list (APPEND oboskrnl_sources 
 	"arch/m68k/entry.c" "arch/m68k/memmanip.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c"
-	"arch/m68k/irq.c" "arch/m68k/isr.S"
+	"arch/m68k/irq.c" "arch/m68k/isr.S" "arch/m68k/thread_ctx.S" "arch/m68k/thread_ctx.c"
+	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/initial_swap.c"
+	"arch/m68k/goldfish_pic.c"
 )
 
 add_compile_definitions(
-	OBOS_PAGE_SIZE=4096 OBOS_HUGE_PAGE_SIZE=8192 
-	OBOS_KERNEL_ADDRESS_SPACE_BASE=0x80000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffff000 
+	OBOS_PAGE_SIZE=4096 
+	# OBOS_HUGE_PAGE_SIZE=8192
+# TODO(oberrow): Does the m68040's mmu support large pages, or does it simply just provide two page sizes
+# that can be switched
+	OBOS_HUGE_PAGE_SIZE=4096 
+	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xc0000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffff000 
 	OBOS_USER_ADDRESS_SPACE_BASE=0x1000 OBOS_USER_ADDRESS_SPACE_LIMIT=0x80000000
 )
 add_compile_options($<$<CONFIG:Debug>:-g>)

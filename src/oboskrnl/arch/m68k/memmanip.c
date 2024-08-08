@@ -37,9 +37,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp(const void* blk1_, const void* blk2_, si
 }
 OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp_b(const void* blk1_, int against, size_t count)
 {
-	const char *blk1 = (const char*)blk1_;
+	const uint8_t *blk1 = (const uint8_t*)blk1_;
 	for (size_t i = 0; i < count; i++)
-		if (blk1[i] != against)
+		if (blk1[i] != (uint8_t)against)
 			return false;
 	return true;
 }

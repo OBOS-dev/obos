@@ -154,6 +154,18 @@ typedef struct Elf32_Shdr
     Elf32_Word sh_entsize;
 } Elf32_Shdr, Elf_Shdr;
 
+typedef struct Elf32_Phdr
+{
+	Elf32_Word p_type;
+	Elf32_Off p_offset;
+	Elf32_Addr p_vaddr;
+	Elf32_Addr p_paddr;
+	Elf32_Word p_filesz;
+	Elf32_Word p_memsz;
+	Elf32_Word p_flags;
+	Elf32_Word p_align;
+} ELf32_Phdr, Elf_Phdr;
+
 typedef struct Elf32_Sym
 {
     Elf32_Word st_name;

@@ -214,6 +214,8 @@ namespace Npl
             limine_memmap_entry* entry = entries++;
             entry->base = it->base;
             entry->length = it->length;
+            if ((uintptr_t)LOADER_BLOB_END >= entry->base && (uintptr_t)LOADER_BLOB_END < entry->base+entry->length && it->type == MemoryType::Usable)
+                Panic(PanicReason::InternalAllocFailure);
 
             switch (it->type)
             {

@@ -8,20 +8,17 @@
 // uint32_t getSR();
 .global setSR
 .global getSR
+.global pflush
 
-setSR:
-    link %a6,#-0
-    
-    move.l %a6,-(%sp)
-    move.l %d0,(-8,%a6)
+setSR:    
+    move.l (+4,%a7), %d0
     move.w %d0, %sr
-    
-    unlk %a6
+
     rts
 getSR:
-    link %a6,#-0
-
     move.w %sr, %d0
-
-    unlk %a6
+    rts
+pflush:
+    move.l (4, %sp), %a0
+    pflush %a0
     rts

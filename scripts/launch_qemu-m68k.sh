@@ -10,6 +10,7 @@ qemu-system-m68k \
 -s -S \
 -m 512M \
 -d int \
--D qemu_log.txt
+-D qemu_log.txt \
+-serial file:/dev/stdout
 
 cd scripts

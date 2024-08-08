@@ -22,12 +22,13 @@ obos_status Mm_SwapOut(page* page)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!page)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!page->inWorkingSet);
-    if (!page->pageable || page->inWorkingSet)
+    OBOS_ASSERT(!page->workingSets);
+    if (!page->pageable || page->workingSets > 0)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t nPages = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE : 1;
     uintptr_t id;
     uintptr_t phys = 0;
+    // TODO: Use a function that takes in a context.
     obos_status status = OBOSS_GetPagePhysicalAddress((void*)page->addr, &phys);
     if (obos_is_error(status))
         return status;

@@ -31,6 +31,7 @@ typedef uintptr_t page_table;
 OBOS_WEAK obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* info);
 /// <summary>
 /// Gets the current page table.
+/// <para/>NOTE: This always returns the kernel page table.
 /// </summary>
 /// <returns>The current page table.</returns>
 OBOS_WEAK page_table MmS_GetCurrentPageTable();
@@ -46,6 +47,7 @@ OBOS_WEAK obos_status MmS_SetPageMapping(page_table pt, const page* page, uintpt
 typedef struct working_set
 {
     page_list pages;
+    size_t capacity;
     size_t size;
 } working_set;
 typedef struct context

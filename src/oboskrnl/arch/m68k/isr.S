@@ -5,6 +5,7 @@
 */
 
 .global isr_stub
+.global Arch_SimulateIRQ
 .extern Arch_IrqHandlers
 
 isr_stub:
@@ -13,6 +14,7 @@ isr_stub:
 
 // Align the stack
     move.w #0, -(%sp)
+
     .cfi_def_cfa %sp, 0
 	.cfi_offset %pc, 4
 
@@ -42,8 +44,7 @@ isr_stub:
     mulu #4, %d0
     move.l (%d0,Arch_IRQHandlers), %a0
     
-    move.l %sp, %d0
-    move.l %d0, -(%sp)
+    move.l %sp, -(%sp)
 	.cfi_adjust_cfa_offset 4
     
     cmp #0, %a0
@@ -68,3 +69,20 @@ isr_stub:
 
     rte
     .cfi_endproc
+// Simulates an incoming IRQ on the vector passed.
+Arch_SimulateIRQ:
+// d0: Contains the VBR.
+// d1: Contains the vector.
+// a0: Contains the vector handler.
+    move.l (4,%sp), %d1
+    movec.l %vbr, %d0
+    mulu #4, %d1
+    move.l %d1, %a0
+    move.w %d1, %sp@-
+    move.l #ret, %sp@-
+    move.w %sr, %sp@-
+    adda.l %d0, %a0
+    move.l (%a0), %a0
+    jmp (%a0)
+ret:
+    rts

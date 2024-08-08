@@ -44,6 +44,7 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
 */
 
 // Returns false if the quantum is done, otherwise true if the action was completed
+#ifndef OBOS_UP
 static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
@@ -136,6 +137,7 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 		}
 	}
 }
+#endif
 
 //static spinlock s_lock;
 // This should be assumed to be called with the current thread's context saved.
@@ -166,22 +168,27 @@ schedule:
 	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
-	size_t nPriorityListsFQuantum = 0;
-	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
+#ifndef OBOS_UP
+	if (Core_CpuCount > 1)
 	{
-		thread_priority_list* list = priorityList(priority);
-		if (priority < THREAD_PRIORITY_MAX_VALUE)
-			nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
-		WorkStealing(list, priority);
-	}
-	if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
-	{
-		for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
+		size_t nPriorityListsFQuantum = 0;
+		for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
 		{
 			thread_priority_list* list = priorityList(priority);
-			list->noStarvationQuantum = 0;
+			if (priority < THREAD_PRIORITY_MAX_VALUE)
+				nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
+			WorkStealing(list, priority);
+		}
+		if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
+		{
+			for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
+			{
+				thread_priority_list* list = priorityList(priority);
+				list->noStarvationQuantum = 0;
+			}
 		}
 	}
+#endif
 	thread* chosenThread = nullptr;
 	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
 		CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];

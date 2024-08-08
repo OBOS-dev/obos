@@ -31,7 +31,7 @@
 #	include <arch/m68k/interrupt_frame.h>
 typedef uint8_t irq_vector_id;
 #	define OBOS_MAX_INTERRUPT_VECTORS (256-64)
-#	define OBOS_IRQ_VECTOR_ID_MAX (256)
+#	define OBOS_IRQ_VECTOR_ID_MAX (256-64)
 #	define OBOS_IRQ_VECTOR_ID_COUNT_PER_IRQL (32)
 #	define OBOS_IRQ_VECTOR_ID_TO_IRQL(x) ((irql)(((x)-64)/12+2))
 #	define OBOS_IRQL_TO_IRQ_VECTOR_ID(x) ((irq_vector_id)(((x)<<4)))

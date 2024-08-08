@@ -125,8 +125,11 @@ void CoreS_ExitIRQHandler(interrupt_frame *frame)
     Arch_SetHardwareIPL(7);
     return;
 }
-// TODO:
-OBOS_WEAK extern void Arch_CallDeferredIrq(m68k_dirq* irq);
+void Arch_CallDeferredIrq(m68k_dirq* irq, m68k_dirq* table)
+{
+    uint8_t vector = irq-table;
+    Arch_SimulateIRQ(vector);
+}
 void CoreS_SetIRQL(uint8_t to)
 {
     if (to == IRQL_MASKED)
@@ -141,7 +144,7 @@ void CoreS_SetIRQL(uint8_t to)
     for (m68k_dirq* curr = deferred->tail; curr; )
     {
         for (size_t i = 0; i < curr->nDefers; i++)
-            Arch_CallDeferredIrq(curr);
+            Arch_CallDeferredIrq(curr, CoreS_GetCPULocalPtr()->arch_specific.irqs);
         curr = curr->prev;
     }
 }

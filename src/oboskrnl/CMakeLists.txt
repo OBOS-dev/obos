@@ -14,6 +14,7 @@ list (APPEND oboskrnl_sources
 add_executable(oboskrnl)
 
 set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
+set_source_files_properties("klog.c" PROPERTIES COMPILE_OPTIONS "-Wno-error")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>

@@ -51,7 +51,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             return OBOS_STATUS_UNHANDLED; // TODO: Signal the thread.
         }
         // If this assertion fails, something stupid has happened.
-        OBOS_ASSERT(!page->inWorkingSet);
+        OBOS_ASSERT(!page->workingSets);
         obos_status status = Mm_SwapIn(page);
         if (obos_is_error(status))
         {
@@ -63,7 +63,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         page->prot.touched = false;
         APPEND_PAGE_NODE(ctx->referenced, &page->ln_node);
         // TODO: Try to figure out a better number based off the count of pages in the context/working-set.
-        const size_t threshold = (ctx->workingSet.size / 4) / OBOS_PAGE_SIZE;
+        const size_t threshold = (ctx->workingSet.capacity / 4) / OBOS_PAGE_SIZE;
         if (ctx->referenced.nNodes >= threshold)
             Mm_RunPRA(ctx);
         Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -96,8 +96,6 @@ obos_status Mm_RunPRA(context* ctx)
     // NOTE(oberrow, 07:11 2024-07-15):
     // Now that I'm awake I can start on this.
 
-    size_t szWorkingSet = 0;
-
     for (page_node* node = ctx->workingSet.pages.head; node;)
     {
         page* page = node->data;
@@ -110,32 +108,39 @@ obos_status Mm_RunPRA(context* ctx)
         page->age <<= 1;
         if (page->age)
         {
-            szWorkingSet += page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
             node = node->next;
             continue;
         }
         // Remove this page from the working set.
         page_node* next = node->next;
         REMOVE_PAGE_NODE(ctx->workingSet.pages, node);
-        obos_status status = Mm_SwapOut(page);
-        if (obos_is_error(status))
+        node->next = node->prev = nullptr;
+        if (!(--page->workingSets))
         {
-            static const char format1[] = 
-                "Could not swap out page. Status: %d. Ignoring...\n";
-            OBOS_Warning(format1, status);
+            obos_status status = Mm_SwapOut(page);
+            if (obos_is_error(status))
+            {
+                static const char format1[] = 
+                    "Could not swap out page. Status: %d. Ignoring...\n";
+                OBOS_Warning(format1, status);
+            }
         }
         // Pop the last referenced page and put it into the working-set
-        struct page_node* replacement = ctx->referenced.tail;
-        szWorkingSet += replacement->data->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-        REMOVE_PAGE_NODE(ctx->referenced, ctx->referenced.tail);
-        node->next = node->prev = nullptr;
-        APPEND_PAGE_NODE(ctx->workingSet.pages, replacement);
+        if (ctx->workingSet.size < ctx->workingSet.capacity)
+        {
+            struct page_node* replacement = ctx->referenced.tail;
+            REMOVE_PAGE_NODE(ctx->referenced, replacement);
+            replacement->next = replacement->prev = nullptr;
+            ctx->workingSet.size += replacement->data->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+            APPEND_PAGE_NODE(ctx->workingSet.pages, replacement);
+            replacement->data->workingSets++;
+        }
         node = next;
     }
 
-    if (szWorkingSet > ctx->workingSet.size)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Pages in working-set exceeded its size. Size of pages: %lu, size of working set: %lu.\n", szWorkingSet, ctx->workingSet.size);
-    if (szWorkingSet == ctx->workingSet.size)
+    if (ctx->workingSet.size > ctx->workingSet.capacity)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Pages in working-set exceeded its size. Size of pages: %lu, size of working set: %lu.\n", ctx->workingSet.size, ctx->workingSet.capacity);
+    if (ctx->workingSet.size == ctx->workingSet.capacity)
         goto done; // We have no more to do.
 
     // NOTE(oberrow): A better way to do this would not be to clear the pages, and to instead
@@ -147,9 +152,10 @@ obos_status Mm_RunPRA(context* ctx)
         page->age <<= 1; // bit 0 is already set
         REMOVE_PAGE_NODE(ctx->referenced, node);
         node->next = node->prev = nullptr;
-        if (szWorkingSet < ctx->workingSet.size)
+        if (ctx->workingSet.size < ctx->workingSet.capacity)
         {
-            szWorkingSet += page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+            page->workingSets++;
+            ctx->workingSet.size += page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
             APPEND_PAGE_NODE(ctx->workingSet.pages, node); // Only add the page if we have space in the working-set.
         }
         else
@@ -160,7 +166,8 @@ obos_status Mm_RunPRA(context* ctx)
         node = next;
     }
 
-    OBOS_ASSERT(szWorkingSet <= ctx->workingSet.size);
+    OBOS_ASSERT(ctx->workingSet.size
+     <= ctx->workingSet.capacity);
     OBOS_ASSERT(!ctx->referenced.nNodes);
 
     done:

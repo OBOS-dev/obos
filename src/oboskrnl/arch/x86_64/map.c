@@ -381,6 +381,18 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 	page.prot.user = entry & BIT_TYPE(2, UL);
 	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
+	if (page.prot.huge_page)
+	{
+		uintptr_t pml3Entry = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML3Entry(pt, addr));
+		pml3Entry = (uintptr_t)Arch_MapToHHDM(pml3Entry);
+		((uintptr_t*)pml3Entry)[AddressToIndex(addr, 1)] &= ~(BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
+	}
+	else 
+	{
+		pml2Entry = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
+		pml2Entry = (uintptr_t)Arch_MapToHHDM(pml2Entry);
+		((uintptr_t*)pml2Entry)[AddressToIndex(addr, 0)] &= ~(BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
+	}
 	memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
 	return OBOS_STATUS_SUCCESS;	
 }

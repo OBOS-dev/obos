@@ -52,6 +52,7 @@ static uint64_t pnp_pci_driver_hash(const void *item, uint64_t seed0, uint64_t s
     const struct pnp_device* drv = item;
     return hashmap_sip(&drv->pci_key.id, sizeof(drv->pci_key.id), seed0, seed1);
 }
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static int pnp_acpi_driver_compare(const void* a_, const void* b_, void* udata)
 {
     OBOS_UNUSED(udata);
@@ -64,6 +65,7 @@ static uint64_t pnp_acpi_driver_hash(const void *item, uint64_t seed0, uint64_t 
     const struct pnp_device* drv = item;
     return hashmap_sip(&drv->acpi_key, sizeof(drv->acpi_key), seed0, seed1);
 }
+#endif
 
 static void *malloc(size_t sz)
 {
@@ -105,6 +107,7 @@ static void append_driver_to_pnp_device(pnp_device* dev, driver_header* drv)
     node->data = drv;
     APPEND_DRIVER_HEADER_NODE(dev->headers, node);
 }
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static obos_status acpi_driver_helper(struct hashmap* acpi_drivers, driver_header* drv, char pnpId[8])
 {
     pnp_device what = {
@@ -124,6 +127,7 @@ static obos_status acpi_driver_helper(struct hashmap* acpi_drivers, driver_heade
     append_driver_to_pnp_device(dev, drv);
     return OBOS_STATUS_SUCCESS;
 }
+#endif
 
 static obos_status pci_driver_helper(struct hashmap* pci_drivers, driver_header* drv, pci_device key)
 {
@@ -153,7 +157,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device_node 
     pnp_device what = {
         .pci_key = device.device,
     };
-    pnp_device *dev = hashmap_get(udata->pci_drivers, &what);
+    pnp_device *dev = (void*)hashmap_get(udata->pci_drivers, &what);
     if (!dev)
         return PCI_ITERATION_DECISION_CONTINUE;
     // Add all of the drivers to the list.

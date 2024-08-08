@@ -16,7 +16,7 @@
 #include <mm/context.h>
 
 #define round_down_to_page(addr) ((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
-#define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (round_down_to_page(base) == round_down_to_page((uintptr_t)(base) + (size)))
+// #define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (round_down_to_page(base) == round_down_to_page((uintptr_t)(base) + (size)))
 
 #ifdef __x86_64__
 #include <arch/x86_64/asm_helpers.h>
@@ -36,6 +36,7 @@ const uint8_t OBOS_ASANPoisonValues[] = {
 };
 OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
 {
+	OBOS_UNUSED(unused);
 	switch (type)
 	{
 	case ASAN_InvalidAccess:
@@ -72,6 +73,22 @@ static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
 		if (!(entry & flags))
 			return false;
 	}
+#elif defined(__m68k__)
+	obos_status Arch_GetPagePTE(page_table pt_root, uintptr_t virt, uint32_t* out);
+	uintptr_t flags = 0b11|(0b1 << 7);
+	if (!rw)
+		flags |= (0b1 << 2);
+	uintptr_t pt_root = 0;
+	asm("movec.l %%srp, %0" :"=r"(pt_root) :);
+	for (uintptr_t addr = base; addr < (base + size); addr += 0x1000)
+	{
+		uintptr_t entry = 0;
+		Arch_GetPagePTE(pt_root, addr, &entry);
+		if (!(entry & flags))
+			return false;
+	}
+#else
+#	error Unknown architecture!
 #endif
 	return true;
 }

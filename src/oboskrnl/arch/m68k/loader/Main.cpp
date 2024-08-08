@@ -154,6 +154,20 @@ namespace Npl
 
                 req->response = resp;
             }
+        },
+        {
+            .id = LIMINE_BOOT_INFO_REQUEST,
+            .Handle = [](LbpRequest* req)
+            {
+                NPL_LOG("Populating boot info response.\r\n");
+                auto resp = new limine_boot_info_response{};
+                resp->revision = 0;
+                resp->phys_base = (uintptr_t)LOADER_BLOB_END;
+                auto maybeUart = FindBootInfoTag(BootInfoType::GoldfishTtyBase);
+                resp->uart_phys_base = (uintptr_t)maybeUart.Offset(sizeof(BootInfoTag)).Read<uint32_t>(); // provide for convinience
+            
+                req->response = resp;
+            }
         }
     };
 }

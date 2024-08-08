@@ -10,3 +10,6 @@
 
 void setSR(uint16_t to);
 uint16_t getSR();
+void pflush(uintptr_t virt);
+// Calls the interrupt vector at 'vector'
+void Arch_SimulateIRQ(uint8_t vector);

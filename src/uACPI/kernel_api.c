@@ -44,13 +44,12 @@
 #include <arch/x86_64/ioapic.h>
 #endif
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static bool isPower2(uint64_t num)
 {
 	int popcount = __builtin_popcount(num);
 	return popcount == 1 /* A power of two only ever has one bit set. */;
 }
-
-#if OBOS_ARCHITECTURE_HAS_ACPI
 #if defined(__i386__) || defined(__x86_64__)
 #	define spinlock_hint() asm volatile("pause")
 #else

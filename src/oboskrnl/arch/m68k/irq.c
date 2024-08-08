@@ -15,7 +15,7 @@
 #include <irq/irql.h>
 
 #include <arch/m68k/asm_helpers.h>
-#include <stdint.h>
+#include <arch/m68k/goldfish_pic.h>
 
 uint32_t vector_base[256];
 uintptr_t Arch_IRQHandlers[256];
@@ -26,6 +26,10 @@ void Arch_InitializeVectorTable()
     for (size_t i = 0; i < 256; i++)
         vector_base[i] = (uintptr_t)isr_stub;
     asm volatile("movec.l %0, %%vbr;" : :"r"(vector_base) :);
+}
+void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
+{
+	Arch_IRQHandlers[vec] = f;
 }
 obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
 {
@@ -46,4 +50,5 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 void CoreS_SendEOI(interrupt_frame* frame)
 {
     OBOS_UNUSED(frame);
+	Arch_PICClearPending();
 }

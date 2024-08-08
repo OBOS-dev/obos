@@ -103,6 +103,10 @@ add_compile_definitions(
 set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true)
 
+if (OBOS_ENABLE_WERROR)
+	add_compile_options("-Werror")
+endif()
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")

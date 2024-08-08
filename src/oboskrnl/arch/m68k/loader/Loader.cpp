@@ -260,22 +260,30 @@ namespace Npl
     {
         constexpr uint64_t CommonMagic[] = { LIMINE_COMMON_MAGIC };
 
-        sl::NativePtr scan = current;
-        if (current == nullptr)
-            scan = kernelBase + kernelSlide;
-        scan = sl::AlignUp(scan.raw + 1, 8);
+        // sl::NativePtr scan = current;
+        // if (current == nullptr)
+        //     scan = kernelBase + kernelSlide;
+        // scan = sl::AlignUp(scan.raw+1, 8);
 
-        for (; scan.raw < kernelTop; scan = scan.raw + 8)
-        {
-            if (*scan.As<uint64_t>() != CommonMagic[0])
-                continue;
+        // for (; scan.raw < kernelTop; scan = scan.raw + 8)
+        // {
+        //     if (*scan.As<uint64_t>() != CommonMagic[0])
+        //         continue;
 
-            LbpRequest* req = scan.As<LbpRequest>();
-            if (req->id[1] != CommonMagic[1])
-                continue;
+        //     LbpRequest* req = scan.As<LbpRequest>();
+        //     if (req->id[1] != CommonMagic[1])
+        //         continue;
 
-            return req;
-        }
+        //     return req;
+        // }
+        uintptr_t* iter = (uintptr_t*)current;
+        if (!iter)
+            iter = (uintptr_t*)(kernelBase + kernelSlide);
+        else
+            iter++;
+        for (; (uintptr_t)iter < kernelTop; iter++)
+            if (sl::memcmp(iter, CommonMagic, sizeof(uint64_t)*2) == 0)
+                return (LbpRequest*)iter;
 
         return nullptr;
     }
