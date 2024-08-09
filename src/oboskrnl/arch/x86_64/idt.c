@@ -59,7 +59,7 @@ static OBOS_PAGEABLE_FUNCTION int getIntIST(int i)
 {
 	if (i > 32)
 		return 0;
-	return (i == 2 || i == 8) ? 1 : 0;
+	return (i == 8) ? 1 : 0;
 }
 OBOS_PAGEABLE_FUNCTION void Arch_InitializeIDT(bool isBSP)
 {

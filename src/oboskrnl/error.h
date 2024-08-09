@@ -109,4 +109,8 @@ typedef enum
 	/// <para/>An example is if a pipe-style device called get_max_blk_count.
 	/// </summary>
 	OBOS_STATUS_INVALID_OPERATION,
+	/// <summary>
+	/// The DPC object was already enqueued before the call of the function.
+	/// </summary>
+	OBOS_STATUS_DPC_ALREADY_ENQUEUED,
 } obos_status;

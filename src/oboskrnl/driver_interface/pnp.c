@@ -153,7 +153,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device_node 
     pnp_device what = {
         .pci_key = device.device,
     };
-    pnp_device *dev = hashmap_get(udata->pci_drivers, &what);
+    pnp_device *dev = (pnp_device*)hashmap_get(udata->pci_drivers, &what);
     if (!dev)
         return PCI_ITERATION_DECISION_CONTINUE;
     // Add all of the drivers to the list.
@@ -220,7 +220,7 @@ static obos_status probe_hid(const uacpi_id_string *hid, struct callback_userdat
         driver_header* hdr = node->data;
         OBOS_ASSERT(hdr);
         bool shouldAdd = true;
-        for (driver_header_node* n = udata->detected; n; )
+        for (driver_header_node* n = udata->detected->head; n; )
         {
             if (n->data == hdr)
             {

@@ -68,6 +68,13 @@
 #include <uacpi/sleep.h>
 #include <uacpi/event.h>
 
+#include "gdbstub/connection.h"
+#include "gdbstub/packet_dispatcher.h"
+#include "gdbstub/debug.h"
+#include "gdbstub/general_query.h"
+#include "gdbstub/stop_reply.h"
+#include "gdbstub/bp.h"
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -256,6 +263,14 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 			mm_ec |= PF_EC_INV_PTE;
 		if (frame->errorCode & BIT(4))
 			mm_ec |= PF_EC_EXEC;
+		// TODO: Find out why CoreS_GetCPULocalPtr()->currentContext is nullptr in the first place
+		if (!CoreS_GetCPULocalPtr()->currentContext)
+		{
+			if (CoreS_GetCPULocalPtr()->currentThread->proc->pid != 1 && mm_ec & PF_EC_UM)
+				CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc->ctx;
+			else
+				CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
+		}
 		obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
 		switch (status)
 		{
@@ -274,6 +289,15 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		}
 	}
 	page* volatile pg = nullptr;
+	if (Kdbg_CurrentConnection && !Kdbg_Paused)
+	{
+		asm("sti");
+		irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+		Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
+		Kdbg_CallDebugExceptionHandler(frame, true);
+		Core_LowerIrqlNoThread(oldIrql);
+		asm("cli");
+	}
 	if (CoreS_GetCPULocalPtr()->currentContext)
 	{
 		page what;
@@ -732,6 +756,7 @@ if (st != UACPI_STATUS_OK)\
 	driver_header_node node = {.data = &header};
 	driver_header_list list = {.head=&node,.tail=&node,.nNodes=1};
 	driver_header_list toLoad;
+	memzero(&toLoad, sizeof(toLoad));
 	status = Drv_PnpDetectDrivers(list, &toLoad);
 	if (obos_is_error(status))
 		OBOS_Error("PnP failed. Status: %d.\n", status);
@@ -764,25 +789,33 @@ if (st != UACPI_STATUS_OK)\
 		OBOS_Error("Could not open COM1. Status: %d.\n", status);
 		goto done;
 	}
-	char ch = 0;
-	size_t nRead = 0;
-	while(1)
-	{
-		status = drv1->header.ftable.read_sync(connection, &ch, 1, 0, &nRead);
-		if (nRead != 1)
-			continue;
-		if (obos_is_error(status))
-		{
-			OBOS_Error("Could not read from COM1. Status: %d.\n", status);
-			goto done;
-		}
-		status = drv1->header.ftable.write_sync(connection, &ch, 1, 0, &nRead);
-		if (obos_is_error(status))
-		{
-			OBOS_Error("Could not write to COM1. Status: %d.\n", status);
-			goto done;
-		}
-	}
+	static gdb_connection gdb_conn = {};
+	Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
+	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
+	Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
+	Kdbg_AddPacketHandler("qSupported", Kdbg_GDB_qSupported, nullptr);
+	Kdbg_AddPacketHandler("?", Kdbg_GDB_query_halt, nullptr);
+	Kdbg_AddPacketHandler("g", Kdbg_GDB_g, nullptr);
+	Kdbg_AddPacketHandler("G", Kdbg_GDB_G, nullptr);
+	Kdbg_AddPacketHandler("k", Kdbg_GDB_k, nullptr);
+	Kdbg_AddPacketHandler("vKill", Kdbg_GDB_k, nullptr);
+	Kdbg_AddPacketHandler("H", Kdbg_GDB_H, nullptr);
+	Kdbg_AddPacketHandler("T", Kdbg_GDB_T, nullptr);
+	Kdbg_AddPacketHandler("qRcmd", Kdbg_GDB_qRcmd, nullptr);
+	Kdbg_AddPacketHandler("m", Kdbg_GDB_m, nullptr);
+	Kdbg_AddPacketHandler("M", Kdbg_GDB_M, nullptr);
+	Kdbg_AddPacketHandler("c", Kdbg_GDB_c, nullptr);
+	Kdbg_AddPacketHandler("C", Kdbg_GDB_C, nullptr);
+	Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
+	Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
+	Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
+	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
+	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
+	Kdbg_CurrentConnection = &gdb_conn;
+	Kdbg_CurrentConnection->connection_active = true;
+	asm("int3");
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	done:
 	Core_ExitCurrentThread();

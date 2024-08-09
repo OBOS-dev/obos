@@ -82,8 +82,7 @@ typedef enum stop_bits
     TWO_STOPBIT = 0b0100,
 } stop_bits;
 
-// Put this in the middle; not too priortized, nor too unprioritized.
-#define IRQL_COM_IRQ 8
+#define IRQL_COM_IRQ IRQL_TIMER
 
 enum
 {

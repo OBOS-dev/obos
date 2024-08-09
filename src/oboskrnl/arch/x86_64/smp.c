@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/irql.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -35,7 +36,10 @@
 #include <allocators/base.h>
 
 #include <scheduler/process.h>
-#include <stdint.h>
+
+#include <arch/x86_64/gdbstub/debug.h>
+
+#include <irq/irq.h>
 
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
@@ -249,6 +253,15 @@ OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 	}
 	if (Arch_InvlpgIPI(frame))
 		return;
+	if (Kdbg_Paused)
+	{
+		asm("sti");
+		// TODO: Fix 
+		Arch_LAPICSendEOI();
+		Kdbg_CallDebugExceptionHandler(frame, false);
+		asm("cli");
+		return;
+	}
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
 OBOS_NO_KASAN static void HaltInitializedCPUs()

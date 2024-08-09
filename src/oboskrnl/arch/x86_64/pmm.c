@@ -165,11 +165,11 @@ obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages)
 	Arch_FreePhysicalPages(base, nPages);
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_NO_KASAN void* Arch_MapToHHDM(uintptr_t phys)
+OBOS_NO_KASAN OBOS_NO_UBSAN void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
 }
-uintptr_t Arch_UnmapFromHHDM(void* virt)
+OBOS_NO_KASAN OBOS_NO_UBSAN uintptr_t Arch_UnmapFromHHDM(void* virt)
 {
 	return UNMAP_FROM_HHDM(virt);
 }

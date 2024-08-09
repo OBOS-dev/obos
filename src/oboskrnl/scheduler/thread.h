@@ -45,6 +45,7 @@ typedef enum
 	THREAD_FLAGS_APC = 0x01,
 	THREAD_FLAGS_DIED = 0x02,
 	THREAD_FLAGS_PRIORITY_RAISED = 0x4,
+	THREAD_FLAGS_DEBUGGER_BLOCKED = 0x8, // kernel mode flag only
 } thread_flags;
 typedef enum
 {

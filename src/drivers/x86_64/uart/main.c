@@ -102,6 +102,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t i = 0;
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+    // TODO: Make sync instead of async.
     for (; i < blkCount && i < port->in_buffer.szBuf; i++)
         ((char*)buf)[i] = pop_from_buffer(&port->in_buffer);
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
@@ -130,6 +131,8 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         }
         outb(port->port_base + IO_BUFFER, ((char*)buf)[i]);
     }
+    if (nBlkWritten)
+        *nBlkWritten = blkCount;
     Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
@@ -263,7 +266,7 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             OBOS_Warning("Could not allocate irq object for COM%d. Status: %d.\n", port->com_port, status);
             continue;
         }
-        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, false);
+        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, true);
         if (obos_is_error(status))
         {
             OBOS_Warning("Could not initialize irq object for COM%d. Status: %d.\n", port->com_port, status);

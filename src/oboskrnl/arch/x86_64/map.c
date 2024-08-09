@@ -30,6 +30,7 @@
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
 
+#include <irq/irq.h>
 #include <irq/irql.h>
 
 static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
@@ -186,6 +187,7 @@ static struct {
 	uintptr_t cr3;
 	atomic_size_t nCPUsRan;
 	bool active;
+	irq* irq;
 } invlpg_ipi_packet;
 bool Arch_InvlpgIPI(interrupt_frame* frame)
 {
@@ -195,6 +197,8 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (getCR3() == invlpg_ipi_packet.cr3)
 		invlpg(invlpg_ipi_packet.addr);
 	invlpg_ipi_packet.nCPUsRan++;
+	if (invlpg_ipi_packet.nCPUsRan == Core_CpuCount)
+		invlpg_ipi_packet.active = false;
 	// Arch_LAPICAddress->eoi = 0;
 	return true;
 }
@@ -220,32 +224,59 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 	Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
 	return invlpg_impl(at);
 }
+static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql) 
+{
+	OBOS_UNUSED(i);
+	OBOS_UNUSED(userdata);
+	OBOS_UNUSED(oldIrql);
+	Arch_InvlpgIPI(frame);
+}
 static obos_status invlpg_impl(uintptr_t at)
 {
 	invlpg(at);
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
+	if (!invlpg_ipi_packet.irq && Core_IrqInterfaceInitialized())
+	{
+		OBOS_Debug("Initializing invlpg ipi IRQ.\n");
+		static irq irq;
+		invlpg_ipi_packet.irq = &irq;
+		enum { IRQL_INVLPG_IPI=14 };
+		Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
+		irq.handler = invlpg_ipi_bootstrap;
+		irq.handlerUserdata = nullptr;
+	}
 	extern bool Arch_HaltCPUs;
+	while (invlpg_ipi_packet.active)
+		pause();
 	Arch_HaltCPUs = false;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&invlpg_ipi_packet.lock, IRQL_MASKED, false);
 	ipi_lapic_info lapic = {
 		.isShorthand=true,
 		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_ALL_BUT_SELF
 	};
-	ipi_vector_info vector = {
-		.deliveryMode = LAPIC_DELIVERY_MODE_NMI,
-	};
+	ipi_vector_info vector = {};
+	if (invlpg_ipi_packet.irq)
+	{
+		vector.deliveryMode = LAPIC_DELIVERY_MODE_FIXED;
+		vector.info.vector = invlpg_ipi_packet.irq->vector->id+0x20;
+	}
+	else 
+	{
+		vector.deliveryMode = LAPIC_DELIVERY_MODE_NMI;
+		vector.info.vector = 0;
+	}
 	invlpg_ipi_packet.active = true;
 	invlpg_ipi_packet.addr = at;
 	invlpg_ipi_packet.cr3 = getCR3();
 	invlpg_ipi_packet.nCPUsRan = 1;
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
 	OBOS_ASSERT(obos_is_success(status));
-	while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
-		pause();
+	// This can be done async.
+	// while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
+	// 	pause();
 	end:
-	invlpg_ipi_packet.active = false;
 	Core_SpinlockRelease(&invlpg_ipi_packet.lock, oldIrql);
 #endif
 	return OBOS_STATUS_SUCCESS;
