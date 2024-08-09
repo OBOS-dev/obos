@@ -21,7 +21,8 @@ irql* Core_GetIRQLVar();
 void Arch_SetHardwareIPL(uint8_t to)
 {
     to &= 0b111;
-    setSR(getSR() | (to << 8));
+    uint16_t sr = (getSR() & ~(7<<8)) | (to<<8);
+    setSR(sr);
 }
 uint8_t Arch_GetHardwareIPL()
 {
@@ -31,7 +32,7 @@ bool CoreS_EnterIRQHandler(interrupt_frame *frame)
 {
     m68k_dirq* irqs = CoreS_GetCPULocalPtr()->arch_specific.irqs;
     m68k_dirq_list* deferred = &CoreS_GetCPULocalPtr()->arch_specific.deferred;
-    if (*Core_GetIRQLVar() >= (frame->intNumber / 32))
+    if (*Core_GetIRQLVar() >= (frame->intNumber / 32 - 1))
     {
         // IRQL >= irq means that the IRQ should be defferred
         if (!irqs[frame->intNumber].nDefers)
@@ -44,8 +45,8 @@ bool CoreS_EnterIRQHandler(interrupt_frame *frame)
                 // Append it
                 if (deferred->tail)
                     deferred->tail->next = node;
-                if (!deferred->tail)
-                    deferred->tail = node;
+                if (!deferred->head)
+                    deferred->head = node;
                 node->prev = deferred->tail;
                 deferred->tail = node;
                 deferred->nNodes++;
@@ -53,12 +54,12 @@ bool CoreS_EnterIRQHandler(interrupt_frame *frame)
             else if (deferred->tail && deferred->tail->irql > node->irql)
             {
                 // Prepend it
-                if (deferred->tail)
-                    deferred->tail->prev = node;
+                if (deferred->head)
+                    deferred->head->next = node;
                 if (!deferred->tail)
                     deferred->tail = node;
-                node->next = deferred->tail;
-                deferred->tail = node;
+                node->prev = deferred->head;
+                deferred->head = node;
                 deferred->nNodes++;
             }
             else
@@ -81,8 +82,8 @@ bool CoreS_EnterIRQHandler(interrupt_frame *frame)
                     // Append it
                     if (deferred->tail)
                         deferred->tail->next = node;
-                    if (!deferred->tail)
-                        deferred->tail = node;
+                    if (!deferred->head)
+                        deferred->head = node;
                     node->prev = deferred->tail;
                     deferred->tail = node;
                     deferred->nNodes++;
@@ -98,7 +99,7 @@ bool CoreS_EnterIRQHandler(interrupt_frame *frame)
                 deferred->nNodes++;
             }
             done:
-            Arch_SetHardwareIPL(0);
+            (void)0;
         }
         irqs[frame->intNumber].nDefers++; // the amount of times the IRQ has occurred.
         return false;
@@ -129,20 +130,26 @@ void Arch_CallDeferredIrq(m68k_dirq* irq, m68k_dirq* table)
 {
     uint8_t vector = irq-table;
     Arch_SimulateIRQ(vector);
+    irq->on_defer_callback(irq->udata);
 }
-void CoreS_SetIRQL(uint8_t to)
+void CoreS_SetIRQL(uint8_t to, uint8_t old)
 {
     if (to == IRQL_MASKED)
         Arch_SetHardwareIPL(7); // avoid a lot of needless deferring.
     else
         Arch_SetHardwareIPL(0);
-    if (to >= *Core_GetIRQLVar())
+    if (to >= old)
         return;
     m68k_dirq_list* deferred = &CoreS_GetCPULocalPtr()->arch_specific.deferred;
     // If to < current irql, run all defferred IRQs.
     // Start at the highest priority IRQs.
     for (m68k_dirq* curr = deferred->tail; curr; )
     {
+        if (curr->irql <= to)
+        {
+            curr = curr->prev;
+            continue; // it's not time yet
+        }
         for (size_t i = 0; i < curr->nDefers; i++)
             Arch_CallDeferredIrq(curr, CoreS_GetCPULocalPtr()->arch_specific.irqs);
         curr = curr->prev;

@@ -41,17 +41,18 @@ irql Core_RaiseIrql(irql to)
 void Core_LowerIrqlNoThread(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar());
+		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return;
 	if (to > *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
+	uint8_t old = *Core_GetIRQLVar();
 	*Core_GetIRQLVar() = to;
-	CoreS_SetIRQL(to);
+	CoreS_SetIRQL(to, old);
 	if (to < IRQL_DISPATCH)
 	{
-		CoreS_SetIRQL(IRQL_DISPATCH);
+		CoreS_SetIRQL(IRQL_DISPATCH, to);
 		*Core_GetIRQLVar() = IRQL_DISPATCH;
 		// Run pending DPCs on the current CPU.
 		for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
@@ -63,26 +64,26 @@ void Core_LowerIrqlNoThread(irql to)
 			cur = next;
 		}
 		*Core_GetIRQLVar() = to;
-		CoreS_SetIRQL(to);
+		CoreS_SetIRQL(to, IRQL_DISPATCH);
 	}
 }
 irql Core_RaiseIrqlNoThread(irql to)
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar());
+		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return IRQL_INVALID;
 	if (to < *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	irql oldIRQL = Core_GetIrql();
-	CoreS_SetIRQL(to);
+	CoreS_SetIRQL(to, *Core_GetIRQLVar());
 	*Core_GetIRQLVar() = to;
 	return oldIRQL;
 }
 irql Core_GetIrql()
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar());
+		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	return *Core_GetIRQLVar();
 }

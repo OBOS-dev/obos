@@ -166,8 +166,7 @@ obos_status Mm_RunPRA(context* ctx)
         node = next;
     }
 
-    OBOS_ASSERT(ctx->workingSet.size
-     <= ctx->workingSet.capacity);
+    OBOS_ASSERT(ctx->workingSet.size <= ctx->workingSet.capacity);
     OBOS_ASSERT(!ctx->referenced.nNodes);
 
     done:

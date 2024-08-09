@@ -102,6 +102,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_UnmapPage(page_table pt_root, uintp
     if (!(pte1[pte1Index] & PT_FLAGS_RESIDENT))
         return OBOS_STATUS_NOT_FOUND;
     pte1[pte1Index] = 0;
+    pflush(virt);
     if (memcmp_b(pte1, 0, 256))
     {
         pte2[pte2Index] = 0;

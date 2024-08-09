@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <struct_packing.h>
 
 typedef enum BootInfoType
 {
@@ -29,12 +30,13 @@ typedef enum BootInfoType
 typedef struct BootDeviceBase
 {
     uint32_t base;
-    uint8_t irq;
+    uint32_t irq;
 } BootDeviceBase;
 typedef struct BootInfoTag
 {
-    BootInfoType type;
+    uint16_t type;
     uint16_t size;
-} BootInfoTag;
+} OBOS_PACK BootInfoTag;
 
 BootInfoTag* Arch_GetBootInfo(BootInfoType type);
+BootInfoTag* Arch_GetBootInfoFrom(BootInfoType type, BootInfoTag* tag);

@@ -162,7 +162,16 @@ namespace Npl
                 NPL_LOG("Populating boot info response.\r\n");
                 auto resp = new limine_boot_info_response{};
                 resp->revision = 0;
-                resp->phys_base = (uintptr_t)LOADER_BLOB_END;
+                resp->base = (void*)(HhdmBase + sl::AlignUp((uintptr_t)LOADER_BLOB_END, 2));
+                // size_t szEntries = 32;
+                // for (BootInfoTag *tag = (BootInfoTag*)base; tag; tag = (BootInfoTag*)((uintptr_t)tag + tag->size))
+                // {
+                //     szEntries += tag->size;
+                //     if (tag->type == BootInfoType::Last)
+                //         break;
+                // }
+                // resp->base = (void*)(new char[szEntries] + 32);
+                // sl::memcopy(base, resp->base, szEntries);
                 auto maybeUart = FindBootInfoTag(BootInfoType::GoldfishTtyBase);
                 resp->uart_phys_base = (uintptr_t)maybeUart.Offset(sizeof(BootInfoTag)).Read<uint32_t>(); // provide for convinience
             

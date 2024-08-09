@@ -577,7 +577,7 @@ struct limine_dtb_request {
 struct limine_boot_info_response
 {
     uint64_t revision;
-    uintptr_t phys_base;
+    void* base;
     uintptr_t uart_phys_base;
 };
 

@@ -85,7 +85,7 @@ void Arch_KernelEntryBootstrap()
 {    
     for (uint16_t irq = 0; irq <= 255; irq++)
     {
-        bsp_cpu.arch_specific.irqs[irq].irql = irq / 32;
+        bsp_cpu.arch_specific.irqs[irq].irql = irq / 32 - 1;
         bsp_cpu.arch_specific.irqs[irq].nDefers = 0;
         bsp_cpu.arch_specific.irqs[irq].next = bsp_cpu.arch_specific.irqs[irq].prev = nullptr;
     }
@@ -177,6 +177,8 @@ void Arch_KernelEntry()
     Arch_InitializeInitialSwapDevice(&swap, Arch_MapToHHDM(swap_buf), swap_size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
+    OBOS_Debug("%s: Initializing timer interface.\n", __func__);
+    Core_InitializeTimerInterface();
     // Hang.
     while(1);
 }
@@ -190,7 +192,15 @@ cpu_local* CoreS_GetCPULocalPtr()
 }
 BootInfoTag* Arch_GetBootInfo(BootInfoType type)
 {
-    BootInfoTag* found = (BootInfoTag*)Arch_MapToHHDM(Arch_BootInfo.response->phys_base);
+    return Arch_GetBootInfoFrom(type, nullptr);
+}
+BootInfoTag* Arch_GetBootInfoFrom(BootInfoType type, BootInfoTag* tag)
+{
+    if (!tag)
+        tag = (BootInfoTag*)Arch_BootInfo.response->base;
+    else
+        tag = (BootInfoTag*)((uintptr_t)tag + tag->size);
+    BootInfoTag* found = tag;
     while(found)
     {
         if (found->type == type)

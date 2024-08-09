@@ -49,10 +49,10 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
     OBOS_UNUSED(oldIrql);
     if (!work->cpu || LIST_IS_NODE_UNLINKED(dpc_queue, &work->cpu->dpcs, work))
         CoreH_InitializeDPC(work, timer_dispatcher, Core_DefaultThreadAffinity);
+    OBOS_Debug("Received timer IRQ.\n");
 }
 static void notify_timer(timer* timer)
 {
-    
     // TODO: Use signals instead of calling the handler directly.
     timer->lastTimeTicked = CoreS_GetTimerTick();
     if (timer->mode == TIMER_MODE_DEADLINE)

@@ -13,6 +13,9 @@ typedef struct m68k_dirq
 {
     struct m68k_dirq *next, *prev;
     size_t nDefers;
+    // Is called after the defer happens
+    void(*on_defer_callback)(void* udata); // used by the PIC code.
+    void* udata;
     uint8_t irql;
 } m68k_dirq;
 typedef struct m68k_dirq_list

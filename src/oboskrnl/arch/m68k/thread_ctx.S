@@ -14,11 +14,15 @@ Arch_TempStack:
 .global CoreS_SwitchToThreadContext
 .global CoreS_SaveRegisterContextAndYield
 .global CoreS_CallFunctionOnStack
+.extern Core_GetIRQLVar
 
 CoreS_SwitchToThreadContext:
     or #0x2700, %sr // Disable all IRQs
 
+    jsr Core_GetIRQLVar
+
     move.l (+4,%sp), %a0
+    move.l (+0x5e,%a0), (%d0)
     
     move.l %a0@+, %d1
     movec %d1, %urp

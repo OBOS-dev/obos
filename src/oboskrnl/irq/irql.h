@@ -66,8 +66,9 @@ OBOS_EXPORT irql Core_GetIrql();
 /// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would set the cr8 register to 'to' on x86_64.
 /// </summary>
-/// <param name="to"></param>
-OBOS_WEAK void CoreS_SetIRQL(uint8_t to);
+/// <param name="to">The IRQL to set the current IRQL to.</param>
+/// <param name="old">The old IRQL.</param>
+OBOS_WEAK void CoreS_SetIRQL(uint8_t to, uint8_t old);
 /// <summary>
 /// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would return the cr8 register on x86_64.
