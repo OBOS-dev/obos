@@ -111,13 +111,19 @@ void Arch_PICMaskIRQ(uint32_t line_number, bool mask)
         Arch_PICDisable(&Arch_PICBases[pic_index], line);
 }
 extern uintptr_t Arch_IRQHandlers[256];
-static void on_defer(void* udata)
+static void on_defer_1(void* udata)
 {
     uint32_t line_number = (uint32_t)udata;
     uint8_t pic_index = line_number/32; // see qemu/hw/m68k/virt.c:58
     uint8_t line = line_number%32-8;
     Arch_PICBases[pic_index].irqs[line].masked = false;
     Arch_PICEnable(&Arch_PICBases[pic_index], line);
+}
+void CoreS_SendEOI(interrupt_frame* frame)
+{
+    OBOS_UNUSED(frame);
+	for (size_t i = 0; i < Arch_PICCount; i++)
+		Arch_PICClearPending(&Arch_PICBases[i]);
 }
 void Arch_PICHandleIRQ(interrupt_frame* frame)
 {
@@ -134,16 +140,19 @@ void Arch_PICHandleIRQ(interrupt_frame* frame)
                 interrupt_frame iframe = *frame;
                 iframe.intNumber = cur->irqs[line].vector;
                 iframe.vector = cur->irqs[line].vector - 0x40;
+                cur->irqs[line].masked = true;
                 Arch_PICDisable(cur, line);
                 ((void(*)(interrupt_frame*))Arch_IRQHandlers[cur->irqs[line].vector])(&iframe);
-                if (!CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].nDefers)
-                    Arch_PICEnable(cur, line);
-                else
+                if (CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].nDefers)
                 {
                     uint32_t line_pic = ((8 + i * 32)) + line;
-                    cur->irqs[line].masked = true;
-                    CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].on_defer_callback = on_defer;
+                    CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].on_defer_callback = on_defer_1;
                     CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].udata = (void*)line_pic;
+                }
+                else
+                {
+                    cur->irqs[line].masked = false;
+                    Arch_PICEnable(cur, line);
                 }
             }
         }

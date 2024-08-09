@@ -6,8 +6,8 @@
 
 .section .bss
 // top of stack
-Arch_TempStack:
 .skip 0x10000
+Arch_TempStack:
 // bottom of stack
 .section .text
 
@@ -15,15 +15,27 @@ Arch_TempStack:
 .global CoreS_SaveRegisterContextAndYield
 .global CoreS_CallFunctionOnStack
 .extern Core_GetIRQLVar
+.extern CoreS_SetIRQL
 
 CoreS_SwitchToThreadContext:
     or #0x2700, %sr // Disable all IRQs
 
     jsr Core_GetIRQLVar
+    sub.l %d2, %d2
+    move.b (%d0), %d2
+    move.l (+4,%sp), %a0
+    move.b (+0x4e,%a0), (%d0)
 
     move.l (+4,%sp), %a0
-    move.l (+0x5e,%a0), (%d0)
-    
+    move.l %d2, %sp@-
+    sub.l %d1, %d1
+    move.b (+0x4e,%a0), %d1
+    move.l %d1, %sp@-
+    jsr CoreS_SetIRQL
+    add #8, %sp
+
+    move.l (+4,%sp), %a0
+
     move.l %a0@+, %d1
     movec %d1, %urp
 

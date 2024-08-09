@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <arch/m68k/interrupt_frame.h>
@@ -16,6 +17,8 @@
 #include <irq/timer.h>
 
 #include <mm/context.h>
+#include <mm/alloc.h>
+#include <mm/bare_map.h>
 
 obos_status Arch_MapPage(page_table pt_root, uintptr_t virt, uintptr_t to, uintptr_t ptFlags);
 
@@ -40,17 +43,17 @@ BootDeviceBase Arch_RTCBase;
 #define CLEAR_ALARM  0x14 /* Clears the alarm register */
 #define ALARM_STATUS 0x18 /* On read, returns whether the alarm is running (non zero) or not (zero)*/
 #define CLEAR_IRQ    0x1c /* Clears pending IRQs on write */
-typedef uint32_t gf_rtc; // abstract struct; contains nothing
-static const uint64_t ns_period = 2000000;
+typedef uint32_t gf_rtc;
+static const uint64_t ns_period = 4000000;
 static OBOS_NO_KASAN uint32_t read_register32(volatile gf_rtc* rtc, uint8_t reg)
 {
     return rtc[reg/4];
 }
 static OBOS_NO_KASAN uint64_t read_register64(volatile gf_rtc* rtc, uint8_t reg)
 {
-    uint64_t half1 = (uint64_t)read_register32(rtc, reg);
-    uint64_t half2 = (uint64_t)read_register32(rtc, reg+4)<<32;
-    return half1|(half2<<32);
+    uint64_t half1 = (uint64_t)(read_register32(rtc, reg));
+    uint64_t half2 = (uint64_t)(read_register32(rtc, reg+4))<<32;
+    return half1|half2;
 }
 static OBOS_NO_KASAN void write_register32(volatile gf_rtc* rtc, uint8_t reg, uint32_t val)
 {
@@ -65,10 +68,8 @@ static OBOS_NO_KASAN void write_register64(volatile gf_rtc* rtc, uint8_t reg, ui
 }
 static void set_alarm(volatile gf_rtc* rtc)
 {
-    write_register32((volatile gf_rtc*)Arch_RTCBase.base, CLEAR_ALARM, 1);
-    write_register32((volatile gf_rtc*)Arch_RTCBase.base, CLEAR_IRQ, 1);
-    write_register64(rtc, ALARM_LOW, ns_period);
-    write_register32((volatile gf_rtc*)Arch_RTCBase.base, ENABLE_IRQ, 1);
+    write_register64(rtc, ALARM_LOW, read_register64(rtc, TIME_LOW) + ns_period);
+    write_register32(rtc, ENABLE_IRQ, 1);
 } 
 timer_tick CoreS_GetTimerTick()
 {
@@ -88,9 +89,9 @@ void rtc_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     OBOS_UNUSED(frame);
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(oldIrql);
-    set_alarm((volatile gf_rtc*)(Arch_RTCBase.base));
+    write_register32((volatile gf_rtc*)Arch_RTCBase.base, CLEAR_IRQ, 1);
     ((irq_handler)userdata)(i, frame, nullptr, oldIrql);
-    Arch_PICMaskIRQ(Arch_RTCBase.irq, false);
+    // set_alarm((volatile gf_rtc*)(Arch_RTCBase.base));
 }
 // TODO: Implement
 // bool rtc_check_irq_callback(struct irq* i, void* userdata)
@@ -114,8 +115,20 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	Core_TimerIRQ->handlerUserdata = handler;
     Arch_RTCBase = *(BootDeviceBase*)(Arch_GetBootInfo(BootInfoType_GoldfishRtcBase) + 1);
     // Map it.
-    Arch_MapPage(MmS_GetCurrentPageTable(), 0xffffb000, Arch_RTCBase.base, (0b11 << 5)|(0b1 << 7)|(0b11 << 0));
-    Arch_RTCBase.base = 0xffffb000;
+    uintptr_t virt_base =
+        (uintptr_t)Mm_VirtualMemoryAlloc(
+            &Mm_KernelContext, 
+            nullptr,
+            0x1000,
+            OBOS_PROTECTION_CACHE_DISABLE,
+            VMA_FLAGS_NON_PAGED, 
+            nullptr);
+    uintptr_t oldPhys = 0;
+    OBOSS_GetPagePhysicalAddress((void*)virt_base, &oldPhys);
+    // Map as RW, Cache Disabled, and Supervisor
+    Arch_MapPage(MmS_GetCurrentPageTable(), virt_base, Arch_RTCBase.base, (0b11|(0b11<<5)|(1<<7)));
+    OBOSS_FreePhysicalPages(oldPhys, 1);
+    Arch_RTCBase.base = virt_base;
     irql oldIrql = Core_RaiseIrql(IRQL_TIMER);
     volatile gf_rtc* rtc = (volatile gf_rtc*)(Arch_RTCBase.base);
     Arch_PICMaskIRQ(Arch_RTCBase.irq, true);
@@ -124,10 +137,17 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
     write_register32(rtc, CLEAR_ALARM, 1);
     write_register32(rtc, CLEAR_IRQ, 1);
     // Enable the alarm IRQ.
+    CoreS_TimerFrequency = 250;
+    write_register64(rtc, ALARM_LOW, read_register64(rtc, TIME_LOW) + ns_period);
     write_register32(rtc, ENABLE_IRQ, 1);
-    CoreS_TimerFrequency = 500;
-    set_alarm(rtc);
     Arch_PICMaskIRQ(Arch_RTCBase.irq, false);
     Core_LowerIrql(oldIrql);
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status CoreS_ResetTimer()
+{
+    if (!Arch_RTCBase.base)
+        return OBOS_STATUS_UNINITIALIZED;
+    set_alarm((volatile gf_rtc*)(Arch_RTCBase.base));
     return OBOS_STATUS_SUCCESS;
 }

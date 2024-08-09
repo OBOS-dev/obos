@@ -21,6 +21,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
+#include <scheduler/dpc.h>
 
 #include <arch/m68k/asm_helpers.h>
 #include <arch/m68k/cpu_local_arch.h>
@@ -98,12 +99,12 @@ void Arch_KernelEntryBootstrap()
     for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
 		Core_CpuInfo[0].priorityLists[i].priority = i;
     irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
-    OBOS_TextRendererState.fb.base = Arch_Framebuffer;
-    OBOS_TextRendererState.fb.bpp = 32;
-    OBOS_TextRendererState.fb.height = 768;
-    OBOS_TextRendererState.fb.width = 1024;
-    OBOS_TextRendererState.fb.pitch = 1024*4;
-    OBOS_TextRendererState.fb.format = OBOS_FB_FORMAT_RGBX8888;
+    // OBOS_TextRendererState.fb.base = Arch_Framebuffer;
+    // OBOS_TextRendererState.fb.bpp = 32;
+    // OBOS_TextRendererState.fb.height = 768;
+    // OBOS_TextRendererState.fb.width = 1024;
+    // OBOS_TextRendererState.fb.pitch = 1024*4;
+    // OBOS_TextRendererState.fb.format = OBOS_FB_FORMAT_RGBX8888;
     memzero(Arch_Framebuffer, 1024*768*4);
     OBOS_TextRendererState.font = font_bin;
     OBOS_Debug("Initializing Vector Base Register.\n");
@@ -134,6 +135,20 @@ struct stack_frame
     struct stack_frame* down;
     void* rip;
 } fdssdfdsf;
+struct dpc * timer_yield(dpc* on, void* udata)
+{
+    OBOS_UNUSED(udata);
+    Core_Yield();
+    return on;
+}
+void sched_timer_hnd(void* unused)
+{
+    static dpc sched_dpc;
+    OBOS_UNUSED(unused);
+    // Turns out you can't do that without breaking things [because the timer needs to be restarted]
+    // Core_Yield();
+    CoreH_InitializeDPC(&sched_dpc, timer_yield, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
+}
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
@@ -179,8 +194,12 @@ void Arch_KernelEntry()
 	Mm_Initialize();
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
     Core_InitializeTimerInterface();
-    // Hang.
-    while(1);
+    OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
+    static timer sched_timer;
+    sched_timer.handler = sched_timer_hnd;
+    sched_timer.userdata = nullptr;
+    Core_TimerObjectInitialize(&sched_timer, TIMER_MODE_INTERVAL, 4000);
+    Core_ExitCurrentThread();
 }
 void Arch_IdleTask()
 {

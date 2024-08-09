@@ -265,7 +265,7 @@ void Core_Yield()
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() <= IRQL_DISPATCH)
 	{
-		oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+		oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 		OBOS_ASSERT(!(oldIrql & ~0xf));
 	}
 	if (getCurrentThread)
@@ -276,7 +276,7 @@ void Core_Yield()
 			if (oldIrql != IRQL_INVALID)
 			{
 				OBOS_ASSERT(!(oldIrql & ~0xf));
-				Core_LowerIrqlNoThread(oldIrql);
+				Core_LowerIrql(oldIrql);
 			}
 			return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 		}
@@ -284,7 +284,7 @@ void Core_Yield()
 		if (oldIrql != IRQL_INVALID)
 		{
 			OBOS_ASSERT(!(oldIrql & ~0xf));
-			Core_LowerIrqlNoThread(oldIrql);
+			Core_LowerIrql(oldIrql);
 		}
 		return;
 	}

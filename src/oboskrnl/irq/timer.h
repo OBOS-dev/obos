@@ -95,3 +95,6 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us);
 /// <param name="handler">The irq handler.</param>
 /// <returns>The status of the function.</returns>
 OBOS_WEAK obos_status CoreS_InitializeTimer(irq_handler handler);
+#ifdef OBOS_TIMER_IS_DEADLINE
+obos_status CoreS_ResetTimer();
+#endif

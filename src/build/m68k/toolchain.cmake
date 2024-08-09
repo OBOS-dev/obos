@@ -54,11 +54,11 @@ list (APPEND oboskrnl_sources
 add_compile_definitions(
 	OBOS_PAGE_SIZE=4096 
 	# OBOS_HUGE_PAGE_SIZE=8192
-# TODO(oberrow): Does the m68040's mmu support large pages, or does it simply just provide two page sizes
-# that can be switched
 	OBOS_HUGE_PAGE_SIZE=4096 
-	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xc0000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffff000 
+	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xc0000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffff000
 	OBOS_USER_ADDRESS_SPACE_BASE=0x1000 OBOS_USER_ADDRESS_SPACE_LIMIT=0x80000000
+	OBOS_TIMER_IS_DEADLINE=
+	OBOS_ARCH_USES_SOFT_FLOAT=1
 )
 add_compile_options($<$<CONFIG:Debug>:-g>)
 

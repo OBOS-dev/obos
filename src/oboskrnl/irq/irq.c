@@ -31,13 +31,13 @@ static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
 void Core_IRQDispatcher(interrupt_frame* frame)
 {
+	CoreS_SendEOI(frame);
 	if (!CoreS_EnterIRQHandler(frame))
 		return; // some archs do IRQL emulation this way.
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ <= Core_GetIrql()\").");
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
-	CoreS_SendEOI(frame);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);

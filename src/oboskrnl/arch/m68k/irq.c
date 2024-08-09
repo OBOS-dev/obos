@@ -47,9 +47,3 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	return Arch_IRQHandlers[vector+0x40] ? OBOS_STATUS_IN_USE : OBOS_STATUS_SUCCESS;
 }
-void CoreS_SendEOI(interrupt_frame* frame)
-{
-    OBOS_UNUSED(frame);
-	for (size_t i = 0; i < Arch_PICCount; i++)
-		Arch_PICClearPending(&Arch_PICBases[i]);
-}
