@@ -35,14 +35,14 @@ else()
 endif()
 set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
 set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
-set(TARGET_LINKER_OPTIONS -march=68040 -z max-page-size=4096)
-set(TARGET_DRIVER_LINKER_OPTIONS -march=68040 -z max-page-size=4096)
+set(TARGET_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
+set(TARGET_DRIVER_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
 
 if (DEFINED OBOS_ENABLE_KASAN)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fasan-shadow-offset=0>)
 endif()
 
-add_compile_options("-march=68040")
+add_compile_options("-mcpu=68040")
 
 list (APPEND oboskrnl_sources 
 	"arch/m68k/entry.c" "arch/m68k/memmanip.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c"
@@ -64,7 +64,7 @@ add_compile_options($<$<CONFIG:Debug>:-g>)
 
 set (OBOS_ARCHITECTURE "m68k")
 set (OBOS_ARCHITECTURE_BITS 32) # 32-bit architecture.
-set (OBOS_ARCHITECTURE_ENDIANNESS "Big-Endian") # Little-Endian architecture.
+set (OBOS_ARCHITECTURE_ENDIANNESS "Big-Endian") # Big-Endian architecture.
 set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/link.ld")
 set (DRIVER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/driver_link.ld")
 set (OBOS_ARCHITECTURE_HAS_ACPI 0)

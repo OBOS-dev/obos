@@ -51,9 +51,9 @@ static OBOS_NO_KASAN uint32_t read_register32(volatile gf_rtc* rtc, uint8_t reg)
 }
 static OBOS_NO_KASAN uint64_t read_register64(volatile gf_rtc* rtc, uint8_t reg)
 {
-    uint64_t half1 = (uint64_t)(read_register32(rtc, reg));
-    uint64_t half2 = (uint64_t)(read_register32(rtc, reg+4))<<32;
-    return half1|half2;
+    uint32_t half1 = (uint32_t)(read_register32(rtc, reg));
+    uint32_t half2 = (uint32_t)(read_register32(rtc, reg+4));
+    return (uint64_t)half1|((uint64_t)half2 << 32);
 }
 static OBOS_NO_KASAN void write_register32(volatile gf_rtc* rtc, uint8_t reg, uint32_t val)
 {

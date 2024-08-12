@@ -11,7 +11,7 @@
 #if UINTPTR_MAX == UINT64_MAX
 OBOS_EXPORT uint64_t __stack_chk_guard = 124770532977999;
 #elif UINT32_MAX == UINTPTR_MAX
-OBOS_EXPORT uint64_t __stack_chk_guard = 373612817;
+OBOS_EXPORT uint32_t __stack_chk_guard = 373612817;
 #endif
 
 OBOS_NORETURN OBOS_EXPORT void __stack_chk_fail()
