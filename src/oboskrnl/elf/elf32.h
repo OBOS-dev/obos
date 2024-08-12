@@ -205,6 +205,15 @@ typedef struct
 	Elf32_Half e_shstrndx;
 } Elf32_Ehdr, Elf_Ehdr;
 
+typedef struct Elf32_Dyn 
+{
+	Elf32_Sword d_tag;
+	union
+	{
+		Elf32_Word d_val;
+		Elf32_Addr d_ptr;
+	} d_un;
+} Elf32_Dyn, Elf_Dyn;
 
 #ifdef __m68k__
 // refer to sysv-m68k-abi-part3.pdf page 6 for info on relocations
@@ -216,6 +225,7 @@ enum
 	R_68K_8,
 	R_68K_PC32,
 	R_68K_PC16,
+	R_68K_PC8,
 	R_68K_GOT32,
 	R_68K_GOT16,
 	R_68K_GOT8,
@@ -234,3 +244,44 @@ enum
 	R_68K_RELATIVE,
 };
 #endif
+
+// maybe I shouldn't copy this from elf64
+enum
+{
+	DT_NULL,
+	DT_NEEDED,
+	DT_PLTRELSZ,
+	DT_PLTGOT,
+	DT_HASH,
+	DT_STRTAB,
+	DT_SYMTAB,
+	DT_RELA,
+	DT_RELASZ,
+	DT_RELAENT,
+	DT_STRSZ,
+	DT_SYMENT,
+	DT_INIT,
+	DT_FINI,
+	DT_SONAME,
+	DT_RPATH,
+	DT_SYMBOLIC,
+	DT_REL,
+	DT_RELSZ,
+	DT_RELENT,
+	DT_PLTREL,
+	DT_DEBUG,
+	DT_TEXTREL,
+	DT_JMPREL,
+	DT_BIND_NOW,
+	DT_INIT_ARRAY,
+	DT_FINI_ARRAY,
+	DT_INIT_ARRAYSZ,
+	DT_FINI_ARRAYSZ,
+	DT_RUNPATH,
+	DT_FLAGS,
+	DT_ENCODING,
+	DT_PREINIT_ARRAY,
+
+	DT_RELACOUNT = 0x6ffffff9,
+	DT_RELCOUNT,
+};

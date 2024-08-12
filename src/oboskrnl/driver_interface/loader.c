@@ -54,7 +54,7 @@ static OBOS_NO_UBSAN driver_header* find_header(void* file, size_t szFile)
     }
     return nullptr;
 }
-obos_status Drv_LoadDriverHeader(void* file_, size_t szFile, driver_header* header)
+OBOS_NO_UBSAN obos_status Drv_LoadDriverHeader(const void* file_, size_t szFile, driver_header* header)
 {
     if (!header)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -120,7 +120,7 @@ obos_status Drv_LoadDriverHeader(void* file_, size_t szFile, driver_header* head
     memcpy(header, header_, sizeof(*header));
     return OBOS_STATUS_SUCCESS;
 }
-driver_id *Drv_LoadDriver(void* file_, size_t szFile, obos_status* status)
+OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_status* status)
 {
     driver_header* header;
     driver_header header_;

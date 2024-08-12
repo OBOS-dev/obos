@@ -2,6 +2,15 @@
 #
 # Copyright (c) 2024 Omar Berrow
 
+if (NOT DEFINED OUTPUT_DIR)
+	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
+endif()
+
+file (TO_CMAKE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
+file (TO_NATIVE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
+
+set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+
 cmake_minimum_required(VERSION 3.7)
 
 project(OBOS C CXX ASM)
@@ -27,10 +36,8 @@ if (OBOS_REFRESH_DEPENDENCIES)
 		message("Fetching Hyper.")
 		include("dependencies/hyper.cmake")
 	endif()
-	if (OBOS_ARCHITECTURE_HAS_ACPI)
-		message("Fetching uACPI.")
-		include ("dependencies/uacpi.cmake")
-	endif()
+	message("Fetching uACPI.")
+	include ("dependencies/uacpi.cmake")
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -38,20 +45,16 @@ else()
 	if (NOT EXISTS hyper_install AND OBOS_ARCHITECTURE STREQUAL "x86_64")
 		include("dependencies/hyper.cmake")
 	endif()
-	if (NOT EXISTS uacpi_cmake_file AND OBOS_ARCHITECTURE_HAS_ACPI)
+	if (NOT EXISTS uacpi_cmake_file)
         include("dependencies/uacpi.cmake")
 	endif()
-endif()
-
-if (NOT DEFINED OUTPUT_DIR)
-	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
 endif()
 
 if (DEFINED OBOS_UP)
 	add_compile_definitions(OBOS_UP=1)
 endif()
 
-set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+add_compile_definitions(OBOS_BINARY_DIRECTORY="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
 add_compile_definitions(OBOS_ARCHITECTURE_BITS=${OBOS_ARCHITECTURE_BITS})
 
@@ -107,14 +110,18 @@ if (OBOS_ENABLE_WERROR)
 	add_compile_options("-Werror")
 endif()
 
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")
 # Include drivers
+get_target_property(uacpi_INCLUDES uacpi INCLUDE_DIRECTORIES)
+include_directories(${uacpi_INCLUDES})
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86_64/uart")
 endif()
 add_subdirectory("src/isogen")
+add_subdirectory("src/drivers/test_driver")
 if (OBOS_ARCHITECTURE STREQUAL "m68k")
 	add_subdirectory("src/oboskrnl/arch/m68k/loader")
 endif()

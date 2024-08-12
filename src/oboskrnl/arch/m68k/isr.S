@@ -9,8 +9,11 @@
 .extern Arch_IrqHandlers
 
 isr_stub:
-    .cfi_startproc
+    .cfi_startproc simple
     .cfi_signal_frame
+
+    // Disable IRQs
+    or #0x700, %sr 
 
 // Align the stack
     move.w #0, -(%sp)
@@ -46,7 +49,7 @@ isr_stub:
     
     move.l %sp, -(%sp)
 	.cfi_adjust_cfa_offset 4
-    
+	
     cmp #0, %a0
     beq .L1
 

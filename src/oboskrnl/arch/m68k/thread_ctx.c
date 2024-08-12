@@ -30,6 +30,8 @@ obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t
     ctx->sp = (uintptr_t)stackBase+stackSize;
     ctx->sp -= 4;
     *(uintptr_t*)ctx->sp = arg1;
+    ctx->sp -= 4;
+    *(uintptr_t*)ctx->sp = 0;
     ctx->stackBase = stackBase;
     ctx->stackSize = stackSize;
     return OBOS_STATUS_SUCCESS;

@@ -187,9 +187,9 @@ obos_status Core_CancelTimer(timer* timer)
 timer_tick CoreH_TimeFrameToTick(uint64_t us)
 {
     // us/1000000*freqHz=timer ticks
-#if OBOS_ARCH_USES_SOFT_FLOAT
-    return ((double)us/1000000.0*(double)CoreS_TimerFrequency)+1;
-#else
+// #if OBOS_ARCH_USES_SOFT_FLOAT
+//     return ((double)us/1000000.0*(double)CoreS_TimerFrequency)+1;
+// #else
     fixedptd tp = fixedpt_fromint(us); // us.0
     fixedptd hz = fixedpt_fromint(CoreS_TimerFrequency); // CoreS_TimerFrequency.0
     const fixedptd divisor = fixedpt_fromint(1000000); // 1000000.0
@@ -199,5 +199,5 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us)
     tp = fixedpt_xdiv(tp, divisor);
     tp = fixedpt_xmul(tp, hz);
     return fixedpt_toint(tp)+1 /* add one to account for rounding issues. */;
-#endif
+// #endif
 }

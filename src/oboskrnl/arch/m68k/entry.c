@@ -37,6 +37,9 @@
 #include <mm/bare_map.h>
 #include <mm/context.h>
 
+#include <driver_interface/loader.h>
+#include <driver_interface/driverId.h>
+
 allocator_info* OBOS_KernelAllocator;
 process *OBOS_KernelProcess;
 timer_frequency CoreS_TimerFrequency;
@@ -130,14 +133,16 @@ obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t si
 obos_status Arch_MapPage(uint32_t pt_root, uintptr_t virt, uintptr_t phys, uintptr_t ptFlags);
 void Arch_PageFaultHandler(interrupt_frame* frame);
 static basic_allocator kalloc;
+extern BootDeviceBase Arch_RTCBase;
 struct stack_frame
 {
     struct stack_frame* down;
     void* rip;
 } fdssdfdsf;
-struct dpc * timer_yield(dpc* on, void* udata)
+struct dpc* timer_yield(dpc* on, void* udata)
 {
     OBOS_UNUSED(udata);
+    Arch_PICMaskIRQ(Arch_RTCBase.irq, false);
     Core_Yield();
     return on;
 }
@@ -149,6 +154,20 @@ void sched_timer_hnd(void* unused)
     // Core_Yield();
     CoreH_InitializeDPC(&sched_dpc, timer_yield, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
 }
+
+asm (
+    ".section .rodata;"
+    ".global Arch_ModuleStart;"
+    ".global Arch_ModuleEnd;"
+    ".align 8;"
+    "Arch_ModuleStart:;"
+    ".incbin \"" OBOS_BINARY_DIRECTORY "/test_driver\";"
+    "Arch_ModuleEnd:;"
+    ".section text;"
+);
+extern const char Arch_ModuleStart[];
+extern const char Arch_ModuleEnd[];
+
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
@@ -199,6 +218,79 @@ void Arch_KernelEntry()
     sched_timer.handler = sched_timer_hnd;
     sched_timer.userdata = nullptr;
     Core_TimerObjectInitialize(&sched_timer, TIMER_MODE_INTERVAL, 4000);
+    OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
+	Elf32_Ehdr* ehdr = (Elf32_Ehdr*)Arch_KernelFile.response->kernel_file->address;
+	Elf32_Shdr* sectionTable = (Elf32_Shdr*)(Arch_KernelFile.response->kernel_file->address + ehdr->e_shoff);
+	if (!sectionTable)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the section table from oboskrnl.\n");
+	const char* shstr_table = (const char*)(Arch_KernelFile.response->kernel_file->address + (sectionTable + ehdr->e_shstrndx)->sh_offset);
+	// Look for .symtab
+	Elf32_Shdr* symtab = nullptr;
+	const char* strtable = nullptr;
+	for (size_t i = 0; i < ehdr->e_shnum; i++)
+	{
+		const char* section = shstr_table + sectionTable[i].sh_name;
+		if (strcmp(section, ".symtab"))
+			symtab = &sectionTable[i];
+		if (strcmp(section, ".strtab"))
+			strtable = (const char*)(Arch_KernelFile.response->kernel_file->address + sectionTable[i].sh_offset);
+		if (strtable && symtab)
+			break;
+	}
+	if (!symtab)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the symbol table from oboskrnl.\n");
+	Elf32_Sym* symbolTable = (Elf32_Sym*)(Arch_KernelFile.response->kernel_file->address + symtab->sh_offset);
+	for (size_t i = 0; i < symtab->sh_size/sizeof(Elf32_Sym); i++)
+	{
+		Elf32_Sym* esymbol = &symbolTable[i];
+		int symbolType = -1;
+		switch (ELF32_ST_TYPE(esymbol->st_info)) 
+		{
+			case STT_FUNC:
+				symbolType = SYMBOL_TYPE_FUNCTION;
+				break;
+			case STT_FILE:
+				symbolType = SYMBOL_TYPE_FILE;
+				break;
+			case STT_OBJECT:
+				symbolType = SYMBOL_TYPE_VARIABLE;
+				break;
+			default:
+				continue;
+		}
+		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		const char* name = strtable + esymbol->st_name;
+		size_t szName = strlen(name);
+		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->address = esymbol->st_value;
+		symbol->size = esymbol->st_size;
+		symbol->type = symbolType;
+		switch (esymbol->st_other)
+		{
+			case STV_DEFAULT:
+			case STV_EXPORTED:
+			// since this is the kernel, everyone already gets the same object
+			case STV_SINGLETON: 
+				symbol->visibility = SYMBOL_VISIBILITY_DEFAULT;
+				break;
+			case STV_PROTECTED:
+			case STV_HIDDEN:
+				symbol->visibility = SYMBOL_VISIBILITY_HIDDEN;
+				break;
+			default:
+				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unrecognized visibility %d.\n", esymbol->st_other);
+		}
+		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
+	}
+    OBOS_Debug("%s: Loading test driver.\n", __func__);
+    status = OBOS_STATUS_SUCCESS;
+    const void* file = Arch_ModuleStart;
+    size_t filesize = (uintptr_t)Arch_ModuleEnd-(uintptr_t)Arch_ModuleStart;
+    driver_id* id = 
+        Drv_LoadDriver(file, filesize, &status);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load driver! Status: %d.\n", status);
+    Drv_StartDriver(id, nullptr);
     Core_ExitCurrentThread();
 }
 void Arch_IdleTask()

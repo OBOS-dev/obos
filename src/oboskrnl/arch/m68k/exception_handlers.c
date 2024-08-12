@@ -18,7 +18,7 @@
 // well technically it's an access fault but whatever
 void Arch_PageFaultHandler(interrupt_frame* frame)
 {
-    uint32_t mm_ec = PF_EC_PRESENT;
+    uint32_t mm_ec = 0;
     if (frame->format_7.ssw.atc)
         mm_ec &= ~PF_EC_PRESENT;
     if (!frame->format_7.ssw.rw)
@@ -27,6 +27,11 @@ void Arch_PageFaultHandler(interrupt_frame* frame)
         mm_ec |= PF_EC_UM;
     if (Mm_IsInitialized())
     {
+        mm_ec &= ~PF_EC_PRESENT;
+        page what = {.addr=frame->format_7.fa & ~0xfff};
+        page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
+        if (page && page->prot.present)
+            mm_ec |= PF_EC_PRESENT;
         obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, frame->format_7.fa & ~0xfff, mm_ec);
         switch (status)
         {
@@ -48,7 +53,7 @@ void Arch_PageFaultHandler(interrupt_frame* frame)
         "d1: 0x%p, d5: 0x%p, d6: 0x%p, d7: 0x%p\n"
         "a0: 0x%p, a1: 0x%p, a2: 0x%p, a3: 0x%p\n"
         "a4: 0x%p, a5: 0x%p, a6: 0x%p, sp: 0x%p\n"
-        "pc: 0x%p, sr: 0x%p",
+        "pc: 0x%p, sr: 0x%p\n",
         (mm_ec & PF_EC_UM) ? "user" : "kernel",
         frame->pc,
         (mm_ec & PF_EC_RW) ? "write" : "read",

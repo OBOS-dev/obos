@@ -1,13 +1,13 @@
 set(CMAKE_SYSTEM_NAME "Generic")
 set(CMAKE_SYSTEM_PROCESSOR "m68k")
 
-find_program(HAS_CROSS_COMPILER "m68k-elf-g++")
+find_program(HAS_CROSS_COMPILER "m68k-obos-g++")
 if (NOT HAS_CROSS_COMPILER)
-	message(FATAL_ERROR "No m68k-elf cross compiler in the PATH!")
+	message(FATAL_ERROR "No m68k-obos cross compiler in the PATH!")
 endif()
 
-set(CMAKE_C_COMPILER "m68k-elf-gcc")
-set(CMAKE_CXX_COMPILER "m68k-elf-g++")
+set(CMAKE_C_COMPILER "m68k-obos-gcc")
+set(CMAKE_CXX_COMPILER "m68k-obos-g++")
 set(CMAKE_ASM-ATT_COMPILER ${CMAKE_C_COMPILER})
 set(CMAKE_C_COMPILER_WORKS true)
 set(CMAKE_CXX_COMPILER_WORKS true)
@@ -17,26 +17,26 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 
-execute_process(COMMAND m68k-elf-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC)
+execute_process(COMMAND m68k-obos-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC)
 
 string(STRIP "${LIBGCC}" LIBGCC)
 
-find_program(HAS_m68k_elf_objcopy "m68k-elf-objcopy")
-find_program(HAS_m68k_elf_nm "m68k-elf-nm")
+find_program(HAS_m68k_elf_objcopy "m68k-obos-objcopy")
+find_program(HAS_m68k_elf_nm "m68k-obos-nm")
 if (HAS_m68k_objcopy)
-	set(OBJCOPY "m68k-elf-objcopy")
+	set(OBJCOPY "m68k-obos-objcopy")
 else()
 	set(OBJCOPY "objcopy")
 endif()
 if (HAS_x86_64_elf_nm)
-	set(NM "m68k-elf-nm")
+	set(NM "m68k-obos-nm")
 else()
 	set(NM "nm")
 endif()
 set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
 set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
-set(TARGET_LINKER_OPTIONS -march=68040)
-set(TARGET_DRIVER_LINKER_OPTIONS -march=68040)
+set(TARGET_LINKER_OPTIONS -march=68040 -z max-page-size=4096)
+set(TARGET_DRIVER_LINKER_OPTIONS -march=68040 -z max-page-size=4096)
 
 if (DEFINED OBOS_ENABLE_KASAN)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fasan-shadow-offset=0>)
@@ -48,7 +48,7 @@ list (APPEND oboskrnl_sources
 	"arch/m68k/entry.c" "arch/m68k/memmanip.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c"
 	"arch/m68k/irq.c" "arch/m68k/isr.S" "arch/m68k/thread_ctx.S" "arch/m68k/thread_ctx.c"
 	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/initial_swap.c"
-	"arch/m68k/goldfish_pic.c" "arch/m68k/goldfish_rtc.c"
+	"arch/m68k/goldfish_pic.c" "arch/m68k/goldfish_rtc.c" "arch/m68k/driver_loader.c"
 )
 
 add_compile_definitions(

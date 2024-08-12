@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "uacpi/status.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>

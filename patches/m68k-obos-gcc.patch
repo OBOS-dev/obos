@@ -1,0 +1,120 @@
+diff --git a/config.sub b/config.sub
+index 38f3d037a78..749a8e45361 100755
+--- a/config.sub
++++ b/config.sub
+@@ -1749,7 +1749,7 @@ case $os in
+ 	     | onefs* | tirtos* | phoenix* | fuchsia* | redox* | bme* \
+ 	     | midnightbsd* | amdhsa* | unleashed* | emscripten* | wasi* \
+ 	     | nsk* | powerunix* | genode* | zvmoe* | qnx* | emx* | zephyr* \
+-	     | fiwix* )
++	     | fiwix* | obos* )
+ 		;;
+ 	# This one is extra strict with allowed versions
+ 	sco3.2v2 | sco3.2v[4-9]* | sco5v6*)
+diff --git a/fixincludes/mkfixinc.sh b/fixincludes/mkfixinc.sh
+index df90720b716..c09f7ae3e2d 100755
+--- a/fixincludes/mkfixinc.sh
++++ b/fixincludes/mkfixinc.sh
+@@ -20,7 +20,7 @@ case $machine in
+     powerpcle-*-eabisim* | \
+     powerpcle-*-eabi* | \
+     *-*-vxworks7* | \
+-    *-musl* )
++    *-musl* | *-obos* )
+ 	#  IF there is no include fixing,
+ 	#  THEN create a no-op fixer and exit
+ 	(echo "#! /bin/sh" ; echo "exit 0" ) > ${target}
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+index 95c91ee02be..c469a9f5f4f 100644
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -722,6 +722,15 @@ x86_cpus="generic intel"
+ 
+ # Common parts for widely ported systems.
+ case ${target} in
++*-*-obos*)
++	gas=yes
++	gnu_ld=yes
++	default_use_cxa_atexit=yes
++	use_gcc_stdint=provide
++#	thread_file=posix
++#	enable_threads=no
++#	tmake_file="${tmake_file} t-slibgcc"
++	;;
+ *-*-darwin*)
+   tmake_file="t-darwin "
+   tm_file="${tm_file} darwin.h"
+@@ -2397,6 +2406,15 @@ m68k-*-elf* | fido-*-elf*)
+ 		;;
+ 	esac
+ 	;;
++m68k-*-obos*)
++	tm_file="${tm_file} elfos.h gnu-user.h glibc-stdint.h m68k/obos.h"
++	default_m68k_cpu=68020
++	default_cf_cpu=5475
++	with_arch=${with_arch:-m68k}
++#	extra_options="${extra_options} m68k/ieee.opt"
++	tm_defines="${tm_defines} MOTOROLA=1"
++#	tmake_file="${tmake_file} m68k/t-floatlib m68k/t-mlibs"
++  ;;
+ m68k*-*-netbsdelf*)
+ 	default_m68k_cpu=68020
+ 	default_cf_cpu=5475
+@@ -2411,8 +2429,8 @@ m68k-*-uclinux*)		# Motorola m68k/ColdFire running uClinux
+ 	default_cf_cpu=5206
+ 	tm_file="${tm_file} elfos.h gnu-user.h linux.h glibc-stdint.h flat.h m68k/linux.h m68k/uclinux.h ./sysroot-suffix.h"
+ 	extra_options="${extra_options} m68k/uclinux.opt"
+- 	tm_defines="${tm_defines} MOTOROLA=1"
+-	tmake_file="m68k/t-floatlib m68k/t-uclinux m68k/t-mlibs"
++	tm_defines="${tm_defines} MOTOROLA=1"
++	tmake_file="${tmake_file} m68k/t-floatlib m68k/t-linux m68k/t-mlibs"
+ 	;;
+ m68k-*-linux*)			# Motorola m68k's running GNU/Linux
+ 				# with ELF format using glibc 2
+diff --git a/libgcc/config.host b/libgcc/config.host
+index e75a7af647f..0ea39a02a56 100644
+--- a/libgcc/config.host
++++ b/libgcc/config.host
+@@ -311,6 +311,11 @@ case ${host} in
+     extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"
+   fi
+   ;;
++*-*-obos*)
++  extra_parts="$extra_parts crtbegin.o crtbeginS.o crtend.o crtendS.o"
++  tmake_file="$tmake_file t-crtstuff-pic"
++  tmake_file="$tmake_file t-slibgcc t-slibgcc-gld t-slibgcc-elf-ver t-libgcc-pic"
++  ;;
+ *-*-lynxos*)
+   tmake_file="$tmake_file t-lynx $cpu_type/t-crtstuff t-crtstuff-pic t-libgcc-pic"
+   extra_parts="crtbegin.o crtbeginS.o crtend.o crtendS.o"
+@@ -1012,6 +1017,12 @@ m68k*-*-netbsdelf*)
+ 	;;
+ m68k*-*-openbsd*)
+ 	;;
++m68k-*-obos*)
++#	tmake_file="$tmake_file m68k/t-floatlib m68k/t-linux
++#	if test x$ac_cv_sjlj_exceptions != xyes; then
++#            tmake_file="$tmake_file m68k/t-slibgcc-elf-ver"
++#        fi"
++	;;
+ m68k-*-uclinux*)	# Motorola m68k/ColdFire running uClinux with uClibc
+ 	tmake_file="$tmake_file m68k/t-floatlib m68k/t-linux"
+ 	md_unwind_header=m68k/linux-unwind.h
+diff --git a/libstdc++-v3/crossconfig.m4 b/libstdc++-v3/crossconfig.m4
+index b3269cb88e0..a2dc76d49fc 100644
+--- a/libstdc++-v3/crossconfig.m4
++++ b/libstdc++-v3/crossconfig.m4
+@@ -53,7 +53,12 @@ case "${host}" in
+     AC_DEFINE(HAVE_MODF)
+     AC_DEFINE(HAVE_SQRTF)
+     ;;
+-
++  *-obos*)
++    GLIBCXX_CHECK_COMPILER_FEATURES
++    GLIBCXX_CHECK_LINKER_FEATURES
++    GLIBCXX_CHECK_MATH_SUPPORT
++    GLIBCXX_CHECK_STDLIB_SUPPORT
++   ;;
+   *-aix*)
+     GLIBCXX_CHECK_LINKER_FEATURES
+     GLIBCXX_CHECK_MATH_SUPPORT

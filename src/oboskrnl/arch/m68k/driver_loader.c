@@ -1,5 +1,5 @@
 /*
- * oboskrnl/arch/x86_64/drv_loader.c
+ * oboskrnl/arch/m68k/driver_loader.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
@@ -9,20 +9,15 @@
 #include <error.h>
 #include <memmanip.h>
 
-#include <irq/irql.h>
-
-#include <locks/spinlock.h>
-
-#include <mm/alloc.h>
-#include <mm/context.h>
-
-#include <driver_interface/loader.h>
-#include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
+
+#include <mm/context.h>
+#include <mm/alloc.h>
 
 #include <elf/elf.h>
 
-#include <allocators/base.h>
+#include <driver_interface/loader.h>
+#include <driver_interface/driverId.h>
 
 #define OffsetPtr(ptr, off, type) (type)(((uintptr_t)ptr) + ((intptr_t)off))
 // Please forgive me for this
@@ -31,8 +26,8 @@
 // Helpers.
 struct relocation_table
 {
-    Elf64_Dyn* table;
-    size_t sz;
+    Elf_Dyn* table;
+    size_t nEntries;
     bool rel; // false if rela, true if rel.
 };
 struct relocation
@@ -60,14 +55,8 @@ struct copy_reloc_array
 static void append_relocation_table(struct relocation_array* arr, const struct relocation_table* what)
 {
     arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
-    OBOS_ASSERT(arr->buf); // oopsies
+    OBOS_ASSERT(arr->buf);
     arr->buf[arr->nRelocations - 1] = *what; 
-    // Note:
-    // Since you'll probably forget what you were doing:
-    // You were making relocation tables in the array be stored as the struct relocation_table instead of Elf64_Dyn.
-    // You're done adapting the array, you only need to adapt the code.
-    // 5 Hours later:
-    // thank god I wrote this comment.
 }
 static void free_reloc_array(struct relocation_array* arr)
 {
@@ -77,7 +66,7 @@ static void free_reloc_array(struct relocation_array* arr)
 static void append_copy_reloc(struct copy_reloc_array* arr, const struct copy_reloc* what)
 {
     arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
-    OBOS_ASSERT(arr->buf); // oopsies
+    OBOS_ASSERT(arr->buf);
     arr->buf[arr->nRelocations - 1] = *what; 
 }
 static void free_copy_reloc_array(struct copy_reloc_array* arr)
@@ -100,23 +89,23 @@ static uint32_t ElfHash(const char* name)
     }
     return h;
 }
-static Elf64_Sym* GetSymbolFromTable(
-			uint8_t* fileStart,
+static Elf32_Sym* GetSymbolFromTable(
+			const uint8_t* fileStart,
 			uint8_t* baseAddress,
-			Elf64_Sym* symbolTable,
+			Elf32_Sym* symbolTable,
 			uintptr_t hashTableOff,
-			Elf64_Off stringTable,
+			Elf32_Off stringTable,
 			const char* _symbol)
 {
-    Elf64_Word* hashTableBase = (Elf64_Word*)(baseAddress + hashTableOff);
-    Elf64_Word nBuckets = hashTableBase[0];
+    Elf32_Word* hashTableBase = (Elf32_Word*)(baseAddress + hashTableOff);
+    Elf32_Word nBuckets = hashTableBase[0];
     uint32_t currentBucket = ElfHash(_symbol) % nBuckets;
-    Elf64_Word* firstBucket = hashTableBase + 2;
-    Elf64_Word* firstChain = firstBucket + nBuckets;
+    Elf32_Word* firstBucket = hashTableBase + 2;
+    Elf32_Word* firstChain = firstBucket + nBuckets;
     size_t index = firstBucket[currentBucket];
     while (index)
     {
-        Elf64_Sym* symbol = &symbolTable[index];
+        Elf32_Sym* symbol = &symbolTable[index];
         const char* symbolName = (char*)(fileStart + stringTable + symbol->st_name);
         if (strcmp(symbolName, _symbol))
             return symbol;
@@ -149,13 +138,15 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
     list->nNodes++;
     dependency->refCnt++;
 }
-static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
+static bool calculate_relocation(obos_status* status, driver_id* drv, Elf_Sym* symbolTable, Elf32_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf32_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
 {
+    if (status)
+        *status = OBOS_STATUS_SUCCESS;
     driver_symbol* Symbol;
     driver_symbol internal_symbol = {};
     if (i.symbolTableOffset)
     {
-        Elf64_Sym* Unresolved_Symbol = &symbolTable[i.symbolTableOffset];
+        Elf32_Sym* Unresolved_Symbol = &symbolTable[i.symbolTableOffset];
         driver_id* dependency = nullptr;
         Symbol = DrvH_ResolveSymbol(
             OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*),
@@ -171,7 +162,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         }
         if (!Symbol)
         {
-            Elf64_Sym* sym = GetSymbolFromTable(
+            Elf32_Sym* sym = GetSymbolFromTable(
                 file, base, symbolTable, hashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
@@ -180,7 +171,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             internal_symbol.address = OffsetPtr(base, sym->st_value, uintptr_t);
             internal_symbol.size = sym->st_size;
             internal_symbol.visibility = SYMBOL_VISIBILITY_DEFAULT;
-            switch (ELF64_ST_TYPE(sym->st_info)) 
+            switch (ELF32_ST_TYPE(sym->st_info)) 
             {
                 case STT_FUNC:
                     internal_symbol.type = SYMBOL_TYPE_FUNCTION;
@@ -197,7 +188,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             Symbol = &internal_symbol;
         }
         unresolved:
-        if (!Symbol && ELF64_ST_BIND(Unresolved_Symbol->st_info) != STB_WEAK) 
+        if (!Symbol && ELF32_ST_BIND(Unresolved_Symbol->st_info) != STB_WEAK) 
         {
             if (status)
                 *status = OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL;
@@ -206,11 +197,11 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             return false;
         }
         add_dependency(drv, dependency);
-        if (ELF64_ST_BIND(Unresolved_Symbol->st_info) == STB_WEAK)
+        if (ELF32_ST_BIND(Unresolved_Symbol->st_info) == STB_WEAK)
         {
             internal_symbol.size = Unresolved_Symbol->st_size;
             internal_symbol.address = 0;
-            switch (ELF64_ST_TYPE(Unresolved_Symbol->st_info)) 
+            switch (ELF32_ST_TYPE(Unresolved_Symbol->st_info)) 
             {
                 case STT_FUNC:
                     internal_symbol.type = SYMBOL_TYPE_FUNCTION;
@@ -227,7 +218,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             internal_symbol.visibility = SYMBOL_VISIBILITY_DEFAULT;
             Symbol = &internal_symbol;
         }
-        if (Unresolved_Symbol->st_size != Symbol->size && i.relocationType == R_AMD64_COPY)
+        if (Unresolved_Symbol->st_size != Symbol->size && i.relocationType == R_68K_COPY)
         {
             // Oh no!
             if (status)
@@ -236,112 +227,116 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             return false;
         }
     }
-    int type = i.relocationType;
     uintptr_t relocAddr = (uintptr_t)base + i.virtualAddress;
-    uint64_t relocResult = 0;
+    uint32_t relocResult = 0;
     uint8_t relocSize = 0;
-    switch (type)
+    switch (i.relocationType)
     {
-    case R_AMD64_NONE:
-        return true;
-    case R_AMD64_64:
-        relocResult = Symbol->address + i.addend;
-        relocSize = 8;
-        break;
-    case R_AMD64_PC32:
-        relocResult = Symbol->address + i.addend - relocAddr;
-        relocSize = 4;
-        break;
-    case R_AMD64_GOT32:
-        if (status)
-            *status = OBOS_STATUS_UNIMPLEMENTED;
-        return false;
-        // TODO: Replace the zero in the calculation with "G" (see elf spec for more info).
-        relocResult = 0 + i.addend;
-        relocSize = 4;
-        break;
-    case R_AMD64_PLT32:
-        if (status)
-            *status = OBOS_STATUS_UNIMPLEMENTED;
-        Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
-        return false;
-        // TODO: Replace the zero in the calculation with "L" (see elf spec for more info).
-        relocResult = 0 + i.addend - relocAddr;
-        relocSize = 4;
-        break;
-    case R_AMD64_COPY:
-    {
-        // Save copy relocations for the end because if we don't, it might contain unresolved addresses.
-        // copy_relocations.push_back({ (void*)relocAddr, (void*)Symbol->address, Symbol->size });
-        struct copy_reloc reloc = { (void*)relocAddr, (void*)Symbol->address, Symbol->size };
-        append_copy_reloc(copy_relocations, &reloc);
-        relocSize = 0;
-        break;
-    }
-    case R_AMD64_JUMP_SLOT:
-    case R_AMD64_GLOB_DAT:
-        relocResult = Symbol->address;
-        relocSize = 8;
-        break;
-    case R_AMD64_RELATIVE:
-        relocResult = (uint64_t)base + i.addend;
-        relocSize = 8;
-        break;
-    case R_AMD64_GOTPCREL:
-        if (status)
-            *status = OBOS_STATUS_UNIMPLEMENTED;
-        Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
-        return false;
-        // TODO: Replace the zero in the calculation with "G" (see elf spec for more info).
-        relocResult = 0 + (uint64_t)base + i.addend - relocAddr;
-        relocSize = 8;
-        break;
-    case R_AMD64_32:
-        relocResult = Symbol->address + i.addend;
-        relocSize = 4;
-        break;
-    case R_AMD64_32S:
-        relocResult = Symbol->address + i.addend;
-        relocSize = 4;
-        break;
-    case R_AMD64_16:
-        relocResult = Symbol->address + i.addend;
-        relocSize = 2;
-        break;
-    case R_AMD64_PC16:
-        relocResult = Symbol->address + i.addend - relocAddr;
-        relocSize = 2;
-        break;
-    case R_AMD64_8:
-        relocResult = Symbol->address + i.addend;
-        relocSize = 1;
-        break;
-    case R_AMD64_PC8:
-        relocResult = Symbol->address + i.addend - relocAddr;
-        relocSize = 1;
-        break;
-    case R_AMD64_PC64:
-        relocResult = Symbol->address + i.addend - relocAddr;
-        relocSize = 8;
-        break;
-    case R_AMD64_GOTOFF64:
-        relocResult = Symbol->address + i.addend - ((uint64_t)GOT);
-        relocSize = 8;
-        break;
-    case R_AMD64_GOTPC32:
-        relocResult = (uint64_t)GOT + i.addend + relocAddr;
-        relocSize = 8;
-        break;
-    case R_AMD64_SIZE32:
-        relocSize = 4;
-        relocResult = Symbol->size + i.addend;
-        break;
-    case R_AMD64_SIZE64:
-        relocSize = 8;
-        relocResult = Symbol->size + i.addend;
-        break;
-    default:
-        break; // Ignore.
+        case R_68K_NONE:
+            break;
+        case R_68K_32:
+            relocResult = Symbol->address + i.addend;
+            relocSize = 4;
+            break;
+        case R_68K_16:
+            relocResult = Symbol->address + i.addend;
+            relocSize = 2;
+            break;
+        case R_68K_8:
+            relocResult = Symbol->address + i.addend;
+            relocSize = 1;
+            break;
+        case R_68K_PC32:
+            relocResult = Symbol->address + i.addend - relocAddr;
+            relocSize = 1;
+            break;
+        case R_68K_PC16:
+            relocResult = Symbol->address + i.addend - relocAddr;
+            relocSize = 2;
+            break;
+        case R_68K_PC8:
+            relocResult = Symbol->address + i.addend - relocAddr;
+            relocSize = 1;
+            break;
+        case R_68K_GOT32:
+            relocResult = (uintptr_t)GOT + i.addend - relocAddr;
+            relocSize = 4;
+            break;
+        case R_68K_GOT16:
+            relocResult = (uintptr_t)GOT + i.addend - relocAddr;
+            relocSize = 2;
+            break;
+        case R_68K_GOT8:
+            relocResult = (uintptr_t)GOT + i.addend - relocAddr;
+            relocSize = 1;
+            break;
+        case R_68K_GOT320:
+            relocResult = 0; // (uintptr_t)GOT - (uintptr_t)GOT
+            relocSize = 4;
+            break;
+        case R_68K_GOT160:
+            relocResult = 0; // (uintptr_t)GOT - (uintptr_t)GOT
+            relocSize = 2;
+            break;
+        case R_68K_GOT80:
+            relocResult = 0; // (uintptr_t)GOT - (uintptr_t)GOT
+            relocSize = 1;
+            break;
+        case R_68K_PLT32:
+            // TODO: Get PLT address.
+            if (status)
+                *status = OBOS_STATUS_UNIMPLEMENTED;
+            return false;
+            relocResult = 0;
+            relocSize = 4;
+            break;
+        case R_68K_PLT16:
+            // TODO: Get PLT address.
+            if (status)
+                *status = OBOS_STATUS_UNIMPLEMENTED;
+            return false;
+            relocResult = 0;
+            relocSize = 2;
+            break;
+        case R_68K_PLT8:
+            // TODO: Get PLT address.
+            if (status)
+                *status = OBOS_STATUS_UNIMPLEMENTED;
+            return false;
+            relocResult = 0;
+            relocSize = 1;
+            break;
+        case R_68K_PLT320:
+            relocResult = 0; // PLT-PLT
+            relocSize = 4;
+            break;
+        case R_68K_PLT160:
+            relocResult = 0; // PLT-PLT
+            relocSize = 2;
+            break;
+        case R_68K_PLT80:
+            relocResult = 0; // PLT-PLT
+            relocSize = 2;
+            break;
+        case R_68K_COPY:
+        {
+            // Save copy relocations for the end because if we don't, it might contain unresolved addresses.
+            struct copy_reloc reloc = { (void*)relocAddr, (void*)Symbol->address, Symbol->size };
+            append_copy_reloc(copy_relocations, &reloc);
+            relocSize = 0;
+            break;
+        }
+        case R_68K_GLOB_DAT:
+        case R_68K_JUMP_SLOT:
+            relocResult = Symbol->address;
+            relocSize = 4;
+            break;
+        case R_68K_RELATIVE:
+            relocResult = (uint32_t)base + i.addend;
+            relocSize = 4;
+            break;
+        default:
+            break;
     }
     switch (relocSize)
     {
@@ -356,32 +351,41 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     case 4: // word32
         *(uint32_t*)(relocAddr) = (uint32_t)(relocResult & 0xffffffff);
         break;
-    case 8: // word64
-        *(uint64_t*)(relocAddr) = relocResult;
-        break;
     default:
         break;
     }
+    // memcpy((void*)relocAddr, &relocResult, relocSize);
     return true;
 }
-
+void dyn_loader_dummy() { return; }
 void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
 {
-    Elf64_Ehdr* ehdr = Cast(file, Elf64_Ehdr*);
-    Elf64_Phdr* phdr_table = OffsetPtr(ehdr, ehdr->e_phoff, Elf64_Phdr*);
-    Elf64_Phdr* dynamic = nullptr;
+    OBOS_UNUSED(driver);
+    OBOS_UNUSED(file);
+    OBOS_UNUSED(szFile);
+    OBOS_UNUSED(dynamicSymbolTable);
+    OBOS_UNUSED(nEntriesDynamicSymbolTable);
+    OBOS_UNUSED(dynstrtab);
+    OBOS_UNUSED(top);
+    OBOS_UNUSED(status);
+    Elf_Ehdr* ehdr = Cast(file, Elf_Ehdr*);
+    Elf_Phdr* phdr_table = OffsetPtr(ehdr, ehdr->e_phoff, Elf_Phdr*);
+    Elf_Phdr* dynamic = nullptr;
     size_t szProgram = 0;
-    void* end = nullptr;
+    char* end = nullptr;
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
         if (phdr_table[i].p_type == PT_DYNAMIC)
             dynamic = &phdr_table[i];
         if (phdr_table[i].p_type != PT_LOAD)
             continue;
-        Elf64_Phdr* curr = &phdr_table[i];
+        Elf_Phdr* curr = &phdr_table[i];
+        if (!curr->p_memsz)
+            continue;
         if (!end || curr->p_vaddr > (uintptr_t)end)
-			end = (void*)(curr->p_vaddr+curr->p_memsz);
+			end = (void*)(curr->p_vaddr + ((curr->p_memsz + 0xfff) & ~0xfff));
     }
+    end = (void*)(((uintptr_t)end + 0xfff) & ~0xfff);
     szProgram = (size_t)end;
     void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, status);
     if (!base)
@@ -390,29 +394,40 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     // Copy the phdr data into them.
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
-        if (phdr_table[i].p_type != PT_LOAD)
+        if (phdr_table[i].p_type != PT_LOAD &&
+            // phdr_table[i].p_type != PT_PHDR &&
+            phdr_table[i].p_type != PT_DYNAMIC
+        )
             continue;
-        Elf64_Phdr* curr = &phdr_table[i];
+        Elf_Phdr* curr = &phdr_table[i];
+        if (!curr->p_memsz)
+            continue;
         memcpy(OffsetPtr(base, curr->p_vaddr, void*), OffsetPtr(file, curr->p_offset, void*), curr->p_filesz);
         // NOTE: Possible buffer overflow
-        memzero(OffsetPtr(base, curr->p_vaddr + curr->p_offset, void*), curr->p_memsz - curr->p_filesz); 
+        memzero(OffsetPtr(base, curr->p_vaddr + curr->p_filesz, void*), curr->p_memsz - curr->p_filesz); 
     }
-    // Apply relocations.
-    struct relocation_array relocations = {.buf=nullptr,.nRelocations=0};
-    Elf64_Sym* symbolTable = 0;
-	Elf64_Off stringTable = 0;
-	uintptr_t hashTableOffset = 0;
-	Elf64_Addr* GOT = nullptr;
-    Elf64_Dyn* currentDynamicHeader = OffsetPtr(file, dynamic->p_offset, Elf64_Dyn*);
+    // Find the relocations in the dynamic header.
+    struct relocation_array relocations = {};
+    Elf32_Sym* symbolTable = 0;
+	Elf32_Off stringTable = 0;
+    Elf32_Addr hashTableOffset = 0;
+    Elf32_Addr* GOT = nullptr;
     size_t last_dtrelasz = 0, last_dtrelsz = 0, last_dtpltrelsz = 0;
     bool awaitingRelaSz = false, foundRelaSz = false;
-    Elf64_Dyn* dynEntryAwaitingRelaSz = nullptr;
+    Elf_Dyn* dynEntryAwaitingRelaSz = nullptr;
     bool awaitingRelSz = false, foundRelSz = false;
-    Elf64_Dyn* dynEntryAwaitingRelSz = nullptr;
+    Elf_Dyn* dynEntryAwaitingRelSz = nullptr;
     uint64_t last_dlpltrel = 0;
+    void* dyn_base = OffsetPtr(base, dynamic->p_vaddr, Elf32_Dyn*);
     struct relocation_table current = {};
-	for (size_t i = 0; currentDynamicHeader->d_tag != DT_NULL; i++, currentDynamicHeader++)
-	{
+    struct relocation_table *last_found_dtrel = {};
+    struct relocation_table *last_found_dtrela = {};
+    struct relocation_table *last_found_dtjmprel = {};
+    OBOS_UNUSED(last_found_dtrel);
+    OBOS_UNUSED(last_found_dtrela);
+    OBOS_UNUSED(last_found_dtjmprel);
+    for (Elf_Dyn* currentDynamicHeader = dyn_base; currentDynamicHeader->d_tag != DT_NULL; currentDynamicHeader++)
+    {
         switch (currentDynamicHeader->d_tag)
         {
         case DT_HASH:
@@ -420,7 +435,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             break;
         case DT_PLTGOT:
             // TODO: Find out whether this is the PLT or GOT (if possible).
-            GOT = (Elf64_Addr*)(base + currentDynamicHeader->d_un.d_ptr);
+            GOT = (Elf32_Addr*)(base + currentDynamicHeader->d_un.d_ptr);
             break;
         case DT_REL:
             if (!foundRelSz)
@@ -431,10 +446,11 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             }
             current.rel = true;
             current.table = currentDynamicHeader;
-            current.sz = last_dtrelsz;
+            current.nEntries = last_dtrelsz/sizeof(Elf32_Rel);
             append_relocation_table(&relocations, &current);
             foundRelSz = false;
             last_dtrelsz = 0;
+            last_found_dtrel = &relocations.buf[relocations.nRelocations - 1];
             break;
         case DT_RELA:
             if (!foundRelaSz)
@@ -445,10 +461,11 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             }
             current.rel = false;
             current.table = currentDynamicHeader;
-            current.sz = last_dtrelasz;
+            current.nEntries = last_dtrelasz/sizeof(Elf32_Rela);
             append_relocation_table(&relocations, &current);
             foundRelaSz = false;
             last_dtrelasz = 0;
+            last_found_dtrela = &relocations.buf[relocations.nRelocations - 1];
             break;
         case DT_JMPREL:
             switch (last_dlpltrel)
@@ -456,18 +473,19 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             case DT_REL:
                 current.rel = true;
                 current.table = currentDynamicHeader;
-                current.sz = last_dtpltrelsz;
+                current.nEntries = last_dtpltrelsz/sizeof(Elf32_Rel);
                 append_relocation_table(&relocations, &current);
                 break;
             case DT_RELA:
                 current.rel = false;
                 current.table = currentDynamicHeader;
-                current.sz = last_dtpltrelsz;
+                current.nEntries = last_dtpltrelsz/sizeof(Elf32_Rela);
                 append_relocation_table(&relocations, &current);
                 break;
             default:
                 break;
             }
+            last_found_dtjmprel = &relocations.buf[relocations.nRelocations - 1];
             break;
         case DT_RELSZ:
             last_dtrelsz = currentDynamicHeader->d_un.d_val;
@@ -476,8 +494,9 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             {
                 current.rel = true;
                 current.table = dynEntryAwaitingRelSz;
-                current.sz = last_dtrelsz;
+                current.nEntries = last_dtrelsz/sizeof(Elf32_Rel);
                 append_relocation_table(&relocations, &current);
+                last_found_dtrel = &relocations.buf[relocations.nRelocations - 1];
                 awaitingRelSz = false;
             }
             break;
@@ -488,8 +507,9 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             {
                 current.rel = false;
                 current.table = dynEntryAwaitingRelaSz;
-                current.sz = last_dtrelasz;
+                current.nEntries = last_dtrelasz/sizeof(Elf32_Rela);
                 append_relocation_table(&relocations, &current);
+                last_found_dtrela = &relocations.buf[relocations.nRelocations - 1];
                 awaitingRelaSz = false;
             }
             break;
@@ -503,34 +523,40 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             stringTable = currentDynamicHeader->d_un.d_ptr;
             break;
         case DT_SYMTAB:
-            symbolTable = (Elf64_Sym*)(base + currentDynamicHeader->d_un.d_ptr);
+            symbolTable = (Elf32_Sym*)(base + currentDynamicHeader->d_un.d_ptr);
             break;
+        // case DT_RELACOUNT:
+        //     last_found_dtrela->nEntries = currentDynamicHeader->d_un.d_val;
+        //     break;
+        // case DT_RELCOUNT:
+        //     last_found_dtrel->nEntries = currentDynamicHeader->d_un.d_val;
+        //     break;
         default:
             break;
         }
     }
-
     struct copy_reloc_array copy_relocations = {0,0};
+    // For each relocation table, calculate its relocations.
     for (size_t index = 0; index < relocations.nRelocations; index++)
     {
         struct relocation_table table = relocations.buf[index];
-        Elf64_Rel* relTable = (Elf64_Rel*)(base + table.table->d_un.d_ptr);
-        Elf64_Rela* relaTable = (Elf64_Rela*)(base + table.table->d_un.d_ptr);
-        for (size_t i = 0; i < table.sz / (table.rel ? sizeof(Elf64_Rel) : sizeof(Elf64_Rela)); i++)  
+        Elf32_Rel* relTable = (Elf32_Rel*)(base + table.table->d_un.d_ptr);
+        Elf32_Rela* relaTable = (Elf32_Rela*)(base + table.table->d_un.d_ptr);
+        for (size_t i = 0; i < table.nEntries; i++)  
         {
             struct relocation cur;
             if (!table.rel)
             {
-                cur.symbolTableOffset = (uint32_t)(relaTable[i].r_info >> 32),
+                cur.symbolTableOffset = (uint32_t)(relaTable[i].r_info >> 8),
                 cur.virtualAddress = relaTable[i].r_offset,
-                cur.relocationType = (uint16_t)(relaTable[i].r_info & 0xffff),
+                cur.relocationType = (uint16_t)(relaTable[i].r_info & 0xff),
                 cur.addend = relaTable[i].r_addend;
             }
             else
             {
-                cur.symbolTableOffset = (uint32_t)(relTable[i].r_info >> 32),
+                cur.symbolTableOffset = (uint32_t)(relTable[i].r_info >> 8),
                 cur.virtualAddress = relTable[i].r_offset,
-                cur.relocationType = (uint16_t)(relTable[i].r_info & 0xffff),
+                cur.relocationType = (uint16_t)(relTable[i].r_info & 0xff),
                 cur.addend = 0;
             }
             if (!calculate_relocation(status, 
@@ -547,6 +573,12 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
                 return nullptr;
         }
     }
+    // TODO: Should I do this or not?
+    GOT[0] += (uintptr_t)base;
+    // GOT[0] = (uintptr_t)base + dynamic->p_vaddr;
+    static uint32_t dummy;
+    GOT[1] = (uintptr_t)&dummy;
+    GOT[2] = (uintptr_t)dyn_loader_dummy;
     for (size_t i = 0; i < copy_relocations.nRelocations; i++)
     {
         struct copy_reloc reloc = copy_relocations.buf[i];
@@ -560,6 +592,8 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
         if (phdr_table[i].p_type != PT_LOAD)
+            continue;
+        if (!phdr_table[i].p_memsz)
             continue;
         void* phdrBase = OffsetPtr(base, phdr_table[i].p_vaddr, void*);
         phdrBase = (void*)((uintptr_t)phdrBase & ~0xfff);
@@ -589,7 +623,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         }
         else 
         {
-            Elf64_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf64_Word*);
+            Elf32_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf32_Word*);
             *nEntriesDynamicSymbolTable = hashTable[1];
         }
     }
@@ -597,5 +631,6 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         *dynstrtab = OffsetPtr(base, stringTable, const char*);
     if (top)
         *top = OffsetPtr(base, end, void*);
+    // Yes, most (nearly all) of the code in this file is stolen from the x86-64 implementation.
     return base;
 }

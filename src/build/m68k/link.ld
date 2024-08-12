@@ -64,7 +64,7 @@ SECTIONS
     MmS_MMPageableRangeEnd = .;
 
     /DISCARD/ : {
-        *(.eh_frame)
+        /* *(.eh_frame*) */
         *(.note .note.*)
         *(.comment)
     }

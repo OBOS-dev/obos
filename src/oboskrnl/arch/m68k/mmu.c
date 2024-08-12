@@ -106,11 +106,11 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_UnmapPage(page_table pt_root, uintp
     if (memcmp_b(pte1, 0, 256))
     {
         pte2[pte2Index] = 0;
-        Arch_FreePhysicalPages((uintptr_t)pte1, 1);
+        Arch_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte1), 1);
         if (memcmp_b(pte2, 0, 1024))
         {
             pte3[pte3Index] = 0;
-            Arch_FreePhysicalPages((uintptr_t)pte2, 1);
+            Arch_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte2), 1);
             // Don't do this since pte3=pt_root, and we shouldn't be freeing that, or bad stuff might happen.
             // if (memcmp_b(pte3, 0, 1024))
             //     Arch_FreePhysicalPages((uintptr_t)pte3, 1);

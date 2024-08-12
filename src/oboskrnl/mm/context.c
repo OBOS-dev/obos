@@ -37,6 +37,9 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 	if (addr >= round_down(Core_SchedulerIRQ) &&
 		addr < round_up(Core_SchedulerIRQ + 1))
 		return true;
+	if (addr >= round_down(OBOS_KernelProcess) &&
+		addr < round_up(OBOS_KernelProcess + 1))
+		return true;
 	for (size_t i = 0; i < Core_CpuCount; i++)
 	{
 		cpu_local* cpu = &Core_CpuInfo[i];

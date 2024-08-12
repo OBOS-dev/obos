@@ -137,7 +137,8 @@ void Arch_PICHandleIRQ(interrupt_frame* frame)
             line = __builtin_ctz(pending);
             if (!cur->irqs[line].masked)
             {
-                interrupt_frame iframe = *frame;
+                interrupt_frame iframe = {};
+                memcpy(&iframe, frame, sizeof(*frame)-sizeof(frame->format_7));
                 iframe.intNumber = cur->irqs[line].vector;
                 iframe.vector = cur->irqs[line].vector - 0x40;
                 cur->irqs[line].masked = true;

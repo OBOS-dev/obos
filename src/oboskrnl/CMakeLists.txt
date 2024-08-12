@@ -52,3 +52,9 @@ target_compile_definitions(oboskrnl
 )
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
+
+set_source_files_properties(
+    "arch/m68k/entry.c"
+    PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test_driver"
+)
