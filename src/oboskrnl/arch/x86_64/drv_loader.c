@@ -1,10 +1,9 @@
 /*
- * oboskrnl/arch/x86-_64/drv_loader.c
+ * oboskrnl/arch/x86_64/drv_loader.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "elf/elf64.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -355,7 +354,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         *(uint16_t*)(relocAddr) = (uint16_t)(relocResult & 0xffff);
         break;
     case 4: // word32
-        *(uint32_t*)(relocAddr) = (uint16_t)(relocResult & 0xffffffff);
+        *(uint32_t*)(relocAddr) = (uint32_t)(relocResult & 0xffffffff);
         break;
     case 8: // word64
         *(uint64_t*)(relocAddr) = relocResult;
@@ -366,7 +365,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     return true;
 }
 
-void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
+void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
 {
     Elf64_Ehdr* ehdr = Cast(file, Elf64_Ehdr*);
     Elf64_Phdr* phdr_table = OffsetPtr(ehdr, ehdr->e_phoff, Elf64_Phdr*);
@@ -446,7 +445,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_
             }
             current.rel = false;
             current.table = currentDynamicHeader;
-            current.sz = last_dtrelsz;
+            current.sz = last_dtrelasz;
             append_relocation_table(&relocations, &current);
             foundRelaSz = false;
             last_dtrelasz = 0;
@@ -489,7 +488,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_
             {
                 current.rel = false;
                 current.table = dynEntryAwaitingRelaSz;
-                current.sz = last_dtrelsz;
+                current.sz = last_dtrelasz;
                 append_relocation_table(&relocations, &current);
                 awaitingRelaSz = false;
             }
@@ -545,7 +544,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_
                                       GOT,
                                       &copy_relocations,
                                       hashTableOffset))
-                return nullptr; // the function frees the driver on its own.
+                return nullptr;
         }
     }
     for (size_t i = 0; i < copy_relocations.nRelocations; i++)
@@ -597,6 +596,6 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, void* file, size_t szFile, Elf_
     if (dynstrtab)
         *dynstrtab = OffsetPtr(base, stringTable, const char*);
     if (top)
-        *top = OffsetPtr(base, top, void*);
+        *top = OffsetPtr(base, end, void*);
     return base;
 }

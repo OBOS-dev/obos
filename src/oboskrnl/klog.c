@@ -25,6 +25,8 @@
 
 #ifdef __x86_64__
 #	include <arch/x86_64/asm_helpers.h>
+#elif defined(__m68k__)
+#	include <arch/x86_64/pmm.h>
 #endif
 
 const char* OBOSH_PanicReasonToStr(panic_reason reason)
@@ -134,8 +136,10 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
         "  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n"
         "  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n"
         "                                    |_|\r\n";
-
-	OBOSS_HaltCPUs();
+#ifndef OBOS_UP
+	if (OBOSS_HaltCPUs)
+		OBOSS_HaltCPUs();
+#endif
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
 	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
@@ -160,6 +164,10 @@ static char* outputCallback(const char* buf, void* a, int len)
 		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
 #ifdef __x86_64__
 		outb(0xE9, buf[i]);
+#elif defined(__m68k__)
+	extern uintptr_t Arch_TTYBase;
+	if (Arch_TTYBase)
+	    ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
 #endif
 	}
 	return (char*)buf;

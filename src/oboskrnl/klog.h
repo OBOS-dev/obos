@@ -83,7 +83,7 @@ OBOS_NORETURN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* forma
 /// <summary>
 /// Halts all other CPUs.
 /// </summary>
-void OBOSS_HaltCPUs();
+OBOS_WEAK void OBOSS_HaltCPUs();
 
 // printf-Style functions.
 OBOS_EXPORT size_t printf(const char* format, ...);

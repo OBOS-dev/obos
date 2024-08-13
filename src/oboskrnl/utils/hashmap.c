@@ -69,6 +69,7 @@ void hashmap_set_grow_by_power(struct hashmap *map, size_t power) {
 }
 
 static fixedptd clamp_load_factor(fixedptd factor, fixedptd default_factor) {
+    OBOS_UNUSED(default_factor);
     // Check for NaN and clamp between 50% and 90%
     // NOTE(oberrow): using fixedpt might brake something.
     // return (factor != factor) ?

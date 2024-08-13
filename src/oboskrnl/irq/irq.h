@@ -27,6 +27,14 @@
 #	include <arch/x86_64/irq_vector.h>
 #	include <arch/x86_64/interrupt_frame.h>
 #	define OBOS_MAX_INTERRUPT_VECTORS (256-32)
+#elif defined(__m68k__)
+#	include <arch/m68k/interrupt_frame.h>
+typedef uint8_t irq_vector_id;
+#	define OBOS_MAX_INTERRUPT_VECTORS (256-64)
+#	define OBOS_IRQ_VECTOR_ID_MAX (256-64)
+#	define OBOS_IRQ_VECTOR_ID_COUNT_PER_IRQL (32)
+#	define OBOS_IRQ_VECTOR_ID_TO_IRQL(x) ((irql)((x)/32+1))
+#	define OBOS_IRQL_TO_IRQ_VECTOR_ID(x) ((irq_vector_id)(((x)<<4)))
 #else
 #	error Unknown platform.
 #endif
@@ -150,25 +158,26 @@ bool Core_IrqInterfaceInitialized();
 /// <param name="vector">The vector id.</param>
 /// <param name="handler">The irq handler. If nullptr, the handler is cleared.</param>
 /// <returns>The status of the function.</returns>
-obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame));
+OBOS_WEAK obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame));
 /// <summary>
 /// Checks if an irq vector is in use.
 /// </summary>
 /// <param name="vector">The vector id.</param>
 /// <returns>OBOS_STATUS_IN_USE if the vector is in use, OBOS_STATUS_SUCCESS if the vector is unused, any other status is an error code.</returns>
-obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector);
+OBOS_WEAK obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector);
 /// <summary>
 /// Sends an EOI to the IRQ controller.
 /// </summary>
 /// <param name="frame">The interrupt frame.</param>
-void CoreS_SendEOI(interrupt_frame* frame);
+OBOS_WEAK void CoreS_SendEOI(interrupt_frame* frame);
 /// <summary>
 /// Enters an IRQ handler.
 /// </summary>
 /// <param name="frame">The interrupt frame.</param>
-void CoreS_EnterIRQHandler(interrupt_frame* frame);
+/// <returns>Whether the IRQ dispatcher should continue running or not. This could be useful for e.g., IRQL emulation.</returns>
+OBOS_WEAK bool CoreS_EnterIRQHandler(interrupt_frame* frame);
 /// <summary>
 /// Exits an IRQ handler.
 /// </summary>
 /// <param name="frame">The interrupt frame.</param>
-void CoreS_ExitIRQHandler(interrupt_frame* frame);
+OBOS_WEAK void CoreS_ExitIRQHandler(interrupt_frame* frame);

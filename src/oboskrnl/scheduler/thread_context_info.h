@@ -32,23 +32,23 @@ typedef struct thread_context_info thread_ctx;
 /// <param name="stackBase">The base address of the stack.</param>
 /// <param name="stackSize">The size of the stack.</param>
 /// <returns>The status code of the function.</returns>
-obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
+OBOS_WEAK obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
 /// <summary>
 /// Switches to a different thread's context.
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
-OBOS_NORETURN void CoreS_SwitchToThreadContext(const thread_ctx* ctx);
+OBOS_NORETURN OBOS_WEAK void CoreS_SwitchToThreadContext(const thread_ctx* ctx);
 /// <summary>
 /// Saves the current thread's context into the passed thread's context, then calls the scheduler.
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
-void CoreS_SaveRegisterContextAndYield(thread_ctx* ctx);
+OBOS_WEAK void CoreS_SaveRegisterContextAndYield(thread_ctx* ctx);
 /// <summary>
 /// Frees anything inside of a thread's context.
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
 /// <returns>The status code of the function.</returns>
-obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
+OBOS_WEAK obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
 /// <summary>
 /// Calls a function on a stack allocated in the kernel address space.<para/>
 /// This function must be thread-safe. It mustn't use the same stack as another CPU or thread.<para/>
@@ -57,21 +57,23 @@ obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
 /// <param name="func">The function to be called.</param>
 /// <param name="userdata">The parameter to be passed to the function.</param>
 /// <returns>The callback's return value.</returns>
-uintptr_t CoreS_CallFunctionOnStack(uintptr_t(*func)(uintptr_t), uintptr_t userdata);
+OBOS_WEAK uintptr_t CoreS_CallFunctionOnStack(uintptr_t(*func)(uintptr_t), uintptr_t userdata);
 
 /// <summary>
 /// Sets the IRQL of a thread. This function should be infallible if the parameters are correct.
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
 /// <param name="newIRQL">The new IRQL of the thread.</param>
-void CoreS_SetThreadIRQL(thread_ctx* ctx, irql newIRQL);
+OBOS_WEAK void CoreS_SetThreadIRQL(thread_ctx* ctx, irql newIRQL);
 /// <summary>
 /// Gets the IRQL of a thread. This function should be infallible if the parameters are correct.
 /// </summary>
 /// <param name="ctx">The thread's context.</param>
 /// <returns>The thread's IRQL.</returns>
-irql CoreS_GetThreadIRQL(const thread_ctx* ctx);
+OBOS_WEAK irql CoreS_GetThreadIRQL(const thread_ctx* ctx);
 
 #ifdef __x86_64__
 #	include <arch/x86_64/thread_ctx.h>
+#elif defined(__m68k__)
+#	include <arch/m68k/thread_ctx.h>
 #endif

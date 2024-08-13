@@ -108,5 +108,5 @@ void CoreS_SendEOI(interrupt_frame* unused)
 {
 	Arch_LAPICSendEOI();
 }
-void CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); }
+bool CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); return true; }
 void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }

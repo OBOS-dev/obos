@@ -81,7 +81,7 @@ obos_status Core_CancelTimer(timer* obj);
 /// Gets the current tick.
 /// </summary>
 /// <returns>The current timer tick.</returns>
-timer_tick CoreS_GetTimerTick();
+OBOS_WEAK timer_tick CoreS_GetTimerTick();
 /// <summary>
 /// Converts a time frame in us to timer ticks.
 /// </summary>
@@ -94,4 +94,7 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us);
 /// </summary>
 /// <param name="handler">The irq handler.</param>
 /// <returns>The status of the function.</returns>
-obos_status CoreS_InitializeTimer(irq_handler handler);
+OBOS_WEAK obos_status CoreS_InitializeTimer(irq_handler handler);
+#ifdef OBOS_TIMER_IS_DEADLINE
+obos_status CoreS_ResetTimer();
+#endif

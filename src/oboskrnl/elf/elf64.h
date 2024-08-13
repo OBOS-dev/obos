@@ -129,6 +129,9 @@ enum
 #define ELF64_ST_BIND(info)          ((info) >> 4)
 #define ELF64_ST_TYPE(info)          ((info) & 0xf)
 #define ELF64_ST_INFO(bind, type)    (((bind)<<4)+((type)&0xf))
+#define ELF_ST_BIND(info)       ELF64_ST_BIND(info)       
+#define ELF_ST_TYPE(info)       ELF64_ST_TYPE(info)
+#define ELF_ST_INFO(bind, type) ELF64_ST_INFO(bind, type)
 
 enum
 {

@@ -286,10 +286,13 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             MmS_SetPageMapping(ctx->pt, curr, 0); // Unmap the page.
         }
         RB_REMOVE(page_tree, &ctx->pages, curr);
-        if (curr->inWorkingSet)
-            REMOVE_PAGE_NODE(ctx->workingSet.pages, &curr->ln_node);
         if (curr->age == 1 /* it's in the referenced list */)
             REMOVE_PAGE_NODE(ctx->referenced, &curr->ln_node);
+        else if (curr->workingSets > 0)
+        {
+            REMOVE_PAGE_NODE(ctx->workingSet.pages, &curr->ln_node);
+            ctx->workingSet.size -= curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        }
         if (curr->allocated)
             Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
@@ -369,6 +372,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         if (isPageable < 2)
             curr->pageable = isPageable;
         uintptr_t phys = 0;
+        // TODO: Use a function that takes in a context.
         OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
         MmS_SetPageMapping(ctx->pt, curr, phys);
 

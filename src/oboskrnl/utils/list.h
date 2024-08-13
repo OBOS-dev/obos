@@ -76,8 +76,8 @@ attrib void name##_LIST_REMOVE(name* list, type* what)\
 	if ((what->field).next)\
 		(what->field).next->field.prev = (what->field).prev;\
 	(list)->nNodes--;\
-	what->field.next = 0;\
-	what->field.prev = 0;\
+	(what->field).next = nullptr;\
+	(what->field).prev = nullptr;\
 }\
 attrib type* name##_LIST_GET_NEXT(name* list, type* what)\
 {\

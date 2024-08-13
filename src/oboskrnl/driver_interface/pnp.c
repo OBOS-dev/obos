@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "uacpi/status.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -52,6 +51,7 @@ static uint64_t pnp_pci_driver_hash(const void *item, uint64_t seed0, uint64_t s
     const struct pnp_device* drv = item;
     return hashmap_sip(&drv->pci_key.id, sizeof(drv->pci_key.id), seed0, seed1);
 }
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static int pnp_acpi_driver_compare(const void* a_, const void* b_, void* udata)
 {
     OBOS_UNUSED(udata);
@@ -64,6 +64,7 @@ static uint64_t pnp_acpi_driver_hash(const void *item, uint64_t seed0, uint64_t 
     const struct pnp_device* drv = item;
     return hashmap_sip(&drv->acpi_key, sizeof(drv->acpi_key), seed0, seed1);
 }
+#endif
 
 static void *malloc(size_t sz)
 {
@@ -105,6 +106,7 @@ static void append_driver_to_pnp_device(pnp_device* dev, driver_header* drv)
     node->data = drv;
     APPEND_DRIVER_HEADER_NODE(dev->headers, node);
 }
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static obos_status acpi_driver_helper(struct hashmap* acpi_drivers, driver_header* drv, char pnpId[8])
 {
     pnp_device what = {
@@ -124,6 +126,7 @@ static obos_status acpi_driver_helper(struct hashmap* acpi_drivers, driver_heade
     append_driver_to_pnp_device(dev, drv);
     return OBOS_STATUS_SUCCESS;
 }
+#endif
 
 static obos_status pci_driver_helper(struct hashmap* pci_drivers, driver_header* drv, pci_device key)
 {
@@ -198,6 +201,7 @@ void free_map(struct hashmap* map)
         free_pnp_device(nullptr, dev);
     hashmap_free(map);
 }
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static obos_status probe_hid(const uacpi_id_string *hid, struct callback_userdata* udata)
 {
     OBOS_ASSERT((hid->size - 1) <= 8);
@@ -273,10 +277,12 @@ static uacpi_ns_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_name
     uacpi_free_namespace_node_info(info);
     return UACPI_NS_ITERATION_DECISION_CONTINUE;
 }
+#endif
 obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *toLoad)
 {
     if (!toLoad)
         return OBOS_STATUS_INVALID_ARGUMENT;
+#if OBOS_ARCHITECTURE_HAS_ACPI
     struct hashmap* acpi_drivers = 
         hashmap_new_with_allocator(
             malloc,
@@ -285,6 +291,9 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
             sizeof(struct pnp_device),
             0, 0, 0,
             pnp_acpi_driver_hash, pnp_acpi_driver_compare, free, nullptr);
+#else
+    bool acpi_drivers = 0;
+#endif
     struct hashmap* pci_drivers = DrvS_EnumeratePCI ?
         hashmap_new_with_allocator(
             malloc,
@@ -301,16 +310,20 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
         if (!node->data)
             continue;
         driver_header* drv = node->data;
+#if OBOS_ARCHITECTURE_HAS_ACPI
         if ((drv->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI))
             for (size_t i = 0; i < drv->acpiId.nPnpIds; i++) 
                 acpi_driver_helper(acpi_drivers, drv, drv->acpiId.pnpIds[i]);
+#endif
         if ((drv->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_PCI) && DrvS_EnumeratePCI)
             pci_driver_helper(pci_drivers, drv, drv->pciId);
 
         node = node->next;
     }
     struct callback_userdata udata;
+#if OBOS_ARCHITECTURE_HAS_ACPI
     udata.acpi_drivers = acpi_drivers;
+#endif
     udata.pci_drivers = pci_drivers;
     udata.detected = toLoad;
     if (DrvS_EnumeratePCI) 
@@ -320,6 +333,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
         // Free the pci driver map.
         free_map(pci_drivers);
     }
+#if OBOS_ARCHITECTURE_HAS_ACPI
     // Enumerate ACPI
     uacpi_namespace_for_each_node_depth_first(
         uacpi_namespace_root(),
@@ -328,6 +342,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
     );
     // Free the acpi driver map.
     free_map(acpi_drivers);
+#endif
     // Return success;
     return OBOS_STATUS_SUCCESS;
 }

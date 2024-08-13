@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/irql.h"
-#include "mm/context.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -17,13 +15,18 @@
 #include <mm/bare_map.h>
 #include <mm/alloc.h>
 #include <mm/init.h>
+#include <mm/context.h>
 
 #include <sanitizers/asan.h>
 
 #include <locks/spinlock.h>
 
+#include <irq/irql.h>
+
 #if __x86_64__
 #	include <arch/x86_64/pmm.h>
+#elif defined(__m68k__)
+#	include <arch/m68k/pmm.h>
 #endif
 
 static uintptr_t round_up(uintptr_t x, size_t to)
@@ -65,7 +68,7 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
-			uintptr_t phys = Arch_AllocatePhysicalPages(nPages, 1, status);
+			uintptr_t phys = OBOSS_AllocatePhysicalPages(nPages, 1, status);
 			if (!phys)
 				return nullptr;
 			// Arch-specific:
@@ -73,6 +76,9 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			// On x86-64, this is done using the HHDM.
 			void* ret = nullptr;
 #ifdef __x86_64__
+			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
+			ret = Arch_MapToHHDM(phys);
+#elif defined(__m68k__)
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
 #else
