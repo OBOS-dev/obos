@@ -60,6 +60,12 @@ typedef uint64_t thread_affinity;
 #endif
 extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
 extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
+typedef struct thread_node
+{
+	struct thread_node *next, *prev;
+	struct thread* data;
+	void(*free)(struct thread_node* what);
+} thread_node;
 typedef struct thread
 {
 	uint64_t tid;
@@ -78,13 +84,9 @@ typedef struct thread
 	struct process* proc;
 	
 	thread_ctx context;
+
+	thread_node mut_node;
 } thread;
-typedef struct thread_node
-{
-	struct thread_node *next, *prev;
-	thread* data;
-	void(*free)(struct thread_node* what);
-} thread_node;
 typedef struct thread_list
 {
 	thread_node *head, *tail;
