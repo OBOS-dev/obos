@@ -85,7 +85,8 @@ typedef struct thread
 	
 	thread_ctx context;
 
-	thread_node mut_node;
+	// The thread node used by locks that have queues.
+	thread_node lock_node;
 } thread;
 typedef struct thread_list
 {

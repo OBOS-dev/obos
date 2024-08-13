@@ -117,8 +117,4 @@ typedef enum
 	/// The lock was already locked by the current thread.
 	/// </summary>
 	OBOS_STATUS_RECURSIVE_LOCK,
-	/// <summary>
-	/// The lock was already locked.
-	/// </summary>
-	OBOS_STATUS_LOCKED,
 } obos_status;

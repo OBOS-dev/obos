@@ -4,8 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#pragma once
-
+#include "locks/spinlock.h"
 #include <int.h>
 #include <error.h>
 
@@ -47,10 +46,10 @@ obos_status Core_MutexAcquire(mutex* mut)
         mut->locked = true;
         return OBOS_STATUS_SUCCESS;
     }
-    Core_GetCurrentThread()->mut_node.data = Core_GetCurrentThread();
-    CoreH_ThreadListAppend(&mut->waiting, &Core_GetCurrentThread()->mut_node);
+    Core_GetCurrentThread()->lock_node.data = Core_GetCurrentThread();
+    CoreH_ThreadListAppend(&mut->waiting, &Core_GetCurrentThread()->lock_node);
     CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-    CoreH_ThreadListRemove(&mut->waiting, &Core_GetCurrentThread()->mut_node);
+    CoreH_ThreadListRemove(&mut->waiting, &Core_GetCurrentThread()->lock_node);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_MutexTryAcquire(mutex* mut)
@@ -58,7 +57,7 @@ obos_status Core_MutexTryAcquire(mutex* mut)
     if (!mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (mut->locked)
-        return OBOS_STATUS_LOCKED;
+        return OBOS_STATUS_IN_USE;
     return Core_MutexAcquire(mut);
 }
 obos_status Core_MutexRelease(mutex* mut)
