@@ -42,4 +42,8 @@ typedef struct cpu_local
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
 
-OBOS_WEAK OBOS_EXPORT cpu_local* CoreS_GetCPULocalPtr();
+#ifdef OBOS_KERNEL
+OBOS_WEAK cpu_local* CoreS_GetCPULocalPtr();
+#elif defined(OBOS_DRIVER)
+OBOS_EXPORT cpu_local* CoreS_GetCPULocalPtr();
+#endif

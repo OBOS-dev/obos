@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -12,6 +11,8 @@
 #include <utils/list.h>
 
 #include <irq/dpc.h>
+#include <irq/irql.h>
+
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 

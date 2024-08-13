@@ -266,18 +266,18 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             OBOS_Warning("Could not allocate irq object for COM%d. Status: %d.\n", port->com_port, status);
             continue;
         }
-        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, true);
-        if (obos_is_error(status))
-        {
-            OBOS_Warning("Could not initialize irq object for COM%d. Status: %d.\n", port->com_port, status);
-            continue;
-        }
         port->irq_obj->handler = com_irq_handler;
         port->irq_obj->irqChecker = com_check_irq_callback;
         port->irq_obj->moveCallback = com_irq_move_callback;
         port->irq_obj->handlerUserdata = port;
         port->irq_obj->irqCheckerUserdata = port;
         port->irq_obj->irqMoveCallbackUserdata = port;
+        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, true);
+        if (obos_is_error(status))
+        {
+            OBOS_Warning("Could not initialize irq object for COM%d. Status: %d.\n", port->com_port, status);
+            continue;
+        }
 
         // Register the GSI.
         status = Arch_IOAPICMapIRQToVector(port->gsi, port->irq_obj->vector->id+0x20, true, TriggerModeEdgeSensitive);

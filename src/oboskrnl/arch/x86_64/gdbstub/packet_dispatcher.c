@@ -85,7 +85,9 @@ obos_status Kdbg_DispatchPacket(gdb_connection* con, const char* packet, size_t 
         case 'Q':
         case 'q':
         {
-            nameLen = strchr(packet, ':') == packetLen ? strchr(packet, ',')-1 : strchr(packet, ':')-1;
+            size_t comma_offset = strchr(packet, ',');
+            size_t colon_offset = strchr(packet, ':');
+            nameLen = colon_offset == packetLen ? ((comma_offset == packetLen) ? packetLen : comma_offset-1) : colon_offset-1;
             name = Kdbg_Calloc(nameLen + 1, sizeof(char));
             memcpy(name, packet, nameLen);
             argsOffset = nameLen + (nameLen!=packetLen);

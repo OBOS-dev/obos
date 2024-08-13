@@ -145,7 +145,8 @@ static char recv_char(gdb_connection* conn)
     size_t nRead = 0;
     const size_t nToRead = 1;
     char ret = 0;
-    while(nRead < 1)
+    size_t spin = 0;
+    while(nRead < nToRead && (spin++ < 100000))
         conn->pipe_interface->read_sync(conn->pipe, &ret, nToRead, 0, &nRead);
     return ret;
 }

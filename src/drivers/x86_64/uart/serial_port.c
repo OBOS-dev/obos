@@ -170,6 +170,7 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {
+    OBOS_UNUSED(i);
     serial_port* port = (serial_port*)userdata;
     return inb(port->port_base + LINE_STATUS) != 0 && !port->isFaulty;
 }

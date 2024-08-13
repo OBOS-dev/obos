@@ -63,6 +63,7 @@ static void notify_timer(timer* timer)
 }
 static void timer_dispatcher(dpc* obj, void* userdata)
 {
+    OBOS_UNUSED(obj);
     OBOS_UNUSED(userdata);
     // Search for expired timer objects, and notify them.
     for(timer* t = timer_list.head; t; )

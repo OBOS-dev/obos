@@ -289,13 +289,14 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		}
 	}
 	page* volatile pg = nullptr;
-	if (Kdbg_CurrentConnection && !Kdbg_Paused)
+	if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
 	{
 		asm("sti");
-		irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+		irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
 		Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
 		Kdbg_CallDebugExceptionHandler(frame, true);
-		Core_LowerIrqlNoThread(oldIrql);
+		if (oldIrql != IRQL_INVALID)
+			Core_LowerIrqlNoThread(oldIrql);
 		asm("cli");
 	}
 	if (CoreS_GetCPULocalPtr()->currentContext)
@@ -811,6 +812,7 @@ if (st != UACPI_STATUS_OK)\
 	Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
 	Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
 	Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
+	Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
 	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
 	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
 	Kdbg_CurrentConnection = &gdb_conn;

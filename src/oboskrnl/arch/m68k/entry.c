@@ -21,7 +21,6 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
-#include <scheduler/dpc.h>
 
 #include <arch/m68k/asm_helpers.h>
 #include <arch/m68k/cpu_local_arch.h>
@@ -31,6 +30,7 @@
 
 #include <irq/irql.h>
 #include <irq/timer.h>
+#include <irq/dpc.h>
 
 #include <mm/init.h>
 #include <mm/swap.h>
@@ -139,12 +139,12 @@ struct stack_frame
     struct stack_frame* down;
     void* rip;
 } fdssdfdsf;
-struct dpc* timer_yield(dpc* on, void* udata)
+void timer_yield(dpc* on, void* udata)
 {
+    OBOS_UNUSED(on);
     OBOS_UNUSED(udata);
     Arch_PICMaskIRQ(Arch_RTCBase.irq, false);
     Core_Yield();
-    return on;
 }
 void sched_timer_hnd(void* unused)
 {

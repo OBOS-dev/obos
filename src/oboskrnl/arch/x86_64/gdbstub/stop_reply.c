@@ -430,10 +430,10 @@ obos_status Kdbg_GDB_s(gdb_connection* con, const char* arguments, size_t argume
     NO_ARGUMENTS;
     NO_USERDATA;
     // TODO: Support arguments.
+    // c_all_threads = false;
     if ((!current_c_thread || !current_c_thread->masterCPU) && !c_all_threads)
         current_c_thread = Core_GetCurrentThread();
     // FIXME: Stepping all threads breaks everything
-    c_all_threads = false;
     if (!c_all_threads)
     {
         current_c_thread->flags &= ~THREAD_FLAGS_DEBUGGER_BLOCKED;

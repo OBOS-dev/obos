@@ -56,10 +56,9 @@ obos_status Kdbg_GDB_q_ThreadInfo(gdb_connection* con, const char* arguments, si
     NO_RESPONSE;
     NO_USERDATA;
     NO_CTX;
-    uint32_t tids[1] = {};
-    uint8_t nTids = 0;
     char* response = nullptr;
     bool shouldFreeResponse = true;
+    retry:
     if (!con->q_ThreadInfo_ctx.last_thread && con->q_ThreadInfo_ctx.received_first)
     {
         // Respond with an l.
@@ -68,36 +67,17 @@ obos_status Kdbg_GDB_q_ThreadInfo(gdb_connection* con, const char* arguments, si
         con->q_ThreadInfo_ctx.received_first = false;
         goto respond;
     }
-    for (con->q_ThreadInfo_ctx.received_first ? 0 : (con->q_ThreadInfo_ctx.last_thread = OBOS_KernelProcess->threads.head);
-        con->q_ThreadInfo_ctx.last_thread && nTids < (sizeof(tids)/sizeof(*tids)); )
-    {
-        if (con->q_ThreadInfo_ctx.last_thread->data->flags & THREAD_FLAGS_DIED)
-            goto down;
-        tids[nTids++] = con->q_ThreadInfo_ctx.last_thread->data->tid > 255 ? __builtin_bswap32(con->q_ThreadInfo_ctx.last_thread->data->tid) : con->q_ThreadInfo_ctx.last_thread->data->tid;
-
-        down:
-        con->q_ThreadInfo_ctx.last_thread = con->q_ThreadInfo_ctx.last_thread->next;
-    }
-    OBOS_ASSERT(nTids > 0);
-    if (nTids == 1)
-        response = KdbgH_FormatResponse("mp01.%x", tids[0]);
-    else
-    {
-        // size is the 'm' + ppid.tid,ppid.tid,ppid.tid,ppid.tid\0
-        response = Kdbg_Calloc(1+18*nTids+nTids, sizeof(char));
-        for (uint8_t i = 0; i < nTids; i++)
-        {
-            char delimiter = ',';
-            if (i == (nTids - 1))
-                delimiter = 0;
-            char* tid = KdbgH_FormatResponse("p%08x.%08x%c", OBOS_KernelProcess->pid, tids[i], delimiter);
-            memcpy(response + 1+18*i+i, tid, 18 + (delimiter == ','));
-        }
-        response[0] = 'm';
-    }
-    OBOS_ASSERT(response != nullptr);
     if (!con->q_ThreadInfo_ctx.received_first)
+    {
         con->q_ThreadInfo_ctx.received_first = true;
+        con->q_ThreadInfo_ctx.last_thread = OBOS_KernelProcess->threads.head;
+    }
+    while (con->q_ThreadInfo_ctx.last_thread && (con->q_ThreadInfo_ctx.last_thread->data->flags & THREAD_FLAGS_DIED))
+        con->q_ThreadInfo_ctx.last_thread = con->q_ThreadInfo_ctx.last_thread->next;
+    if (!con->q_ThreadInfo_ctx.last_thread)
+        goto retry;
+    response = KdbgH_FormatResponse("mp01.%x", con->q_ThreadInfo_ctx.last_thread->data->tid);
+    con->q_ThreadInfo_ctx.last_thread = con->q_ThreadInfo_ctx.last_thread->next;  
     respond:
     (void)0;
     obos_status status = Kdbg_ConnectionSendPacket(con, response);
