@@ -8,7 +8,7 @@ list (APPEND oboskrnl_sources
 	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
 	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
-	"driver_interface/pnp.c" "scheduler/dpc.c"
+	"driver_interface/pnp.c" "irq/dpc.c"
 )
 
 add_executable(oboskrnl)
@@ -24,6 +24,8 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
+	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
 )
 
 target_link_libraries(oboskrnl

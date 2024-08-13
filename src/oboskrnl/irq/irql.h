@@ -35,6 +35,8 @@ enum
 	IRQL_INVALID = 0xff,
 };
 
+// Internal-use only pls
+void CoreH_DispatchDPCs();
 /// <summary>
 /// Lowers the IRQL. Panics if 'to' > Core_GetIrql().
 /// </summary>
@@ -50,6 +52,10 @@ OBOS_EXPORT irql Core_RaiseIrql(irql to);
 // Does the same as Core_LowerIrql, except it doesn't use CoreS_SetThreadIrql.
 // For internal use only.
 OBOS_EXPORT void Core_LowerIrqlNoThread(irql to);
+// Does the same as Core_LowerIrqlNoThread, except it doesn't dispatch DPCs.
+// For internal use only.
+// oberrow: This is starting to get a bit ridiculous.
+OBOS_EXPORT void Core_LowerIrqlNoDPCDispatch(irql to);
 // Does the same as Core_RaiseIrql, except it doesn't use CoreS_SetThreadIrql.
 // For internal use only.
 OBOS_NODISCARD_REASON("You must save the return value of Core_RaiseIrqlNoThread to be passed to Core_LowerIrqlNoThread later on.")

@@ -18,7 +18,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <locks/spinlock.h>
 
@@ -553,7 +553,7 @@ static uacpi_work *s_workHead = nullptr, *s_workTail = nullptr;
 static size_t s_nWork = 0;
 static spinlock s_workQueueLock;
 static bool s_isWorkQueueLockInit = false;
-static struct dpc* work_handler(dpc* dpc, void* userdata)
+static void work_handler(dpc* dpc, void* userdata)
 {
     OBOS_UNUSED(dpc);
     uacpi_work* work = (uacpi_work*)userdata;
@@ -571,7 +571,6 @@ static struct dpc* work_handler(dpc* dpc, void* userdata)
     s_nWork--;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
     CoreH_FreeDPC(dpc);
-    return nullptr;
 }
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
 {

@@ -21,6 +21,8 @@
 
 #include <locks/spinlock.h>
 
+#include <irq/irql.h>
+
 #if __x86_64__
 #	include <arch/x86_64/pmm.h>
 #elif defined(__m68k__)
@@ -46,7 +48,7 @@ struct safe_spinlock
 };
 static void Lock(struct safe_spinlock* l)
 {
-	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_MASKED, false);
+	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_DISPATCH, false);
 }
 static void Unlock(struct safe_spinlock* l)
 {

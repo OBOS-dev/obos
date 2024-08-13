@@ -61,7 +61,7 @@ static obos_status swap_resv(struct swap_device* dev, uintptr_t* id, size_t nPag
     size_t nBytesRequired = allocSize + sizeof(swap_page);
     if (hdr->nBytesFree < nBytesRequired)
         return OBOS_STATUS_NOT_ENOUGH_MEMORY;
-    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = hdr->freeList.head;
     while(page && page->size < nBytesRequired)
         page = page->next;
@@ -101,7 +101,7 @@ static obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPage
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (hdr->magic != SWAP_HEADER_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
     if (!RB_FIND(swap_page_tree, &hdr->pages, page))
     {
@@ -129,7 +129,7 @@ static obos_status swap_write(struct swap_device* dev, uintptr_t id, uintptr_t p
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (hdr->magic != SWAP_HEADER_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
     if (!RB_FIND(swap_page_tree, &hdr->pages, page))
     {
@@ -159,7 +159,7 @@ static obos_status swap_read(struct swap_device* dev, uintptr_t id, uintptr_t ph
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (hdr->magic != SWAP_HEADER_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
     if (!RB_FIND(swap_page_tree, &hdr->pages, page))
     {

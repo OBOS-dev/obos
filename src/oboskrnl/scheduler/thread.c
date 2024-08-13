@@ -17,6 +17,8 @@
 
 #include <locks/spinlock.h>
 
+#include <irq/irql.h>
+
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
 thread_affinity Core_DefaultThreadAffinity = 1;
@@ -204,7 +206,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 }
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	(void)Core_RaiseIrqlNoThread(IRQL_MASKED);
+	(void)Core_RaiseIrqlNoThread(IRQL_DISPATCH);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
 }

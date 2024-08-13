@@ -30,24 +30,27 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 {
 	if (!lock)
 		return IRQL_INVALID;
-	if (minIrql & 0xf0)
+	if (minIrql & 0xf0 && minIrql != IRQL_INVALID)
 		return IRQL_INVALID;
+	// IRQL_INVALID is used to specify not to raise the irql at all
+	// this way, LowerIrql can lock the DPC queue without breaking.
 #ifdef OBOS_DEBUG
 	if (lock->owner == Core_GetCurrentThread() && lock->owner)
 		OBOS_Warning("Recursive lock taken!\n");
 #endif
-	irql newIrql = Core_GetIrql() < minIrql ? irqlNthrVariant ? Core_RaiseIrqlNoThread(minIrql) : Core_RaiseIrql(minIrql) : IRQL_INVALID;
+	irql newIrql = minIrql == IRQL_INVALID ? IRQL_INVALID : Core_GetIrql() < minIrql ? irqlNthrVariant ? Core_RaiseIrqlNoThread(minIrql) : Core_RaiseIrql(minIrql) : IRQL_INVALID;
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_seq_cst))
 		spinlock_hint();
 	lock->irqlNThrVariant = irqlNthrVariant;
 #ifdef OBOS_DEBUG
 	lock->owner = Core_GetCurrentThread();
 #endif
+	lock->locked = true;
 	return newIrql;
 }
-irql Core_SpinlockAcquire(spinlock* const lock)
+OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
 {
-	return Core_SpinlockAcquireExplicit(lock, IRQL_MASKED, false);
+	return Core_SpinlockAcquireExplicit(lock, IRQL_DISPATCH, false);
 }
 OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
@@ -57,6 +60,7 @@ OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrq
 #ifdef OBOS_DEBUG
 	lock->owner = nullptr;
 #endif
+	lock->locked = false;
 	if (oldIrql != IRQL_INVALID)
 		lock->irqlNThrVariant ? Core_LowerIrqlNoThread(oldIrql) : Core_LowerIrql(oldIrql);
 	lock->irqlNThrVariant = false;
@@ -69,4 +73,9 @@ OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 #ifdef OBOS_DEBUG
 	lock->owner = nullptr;
 #endif
+	lock->locked = false;
+}
+bool Core_SpinlockAcquired(spinlock* const lock)
+{
+	return lock ? lock->locked : false;
 }

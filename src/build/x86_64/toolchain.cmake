@@ -45,14 +45,26 @@ set(TARGET_DRIVER_COMPILE_OPTIONS_C -mno-red-zone -fno-omit-frame-pointer -mgene
 set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set(TARGET_DRIVER_LINKER_OPTIONS)
 
+set(gdbstub_source
+	"arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
+	"arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
+)
+
 list (APPEND oboskrnl_sources 
 	"arch/x86_64/entry.asm" "arch/x86_64/entry.c" "arch/x86_64/bgdt.asm" "arch/x86_64/idt.c"
 	"arch/x86_64/asm_helpers.asm" "arch/x86_64/thread_ctx.asm" "arch/x86_64/memmanip.asm"
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
 	"arch/x86_64/ioapic.c" "arch/x86_64/initial_swap.c" "arch/x86_64/drv_loader.c"
-	"arch/x86_64/pci.c"
+	"arch/x86_64/pci.c" ${gdbstub_source}
 )
+
+# set_source_files_properties(
+# 	${gdbstub_source}
+# 	PROPERTIES 
+# 	COMPILE_OPTIONS "-fno-sanitize=undefined"
+# 	COMPILE_OPTIONS "-fno-sanitize=kernel-address"
+# )
 
 add_compile_definitions(
 	__x86_64__=1 

@@ -9,7 +9,7 @@
 #include <int.h>
 
 #include <scheduler/thread.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 #include <irq/irql.h>
 
@@ -37,8 +37,9 @@ typedef struct cpu_local
 	irql currentIrql;
 	bool initialized;
 	dpc_queue dpcs;
+	spinlock dpc_queue_lock;
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
 
-OBOS_WEAK cpu_local* CoreS_GetCPULocalPtr();
+OBOS_WEAK OBOS_EXPORT cpu_local* CoreS_GetCPULocalPtr();

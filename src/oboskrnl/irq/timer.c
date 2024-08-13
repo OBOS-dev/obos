@@ -28,7 +28,7 @@
 #include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
-#include <scheduler/dpc.h>
+#include <irq/dpc.h>
 
 bool Core_TimerInterfaceInitialized;
 irq* Core_TimerIRQ;
@@ -39,7 +39,7 @@ static struct
     size_t nNodes;
     spinlock lock;
 } timer_list;
-static dpc* timer_dispatcher(dpc* obj, void* userdata);
+static void timer_dispatcher(dpc* obj, void* userdata);
 dpc* work = nullptr;
 OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
@@ -61,7 +61,7 @@ static void notify_timer(timer* timer)
         Core_CancelTimer(timer);
     timer->handler(timer->userdata);
 }
-static dpc* timer_dispatcher(dpc* obj, void* userdata)
+static void timer_dispatcher(dpc* obj, void* userdata)
 {
     OBOS_UNUSED(userdata);
     // Search for expired timer objects, and notify them.
@@ -93,7 +93,6 @@ static dpc* timer_dispatcher(dpc* obj, void* userdata)
         t = t->next;
         Core_SpinlockRelease(&timer_list.lock, oldIrql);
     }
-    return obj;
 }
 obos_status Core_InitializeTimerInterface()
 {

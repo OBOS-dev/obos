@@ -40,12 +40,12 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
-	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);
+	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
 		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
-		Core_SpinlockRelease(&s_lock, oldIrql);
+		// Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	else
 	{
@@ -59,13 +59,13 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			
 			node = node->next;
 		}
-		Core_SpinlockRelease(&s_lock, oldIrql);
+		// Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	if (!irq_obj)
 	{
 		// Spooky actions from a distance...
 		CoreS_GetCPULocalPtr()->currentContext = oldCtx;
-		Core_LowerIrqlNoThread(oldIrql2);
+		Core_LowerIrqlNoDPCDispatch(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
 	}
@@ -78,8 +78,11 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			oldIrql2);
 	}
 	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
+	// Core_LowerIrqlNoDPCDispatch(oldIrql2);
+	// We can't really do that
+	// otherwise DPCs have no other way to execute when the kernel idles.
+	Core_LowerIrqlNoThread(oldIrql2);	
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoThread(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {
@@ -350,4 +353,8 @@ obos_status Core_IrqObjectFree(irq* obj)
 	}
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 	return OBOS_STATUS_SUCCESS;
+}
+bool Core_IrqInterfaceInitialized()
+{
+	return s_irqInterfaceInitialized;
 }
