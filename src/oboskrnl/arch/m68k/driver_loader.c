@@ -377,13 +377,13 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     {
         if (phdr_table[i].p_type == PT_DYNAMIC)
             dynamic = &phdr_table[i];
-        if (phdr_table[i].p_type != PT_LOAD)
+        if (phdr_table[i].p_type != PT_LOAD && phdr_table[i].p_type != PT_DYNAMIC)
             continue;
         Elf_Phdr* curr = &phdr_table[i];
         if (!curr->p_memsz)
             continue;
         if (!end || curr->p_vaddr > (uintptr_t)end)
-			end = (void*)(curr->p_vaddr + ((curr->p_memsz + 0xfff) & ~0xfff));
+			end = (void*)(curr->p_vaddr+curr->p_memsz);
     }
     end = (void*)(((uintptr_t)end + 0xfff) & ~0xfff);
     szProgram = (size_t)end;
@@ -394,10 +394,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     // Copy the phdr data into them.
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
-        if (phdr_table[i].p_type != PT_LOAD &&
-            // phdr_table[i].p_type != PT_PHDR &&
-            phdr_table[i].p_type != PT_DYNAMIC
-        )
+        if (phdr_table[i].p_type != PT_LOAD && phdr_table[i].p_type != PT_DYNAMIC)
             continue;
         Elf_Phdr* curr = &phdr_table[i];
         if (!curr->p_memsz)

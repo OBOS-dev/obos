@@ -25,7 +25,8 @@ extern char Drv_Base[];
 void OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
-    OBOS_Log("%s: Hello from test driver #1. Driver base: %p. Driver id: %d.\n", __func__, Drv_Base, this->id);
+    OBOS_Log("%s: Hello from test driver #1. Driver base: %p. Driver id: %d.\n", __func__, this->base, this->id);
+    TestDriver_Test(this);
     OBOS_Log("Exiting from main thread.\n");
     Core_ExitCurrentThread();
 }

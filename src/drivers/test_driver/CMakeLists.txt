@@ -15,7 +15,7 @@ target_compile_options(test_driver
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
 )
 
-set_property(TARGET test_driver PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
+set_target_properties(test_driver PROPERTIES link_depends ${DRIVER_LINKER_SCRIPT})
 
 target_include_directories(test_driver 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
@@ -27,7 +27,7 @@ target_link_options(test_driver
 	PRIVATE "-Wl,--unresolved-symbols=ignore-all"
 #	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"
-    PRIVATE "-T" PRIVATE ${DRIVER_LINKER_SCRIPT}
+	PRIVATE "-Wl,-T${DRIVER_LINKER_SCRIPT}"
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
 target_link_libraries(test_driver
