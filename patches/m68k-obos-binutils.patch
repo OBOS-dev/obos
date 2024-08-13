@@ -1,0 +1,67 @@
+From 14632f1e8f1002b99d25e6ab5e587dfe4245bb4e Mon Sep 17 00:00:00 2001
+From: Omar Berrow <omarkberrow@gmail.com>
+Date: Tue, 13 Aug 2024 08:36:01 -0400
+Subject: [PATCH] OBOS Patch
+
+---
+ bfd/config.bfd    | 3 +++
+ config.sub        | 2 +-
+ gas/configure.tgt | 1 +
+ ld/configure.tgt  | 2 ++
+ 4 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/bfd/config.bfd b/bfd/config.bfd
+index 6553aac1e99..67ccc6c17ed 100644
+--- a/bfd/config.bfd
++++ b/bfd/config.bfd
+@@ -846,6 +846,9 @@ case "${targ}" in
+   m68*-*-haiku*)
+     targ_defvec=m68k_elf32_vec
+     ;;
++  m68*-*-obos*)
++    targ_defvec=m68k_elf32_vec
++    ;;
+   m68hc11-*-* | m6811-*-*)
+     targ_defvec=m68hc11_elf32_vec
+     targ_selvecs="m68hc11_elf32_vec m68hc12_elf32_vec"
+diff --git a/config.sub b/config.sub
+index defe52c0c87..6f988224c62 100755
+--- a/config.sub
++++ b/config.sub
+@@ -1766,7 +1766,7 @@ case $os in
+ 	     | onefs* | tirtos* | phoenix* | fuchsia* | redox* | bme* \
+ 	     | midnightbsd* | amdhsa* | unleashed* | emscripten* | wasi* \
+ 	     | nsk* | powerunix* | genode* | zvmoe* | qnx* | emx* | zephyr* \
+-	     | fiwix* | mlibc* | cos* | mbr* )
++	     | fiwix* | mlibc* | cos* | mbr* | obos* )
+ 		;;
+ 	# This one is extra strict with allowed versions
+ 	sco3.2v2 | sco3.2v[4-9]* | sco5v6*)
+diff --git a/gas/configure.tgt b/gas/configure.tgt
+index d58f21873a3..a3809ef1633 100644
+--- a/gas/configure.tgt
++++ b/gas/configure.tgt
+@@ -301,6 +301,7 @@ case ${generic_target} in
+   m68k-*-gnu*)				fmt=elf ;;
+   m68k-*-netbsd*)			fmt=elf em=nbsd ;;
+   m68k-*-haiku*)			fmt=elf em=haiku ;;
++  m68k-*-obos*)			        fmt=elf em=linux ;;
+ 
+   s12z-*-*)				fmt=elf ;;
+ 
+diff --git a/ld/configure.tgt b/ld/configure.tgt
+index f937f78b876..3210f10e4fb 100644
+--- a/ld/configure.tgt
++++ b/ld/configure.tgt
+@@ -507,6 +507,8 @@ m68*-*-netbsd*)	targ_emul=m68kelfnbsd
+ 			;;
+ m68*-*-haiku*)		targ_emul=m68kelf
+ 			;;
++m68*-*-obos*)           targ_emul=m68kelfnbsd
++                        ;;
+ m68*-*-*)		targ_emul=m68kelf
+ 			;;
+ mcore-*-pe)		targ_emul=mcorepe ;
+-- 
+2.39.2
+

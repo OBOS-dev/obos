@@ -13,9 +13,25 @@ typedef uint8_t irql;
 enum
 {
 	IRQL_PASSIVE,
+#if OBOS_IRQL_COUNT == 16
 	IRQL_DISPATCH = 2,
 	IRQL_TIMER = 3,
 	IRQL_MASKED = 0xf,
+#elif OBOS_IRQL_COUNT == 8
+	IRQL_DISPATCH = 1,
+	IRQL_TIMER = 1,
+	IRQL_MASKED = 7,
+#elif OBOS_IRQL_COUNT == 4
+	IRQL_DISPATCH = 1,
+	IRQL_TIMER = 1,
+	IRQL_MASKED = 3,
+#elif OBOS_IRQL_COUNT == 2
+	IRQL_DISPATCH = 0,
+	IRQL_TIMER = 0,
+	IRQL_MASKED = 1,
+#else
+#	error Your IRQLs are too powerful for OBOS!
+#endif
 	IRQL_INVALID = 0xff,
 };
 
@@ -50,11 +66,12 @@ OBOS_EXPORT irql Core_GetIrql();
 /// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would set the cr8 register to 'to' on x86_64.
 /// </summary>
-/// <param name="to"></param>
-void    CoreS_SetIRQL(uint8_t to);
+/// <param name="to">The IRQL to set the current IRQL to.</param>
+/// <param name="old">The old IRQL.</param>
+OBOS_WEAK void CoreS_SetIRQL(uint8_t to, uint8_t old);
 /// <summary>
 /// Sets the current IRQL in the IRQ controller.<para/>
 /// For example, this would return the cr8 register on x86_64.
 /// </summary>
 /// <returns>The current IRQL.</returns>
-uint8_t CoreS_GetIRQL();
+OBOS_WEAK uint8_t CoreS_GetIRQL();

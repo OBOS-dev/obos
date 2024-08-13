@@ -4,6 +4,10 @@
 
 set (ISODIR ${CMAKE_SOURCE_DIR}/out/isodir/)
 
+if (OBOS_ARCHITECTURE STREQUAL "m68k")
+	return()
+endif()
+
 if (NOT EXISTS ${ISODIR})
 	file (MAKE_DIRECTORY ${ISODIR})
 endif()
@@ -39,4 +43,6 @@ add_custom_target(isogen ALL
 	COMMENT "Generating ${OUTPUT_DIR}/obos.iso"
 )
 add_dependencies(isogen oboskrnl)
-add_dependencies(isogen uart)
+if (EXISTS uart)
+	add_dependencies(isogen uart)
+endif()

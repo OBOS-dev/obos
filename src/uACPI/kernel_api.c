@@ -44,12 +44,12 @@
 #include <arch/x86_64/ioapic.h>
 #endif
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static bool isPower2(uint64_t num)
 {
 	int popcount = __builtin_popcount(num);
 	return popcount == 1 /* A power of two only ever has one bit set. */;
 }
-
 #if defined(__i386__) || defined(__x86_64__)
 #	define spinlock_hint() asm volatile("pause")
 #else
@@ -612,6 +612,9 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
     }
     return UACPI_STATUS_OK;
 }
+
+#endif
+// So we use the uACPI stdlib in some places in the kernel.
 
 // uacpi_stdlib
 void *uacpi_memcpy(void *dest, const void* src, size_t sz)

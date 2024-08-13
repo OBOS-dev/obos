@@ -29,14 +29,15 @@ irq* Core_IrqObjectAllocate(obos_status* status)
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
- void Core_IRQDispatcher(interrupt_frame* frame)
+void Core_IRQDispatcher(interrupt_frame* frame)
 {
+	CoreS_SendEOI(frame);
+	if (!CoreS_EnterIRQHandler(frame))
+		return; // some archs do IRQL emulation this way.
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (irql_ <= Core_GetIrql())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ <= Core_GetIrql()\").");
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
-	CoreS_EnterIRQHandler(frame);
-	CoreS_SendEOI(frame);
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);
@@ -255,7 +256,11 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 {
 	if (!s_irqInterfaceInitialized)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	if (!obj || requiredIrql > IRQL_MASKED || requiredIrql == 0 || requiredIrql == 1)
+	if (!obj || requiredIrql > IRQL_MASKED || requiredIrql == 0
+#if OBOS_IRQL_COUNT == 16
+		|| requiredIrql == 1
+#endif
+	)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (obj->vector)
 		return OBOS_STATUS_ALREADY_INITIALIZED;

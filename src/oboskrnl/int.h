@@ -95,5 +95,5 @@ typedef _Bool bool;
 #	error Must be compiled as freestanding.
 #endif
 #define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
-#define OBOS_PAGEABLE_RO_VARIABLE _attribute__((section(".pageable.rodata")))
+#define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
 #define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))

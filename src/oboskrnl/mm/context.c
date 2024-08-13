@@ -37,10 +37,13 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 	if (addr >= round_down(Core_SchedulerIRQ) &&
 		addr < round_up(Core_SchedulerIRQ + 1))
 		return true;
+	if (addr >= round_down(OBOS_KernelProcess) &&
+		addr < round_up(OBOS_KernelProcess + 1))
+		return true;
 	for (size_t i = 0; i < Core_CpuCount; i++)
 	{
 		cpu_local* cpu = &Core_CpuInfo[i];
-#ifdef __x86_64
+#ifdef __x86_64__
         if (addr >= round_down(cpu->idleThread) &&
 			addr < round_up(cpu->idleThread + 1))
 			return true;
@@ -52,6 +55,16 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 			return true;
         if (addr >= round_down(cpu->arch_specific.ist_stack) &&
 			addr < round_up((uintptr_t)cpu->arch_specific.ist_stack + 0x20000))
+			return true;
+#elif defined(__m68k__)
+		if (addr >= round_down(cpu->idleThread) &&
+			addr < round_up(cpu->idleThread + 1))
+			return true;
+        if (addr >= round_down(cpu->idleThread->snode) &&
+			addr < round_up(cpu->idleThread->snode + 1))
+			return true;
+		if (addr >= round_down(cpu->idleThread->context.stackBase) &&
+			addr < round_up((uintptr_t)cpu->idleThread->context.stackBase + cpu->idleThread->context.stackSize))
 			return true;
 #else
 #	error Unknown architecture.

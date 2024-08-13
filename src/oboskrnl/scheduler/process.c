@@ -69,5 +69,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 }
 OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessTerminate(process* proc, bool forced)
 {
+	OBOS_UNUSED(proc);
+	OBOS_UNUSED(forced);
 	return OBOS_STATUS_UNIMPLEMENTED;
 }

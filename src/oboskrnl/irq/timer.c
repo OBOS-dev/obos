@@ -47,12 +47,14 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
     OBOS_UNUSED(frame);
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(oldIrql);
+#ifdef OBOS_TIMER_IS_DEADLINE
+    CoreS_ResetTimer();
+#endif
     if (!work->cpu || LIST_IS_NODE_UNLINKED(dpc_queue, &work->cpu->dpcs, work))
         CoreH_InitializeDPC(work, timer_dispatcher, Core_DefaultThreadAffinity);
 }
 static void notify_timer(timer* timer)
 {
-    
     // TODO: Use signals instead of calling the handler directly.
     timer->lastTimeTicked = CoreS_GetTimerTick();
     if (timer->mode == TIMER_MODE_DEADLINE)
@@ -61,6 +63,7 @@ static void notify_timer(timer* timer)
 }
 static dpc* timer_dispatcher(dpc* obj, void* userdata)
 {
+    OBOS_UNUSED(userdata);
     // Search for expired timer objects, and notify them.
     for(timer* t = timer_list.head; t; )
     {
@@ -107,7 +110,6 @@ obos_status Core_InitializeTimerInterface()
     if (obos_is_error(status))
         if (Core_TimerIRQ)
             Core_IrqObjectFree(Core_TimerIRQ);
-    cleanup2:
     work = CoreH_AllocateDPC(nullptr);
     Core_LowerIrql(oldIrql);
     return status;
@@ -185,13 +187,17 @@ obos_status Core_CancelTimer(timer* timer)
 timer_tick CoreH_TimeFrameToTick(uint64_t us)
 {
     // us/1000000*freqHz=timer ticks
+// #if OBOS_ARCH_USES_SOFT_FLOAT
+//     return ((double)us/1000000.0*(double)CoreS_TimerFrequency)+1;
+// #else
     fixedptd tp = fixedpt_fromint(us); // us.0
     fixedptd hz = fixedpt_fromint(CoreS_TimerFrequency); // CoreS_TimerFrequency.0
     const fixedptd divisor = fixedpt_fromint(1000000); // 1000000.0
-    OBOS_ASSERT(fixedpt_toint(tp) == us);
-    OBOS_ASSERT(fixedpt_toint(hz) == CoreS_TimerFrequency);
+    OBOS_ASSERT(fixedpt_toint(tp) == (int64_t)us);
+    OBOS_ASSERT(fixedpt_toint(hz) == (int64_t)CoreS_TimerFrequency);
     OBOS_ASSERT(fixedpt_toint(divisor) == 1000000);
     tp = fixedpt_xdiv(tp, divisor);
     tp = fixedpt_xmul(tp, hz);
     return fixedpt_toint(tp)+1 /* add one to account for rounding issues. */;
+// #endif
 }

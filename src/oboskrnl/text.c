@@ -100,8 +100,11 @@ static void newlineHandler(text_renderer_state* state)
 		memcpy(fb, (uint8_t*)fb + (state->fb.pitch * 16), (size_t)state->fb.pitch * ((size_t)state->fb.height - 16));
 		memset((uint8_t*)fb + (size_t)state->fb.pitch * ((size_t)state->fb.height - 16), 0, (size_t)state->fb.pitch * 16);
 		state->row--;
-		memset(state->fb.modified_line_bitmap, 0xff, get_line_bitmap_size(state->fb.height)*4);
-		state->fb.modified_line_bitmap[get_line_bitmap_size(state->fb.height)-1] &= ~BIT(31);
+		if (state->fb.modified_line_bitmap)
+		{
+			memset(state->fb.modified_line_bitmap, 0xff, get_line_bitmap_size(state->fb.height)*4);
+			state->fb.modified_line_bitmap[get_line_bitmap_size(state->fb.height)-1] &= ~BIT(31);
+		}
 	}
 	flush_buffers(state);
 }

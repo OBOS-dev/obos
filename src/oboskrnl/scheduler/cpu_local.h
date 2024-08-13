@@ -17,6 +17,8 @@
 
 #ifdef __x86_64__
 #	include <arch/x86_64/cpu_local_arch.h>
+#elif defined(__m68k__)
+#	include <arch/m68k/cpu_local_arch.h>
 #endif
 
 typedef struct cpu_local
@@ -39,4 +41,4 @@ typedef struct cpu_local
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;
 
-cpu_local* CoreS_GetCPULocalPtr();
+OBOS_WEAK cpu_local* CoreS_GetCPULocalPtr();

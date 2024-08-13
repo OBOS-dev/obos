@@ -12,7 +12,7 @@
 
 #include <driver_interface/header.h>
 
-#include <uacpi/platform/libc.h>
+#include <uacpi_libc.h>
 
 #include <scheduler/thread.h>
 

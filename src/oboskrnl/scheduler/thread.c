@@ -187,6 +187,7 @@ thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
+	OBOS_UNUSED(unused);
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
 	thread_node* node = currentThread->snode;
@@ -203,7 +204,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 }
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	(void)Core_RaiseIrqlNoThread(IRQL_MASKED);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
 }

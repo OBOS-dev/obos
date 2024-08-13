@@ -14,6 +14,7 @@ list (APPEND oboskrnl_sources
 add_executable(oboskrnl)
 
 set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
+set_source_files_properties("klog.c" PROPERTIES COMPILE_OPTIONS "-Wno-error")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -25,7 +26,10 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 )
 
-target_link_libraries(oboskrnl PRIVATE gcc PRIVATE uacpi)
+target_link_libraries(oboskrnl
+	PRIVATE ${LIBGCC} 
+	PRIVATE uacpi
+)
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 
@@ -41,8 +45,16 @@ target_link_options(oboskrnl
 )
 
 target_compile_definitions(oboskrnl
-	PRIVATE FIXEDPT_BITS=64
+	PRIVATE FIXEDPT_BITS=${OBOS_ARCHITECTURE_BITS}
 	PRIVATE OBOS_KERNEL=1
-	PRIVATE FIXEDPT_WBITS=32)
+	PRIVATE "FIXEDPT_WBITS=(${OBOS_ARCHITECTURE_BITS}-8)"
+	PRIVATE OBOS_ARCHITECTURE_HAS_ACPI=${OBOS_ARCHITECTURE_HAS_ACPI}
+)
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
+
+set_source_files_properties(
+    "arch/m68k/entry.c"
+    PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test_driver"
+)
