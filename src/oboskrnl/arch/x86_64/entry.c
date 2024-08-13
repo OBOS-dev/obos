@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <cmdline.h>
 #include <klog.h>
 #include <stdint.h>
 #include <struct_packing.h>
@@ -191,7 +192,6 @@ struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
 struct ultra_module_info_attribute* Arch_UARTDriver;
 struct ultra_framebuffer* Arch_Framebuffer;
-const char* OBOS_KernelCmdLine;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
@@ -388,7 +388,6 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		// TODO: Move the PAT initialization code somewhere else.
 		wrmsr(0x277, 0x0001040600070406);
 		// UC UC- WT WB UC WC WT WB
-
 	}
 	else
 		Core_Yield();
@@ -545,6 +544,8 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
+	OBOS_Debug("%s: Parsing command line.\n", __func__);
+	OBOS_ParseCMDLine();
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
 	OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_is_error(status))
@@ -776,7 +777,8 @@ if (st != UACPI_STATUS_OK)\
 	while (!(main->flags & THREAD_FLAGS_DIED))
 		Core_Yield();
 	dev_desc connection = 0;
-    status =
+    obos_status com1_status = 
+	status =
     drv1->header.ftable.ioctl(6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
         1,
         115200,
@@ -786,10 +788,7 @@ if (st != UACPI_STATUS_OK)\
         &connection
     );
 	if (obos_is_error(status))
-	{
 		OBOS_Error("Could not open COM1. Status: %d.\n", status);
-		goto done;
-	}
 	static gdb_connection gdb_conn = {};
 	Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
 	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
@@ -816,8 +815,12 @@ if (st != UACPI_STATUS_OK)\
 	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
 	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
 	Kdbg_CurrentConnection = &gdb_conn;
-	Kdbg_CurrentConnection->connection_active = true;
-	asm("int3");
+	if (obos_is_success(com1_status) && OBOS_GetOPTF("enable-kdbg"))
+	{
+		OBOS_Debug("%s: Enabling KDBG.\n", __func__);
+		Kdbg_CurrentConnection->connection_active = true;
+		asm("int3");
+	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	done:
 	Core_ExitCurrentThread();
