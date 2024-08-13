@@ -22,7 +22,7 @@ OBOS_PAGEABLE_FUNCTION DRV_EXPORT void TestDriver_Test(driver_id* caller)
 }
 extern char Drv_Base[];
 
-void OBOS_DriverEntry(driver_id* this)
+OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
     OBOS_Log("%s: Hello from test driver #1. Driver base: %p. Driver id: %d.\n", __func__, this->base, this->id);

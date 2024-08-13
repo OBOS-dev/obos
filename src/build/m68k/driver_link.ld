@@ -1,18 +1,30 @@
+/* Borrowed from binutils */
+/* TODO(oberrow): Make your own linker script that works on the m68k-obos toolchain */
 OUTPUT_FORMAT("elf32-m68k", "elf32-m68k",
               "elf32-m68k")
 OUTPUT_ARCH(m68k)
 ENTRY(OBOS_DriverEntry)
 SEARCH_DIR("=/home/serveradmin/m68k-gcc/m68k-obos-elf-tools/m68k-obos/lib"); SEARCH_DIR("=/usr/local/lib"); SEARCH_DIR("=/lib"); SEARCH_DIR("=/usr/lib");
+PHDRS
+{
+  headers PT_PHDR PHDRS ;
+  interp PT_INTERP ;
+  text PT_LOAD FILEHDR PHDRS ;
+  data PT_LOAD ;
+  pageable_text PT_LOAD FLAGS(PF_R|PF_X|0x00010000);
+  pageable_data PT_LOAD FLAGS(PF_R|PF_W|0x00010000);
+  dynamic PT_DYNAMIC ;
+}
 SECTIONS
 {
   /* Read-only sections, merged into text segment: */
   PROVIDE (__executable_start = SEGMENT_START("text-segment", 0)); . = SEGMENT_START("text-segment", 0) + SIZEOF_HEADERS;
-  .interp         : { *(.interp) }
+  .interp         : { *(.interp) } :interp :text
   .note.gnu.build-id  : { *(.note.gnu.build-id) }
-  .hash           : { *(.hash) }
+  .hash           : { *(.hash) } :text
   .gnu.hash       : { *(.gnu.hash) }
-  .dynsym         : { *(.dynsym) }
-  .dynstr         : { *(.dynstr) }
+  .dynsym         : { *(.dynsym) } :text
+  .dynstr         : { *(.dynstr) } :text
   .gnu.version    : { *(.gnu.version) }
   .gnu.version_d  : { *(.gnu.version_d) }
   .gnu.version_r  : { *(.gnu.version_r) }
@@ -30,17 +42,17 @@ SECTIONS
       *(.rela.got)
       *(.rela.bss .rela.bss.* .rela.gnu.linkonce.b.*)
       *(.rela.iplt)
-    }
+    } :text
   .rela.plt       :
     {
       *(.rela.plt)
-    }
+    } :text
   .init           :
   {
     KEEP (*(SORT_NONE(.init)))
   } =0x4e714e71
-  .plt            : { *(.plt) }
-  .iplt           : { *(.iplt) }
+  .plt            : { *(.plt) } :text
+  .iplt           : { *(.iplt) } :text
   .text           :
   {
     *(.text.unlikely .text.*_unlikely .text.unlikely.*)
@@ -51,7 +63,7 @@ SECTIONS
     *(.text .stub .text.* .gnu.linkonce.t.*)
     /* .gnu.warning sections are handled specially by elf.em.  */
     *(.gnu.warning)
-  } =0x4e714e71
+  }  :text =0x4e714e71
   .fini           :
   {
     KEEP (*(SORT_NONE(.fini)))
@@ -59,8 +71,8 @@ SECTIONS
   PROVIDE (__etext = .);
   PROVIDE (_etext = .);
   PROVIDE (etext = .);
-  .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
-  .rodata1        : { *(.rodata1) }
+  .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) } :text
+  .rodata1        : { *(.rodata1) } :text
   .eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) }
   .eh_frame       : ONLY_IF_RO { KEEP (*(.eh_frame)) *(.eh_frame.*) }
   .sframe         : ONLY_IF_RO { *(.sframe) *(.sframe.*) }
@@ -82,28 +94,28 @@ SECTIONS
    {
      PROVIDE_HIDDEN (__tdata_start = .);
      *(.tdata .tdata.* .gnu.linkonce.td.*)
-   }
-  .tbss           : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }
+   } :data
+  .tbss           : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }:data
   .preinit_array    :
   {
     PROVIDE_HIDDEN (__preinit_array_start = .);
     KEEP (*(.preinit_array))
     PROVIDE_HIDDEN (__preinit_array_end = .);
-  }
+  }:data
   .init_array    :
   {
     PROVIDE_HIDDEN (__init_array_start = .);
     KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
     KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
     PROVIDE_HIDDEN (__init_array_end = .);
-  }
+  }:data
   .fini_array    :
   {
     PROVIDE_HIDDEN (__fini_array_start = .);
     KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
     KEEP (*(.fini_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .dtors))
     PROVIDE_HIDDEN (__fini_array_end = .);
-  }
+  }:data
   .ctors          :
   {
     /* gcc uses crtbegin.o to find the start of
@@ -124,7 +136,7 @@ SECTIONS
     KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .ctors))
     KEEP (*(SORT(.ctors.*)))
     KEEP (*(.ctors))
-  }
+  } :data
   .dtors          :
   {
     KEEP (*crtbegin.o(.dtors))
@@ -132,18 +144,18 @@ SECTIONS
     KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .dtors))
     KEEP (*(SORT(.dtors.*)))
     KEEP (*(.dtors))
-  }
+  } :data
   .jcr            : { KEEP (*(.jcr)) }
   .data.rel.ro : { *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*) *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*) }
-  .dynamic        : { *(.dynamic) }
+  .dynamic        : { *(.dynamic) } :data :dynamic
   . = DATA_SEGMENT_RELRO_END (0, .);
-  .got            : { *(.got.plt) *(.igot.plt) *(.got) *(.igot) }
+  .got            : { *(.got.plt) *(.igot.plt) *(.got) *(.igot) } :data
   .data           :
   {
     *(.data .data.* .gnu.linkonce.d.*)
     SORT(CONSTRUCTORS)
-  }
-  .data1          : { *(.data1) }
+  } :data
+  .data1          : { *(.data1) } :data
   _edata = .; PROVIDE (edata = .);
   . = ALIGN(ALIGNOF(NEXT_SECTION));
   __bss_start = .;
@@ -158,10 +170,30 @@ SECTIONS
       FIXME: Why do we need it? When there is no .bss section, we do not
       pad the .data section.  */
    . = ALIGN(. != 0 ? 32 / 8 : 1);
-  }
+  } :data
   . = ALIGN(32 / 8);
   . = SEGMENT_START("ldata-segment", .);
   . = ALIGN(32 / 8);
+  .pageable.text : {
+    *(.pageable.text .pageable.text.*)
+  } :pageable_text
+  .pageable.rodata : {
+    *(.pageable.rodata .pageable.rodata.*)
+  } :pageable_text
+  .pageable.data : {
+    *(.pageable.data .pageable.data.*)
+  } :pageable_data
+  .pageable.bss :
+  {
+   *(.pageable.bss .pageable.bss.*)
+   *(COMMON)
+   /* Align here to ensure that the .bss section occupies space up to
+      _end.  Align after .bss to ensure correct alignment even if the
+      .bss section disappears because there are no input sections.
+      FIXME: Why do we need it? When there is no .bss section, we do not
+      pad the .data section.  */
+   . = ALIGN(. != 0 ? 32 / 8 : 1);
+  } :pageable_data
   _end = .; PROVIDE (end = .);
   . = DATA_SEGMENT_END (.);
   /* Stabs debugging sections.  */
