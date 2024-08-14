@@ -22,7 +22,7 @@ typedef struct semaphore {
     thread_list waiting;
 } semaphore;
 
-#define SEMAPHORE_INITIALIZE(cnt) { .count=cnt, .waiting={} }
+#define SEMAPHORE_INITIALIZE(cnt) (semaphore){ .count=cnt, .waiting={} }
 
 obos_status Core_SemaphoreAcquire(semaphore* sem);
 obos_status Core_SemaphoreTryAcquire(semaphore* sem);

@@ -139,6 +139,12 @@ OBOS_EXPORT obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status CoreH_ThreadBlock(thread* thr, bool canYield);
 /// <summary>
+/// Boosts a thread's priority.
+/// </summary>
+/// <param name="thr">The thread.</param>
+/// <returns>The function's status.</returns>
+OBOS_EXPORT obos_status CoreH_ThreadBoostPriority(thread* thr);
+/// <summary>
 /// Appends a thread to a thread list.
 /// </summary>
 /// <param name="list">The thread list.</param>

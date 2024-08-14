@@ -126,6 +126,31 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;
 }
+obos_status CoreH_ThreadBoostPriority(thread* thr)
+{
+	if (!thr)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->flags & THREAD_FLAGS_DIED)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!thr->masterCPU && thr->status != THREAD_STATUS_BLOCKED)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_MAX_VALUE)
+		return OBOS_STATUS_SUCCESS;
+	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
+	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
+	if (thr->masterCPU)
+	{
+		CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
+		CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority+1].list, thr->snode);
+	}
+	thr->flags |= THREAD_FLAGS_PRIORITY_RAISED;
+	thr->priority++;
+	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
+	return OBOS_STATUS_SUCCESS;
+}
 obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
 	if (!list || !node)

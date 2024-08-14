@@ -98,6 +98,7 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
     NO_RESPONSE;
     NO_USERDATA;
     NO_CTX;
+    OBOS_UNUSED(argumentsLen);
     // We support:
     // swbreak
     // hwbreak
@@ -147,7 +148,8 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
     snprintf(response + responseLen, featureLen+1, "PacketSize=%lu", packet_size);
     responseLen += featureLen;
     obos_status status = Kdbg_ConnectionSendPacket(con, response);
-    return OBOS_STATUS_SUCCESS;
+    Kdbg_Free(response);
+    return status;
 }
 obos_status Kdbg_GDB_qAttached(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {

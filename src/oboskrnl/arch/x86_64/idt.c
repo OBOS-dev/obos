@@ -106,7 +106,8 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 }
 void CoreS_SendEOI(interrupt_frame* unused)
 {
+	OBOS_UNUSED(unused);
 	Arch_LAPICSendEOI();
 }
-bool CoreS_EnterIRQHandler(interrupt_frame* frame) { sti(); return true; }
-void CoreS_ExitIRQHandler(interrupt_frame* frame) { cli(); }
+bool CoreS_EnterIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); sti(); return true; }
+void CoreS_ExitIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); cli(); }

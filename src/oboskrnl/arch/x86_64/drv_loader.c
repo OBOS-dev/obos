@@ -149,7 +149,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
     list->nNodes++;
     dependency->refCnt++;
 }
-static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
+static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
 {
     driver_symbol* Symbol;
     driver_symbol internal_symbol = {};
@@ -172,7 +172,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         if (!Symbol)
         {
             Elf64_Sym* sym = GetSymbolFromTable(
-                file, base, symbolTable, hashTableOffset, stringTable,
+                (uint8_t*)file, base, symbolTable, hashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
             if (sym->st_shndx == 0)
@@ -367,6 +367,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
 
 void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
 {
+    OBOS_UNUSED(szFile);
     Elf64_Ehdr* ehdr = Cast(file, Elf64_Ehdr*);
     Elf64_Phdr* phdr_table = OffsetPtr(ehdr, ehdr->e_phoff, Elf64_Phdr*);
     Elf64_Phdr* dynamic = nullptr;

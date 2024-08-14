@@ -160,10 +160,10 @@ static OBOS_NO_UBSAN void SetMemberInSMPTrampoline(uint8_t off, uint64_t val)
 {
 	*OffsetPtr(nullptr, off, uint64_t) = val;
 }
-static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
-{
-	return *OffsetPtr(nullptr, off, uint64_t);
-}
+// static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
+// {
+// 	return *OffsetPtr(nullptr, off, uint64_t);
+// }
 bool Arch_SMPInitialized = false;
 void Arch_SMPStartup()
 {

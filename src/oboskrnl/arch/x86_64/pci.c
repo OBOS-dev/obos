@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#pragma once
-
 #include <int.h>
 #include <error.h>
 
@@ -159,6 +157,7 @@ obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_devic
             }
         }
     }
+    return OBOS_STATUS_SUCCESS;
 }
 obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node)
 {

@@ -293,6 +293,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		}
 	}
 	page* volatile pg = nullptr;
+	OBOS_UNUSED(pg); 
 	if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
 	{
 		asm("sti");
@@ -686,7 +687,7 @@ if (st != UACPI_STATUS_OK)\
 	st = uacpi_namespace_initialize();
 	verify_status(st, uacpi_namespace_initialize);
 	
-	uacpi_status ret = uacpi_install_fixed_event_handler(
+	uacpi_install_fixed_event_handler(
         UACPI_FIXED_EVENT_POWER_BUTTON,
 	handle_power_button, UACPI_NULL
 	);
@@ -803,6 +804,7 @@ if (st != UACPI_STATUS_OK)\
 	}
 	memzero(threads, sizeof(thread)*3);
 	OBOS_Debug("Testing mutexes.\n");
+	mut = MUTEX_INITIALIZE();
 	for (size_t i = 0; i < nThreads; i++)
 	{
 		thread* thr = &threads[i];
@@ -835,7 +837,6 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	done:
 	Core_ExitCurrentThread();
 
 }

@@ -23,7 +23,7 @@ typedef struct mutex {
     thread* who;
 } mutex;
 
-#define MUTEX_INITIALIZE { .locked=false, .waiting={}, .who=nullptr }
+#define MUTEX_INITIALIZE() (mutex){ .locked=false, .waiting={}, .who=nullptr }
 
 obos_status Core_MutexAcquire(mutex* mut);
 obos_status Core_MutexTryAcquire(mutex* mut);
