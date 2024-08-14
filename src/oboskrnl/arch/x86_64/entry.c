@@ -75,6 +75,7 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
+#include "locks/wait.h"
 
 #include <locks/mutex.h>
 #include <locks/semaphore.h>
@@ -540,6 +541,7 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 static void semaphore_test(void* userdata);
 static void mutex_test(void* userdata);
 static void event_test(void* userdata);
+static void not_event_test(void* userdata);
 static void test_locks();
 static void timer_wake(void* udata)
 {
@@ -871,6 +873,46 @@ static void test_locks()
 				allThreadsDead = false;
 		}
 	}
+	memzero(threads, sizeof(thread)*3);
+	OBOS_Debug("Testing notification events.\n");
+	static event events[3] = {};
+	events[0] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+	events[1] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+	events[2] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+	for (size_t i = 0; i < nThreads; i++)
+	{
+		thread* thr = &threads[i];
+		thread_ctx ctx = {};
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)not_event_test, (uintptr_t)&events, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		CoreH_ThreadReady(thr);
+	}
+	for (size_t i = 0; i < nThreads; i++)
+	{
+		thread* thr = &threads[i];
+		CoreH_ThreadReady(thr);
+	}
+	for (size_t i = 0; i < 3; i++)
+	{
+		Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 1000000 /* 1 second */);
+		CoreH_ThreadBlock(Core_GetCurrentThread(), true);
+		Core_CancelTimer(slp);
+		Core_EventSet(&events[i], true);
+	}
+	allThreadsDead = false;
+	while(!allThreadsDead)
+	{
+		allThreadsDead = true;
+		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
+		{
+			if (!(threads[i].flags & THREAD_FLAGS_DIED))
+				allThreadsDead = false;
+		}
+	}
+	Core_EventClear(&events[0]);
+	Core_EventClear(&events[1]);
+	Core_EventClear(&events[2]);
+	OBOS_Debug("Done.\n");
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
 	Core_TimerObjectFree(slp);
 }
@@ -901,7 +943,7 @@ static void event_test(void* userdata)
 {
 	event* e = (event*)userdata;
 	OBOS_Debug("Thread %d is waiting on an event.\n", Core_GetCurrentThread()->tid);
-	Core_EventWait(e);
+	Core_WaitOnObject(WAITABLE_OBJECT(*e));
 	Core_EventClear(e);
 	OBOS_Debug("Sleeping for one second before setting event...\n");
 	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
@@ -909,5 +951,13 @@ static void event_test(void* userdata)
 		;
 	Core_EventSet(e, true);
 	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
+	Core_ExitCurrentThread();
+}
+static void not_event_test(void* userdata)
+{
+	event* events = (event*)userdata;
+	OBOS_Debug("Thread %d waiting on events.\n", Core_GetCurrentThread()->tid);
+	Core_WaitOnObjects(3, WAITABLE_OBJECT(events[0]), WAITABLE_OBJECT(events[1]), WAITABLE_OBJECT(events[2]));
+	OBOS_Debug("Thread %d is done.\n", Core_GetCurrentThread()->tid);
 	Core_ExitCurrentThread();
 }

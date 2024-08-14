@@ -15,6 +15,7 @@
 #include <irq/irql.h>
 
 #include <locks/event.h>
+#include <locks/wait.h>
 
 obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority) 
 {
@@ -24,24 +25,12 @@ obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority)
     event->signaled = true;
     if (event->type == EVENT_SYNC)
     {
-        thread_node* node = event->waiting.head;
-        if (boostWaitingThreadPriority)
-            CoreH_ThreadBoostPriority(node->data);
-        CoreH_ThreadReadyNode(node->data, node->data->snode);
-        CoreH_ThreadListRemove(&event->waiting, node);
+        CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
         event->signaled = false;
         Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
     }
-    for (thread_node* node = event->waiting.head; node; )
-    {
-        thread_node* next = node->next;
-        if (boostWaitingThreadPriority)
-            CoreH_ThreadBoostPriority(node->data);
-        CoreH_ThreadListRemove(&event->waiting, node);
-        CoreH_ThreadReadyNode(node->data, node->data->snode);
-        node = next;
-    }
+    CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
     event->signaled = false;
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
@@ -57,6 +46,7 @@ obos_status Core_EventReset(event* event)
     if (!event)
         return OBOS_STATUS_INVALID_ARGUMENT;
     event->signaled = false;
+    CoreH_ClearSignaledState(&event->hdr);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
@@ -65,25 +55,11 @@ obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
     event->signaled = true;
     if (event->type == EVENT_SYNC)
     {
-        thread_node* node = event->waiting.head;
-        if (!node)
-            return OBOS_STATUS_SUCCESS;
-        if (boostWaitingThreadPriority)
-            CoreH_ThreadBoostPriority(node->data);
-        CoreH_ThreadReadyNode(node->data, node->data->snode);
-        CoreH_ThreadListRemove(&event->waiting, node);
+        CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
         Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
     }
-    for (thread_node* node = event->waiting.head; node; )
-    {
-        thread_node* next = node->next;
-        if (boostWaitingThreadPriority)
-            CoreH_ThreadBoostPriority(node->data);
-        CoreH_ThreadListRemove(&event->waiting, node);
-        CoreH_ThreadReadyNode(node->data, node->data->snode);
-        node = next;
-    }
+    CoreH_SignalWaitingThreads(&event->hdr, true, boostWaitingThreadPriority);
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
@@ -91,15 +67,4 @@ obos_status Core_EventClear(event* event)
 {
     // NOTE(oberrow): Are these functions supposed to be implemented differently?
     return Core_EventReset(event);
-}
-obos_status Core_EventWait(event* event)
-{
-    if (!event)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (event->signaled)
-        return OBOS_STATUS_SUCCESS;
-    Core_GetCurrentThread()->lock_node.data = Core_GetCurrentThread();
-    CoreH_ThreadListAppend(&event->waiting, &Core_GetCurrentThread()->lock_node);
-    CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-    return OBOS_STATUS_SUCCESS;
 }

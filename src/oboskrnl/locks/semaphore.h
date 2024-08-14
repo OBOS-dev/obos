@@ -14,15 +14,15 @@
 #include <stdatomic.h>
 
 #include <locks/spinlock.h>
+#include <locks/wait.h>
 
 typedef struct semaphore {
+    struct waitable_header hdr;
     spinlock lock;
     size_t count;
-    // The threads waiting for the mutex to be released.
-    thread_list waiting;
 } semaphore;
 
-#define SEMAPHORE_INITIALIZE(cnt) (semaphore){ .count=cnt, .waiting={} }
+#define SEMAPHORE_INITIALIZE(cnt) (semaphore){ .hdr=WAITABLE_HEADER_INITIALIZE(true, false), .count=cnt }
 
 obos_status Core_SemaphoreAcquire(semaphore* sem);
 obos_status Core_SemaphoreTryAcquire(semaphore* sem);

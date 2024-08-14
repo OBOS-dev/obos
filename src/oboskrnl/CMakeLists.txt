@@ -9,7 +9,7 @@ list (APPEND oboskrnl_sources
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
 	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
-	"locks/event.c"
+	"locks/event.c" "locks/wait.c"
 )
 
 add_executable(oboskrnl)

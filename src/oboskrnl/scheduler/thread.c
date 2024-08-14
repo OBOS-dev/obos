@@ -120,8 +120,8 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
-	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	thr->masterCPU = nullptr;
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
 	return OBOS_STATUS_SUCCESS;

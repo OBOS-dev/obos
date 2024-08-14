@@ -85,8 +85,10 @@ typedef struct thread
 	
 	thread_ctx context;
 
-	// The thread node used by locks that have queues.
+	// The node used by waitable_header (locks/wait.h)
 	thread_node lock_node;
+	size_t nWaiting; // the count of objects the thread is waiting on.
+	size_t nSignaled; // the count of objects that have signaled the thread.
 } thread;
 typedef struct thread_list
 {
