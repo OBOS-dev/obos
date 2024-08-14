@@ -74,6 +74,8 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
+#include "locks/semaphore.h"
+#include "scheduler/thread_context_info.h"
 
 extern void Arch_InitBootGDT();
 
@@ -531,6 +533,12 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
 	return UACPI_INTERRUPT_HANDLED;
 }
+static void semaphore_test(void* userdata);
+static void timer_wake(void* udata)
+{
+	CoreH_ThreadReadyNode((thread*)udata, ((thread*)udata)->snode);
+}
+static semaphore sem;
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -747,79 +755,49 @@ if (st != UACPI_STATUS_OK)\
 		}
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
-	OBOS_Debug("Loading test driver.\n");
-	void* driver_bin = (void*)Arch_UARTDriver->address;
-	size_t sizeof_driver_bin = Arch_UARTDriver->size;
-	driver_header header;
-	status = Drv_LoadDriverHeader(driver_bin, sizeof_driver_bin, &header);
-	if (obos_is_error(status))
-		OBOS_Error("Could not load test driver #1. Status: %d.\n", status);
-	driver_header_node node = {.data = &header};
-	driver_header_list list = {.head=&node,.tail=&node,.nNodes=1};
-	driver_header_list toLoad;
-	memzero(&toLoad, sizeof(toLoad));
-	status = Drv_PnpDetectDrivers(list, &toLoad);
-	if (obos_is_error(status))
-		OBOS_Error("PnP failed. Status: %d.\n", status);
-	driver_id* drv1 = nullptr;
-	for (driver_header_node* node = toLoad.head; node; )
+	OBOS_Debug("Testing semaphores.\n");
+	const size_t nThreads = 3;
+	sem = (semaphore)SEMAPHORE_INITIALIZE(nThreads);
+	thread* threads = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, nThreads, sizeof(thread), nullptr);
+	for (size_t i = 0; i < nThreads; i++)
 	{
-		OBOS_Debug("Loading driver '%s'.\n", node->data->driverName);
-		if (&header == node->data)
-			drv1 = Drv_LoadDriver(driver_bin, sizeof_driver_bin, nullptr);
-
-		node = node->next;
+		thread* thr = &threads[i];
+		thread_ctx ctx = {};
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)semaphore_test, (uintptr_t)&sem, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
 	}
-
-	thread* main = nullptr;
-	Drv_StartDriver(drv1, &main);
-	while (!(main->flags & THREAD_FLAGS_DIED))
-		Core_Yield();
-	dev_desc connection = 0;
-    status =
-    drv1->header.ftable.ioctl(6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
-        1,
-        115200,
-        /* EIGHT_DATABITS */ 3,
-        /* ONE_STOPBIT */ 0,
-        /* PARITYBIT_NONE */ 0,
-        &connection
-    );
-	if (obos_is_error(status))
+	OBOS_Debug("Acquiring semaphore %d times.\n", nThreads);
+	for (size_t i = 0; i < nThreads; i++)
+		Core_SemaphoreAcquire(&sem);
+	for (size_t i = 0; i < nThreads; i++)
 	{
-		OBOS_Error("Could not open COM1. Status: %d.\n", status);
-		goto done;
+		thread* thr = &threads[i];
+		CoreH_ThreadReady(thr);
 	}
-	static gdb_connection gdb_conn = {};
-	Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
-	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
-	Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
-	Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
-	Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
-	Kdbg_AddPacketHandler("qSupported", Kdbg_GDB_qSupported, nullptr);
-	Kdbg_AddPacketHandler("?", Kdbg_GDB_query_halt, nullptr);
-	Kdbg_AddPacketHandler("g", Kdbg_GDB_g, nullptr);
-	Kdbg_AddPacketHandler("G", Kdbg_GDB_G, nullptr);
-	Kdbg_AddPacketHandler("k", Kdbg_GDB_k, nullptr);
-	Kdbg_AddPacketHandler("vKill", Kdbg_GDB_k, nullptr);
-	Kdbg_AddPacketHandler("H", Kdbg_GDB_H, nullptr);
-	Kdbg_AddPacketHandler("T", Kdbg_GDB_T, nullptr);
-	Kdbg_AddPacketHandler("qRcmd", Kdbg_GDB_qRcmd, nullptr);
-	Kdbg_AddPacketHandler("m", Kdbg_GDB_m, nullptr);
-	Kdbg_AddPacketHandler("M", Kdbg_GDB_M, nullptr);
-	Kdbg_AddPacketHandler("c", Kdbg_GDB_c, nullptr);
-	Kdbg_AddPacketHandler("C", Kdbg_GDB_C, nullptr);
-	Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
-	Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
-	Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
-	Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
-	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
-	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
-	Kdbg_CurrentConnection = &gdb_conn;
-	Kdbg_CurrentConnection->connection_active = true;
-	asm("int3");
+	OBOS_Debug("Sleeping for 5 seconds...\n");
+	timer* slp = Core_TimerObjectAllocate(nullptr);
+	slp->handler = timer_wake;
+	slp->userdata = Core_GetCurrentThread();
+	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
+	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
+	Core_TimerObjectFree(slp);
+	OBOS_Debug("Done.\n");
+	OBOS_Debug("Releasing semaphore %d times.\n", nThreads);
+	for (size_t i = 0; i < nThreads; i++)
+		Core_SemaphoreRelease(&sem);
+	while(sem.count < nThreads)
+		asm("pause");
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	done:
 	Core_ExitCurrentThread();
 
+}
+static void semaphore_test(void* userdata)
+{
+	semaphore* sem = (semaphore*)userdata;
+	OBOS_Debug("Thread %d attempted to acquire a semaphore.\n", Core_GetCurrentThread()->tid);
+	Core_SemaphoreAcquire(sem);
+	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
+	Core_SemaphoreRelease(sem);
+	Core_ExitCurrentThread();
 }
