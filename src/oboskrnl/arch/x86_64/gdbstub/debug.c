@@ -43,7 +43,6 @@ void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource)
 {
     if (!Kdbg_CurrentConnection)
         return;
-    irql oldIrql = IRQL_INVALID;
     if (isSource)
     {
         Kdbg_Paused = true;

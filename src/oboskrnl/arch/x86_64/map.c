@@ -276,7 +276,6 @@ static obos_status invlpg_impl(uintptr_t at)
 	// This can be done async.
 	// while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 	// 	pause();
-	end:
 	Core_SpinlockRelease(&invlpg_ipi_packet.lock, oldIrql);
 #endif
 	return OBOS_STATUS_SUCCESS;

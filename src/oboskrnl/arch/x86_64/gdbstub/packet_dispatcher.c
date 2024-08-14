@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#pragma once
-
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -34,6 +32,7 @@ static uint64_t hash_packet(const void *item, uint64_t seed0, uint64_t seed1)
 }
 static int cmp_packet(const void *a, const void *b, void *udata)
 {
+    OBOS_UNUSED(udata);
     const struct gdb_packet* pck1 = a;
     const struct gdb_packet* pck2 = b;
     return uacpi_strcmp(pck1->packet, pck2->packet);

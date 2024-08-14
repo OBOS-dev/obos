@@ -26,6 +26,7 @@ lapic* Arch_LAPICAddress;
 static basicmm_region lapic_region;
 static void LAPIC_DefaultIrqHandler(interrupt_frame* frame)
 {
+	OBOS_UNUSED(frame);
 	Arch_LAPICSendEOI();
 }
 OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)

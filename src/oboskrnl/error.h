@@ -113,4 +113,8 @@ typedef enum
 	/// The DPC object was already enqueued before the call of the function.
 	/// </summary>
 	OBOS_STATUS_DPC_ALREADY_ENQUEUED,
+	/// <summary>
+	/// The lock was already locked by the current thread.
+	/// </summary>
+	OBOS_STATUS_RECURSIVE_LOCK,
 } obos_status;

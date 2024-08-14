@@ -129,10 +129,11 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
 }
 
 static dpc com_dpc;
-static dpc kdbg_int_dpc;
+// static dpc kdbg_int_dpc;
 static bool should_break;
 static void dpc_handler(dpc* obj, void* userdata)
 {
+    OBOS_UNUSED(obj);
     serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
     if (lineStatusRegister & BIT(5))

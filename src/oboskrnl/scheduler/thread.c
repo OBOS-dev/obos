@@ -25,11 +25,11 @@ thread_affinity Core_DefaultThreadAffinity = 1;
 size_t Core_CpuCount;
 static void free_thr(thread* thr)
 {
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));
+	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, thr, sizeof(*thr));
 }
 static void free_node(thread_node* node)
 {
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
 }
 thread* CoreH_ThreadAllocate(obos_status* status)
 {
@@ -120,10 +120,36 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
-	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	thr->masterCPU = nullptr;
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	if (thr == Core_GetCurrentThread() && canYield)
 		Core_Yield();
+	return OBOS_STATUS_SUCCESS;
+}
+obos_status CoreH_ThreadBoostPriority(thread* thr)
+{
+	if (!thr)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->flags & THREAD_FLAGS_DIED)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!thr->masterCPU && thr->status != THREAD_STATUS_BLOCKED)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_MAX_VALUE)
+		return OBOS_STATUS_SUCCESS;
+	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
+	irql oldIrql = thr->masterCPU ? Core_SpinlockAcquire(&thr->masterCPU->schedulerLock) : IRQL_INVALID;
+	if (thr->masterCPU)
+	{
+		CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
+		CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority+1].list, thr->snode);
+	}
+	thr->flags |= THREAD_FLAGS_PRIORITY_RAISED;
+	thr->priority++;
+	if (thr->masterCPU)
+		Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)

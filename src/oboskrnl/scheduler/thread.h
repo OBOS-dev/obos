@@ -60,6 +60,12 @@ typedef uint64_t thread_affinity;
 #endif
 extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
 extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
+typedef struct thread_node
+{
+	struct thread_node *next, *prev;
+	struct thread* data;
+	void(*free)(struct thread_node* what);
+} thread_node;
 typedef struct thread
 {
 	uint64_t tid;
@@ -78,13 +84,12 @@ typedef struct thread
 	struct process* proc;
 	
 	thread_ctx context;
+
+	// The node used by waitable_header (locks/wait.h)
+	thread_node lock_node;
+	size_t nWaiting; // the count of objects the thread is waiting on.
+	size_t nSignaled; // the count of objects that have signaled the thread.
 } thread;
-typedef struct thread_node
-{
-	struct thread_node *next, *prev;
-	thread* data;
-	void(*free)(struct thread_node* what);
-} thread_node;
 typedef struct thread_list
 {
 	thread_node *head, *tail;
@@ -135,6 +140,12 @@ OBOS_EXPORT obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
 /// <param name="canYield">Whether the function is allowed to yield into the scheduler manually.</param>
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status CoreH_ThreadBlock(thread* thr, bool canYield);
+/// <summary>
+/// Boosts a thread's priority.
+/// </summary>
+/// <param name="thr">The thread.</param>
+/// <returns>The function's status.</returns>
+OBOS_EXPORT obos_status CoreH_ThreadBoostPriority(thread* thr);
 /// <summary>
 /// Appends a thread to a thread list.
 /// </summary>

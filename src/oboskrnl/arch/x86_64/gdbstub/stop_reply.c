@@ -4,10 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#pragma once
-
-#include "arch/x86_64/gdbstub/breakpoint.h"
-#include "arch/x86_64/gdbstub/debug.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -15,6 +11,8 @@
 
 #include <arch/x86_64/gdbstub/connection.h>
 #include <arch/x86_64/gdbstub/alloc.h>
+#include <arch/x86_64/gdbstub/breakpoint.h>
+#include <arch/x86_64/gdbstub/debug.h>
 
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
@@ -75,51 +73,51 @@ obos_status Kdbg_GDB_query_halt(gdb_connection* con, const char* arguments, size
 thread* current_g_thread = nullptr;
 thread* current_c_thread = nullptr;
 bool c_all_threads = false;
-static void strreverse(char* begin, int size)
-{
-	int i = 0;
-	char tmp = 0;
+// static void strreverse(char* begin, int size)
+// {
+// 	int i = 0;
+// 	char tmp = 0;
 
-	for (i = 0; i < size / 2; i++)
-	{
-		tmp = begin[i];
-		begin[i] = begin[size - i - 1];
-		begin[size - i - 1] = tmp;
-	}
-}
+// 	for (i = 0; i < size / 2; i++)
+// 	{
+// 		tmp = begin[i];
+// 		begin[i] = begin[size - i - 1];
+// 		begin[size - i - 1] = tmp;
+// 	}
+// }
 // Credit: http://www.strudel.org.uk/itoa/
-static char* itoa_unsigned(uintptr_t value, char* result, int base)
-{
-	// check that the base if valid
+// static char* itoa_unsigned(uintptr_t value, char* result, int base)
+// {
+// 	// check that the base if valid
 
-	if (base < 2 || base > 16)
-	{
-		*result = 0;
-		return result;
-	}
+// 	if (base < 2 || base > 16)
+// 	{
+// 		*result = 0;
+// 		return result;
+// 	}
 
-	char* out = result;
+// 	char* out = result;
 
-	uintptr_t quotient = value;
+// 	uintptr_t quotient = value;
 
-	do
-	{
+// 	do
+// 	{
 
-		uintptr_t abs = /*(quotient % base) < 0 ? (-(quotient % base)) : */(quotient % base);
+// 		uintptr_t abs = /*(quotient % base) < 0 ? (-(quotient % base)) : */(quotient % base);
 
-		*out = "0123456789abcdef"[abs];
+// 		*out = "0123456789abcdef"[abs];
 
-		++out;
+// 		++out;
 
-		quotient /= base;
+// 		quotient /= base;
 
-	} while (quotient);
+// 	} while (quotient);
 
-	strreverse(result, out - result);
+// 	strreverse(result, out - result);
 
-	return result;
+// 	return result;
 
-}
+// }
 static void format_register64(char** str, uintptr_t reg)
 {
     reg = __builtin_bswap64(reg);
@@ -133,6 +131,9 @@ static void format_register32(char** str, uintptr_t reg)
 // Read Registers
 obos_status Kdbg_GDB_g(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata)
 {
+    NO_USERDATA;
+    OBOS_UNUSED(ctx);
+    NO_ARGUMENTS;
     // This'll be horrid....
     // const char* format = 
     // // rax,rbx,rcx,rdx,rsi,rdi,rbp,rsp
@@ -202,6 +203,8 @@ static uintptr_t get_register32(const char** str)
 obos_status Kdbg_GDB_G(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata)
 {
     NO_USERDATA;
+    OBOS_UNUSED(argumentsLen);
+    OBOS_UNUSED(ctx);
     if (!current_g_thread || !current_g_thread->masterCPU)
         current_g_thread = Core_GetCurrentThread();
     gdb_ctx *dbg_ctx = &current_g_thread->masterCPU->arch_specific.dbg_ctx;
@@ -338,6 +341,7 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
 {
     NO_USERDATA;
     NO_CTX;
+    OBOS_UNUSED(argumentsLen);
     size_t addrLen = strchr(arguments, ',')-1;
     if (addrLen > 16)
         return Kdbg_ConnectionSendPacket(con, "E.Invalid address.");
@@ -388,7 +392,7 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     size_t i = 0;
     size_t nRead = 0;
-    static const char hexmask[16] = "0123456789abcdef";
+    // static const char hexmask[16] = "0123456789abcdef";
     const char* iter = arguments+strchr(arguments, ':');
     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++, iter += 2)
     {
@@ -402,6 +406,8 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
 obos_status Kdbg_GDB_c(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
     NO_ARGUMENTS;
+    NO_RESPONSE;
+    NO_CTX;
     NO_USERDATA;
     if ((!current_c_thread || !current_c_thread->masterCPU) && !c_all_threads)
         current_c_thread = Core_GetCurrentThread();
@@ -425,9 +431,11 @@ obos_status Kdbg_GDB_C(gdb_connection* con, const char* arguments, size_t argume
 {
     return Kdbg_GDB_c(con, arguments, argumentsLen, dbg_ctx, userdata);
 }
-obos_status Kdbg_GDB_s(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata)
+obos_status Kdbg_GDB_s(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
     NO_ARGUMENTS;
+    NO_RESPONSE;
+    NO_CTX;
     NO_USERDATA;
     // TODO: Support arguments.
     // c_all_threads = false;
@@ -486,8 +494,10 @@ obos_status Kdbg_GDB_T(gdb_connection* con, const char* arguments, size_t argume
 }
 // These packets: g,G,k,m,M
 // But multithreaded
-obos_status Kdbg_GDB_H(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata)
+obos_status Kdbg_GDB_H(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
+    NO_CTX;
+    NO_USERDATA;
     // Forward the arguments.
     OBOS_ASSERT(argumentsLen);
     uint32_t tid = 0;

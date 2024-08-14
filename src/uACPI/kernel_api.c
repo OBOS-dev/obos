@@ -342,7 +342,7 @@ uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle hnd)
 }
 void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
-    spinlock* lock = (bool*)hnd;
+    spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
 }
 uacpi_handle uacpi_kernel_create_event(void)
@@ -441,7 +441,7 @@ uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
     else
         wakeTime = 0xffffffffffffffff;
     size_t spin = 0;
-    while (atomic_flag_test_and_set_explicit(&mut->locked, memory_order_seq_cst))
+    while (atomic_flag_test_and_set_explicit(&mut->locked, memory_order_seq_cst) && CoreS_GetTimerTick() < wakeTime)
 	{
         if (spin++ == 10000)
             spin_hung();
