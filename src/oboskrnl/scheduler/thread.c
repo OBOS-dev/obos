@@ -25,11 +25,11 @@ thread_affinity Core_DefaultThreadAffinity = 1;
 size_t Core_CpuCount;
 static void free_thr(thread* thr)
 {
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));
+	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, thr, sizeof(*thr));
 }
 static void free_node(thread_node* node)
 {
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
 }
 thread* CoreH_ThreadAllocate(obos_status* status)
 {

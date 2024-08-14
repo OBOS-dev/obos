@@ -56,6 +56,7 @@
 #include <mm/alloc.h>
 
 #include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
 
 #include <stdatomic.h>
 
@@ -74,8 +75,9 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "locks/semaphore.h"
-#include "scheduler/thread_context_info.h"
+
+#include <locks/mutex.h>
+#include <locks/semaphore.h>
 
 extern void Arch_InitBootGDT();
 
@@ -534,11 +536,13 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 	return UACPI_INTERRUPT_HANDLED;
 }
 static void semaphore_test(void* userdata);
+static void mutex_test(void* userdata);
 static void timer_wake(void* udata)
 {
 	CoreH_ThreadReadyNode((thread*)udata, ((thread*)udata)->snode);
 }
 static semaphore sem;
+static mutex mut;
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -780,13 +784,56 @@ if (st != UACPI_STATUS_OK)\
 	slp->userdata = Core_GetCurrentThread();
 	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
 	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-	Core_TimerObjectFree(slp);
+	Core_CancelTimer(slp);
 	OBOS_Debug("Done.\n");
 	OBOS_Debug("Releasing semaphore %d times.\n", nThreads);
 	for (size_t i = 0; i < nThreads; i++)
 		Core_SemaphoreRelease(&sem);
 	while(sem.count < nThreads)
 		asm("pause");
+	bool allThreadsDead = false;
+	while(!allThreadsDead)
+	{
+		allThreadsDead = true;
+		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
+		{
+			if (!(threads[i].flags & THREAD_FLAGS_DIED))
+				allThreadsDead = false;
+		}
+	}
+	memzero(threads, sizeof(thread)*3);
+	OBOS_Debug("Testing mutexes.\n");
+	for (size_t i = 0; i < nThreads; i++)
+	{
+		thread* thr = &threads[i];
+		thread_ctx ctx = {};
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)mutex_test, (uintptr_t)&mut, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+	}
+	Core_MutexAcquire(&mut);
+	for (size_t i = 0; i < nThreads; i++)
+	{
+		thread* thr = &threads[i];
+		CoreH_ThreadReady(thr);
+	}
+	OBOS_Debug("Sleeping for 5 seconds...\n");
+	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
+	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
+	Core_CancelTimer(slp);
+	Core_TimerObjectFree(slp);
+	OBOS_Debug("Releasing mutex.\n");
+	Core_MutexRelease(&mut);
+	allThreadsDead = false;
+	while(!allThreadsDead)
+	{
+		allThreadsDead = true;
+		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
+		{
+			if (!(threads[i].flags & THREAD_FLAGS_DIED))
+				allThreadsDead = false;
+		}
+	}
+	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	done:
 	Core_ExitCurrentThread();
@@ -799,5 +846,19 @@ static void semaphore_test(void* userdata)
 	Core_SemaphoreAcquire(sem);
 	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
 	Core_SemaphoreRelease(sem);
+	Core_ExitCurrentThread();
+}
+static void mutex_test(void* userdata)
+{
+	mutex* mut = (mutex*)userdata;
+	OBOS_Debug("Thread %d attempted to acquire a mutex.\n", Core_GetCurrentThread()->tid);
+	Core_MutexAcquire(mut);
+	OBOS_Debug("Thread %d acquired mutex.\n", Core_GetCurrentThread()->tid);
+	OBOS_Debug("Sleeping for one second before releasing...\n");
+	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
+	while(CoreS_GetTimerTick() < deadline)
+		;
+	Core_MutexRelease(mut);
+	OBOS_Debug("Done\n");
 	Core_ExitCurrentThread();
 }

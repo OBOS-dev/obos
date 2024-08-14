@@ -33,10 +33,10 @@ obos_status Core_MutexAcquire(mutex* mut)
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     int spin = 100000;
     bool success = true;
-    while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst))
-	{
+    while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
+    {
         spinlock_hint();
-        if (spin-- < 0)
+        if (spin-- >= 0)
             success = false;
     }
     Core_LowerIrql(oldIrql);
@@ -49,7 +49,7 @@ obos_status Core_MutexAcquire(mutex* mut)
     Core_GetCurrentThread()->lock_node.data = Core_GetCurrentThread();
     CoreH_ThreadListAppend(&mut->waiting, &Core_GetCurrentThread()->lock_node);
     CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-    CoreH_ThreadListRemove(&mut->waiting, &Core_GetCurrentThread()->lock_node);
+    mut->who = Core_GetCurrentThread();
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_MutexTryAcquire(mutex* mut)
@@ -68,13 +68,15 @@ obos_status Core_MutexRelease(mutex* mut)
         return OBOS_STATUS_SUCCESS;
     if (mut->who != Core_GetCurrentThread())
         return OBOS_STATUS_ACCESS_DENIED;
-	atomic_flag_clear_explicit(&mut->lock, memory_order_seq_cst);
+    atomic_flag_clear_explicit(&mut->lock, memory_order_seq_cst);
     if (!mut->waiting.nNodes)
         return OBOS_STATUS_SUCCESS;
     // Pop a thread from the list, and wake it.
     thread_node* node = mut->waiting.head;
     CoreH_ThreadListRemove(&mut->waiting, node);
-    CoreH_ThreadReadyNode(node->data, node->data->snode);
+    obos_status status = CoreH_ThreadReadyNode(node->data, node->data->snode);
+    if (obos_is_error(status))
+        return status;
     return OBOS_STATUS_SUCCESS;
 }
 bool Core_MutexAcquired(mutex* mut)

@@ -60,7 +60,7 @@ timer* Core_TimerObjectAllocate(obos_status* status);
 /// The timer must be cancelled, or uninitialized.
 /// </summary>
 /// <param name="obj">The timer to free.</param>
-/// <returns>The object, or nullptr on failure.</returns>
+/// <returns>The status of the function.</returns>
 obos_status Core_TimerObjectFree(timer* obj);
 /// <summary>
 /// Registers a timer object.
@@ -68,13 +68,13 @@ obos_status Core_TimerObjectFree(timer* obj);
 /// <param name="obj">The timer object.</param>
 /// <param name="mode">The timer's mode.</param>
 /// <param name="period">The period of time in microseconds the timer shall run on.</param>
-/// <returns>The state of the function.</returns>
+/// <returns>The status of the function.</returns>
 obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t period);
 /// <summary>
 /// Cancels a timer.
 /// </summary>
 /// <param name="obj">The timer object.</param>
-/// <returns>The state of the function.</returns>
+/// <returns>The status of the function.</returns>
 obos_status Core_CancelTimer(timer* obj);
 
 /// <summary>
