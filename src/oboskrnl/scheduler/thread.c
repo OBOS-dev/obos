@@ -139,7 +139,7 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_MAX_VALUE)
 		return OBOS_STATUS_SUCCESS;
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
-	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
+	irql oldIrql = thr->masterCPU ? Core_SpinlockAcquire(&thr->masterCPU->schedulerLock) : IRQL_INVALID;
 	if (thr->masterCPU)
 	{
 		CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
@@ -147,7 +147,8 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 	}
 	thr->flags |= THREAD_FLAGS_PRIORITY_RAISED;
 	thr->priority++;
-	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	if (thr->masterCPU)
+		Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
 	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	return OBOS_STATUS_SUCCESS;
 }

@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#pragma once
-
 #include <int.h>
 #include <error.h>
 
@@ -68,6 +66,8 @@ obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
     if (event->type == EVENT_SYNC)
     {
         thread_node* node = event->waiting.head;
+        if (!node)
+            return OBOS_STATUS_SUCCESS;
         if (boostWaitingThreadPriority)
             CoreH_ThreadBoostPriority(node->data);
         CoreH_ThreadReadyNode(node->data, node->data->snode);
@@ -96,6 +96,8 @@ obos_status Core_EventWait(event* event)
 {
     if (!event)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (event->signaled)
+        return OBOS_STATUS_SUCCESS;
     Core_GetCurrentThread()->lock_node.data = Core_GetCurrentThread();
     CoreH_ThreadListAppend(&event->waiting, &Core_GetCurrentThread()->lock_node);
     CoreH_ThreadBlock(Core_GetCurrentThread(), true);
