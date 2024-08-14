@@ -540,6 +540,7 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 static void semaphore_test(void* userdata);
 static void mutex_test(void* userdata);
 static void event_test(void* userdata);
+static void test_locks();
 static void timer_wake(void* udata)
 {
 	CoreH_ThreadReadyNode((thread*)udata, ((thread*)udata)->snode);
@@ -763,6 +764,12 @@ if (st != UACPI_STATUS_OK)\
 		}
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
+	test_locks();
+	OBOS_Log("%s: Done early boot.\n", __func__);
+	Core_ExitCurrentThread();
+}
+static void test_locks()
+{
 	OBOS_Debug("Testing semaphores.\n");
 	const size_t nThreads = 3;
 	sem = (semaphore)SEMAPHORE_INITIALIZE(nThreads);
@@ -866,8 +873,6 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
 	Core_TimerObjectFree(slp);
-	OBOS_Log("%s: Done early boot.\n", __func__);
-	Core_ExitCurrentThread();
 }
 static void semaphore_test(void* userdata)
 {
