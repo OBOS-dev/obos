@@ -541,11 +541,6 @@ static void semaphore_test(void* userdata);
 static void mutex_test(void* userdata);
 static void event_test(void* userdata);
 static void not_event_test(void* userdata);
-static void test_locks();
-static void timer_wake(void* udata)
-{
-	CoreH_ThreadReadyNode((thread*)udata, ((thread*)udata)->snode);
-}
 static semaphore sem;
 static mutex mut;
 static event e;
@@ -767,7 +762,6 @@ if (st != UACPI_STATUS_OK)\
 		}
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
-	test_locks();
 	OBOS_Debug("Loading drivers through PnP.\n");
 	void* driver_bin = (void*)Arch_UARTDriver->address;
 	size_t sizeof_driver_bin = Arch_UARTDriver->size;
@@ -843,7 +837,7 @@ if (st != UACPI_STATUS_OK)\
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	Core_ExitCurrentThread();
 }
-static void test_locks()
+void OBOS_TestLocks()
 {
 	OBOS_Debug("Testing semaphores.\n");
 	const size_t nThreads = 3;
@@ -865,12 +859,9 @@ static void test_locks()
 		CoreH_ThreadReady(thr);
 	}
 	OBOS_Debug("Sleeping for 5 seconds...\n");
-	timer* slp = Core_TimerObjectAllocate(nullptr);
-	slp->handler = timer_wake;
-	slp->userdata = Core_GetCurrentThread();
-	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
-	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-	Core_CancelTimer(slp);
+	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
+	while(CoreS_GetTimerTick() < deadline)
+		;
 	OBOS_Debug("Done.\n");
 	OBOS_Debug("Releasing semaphore %d times.\n", nThreads);
 	for (size_t i = 0; i < nThreads; i++)
@@ -904,9 +895,9 @@ static void test_locks()
 		CoreH_ThreadReady(thr);
 	}
 	OBOS_Debug("Sleeping for 5 seconds...\n");
-	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
-	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-	Core_CancelTimer(slp);
+	deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(5000000);
+	while(CoreS_GetTimerTick() < deadline)
+		;
 	OBOS_Debug("Releasing mutex.\n");
 	Core_MutexRelease(&mut);
 	allThreadsDead = false;
@@ -931,9 +922,9 @@ static void test_locks()
 		CoreH_ThreadReady(thr);
 	}
 	OBOS_Debug("Sleeping for 5 seconds...\n");
-	Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 5000000 /* 5 seconds */);
-	CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-	Core_CancelTimer(slp);
+	deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(5000000);
+	while(CoreS_GetTimerTick() < deadline)
+		;
 	OBOS_Debug("Setting event.\n");
 	Core_EventSet(&e, true);
 	allThreadsDead = false;
@@ -967,9 +958,9 @@ static void test_locks()
 	}
 	for (size_t i = 0; i < 3; i++)
 	{
-		Core_TimerObjectInitialize(slp, TIMER_MODE_DEADLINE, 1000000 /* 1 second */);
-		CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-		Core_CancelTimer(slp);
+		deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
+		while(CoreS_GetTimerTick() < deadline)
+			;
 		Core_EventSet(&events[i], true);
 	}
 	allThreadsDead = false;
@@ -987,7 +978,6 @@ static void test_locks()
 	Core_EventClear(&events[2]);
 	OBOS_Debug("Done.\n");
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
-	Core_TimerObjectFree(slp);
 }
 static void semaphore_test(void* userdata)
 {

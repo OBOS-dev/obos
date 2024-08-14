@@ -163,15 +163,31 @@ obos_status Kdbg_GDB_vMustReplyEmpty(gdb_connection* con, const char* arguments,
     NO_ARGUMENTS;
     NO_USERDATA;
     NO_CTX;
-    // TODO: Monitor commands.
     return Kdbg_ConnectionSendPacket(con, "");
 }
-obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
+// void OBOS_TestLocks();
+obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t argumentsLen_, gdb_ctx* dbg_ctx, void* userdata)
 {
-    NO_ARGUMENTS;
     NO_CTX;
     NO_RESPONSE;
     NO_USERDATA;
-    // Monitor is unsupported on OBOS.
-    return Kdbg_ConnectionSendPacket(con, "4D6F6E69746F7220697320756E737570706F72746564206F6E204F424F532E0A");
+    size_t argumentsLen = argumentsLen_ / 2;
+    char* arguments = Kdbg_Calloc(argumentsLen + 1, sizeof(char));
+    for (size_t i = 0; i < argumentsLen; i++)
+        arguments[i] = KdbgH_hex2bin(arguments_ + (i*2), 2);
+    size_t commandLen = strchr(arguments, ' ');
+    if (commandLen != argumentsLen)
+        commandLen -= 1;
+    char* command = 
+        (char*)memcpy(Kdbg_Calloc(commandLen+1, sizeof(char)), arguments, commandLen);
+    char* response = "556E6B6E6F776E20636F6D6D616E640A";
+    bool freeResponse = false;
+    if (strcmp(command, "ping"))
+        response = "706F6E670A";
+    Kdbg_Free(arguments);
+    Kdbg_Free(command);
+    obos_status st = Kdbg_ConnectionSendPacket(con, response);
+    if (freeResponse)
+        Kdbg_Free(response);
+    return st;
 }
