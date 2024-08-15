@@ -226,9 +226,9 @@ obos_status get_file_perms(dev_desc desc, file_perm *perm)
     perm->group_read = filemode & FILEMODE_GROUP_READ;
     perm->owner_read = filemode & FILEMODE_OWNER_READ;
     perm->other_read = filemode & FILEMODE_OTHER_READ;
-    perm->group_write = filemode & FILEMODE_GROUP_WRITE;
-    perm->owner_write = filemode & FILEMODE_OWNER_WRITE;
-    perm->other_write = filemode & FILEMODE_OTHER_WRITE;
+    perm->group_write = false;
+    perm->owner_write = false;
+    perm->other_write = false;
     perm->group_exec = filemode & FILEMODE_GROUP_EXEC;
     perm->owner_exec = filemode & FILEMODE_OWNER_EXEC;
     perm->other_exec = filemode & FILEMODE_OTHER_EXEC;
