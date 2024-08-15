@@ -36,6 +36,11 @@ enum
     // This vnode represents a bad or dead file.
     VNODE_TYPE_BAD
 };
+enum 
+{
+    VFLAGS_MOUNTPOINT = 1,
+    VFLAGS_IS_TTY = 2,
+};
 
 // basically a struct specinfo, but renamed.
 typedef struct vdev
@@ -47,6 +52,8 @@ typedef struct vdev
 typedef struct vnode
 {
     void* data;
+    uint32_t vtype;
+    uint32_t flags;
     struct mount* mount_point;
     union {
         struct mount* mounted;

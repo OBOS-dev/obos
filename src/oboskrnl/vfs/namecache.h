@@ -10,6 +10,7 @@
 
 #include <utils/tree.h>
 #include <utils/list.h>
+#include <utils/string.h>
 
 #include <uacpi_libc.h>
 
@@ -21,12 +22,13 @@ typedef struct namecache_ent
     RB_ENTRY(namecache_ent) rb_cache;
     LIST_NODE(namecache_list, struct namecache_ent) list_node;
     struct vnode* ref;
-    char *path;
+    struct dirent* ent;
+    string path; // path relative to the mount point root.
 } namecache_ent;
 
 inline static int cmp_namecache_ent(const struct namecache_ent* a, const struct namecache_ent* b)
 {
-    return uacpi_strcmp(a->path, b->path);
+    return uacpi_strcmp(OBOS_GetStringCPtr(&a->path), OBOS_GetStringCPtr(&b->path));
 }
 RB_PROTOTYPE(namecache, namecache_ent, rb_cache, cmp_namecache_ent);
 LIST_PROTOTYPE(namecache_list, struct namecache_ent, list_node);

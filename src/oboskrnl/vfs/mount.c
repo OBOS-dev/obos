@@ -15,6 +15,8 @@
 
 #include <locks/mutex.h>
 
+#include <utils/tree.h>
+
 struct dirent* Vfs_Root;
 
 obos_status Vfs_Mount(const char* at, vdev* device, mount** mountpoint)
@@ -28,3 +30,4 @@ obos_status Vfs_Mount(const char* at, vdev* device, mount** mountpoint)
 }
 obos_status Vfs_Unmount(mount* what);
 obos_status Vfs_UnmountP(const char* at);
+RB_GENERATE(namecache, namecache_ent, rb_cache, cmp_namecache_ent);

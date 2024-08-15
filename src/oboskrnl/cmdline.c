@@ -85,8 +85,9 @@ char* OBOS_GetOPTS(const char* opt)
         size_t optlen = strchr(arg, '=');
         if (arglen != optlen || arg[arglen - 1] == '=')
             optlen--;
-        if (arglen == optlen && arg[arglen - 1] != '=')
-            continue;
+        // Wut?
+        // if (arglen == optlen && arg[arglen - 1] != '=')
+        //     continue;
         if (uacpi_strncmp(arg, opt, optlen) == 0)
         {
             if (i == (OBOS_argc - 1) && optlen == arglen)

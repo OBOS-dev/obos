@@ -76,10 +76,13 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "locks/wait.h"
-#include "uacpi_libc.h"
+
+#include <uacpi_libc.h>
+
+#include <vfs/init.h>
 
 #include <locks/mutex.h>
+#include <locks/wait.h>
 #include <locks/semaphore.h>
 #include <locks/event.h>
 
@@ -878,6 +881,8 @@ if (st != UACPI_STATUS_OK)\
 			iter += namelen;
 		}
 	}
+	OBOS_Debug("%s: Initializing VFS.\n", __func__);
+	Vfs_Initialize();
 	static gdb_connection gdb_conn = {};
 	// Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
 	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
