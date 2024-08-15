@@ -106,10 +106,15 @@ add_compile_definitions(
 set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true)
 
-if (OBOS_ENABLE_WERROR)
+if (DEFINED OBOS_ENABLE_WERROR AND NOT DEFINED OBOS_ENABLE_FANALYZER)
 	add_compile_options("-Werror")
 endif()
-
+if (DEFINED OBOS_ENABLE_FANALYZER)
+	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fanalyzer>)
+endif()
+if (DEFINED OBOS_ENABLE_FANALYZER AND DEFINED OBOS_ENABLE_WERROR)
+	message(WARNING "OBOS_ENABLE_FANALYZER and OBOS_ENABLE_WERROR are mutually exclusive. Preferring OBOS_ENABLE_FANALYZER.")
+endif()
 
 # Include the kernel
 add_subdirectory("src/oboskrnl")
@@ -119,9 +124,9 @@ get_target_property(uacpi_INCLUDES uacpi INCLUDE_DIRECTORIES)
 include_directories(${uacpi_INCLUDES})
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86_64/uart")
-endif()
+	endif()
+add_subdirectory("src/drivers/generic/initrd")
 add_subdirectory("src/isogen")
-add_subdirectory("src/drivers/test_driver")
 if (OBOS_ARCHITECTURE STREQUAL "m68k")
 	add_subdirectory("src/oboskrnl/arch/m68k/loader")
 endif()

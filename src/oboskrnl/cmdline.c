@@ -14,6 +14,8 @@
 #include <uacpi_libc.h>
 
 const char* OBOS_KernelCmdLine;
+const char* OBOS_InitrdBinary;
+size_t OBOS_InitrdSize;
 char** OBOS_argv;
 size_t OBOS_argc;
 
@@ -56,6 +58,15 @@ void OBOS_ParseCMDLine()
             "OBOSKRNL usage:\n"
             "NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
             "--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
+            "--initrd-module=name: The name or path of the initrd module.\n"
+            "--initrd-driver-module=name: The name or path of the initrd driver module.\n"
+            "--load-modules=name[,name]: If an initrd driver is avaliable, then 'name' is a path relative to the initrd, otherwise\n"
+            "                            it is the name of a module to load as a driver.\n"
+            "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted."
+            "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd"
+            "                     is used as root."
+            "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd"
+            "                         is used as root."
             "--help: Displays this help message.\n";
         printf("%s", help_message);
     }

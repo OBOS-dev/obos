@@ -247,6 +247,10 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     }
     driver->node.data = driver;
     APPEND_DRIVER_NODE(Drv_LoadedDrivers, &driver->node);
+    if (strlen(driver->header.driverName))
+        OBOS_Debug("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+    else
+        OBOS_Debug("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     return driver;
 }
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)

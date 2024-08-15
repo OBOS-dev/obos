@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define obos_expect(expr, eval) __builtin_expect((expr), (eval))
+
 #if OBOS_KERNEL
 #	define OBOS_EXPORT __attribute__((visibility("default")))
 // Usually redundant.

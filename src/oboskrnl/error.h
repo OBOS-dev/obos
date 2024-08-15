@@ -117,4 +117,12 @@ typedef enum
 	/// The lock was already locked by the current thread.
 	/// </summary>
 	OBOS_STATUS_RECURSIVE_LOCK,
+	/// <summary>
+	/// The driver cannot satisfy the write request, as the device/filesystem it's manipulating is read only.
+	/// </summary>
+	OBOS_STATUS_READ_ONLY,
+	/// <summary>
+	/// The filesystem driver cannot satisfy the request, as the descriptor passed was not a file.
+	/// </summary>
+	OBOS_STATUS_NOT_A_FILE,
 } obos_status;
