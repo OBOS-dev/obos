@@ -95,7 +95,7 @@ OBOS_WEAK obos_status list_dir(dev_desc dir, iterate_decision(*cb)(dev_desc desc
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|OBOS_STATUS_NO_ENTRY_POINT,
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
@@ -108,6 +108,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
         .query_path = query_path,
         .path_search = path_search,
+        .get_linked_desc = get_linked_desc,
         .move_desc_to = move_desc_to,
         .mk_file = mk_file,
         .remove_file = remove_file,
@@ -118,26 +119,6 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     },
     .driverName = "Initial Ramdisk (InitRD) Driver"
 };
-
-static iterate_decision test_cb(dev_desc desc, size_t blkSize, size_t blkCount)
-{
-    OBOS_UNUSED(blkSize);
-    OBOS_UNUSED(blkCount);
-    const char* path;
-    query_path(desc, &path);
-    OBOS_Debug("Found /%s\n", path);
-    file_type type = 0;
-    get_file_type(desc, &type);
-    if (type == FILE_TYPE_DIRECTORY)
-        list_dir(desc, test_cb);
-    return ITERATE_DECISION_CONTINUE;
-}
-void OBOS_DriverEntry()
-{
-    dev_desc desc = UINTPTR_MAX;
-    list_dir(desc, test_cb);
-    Core_ExitCurrentThread();
-}
 
 // dev_desc is simply a pointer to a ustar_hdr
 
