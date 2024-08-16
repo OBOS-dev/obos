@@ -19,8 +19,6 @@
 
 // #define uacpi_offsetof(t, m) ((uintptr_t)(&((t*)0)->m))
 
-#define NULL ((void*)0)
-
 #ifdef __cplusplus
 extern "C" {
 #endif

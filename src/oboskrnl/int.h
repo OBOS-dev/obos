@@ -52,7 +52,9 @@ typedef _Bool bool;
 #endif
 #ifndef __cplusplus
 #	define nullptr ((void*)0)
-#	undef NULL
+#	ifndef IS_UACPI_BUILD
+#		undef NULL
+#	endif
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
 #		define OBOS_ALIGNAS(x) _Alignas(x)
@@ -67,7 +69,9 @@ typedef _Bool bool;
 #	endif
 #else
 #	define OBOS_ALIGNAS(x) alignas(x)
-#	undef NULL
+#	ifndef IS_UACPI_BUILD
+#		undef NULL
+#	endif
 #endif
 
 #define OBOS_NORETURN [[noreturn]]

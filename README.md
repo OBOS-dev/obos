@@ -21,6 +21,7 @@ git clone https://github.com/OBOS-dev/obos.git
 mkdir build
 cmake -GNinja -DCMAKE_BUILD_TYPE=Debug --toolchain=src/build/x86_64/toolchain.cmake -B build .
 chmod +x dependencies/hyper/hyper_install-linux-x86_64
+cmake --build build
 scripts/generate_initrd-x86_64.sh
 cmake --build build
 ```

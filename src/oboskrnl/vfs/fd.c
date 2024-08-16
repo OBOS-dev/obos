@@ -153,7 +153,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
                 pc_ent->sz = nBytes-read;
                 pc_ent->fileoff = i;
                 pc_ent->data = Vfs_Calloc(nBytes-read, sizeof(char));
-                fs_drv->ftable.read_sync(desc->vn->desc, pc_ent->data, nBytes-read, i, nullptr);
+                status = fs_drv->ftable.read_sync(desc->vn->desc, pc_ent->data, nBytes-read, i, nullptr);
                 if (obos_expect(obos_is_error(status), 0))
                     break;
                 Core_MutexAcquire(&desc->vn->pagecache_lock);
