@@ -79,17 +79,16 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
         memcpy(nc_path, tok, *tok_len);
         dirent* hit = namecache_lookup(&curr->vnode->un.mounted->nc, newtok);
         Vfs_Free(nc_path);
+        if (!hit)
+            *root = curr->vnode->un.mounted->root;
         return hit;
     }
     return nullptr;
 }
-dirent* VfsH_DirentLookup(const char* path)
+dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
 {
     if (!path)
         return nullptr;
-    if (strcmp(path, "/"))
-        return Vfs_Root;
-    dirent* root = Vfs_Root;
     size_t path_len = strlen(path);
     if (!path_len)
         return nullptr;
@@ -102,8 +101,8 @@ dirent* VfsH_DirentLookup(const char* path)
     if (!tok_len)
         return nullptr;
     // Offset of the last mount point in the path.
-    size_t lastMountPoint = 0; 
-    mount* lastMount = Vfs_Root->vnode ? Vfs_Root->vnode->un.mounted : nullptr;
+    size_t lastMountPoint = 0;
+    mount* lastMount = root->vnode->flags & VFLAGS_MOUNTPOINT ? root->vnode->un.mounted : root->vnode->mount_point;
     while(root)
     {
         dirent* curr = root;
@@ -139,6 +138,13 @@ dirent* VfsH_DirentLookup(const char* path)
     }
     return nullptr;
 }
+dirent* VfsH_DirentLookup(const char* path)
+{
+    dirent* root = Vfs_Root;
+    if (strcmp(path, "/"))
+        return root;
+    return VfsH_DirentLookupFrom(path, root);
+}
 void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 {
     if(!parent->d_children.head)
@@ -148,6 +154,7 @@ void VfsH_DirentAppendChild(dirent* parent, dirent* child)
     child->d_prev_child = parent->d_children.tail;
     parent->d_children.tail = child;
     parent->d_children.nChildren++;
+    child->d_parent = parent;
 }
 void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
 {
@@ -160,5 +167,5 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
     if (parent->d_children.tail == what)
         parent->d_children.tail = what->d_prev_child;
     parent->d_children.nChildren--;
-    what->d_parent = nullptr; // we're now an orphan ):
+    what->d_parent = nullptr; // we're now an orphan :(
 }

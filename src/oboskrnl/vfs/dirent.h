@@ -39,3 +39,4 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what);
 // path shouldn't have unneeded slashes, this way, there is a higher chance of a name cache hit, thus speeding up
 // the lookup
 dirent* VfsH_DirentLookup(const char* path);
+dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);

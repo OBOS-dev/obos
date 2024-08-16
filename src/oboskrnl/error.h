@@ -125,4 +125,8 @@ typedef enum
 	/// The filesystem driver cannot satisfy the request, as the descriptor passed was not a file.
 	/// </summary>
 	OBOS_STATUS_NOT_A_FILE,
+	/// <summary>
+	/// The vnode already had a node mounted there.
+	/// </summary>
+	OBOS_STATUS_ALREADY_MOUNTED,
 } obos_status;

@@ -17,8 +17,7 @@
 
 #include <uacpi_libc.h>
 
-#include "klog.h"
-#include "scheduler/thread.h"
+#include "name.h"
 #include "ustar_hdr.h"
 #include "parse.h"
 
@@ -83,15 +82,15 @@ obos_status remove_file(dev_desc desc)
     OBOS_UNUSED(desc);
     return OBOS_STATUS_READ_ONLY;
 }
-obos_status set_file_perms(dev_desc desc, file_perm newperm)
+obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(newperm);
     return OBOS_STATUS_READ_ONLY;
 }
-OBOS_WEAK obos_status get_file_perms(dev_desc desc, file_perm *perm);
+OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
+OBOS_WEAK obos_status list_dir(dev_desc dir, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -117,7 +116,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_type = get_file_type,
         .list_dir = list_dir,
     },
-    .driverName = "Initial Ramdisk (InitRD) Driver"
+    .driverName = INITRD_DRIVER_NAME
 };
 
 // dev_desc is simply a pointer to a ustar_hdr
@@ -217,7 +216,7 @@ obos_status path_search(dev_desc* found, const char* what)
     *found = (dev_desc)GetFile(what, &status);
     return status;
 }
-obos_status get_file_perms(dev_desc desc, file_perm *perm)
+obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !perm)
@@ -256,7 +255,7 @@ obos_status get_file_type(dev_desc desc, file_type *type)
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount))
+obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
 {
     const ustar_hdr* dir = (ustar_hdr*)dir_;
     if (!dir || !cb)
@@ -281,7 +280,7 @@ obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t 
         if (!dirnamelen || (uacpi_strncmp(dir_filename, hdr->filename, dirnamelen) == 0  && real_dirnamelen != filename_len))
         {
             if (strchr(hdr->filename+real_dirnamelen, '/') == filename_len-real_dirnamelen)
-                cb((dev_desc)hdr, 1, filesize);
+                cb((dev_desc)hdr, 1, filesize, userdata);
         }
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);

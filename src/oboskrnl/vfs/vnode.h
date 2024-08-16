@@ -49,6 +49,18 @@ typedef struct vdev
     driver_id* driver;
     void* data;
 } vdev;
+typedef struct file_perm
+{
+    bool other_exec : 1;
+    bool other_write : 1;
+    bool other_read : 1;
+    bool group_exec : 1;
+    bool group_write : 1;
+    bool group_read : 1;
+    bool owner_exec : 1;
+    bool owner_write : 1;
+    bool owner_read : 1;
+} OBOS_PACK file_perm;
 typedef struct vnode
 {
     void* data;
@@ -62,5 +74,7 @@ typedef struct vnode
     } un;
     size_t refs;
     size_t nWrites;
+    file_perm perm;
     pagecache pagecache_entries;
+    size_t filesize; // cached filesize.
 } vnode;

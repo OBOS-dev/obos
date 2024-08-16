@@ -14,8 +14,18 @@
 #include <vfs/dirent.h>
 #include <vfs/mount.h>
 #include <vfs/alloc.h>
+#include <vfs/vnode.h>
 
 #include <utils/string.h>
+
+#include <allocators/base.h>
+
+#include <driver_interface/driverId.h>
+
+#include <uacpi_libc.h>
+
+// InitRD driver name.
+#include <generic/initrd/name.h>
 
 /*
     "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted."
@@ -36,42 +46,36 @@ void Vfs_Initialize()
     Vfs_Root = Vfs_Calloc(1, sizeof(dirent));
     OBOS_StringSetAllocator(&Vfs_Root->name, Vfs_Allocator);
     OBOS_InitString(&Vfs_Root->name, "/");
+    Vfs_Root->vnode = Vfs_Calloc(1, sizeof(vnode));
+    Vfs_Root->vnode->vtype = VNODE_TYPE_DIR;
+    Vfs_Root->vnode->perm.group_exec = false;
+    Vfs_Root->vnode->perm.group_write = true;
+    Vfs_Root->vnode->perm.group_read = true;
+    Vfs_Root->vnode->perm.owner_exec = false;
+    Vfs_Root->vnode->perm.owner_write = true;
+    Vfs_Root->vnode->perm.owner_read = true;
+    Vfs_Root->vnode->perm.other_exec = false;
+    Vfs_Root->vnode->perm.other_write = false;
+    Vfs_Root->vnode->perm.other_read = true;
+    vdev initrd_dev = { };
+    for (driver_node* cur = Drv_LoadedDrivers.head; cur; )
     {
-        dirent* child1 = Vfs_Calloc(1, sizeof(dirent));
-        dirent* child2 = Vfs_Calloc(1, sizeof(dirent));
-        dirent* child3 = Vfs_Calloc(1, sizeof(dirent));
-        dirent* child4 = Vfs_Calloc(1, sizeof(dirent));
-        dirent* child4_1 = Vfs_Calloc(1, sizeof(dirent));
-        dirent* child5 = Vfs_Calloc(1, sizeof(dirent));
-        OBOS_InitString(&child1->name, "dir");
-        OBOS_InitString(&child2->name, "test");
-        OBOS_InitString(&child3->name, "other_test");
-        OBOS_InitString(&child4->name, "last_test");
-        OBOS_InitString(&child4_1->name, "test2");
-        OBOS_InitString(&child5->name, "actual_last_test");
-        VfsH_DirentAppendChild(Vfs_Root, child1);
-        VfsH_DirentAppendChild(child1, child2);
-        VfsH_DirentAppendChild(child2, child3);
-        VfsH_DirentAppendChild(child3, child4);
-        VfsH_DirentAppendChild(child3, child4_1);
-        VfsH_DirentAppendChild(child4, child5);
+        if (uacpi_strncmp(cur->data->header.driverName, INITRD_DRIVER_NAME, 32) == 0)
+        {
+            initrd_dev.driver = cur->data;
+            break;
+        }
+        cur = cur->next;
     }
-    dirent* name1 = VfsH_DirentLookup("/dir");
-    if (name1)
-        OBOS_Debug("Found dirent at /%s.\n", OBOS_GetStringCPtr(&name1->name));
-    dirent* name2 = VfsH_DirentLookup("/dir/test");
-    if (name2)
-        OBOS_Debug("Found dirent at /%s/%s.\n", OBOS_GetStringCPtr(&name1->name), OBOS_GetStringCPtr(&name2->name));
-    dirent* name3 = VfsH_DirentLookup("/dir/test/other_test/");
-    if (name3)
-        OBOS_Debug("Found dirent at /%s/%s/%s.\n", OBOS_GetStringCPtr(&name1->name), OBOS_GetStringCPtr(&name2->name), OBOS_GetStringCPtr(&name3->name));
-    dirent* name4 = VfsH_DirentLookup("/dir/test/other_test/last_test");
-    if (name4)
-        OBOS_Debug("Found dirent at /%s/%s/%s/%s.\n", OBOS_GetStringCPtr(&name1->name), OBOS_GetStringCPtr(&name2->name), OBOS_GetStringCPtr(&name3->name), OBOS_GetStringCPtr(&name4->name));
-    dirent* name4_1 = VfsH_DirentLookup("/dir/test/other_test/test2");
-    if (name4_1)
-        OBOS_Debug("Found dirent at /%s/%s/%s/%s.\n", OBOS_GetStringCPtr(&name1->name), OBOS_GetStringCPtr(&name2->name), OBOS_GetStringCPtr(&name3->name), OBOS_GetStringCPtr(&name4_1->name));
-    dirent* name5 = VfsH_DirentLookup("/dir/test/other_test/last_test/actual_last_test");
-    if (name5)
-        OBOS_Debug("Found dirent at /%s/%s/%s/%s/%s.\n", OBOS_GetStringCPtr(&name1->name), OBOS_GetStringCPtr(&name2->name), OBOS_GetStringCPtr(&name3->name), OBOS_GetStringCPtr(&name4->name), OBOS_GetStringCPtr(&name5->name));
+    if (!initrd_dev.driver)
+        return;
+    Vfs_Mount("/", nullptr, &initrd_dev, nullptr);
+    const char* const pathspec = "/uart";
+    dirent* found = VfsH_DirentLookup(pathspec);
+    if (found)
+        OBOS_Debug("Found %s.\n", pathspec);
+    if (root_partid)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+    if (root_uuid)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
 }

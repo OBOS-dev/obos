@@ -17,6 +17,7 @@ add_executable(oboskrnl)
 
 set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
 set_source_files_properties("klog.c" PROPERTIES COMPILE_OPTIONS "-Wno-error")
+set_source_files_properties("vfs/mount.c" PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -26,6 +27,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
 )
@@ -39,6 +41,7 @@ set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 
 target_include_directories(oboskrnl 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
+	PRIVATE "${CMAKE_SOURCE_DIR}/src/drivers"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
 target_link_options(oboskrnl
