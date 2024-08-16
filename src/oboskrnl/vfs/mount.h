@@ -25,6 +25,7 @@ typedef struct mount
     mutex lock;
     dirent* root;
     vdev* fs_driver;
+    vdev* device; // the block device the filesystem is situated on.
     vnode* mounted_on;
     namecache nc;
 } mount;

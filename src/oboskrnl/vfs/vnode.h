@@ -15,6 +15,8 @@
 
 #include <utils/list.h>
 
+#include <locks/mutex.h>
+
 enum 
 {
     // This vnode has no type.
@@ -76,7 +78,9 @@ typedef struct vnode
     size_t nWrites;
     file_perm perm;
     pagecache pagecache_entries;
-    size_t filesize; // cached filesize.
+    mutex pagecache_lock;
+    size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.
     gid group_uid; // the group's GID.
+    dev_desc desc; // the cached device descriptor.
 } vnode;

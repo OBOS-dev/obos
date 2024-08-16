@@ -136,7 +136,7 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (hdr->type != AREGTYPE && hdr->type != REGTYPE)
         return OBOS_STATUS_NOT_A_FILE;
-    *count = oct2bin(hdr->filesize, 12);
+    *count = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
@@ -148,7 +148,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_SUCCESS;
     if (hdr->type != AREGTYPE && hdr->type != REGTYPE)
         return OBOS_STATUS_NOT_A_FILE;
-    size_t filesize = oct2bin(hdr->filesize, 12);
+    size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));;
     if (blkOffset >= filesize)
     {
         *nBlkRead = 0;
@@ -157,8 +157,8 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     size_t nToRead = blkCount;
     if ((blkOffset + blkCount) >= filesize)
         nToRead = filesize - blkOffset;
-    const char* data = (char*)(hdr+1);
-    const char* iter = data;
+    const char* data = (char*)(hdr) + 0x200;
+    const char* iter = data+blkOffset;
     memcpy(buf, iter, nToRead);
     return OBOS_STATUS_SUCCESS;
 }

@@ -55,6 +55,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     {
         case FILE_TYPE_REGULAR_FILE:
             vn->vtype = VNODE_TYPE_REG;
+            mountpoint->fs_driver->driver->header.ftable.get_max_blk_count(desc, &vn->filesize);
             break;
         case FILE_TYPE_DIRECTORY:
             vn->vtype = VNODE_TYPE_DIR;
@@ -70,6 +71,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
             OBOS_ASSERT(type);
     }
     vn->mount_point = mountpoint;
+    vn->desc = desc;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
     if (t)
         *t = type;
@@ -132,14 +134,19 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
                 curdesc = desc;
             else
                 fs_driver->driver->header.ftable.path_search(&curdesc, currentPath);
-            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
-            new->vnode = new_vn;
+            mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
             if (curtype == FILE_TYPE_SYMBOLIC_LINK)
             {
                 symbolic_link* lnk = Vfs_Calloc(1, sizeof(symbolic_link));
                 lnk->ent = new;
                 lnk->desc = desc;
-                LIST_APPEND(symbolic_link_list, symlinks, lnk);
+                LIST_APPEND(symbolic_link_list, symlinks, lnk);   
+            }
+            else 
+            {
+                vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+                new->vnode = new_vn;
+                new->vnode->refs++;
             }
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
@@ -192,6 +199,8 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
         (uintptr_t)&symlinks,
     };
     mountpoint->fs_driver = memcpy(Vfs_Calloc(1, sizeof(vdev)), fs_driver, sizeof(*fs_driver));
+    if (device)
+        mountpoint->device = memcpy(Vfs_Calloc(1, sizeof(vdev)), device, sizeof(*device));
     fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, callback, udata);
     for (symbolic_link* lnk = LIST_GET_HEAD(symbolic_link_list, &symlinks); lnk; )
     {
@@ -222,6 +231,7 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
             OBOS_ASSERT(resolved); // TODO: Proper error handling.
         }
         lnk->ent->vnode = resolved->vnode;
+        lnk->ent->vnode->refs++;
         Vfs_Free(lnk); // free the temporary structure.
         lnk = next;
     }

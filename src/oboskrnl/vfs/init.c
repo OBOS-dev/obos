@@ -15,6 +15,7 @@
 #include <vfs/mount.h>
 #include <vfs/alloc.h>
 #include <vfs/vnode.h>
+#include <vfs/fd.h>
 
 #include <utils/string.h>
 
@@ -72,13 +73,19 @@ void Vfs_Initialize()
     mount* root = nullptr;
     Vfs_Mount("/", nullptr, &initrd_dev, &root);
     Vfs_Root->vnode->mount_point = root;
-    const char* const pathspec = "/uart";
-    dirent* found = VfsH_DirentLookup(pathspec);
-    if (found)
-        OBOS_Debug("Found %s.\n", pathspec);
-    dirent* found2 = VfsH_DirentLookup(pathspec);
-    if (found2)
-        OBOS_Debug("Found %s.\n", pathspec);
+    const char* const pathspec = "/test_folder/file.txt";
+    fd file = {};
+    obos_status status = Vfs_FdOpen(&file, pathspec, FD_OFLAGS_READ_ONLY);
+    if (obos_is_error(status))
+    {
+        OBOS_Debug("Could not open %s. Status: %s\n", pathspec, status);
+        goto end;
+    }
+    char buf[16];
+    Vfs_FdRead(&file, buf, 13, nullptr);
+    OBOS_Debug("%s:\n", pathspec);
+    printf("%s\n", buf);
+    end:
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)

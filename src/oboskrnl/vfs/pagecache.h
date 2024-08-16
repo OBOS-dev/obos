@@ -17,5 +17,7 @@ typedef struct pagecache_ent
 {
     char* data;
     size_t sz;
+    size_t fileoff;
+    bool dirty;
     LIST_NODE(pagecache, struct pagecache_ent) node;
 } pagecache_ent;
