@@ -77,8 +77,7 @@ typedef struct vnode
     size_t refs;
     size_t nWrites;
     file_perm perm;
-    pagecache pagecache_entries;
-    mutex pagecache_lock;
+    pagecache pagecache;
     size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.
     gid group_uid; // the group's GID.

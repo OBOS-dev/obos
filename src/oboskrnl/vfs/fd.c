@@ -5,8 +5,8 @@
 */
 
 #include <int.h>
-#include <klog.h>
 #include <error.h>
+#include <klog.h>
 #include <memmanip.h>
 
 #include <vfs/vnode.h>
@@ -31,30 +31,6 @@
 // if depth == zero, it will search all nodes starting at 'from'
 // otherwise, it will only search 'depth' nodes
 
-static pagecache_ent* pagecache_lookup_from(vnode* vn, size_t off, pagecache_ent* from, size_t depth)
-{
-    if (!depth)
-        depth = SIZE_MAX;
-    Core_MutexAcquire(&vn->pagecache_lock);
-    size_t i = 0;
-    for (pagecache_ent* curr = from; curr && i < depth; i++)
-    {
-        if (off >= curr->fileoff && off < (curr->fileoff + curr->sz))
-        {
-            Core_MutexRelease(&vn->pagecache_lock);
-            OBOS_Debug("Page cache hit!\n");
-            return curr;
-        }
-
-        curr = LIST_GET_NEXT(pagecache, &vn->pagecache_entries, curr);
-    }
-    Core_MutexRelease(&vn->pagecache_lock);
-    return nullptr;
-}
-static pagecache_ent* pagecache_lookup(vnode* vn, size_t off, size_t depth)
-{
-    return pagecache_lookup_from(vn, off, LIST_GET_HEAD(pagecache, &vn->pagecache_entries), depth);
-}
 static bool is_eof(vnode* vn, size_t off)
 {
     return off >= vn->filesize;
@@ -106,7 +82,52 @@ obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags)
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten);
+static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
+{
+    const driver_header* const fs_drv = &desc->vn->mount_point->fs_driver->driver->header;
+    obos_status status = fs_drv->ftable.write_sync(desc->vn->desc, from, nBytes, desc->offset, nWritten_);
+    if (obos_expect(obos_is_error(status) == true, 0))
+        return status;
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten)
+{
+    if (!desc || !buf)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!(desc->flags & FD_FLAGS_OPEN))
+        return OBOS_STATUS_UNINITIALIZED;
+    if (!nBytes)
+        return OBOS_STATUS_SUCCESS;
+    if (is_eof(desc->vn, desc->offset))
+        return OBOS_STATUS_EOF;
+    if (!(desc->flags & FD_FLAGS_WRITE))
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (nBytes > (desc->vn->filesize - desc->offset))
+        nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (desc->flags & FD_FLAGS_UNCACHED)
+    {
+        // Keep it nice and simple, and just do an uncached read on the file.
+
+        status = do_uncached_write(desc, buf, nBytes, nWritten);
+    }
+    else 
+    {
+        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
+        OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
+        Core_MutexAcquire(&dirty->lock);
+        if (desc->vn->pagecache.sz <= desc->offset)
+            VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
+        memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytes);
+        Core_MutexRelease(&dirty->lock);
+
+        if (nWritten)
+            *nWritten = nBytes;
+    }
+    if (obos_expect(obos_is_success(status), 1))
+        desc->offset += nBytes;
+    return status;
+}
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
 {
     const driver_header* const fs_drv = &desc->vn->mount_point->fs_driver->driver->header;
@@ -138,37 +159,17 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
     }
     else 
     {
-        const driver_header* const fs_drv = &desc->vn->mount_point->fs_driver->driver->header;
-        pagecache_ent* pc_ent;
-        size_t read = 0;
-        for (size_t i = desc->offset; !is_eof(desc->vn, i) && read < nBytes;)
-        {
-            pc_ent = pagecache_lookup(desc->vn, i, 0);
-            try_again:
-            if (!pc_ent)
-            {
-                // Make a page cache entry.
-                pc_ent = (pagecache_ent*)Vfs_Calloc(1, sizeof(pagecache_ent));
-                pc_ent->dirty = false;
-                pc_ent->sz = nBytes-read;
-                pc_ent->fileoff = i;
-                pc_ent->data = Vfs_Calloc(nBytes-read, sizeof(char));
-                status = fs_drv->ftable.read_sync(desc->vn->desc, pc_ent->data, nBytes-read, i, nullptr);
-                if (obos_expect(obos_is_error(status), 0))
-                    break;
-                Core_MutexAcquire(&desc->vn->pagecache_lock);
-                LIST_APPEND(pagecache, &desc->vn->pagecache_entries, pc_ent);
-                Core_MutexRelease(&desc->vn->pagecache_lock);
-                goto try_again;
-            }
-            size_t off = (i-pc_ent->fileoff);
-            size_t nBytesLeft = pc_ent->sz-off;
-            memcpy(buf + read, pc_ent->data + off, nBytesLeft);
-            read += nBytesLeft;
-            i += read;
-        }
+        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionLookup(&desc->vn->pagecache, desc->offset);
+        if (dirty)
+            Core_MutexAcquire(&dirty->lock);
+        if (desc->vn->pagecache.sz <= desc->offset)
+            VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
+        memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytes);
+        if (dirty)
+            Core_MutexRelease(&dirty->lock);
+
         if (nRead)
-            *nRead = read;
+            *nRead = nBytes;
     }
     if (obos_expect(obos_is_success(status), 1))
         desc->offset += nBytes;
@@ -232,8 +233,8 @@ obos_status Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...)
 }
 obos_status Vfs_FdFlush(fd* desc)
 {
-    OBOS_UNUSED(desc);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    VfsH_PageCacheFlush(&desc->vn->pagecache, desc->vn);
+    return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_FdClose(fd* desc)
 {
@@ -243,4 +244,3 @@ obos_status Vfs_FdClose(fd* desc)
     vn->refs--;
     return OBOS_STATUS_SUCCESS;
 }
-LIST_GENERATE(pagecache, pagecache_ent, node);
