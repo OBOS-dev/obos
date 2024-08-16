@@ -239,7 +239,6 @@ static obos_status invlpg_impl(uintptr_t at)
 		return OBOS_STATUS_SUCCESS;
 	if (!invlpg_ipi_packet.irq && Core_IrqInterfaceInitialized())
 	{
-		OBOS_Debug("Initializing invlpg ipi IRQ.\n");
 		static irq irq;
 		invlpg_ipi_packet.irq = &irq;
 		enum { IRQL_INVLPG_IPI=14 };
