@@ -28,6 +28,7 @@ static size_t str_search(const char* str, char ch)
 static namecache_ent* namecache_lookup_internal(namecache* nc, const char* path)
 {
     namecache_ent what = { };
+    OBOS_StringSetAllocator(&what.path, Vfs_Allocator);
     OBOS_InitString(&what.path, path);
     namecache_ent* hit = RB_FIND(namecache, nc, &what);
     OBOS_FreeString(&what.path);
@@ -45,8 +46,15 @@ static void namecache_insert(namecache* nc, dirent* what, const char* path, size
     namecache_ent* ent = Vfs_Calloc(1, sizeof(namecache_ent));
     ent->ent = what;
     ent->ref = what->vnode;
+    OBOS_StringSetAllocator(&ent->path, Vfs_Allocator);
     OBOS_InitStringLen(&ent->path, path, pathlen);
-    RB_INSERT(namecache, nc, ent);
+    if (!namecache_lookup_internal(nc, OBOS_GetStringCPtr(&ent->path)))
+        RB_INSERT(namecache, nc, ent);
+    else
+    {
+        OBOS_FreeString(&ent->path);
+        Vfs_Free(ent);
+    }
 }
 static dirent* on_match(dirent** const curr_, dirent** const root, const char** const tok, size_t* const tok_len, const char** const path, 
                         size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount)
@@ -57,7 +65,14 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
     if (newtok >= (*path + *path_len))
     {
         if (*lastMount)
-            namecache_insert(&(*lastMount)->nc, curr, *path+(*lastMountPoint), strchr((*path)+(*lastMountPoint), '/')-1);
+        {
+            size_t currentPathLen = strlen(*path+(*lastMountPoint))-1;
+            if ((*path+(*lastMountPoint))[currentPathLen] != '/')
+                currentPathLen++;
+            while ((*path+(*lastMountPoint))[currentPathLen] == '/')
+                currentPathLen--;
+            namecache_insert(&(*lastMount)->nc, curr, *path+(*lastMountPoint), currentPathLen);
+        }
         return curr;
     }
     if (!curr->d_children.nChildren)
@@ -75,10 +90,7 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
     {
         (*lastMountPoint) = ((*tok)-(*path));
         (*lastMount) = curr->vnode->un.mounted;
-        char* nc_path = Vfs_Calloc(*tok_len + 1, sizeof(char));
-        memcpy(nc_path, tok, *tok_len);
-        dirent* hit = namecache_lookup(&curr->vnode->un.mounted->nc, newtok);
-        Vfs_Free(nc_path);
+        dirent* hit = namecache_lookup(&curr->vnode->un.mounted->nc, *tok);
         if (!hit)
             *root = curr->vnode->un.mounted->root;
         return hit;
@@ -103,6 +115,13 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
     // Offset of the last mount point in the path.
     size_t lastMountPoint = 0;
     mount* lastMount = root->vnode->flags & VFLAGS_MOUNTPOINT ? root->vnode->un.mounted : root->vnode->mount_point;
+    if (root->vnode && root->vnode->mount_point && root == root->vnode->mount_point->root)
+    {
+        // If 'root' is at the root of it's mount point, consult the name cache.
+        dirent* hit = namecache_lookup(&root->vnode->mount_point->nc, path);
+        if (hit)
+            return hit;
+    }
     while(root)
     {
         dirent* curr = root;

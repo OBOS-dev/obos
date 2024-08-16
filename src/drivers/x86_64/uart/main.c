@@ -137,6 +137,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     return OBOS_STATUS_SUCCESS;
 }
 obos_status ioctl(size_t nParameters, uint64_t request, ...);
+obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
@@ -148,6 +149,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = cleanup,
         .ioctl = ioctl,
+        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
@@ -204,11 +206,9 @@ static uacpi_ns_iteration_decision match_uart(void *user, uacpi_namespace_node *
     return UACPI_NS_ITERATION_DECISION_CONTINUE;
 }
 
-obos_status ioctl(size_t nParameters, uint64_t request, ...)
+obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
-    va_list list;
-    va_start(list, request);
     switch (request) 
     {
         case IOCTL_OPEN_SERIAL_CONNECTION:
@@ -245,6 +245,14 @@ obos_status ioctl(size_t nParameters, uint64_t request, ...)
             break;
         }
     }
+    return status;
+}
+obos_status ioctl(size_t nParameters, uint64_t request, ...)
+{
+    obos_status status = OBOS_STATUS_INVALID_IOCTL;
+    va_list list;
+    va_start(list, request);
+    status = ioctl_var(nParameters, request, list);
     va_end(list);
     return status;
 }

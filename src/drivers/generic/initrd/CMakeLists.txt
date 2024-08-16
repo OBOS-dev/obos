@@ -12,7 +12,7 @@ target_compile_options(initrd
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIE>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
 )
 
 set_property(TARGET initrd PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
@@ -23,7 +23,7 @@ target_include_directories(initrd
 
 target_link_options(initrd
 	PRIVATE "-nostdlib"
-	PRIVATE "-Wl,-pie"
+	PRIVATE "-Wl,-pic"
 	PRIVATE "-T${DRIVER_LINKER_SCRIPT}"
 	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"

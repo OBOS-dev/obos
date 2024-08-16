@@ -9,6 +9,8 @@
 #include <memmanip.h>
 #include <cmdline.h>
 
+#include <stdarg.h>
+
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
 
@@ -17,6 +19,7 @@
 
 #include <uacpi_libc.h>
 
+#include "klog.h"
 #include "name.h"
 #include "ustar_hdr.h"
 #include "parse.h"
@@ -42,16 +45,20 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
 }
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
+OBOS_WEAK obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+{
+    OBOS_ASSERT(nParameters);
+    OBOS_ASSERT(request);
+    OBOS_ASSERT(list);
+    return OBOS_STATUS_INVALID_IOCTL; // we don't support any
+}
 OBOS_WEAK obos_status ioctl(size_t nParameters, uint64_t request, ...)
 {
-    OBOS_UNUSED(nParameters);
-    obos_status ret = OBOS_STATUS_SUCCESS;
-    switch (request)
-    {
-        default:
-            return OBOS_STATUS_INVALID_IOCTL;
-    }
-    return ret;
+    va_list list;
+    va_start(list, request);
+    obos_status status = ioctl_var(nParameters, request, list);
+    va_end(list);
+    return status;
 }
 struct hashmap* names;
 void driver_cleanup_callback()
@@ -98,6 +105,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
+        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,

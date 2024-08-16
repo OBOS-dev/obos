@@ -129,4 +129,8 @@ typedef enum
 	/// The vnode already had a node mounted there.
 	/// </summary>
 	OBOS_STATUS_ALREADY_MOUNTED,
+	/// <summary>
+	/// The fd object hit EOF.
+	/// </summary>
+	OBOS_STATUS_EOF
 } obos_status;

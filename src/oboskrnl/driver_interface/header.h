@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <stdarg.h>
+
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
 // Not required, but can speed up loading times if the driver header is put in here.
 #define OBOS_DRIVER_HEADER_SECTION ".driverheader"
@@ -100,6 +102,7 @@ typedef struct driver_ftable
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.
     obos_status(*ioctl)(size_t nParameters, uint64_t request, ...);
+    obos_status(*ioctl_var)(size_t nParameters, uint64_t request, va_list list);
     // Called on driver unload.
     // Frees all the driver's allocated resources, as the kernel 
     // does not keep a track of allocated resources, and cannot free them on driver unload, causing a

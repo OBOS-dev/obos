@@ -69,10 +69,15 @@ void Vfs_Initialize()
     }
     if (!initrd_dev.driver)
         return;
-    Vfs_Mount("/", nullptr, &initrd_dev, nullptr);
+    mount* root = nullptr;
+    Vfs_Mount("/", nullptr, &initrd_dev, &root);
+    Vfs_Root->vnode->mount_point = root;
     const char* const pathspec = "/uart";
     dirent* found = VfsH_DirentLookup(pathspec);
     if (found)
+        OBOS_Debug("Found %s.\n", pathspec);
+    dirent* found2 = VfsH_DirentLookup(pathspec);
+    if (found2)
         OBOS_Debug("Found %s.\n", pathspec);
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));

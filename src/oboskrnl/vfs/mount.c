@@ -120,7 +120,6 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
         currentPathLen += tok_len;
         if (!is_base)
             currentPath[currentPathLen++] = '/';
-        OBOS_Debug("current path %s.\n", currentPath);
         dirent* new = VfsH_DirentLookupFrom(token, last ? last : mountpoint->root);
         if (!new)
         {
@@ -197,12 +196,31 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
     for (symbolic_link* lnk = LIST_GET_HEAD(symbolic_link_list, &symlinks); lnk; )
     {
         symbolic_link* next = LIST_GET_NEXT(symbolic_link_list, &symlinks, lnk);
+        if (lnk->ent->vnode)
+        {
+            // We have already been resolved.
+            lnk = next;
+            continue;
+        }
         const char *points_at = nullptr;
         dev_desc desc_points_at = 0;
         fs_driver->driver->header.ftable.get_linked_desc(lnk->desc, &desc_points_at);
         fs_driver->driver->header.ftable.query_path(desc_points_at, &points_at);
         dirent* resolved = VfsH_DirentLookupFrom(points_at, mountpoint->root);
         OBOS_ASSERT(resolved); // TODO: Proper error handling.
+        dev_desc desc = 0;
+        while (!resolved->vnode)
+        {
+            desc = desc_points_at;
+            // *resolved is probably also an unresolved symlink.
+            // resolve it.
+            points_at = nullptr;
+            desc_points_at = 0;
+            fs_driver->driver->header.ftable.get_linked_desc(desc, &desc_points_at);
+            fs_driver->driver->header.ftable.query_path(desc_points_at, &points_at);
+            resolved = VfsH_DirentLookupFrom(points_at, mountpoint->root);
+            OBOS_ASSERT(resolved); // TODO: Proper error handling.
+        }
         lnk->ent->vnode = resolved->vnode;
         Vfs_Free(lnk); // free the temporary structure.
         lnk = next;
