@@ -30,6 +30,7 @@ typedef struct mount
     namecache nc;
 } mount;
 extern struct dirent* Vfs_Root;
+extern mount_list Vfs_Mounted;
 
 obos_status Vfs_Mount(const char* at, vdev* device, vdev* fs_driver, mount** mountpoint);
 obos_status Vfs_Unmount(mount* what);

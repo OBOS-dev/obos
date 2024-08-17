@@ -26,6 +26,7 @@
 #include <utils/string.h>
 
 struct dirent* Vfs_Root;
+mount_list Vfs_Mounted;
 
 typedef LIST_HEAD(symbolic_link_list, struct symbolic_link) symbolic_link_list;
 typedef struct symbolic_link
@@ -235,6 +236,7 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
         Vfs_Free(lnk); // free the temporary structure.
         lnk = next;
     }
+    LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_Unmount(mount* what)
@@ -253,3 +255,4 @@ obos_status Vfs_UnmountP(const char* at)
 }
 
 RB_GENERATE(namecache, namecache_ent, rb_cache, cmp_namecache_ent);
+LIST_GENERATE(mount_list, mount, node);
