@@ -11,7 +11,7 @@ list (APPEND oboskrnl_sources
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
 	"locks/event.c" "locks/wait.c" "cmdline.c" "vfs/init.c" 
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
-	"vfs/fd.c" "vfs/pagecache.c"
+	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c"
 )
 
 add_executable(oboskrnl)

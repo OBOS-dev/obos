@@ -103,11 +103,11 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
     if (nBytes > (desc->vn->filesize - desc->offset))
-        nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
+        desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
-        // Keep it nice and simple, and just do an uncached read on the file.
+        // Keep it nice and simple, and just do an uncached write on the file.
 
         status = do_uncached_write(desc, buf, nBytes, nWritten);
     }
@@ -162,7 +162,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionLookup(&desc->vn->pagecache, desc->offset);
         if (dirty)
             Core_MutexAcquire(&dirty->lock);
-        if (desc->vn->pagecache.sz <= desc->offset)
+        if ((desc->offset+nBytes) > desc->vn->pagecache.sz)
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
         memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytes);
         if (dirty)
@@ -188,7 +188,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
             finalOff = off;
             break;
         case SEEK_END:
-            finalOff = (off_t)desc->vn->filesize + off;
+            finalOff = (off_t)desc->vn->filesize - 1 + off;
             break;
         case SEEK_CUR:
             finalOff = (off_t)desc->offset + off;

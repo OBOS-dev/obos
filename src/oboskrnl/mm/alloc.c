@@ -57,7 +57,7 @@ void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_
         currentNode; 
         currentNode = RB_NEXT(page_tree, &ctx->pages, currentNode))
     {
-		uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % pgSize);
+		uintptr_t currentNodeAddr = currentNode->addr;
 		if (currentNodeAddr < base)
 		    continue;
         if (currentNodeAddr >= limit)
@@ -65,6 +65,7 @@ void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_
 		if ((currentNodeAddr - lastAddress) >= (size + pgSize))
 		{
 			found = lastAddress + (lastNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            found += (pgSize-(found%pgSize));
 			break;
 		}
 		lastAddress = currentNodeAddr + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);

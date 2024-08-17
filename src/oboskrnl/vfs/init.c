@@ -4,6 +4,10 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/alloc.h"
+#include "mm/context.h"
+#include "scheduler/thread.h"
+
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -28,6 +32,9 @@
 // InitRD driver name.
 #include <generic/initrd/name.h>
 
+#include <locks/event.h>
+#include <locks/wait.h>
+
 /*
     "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted."
     "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd"
@@ -36,6 +43,14 @@
     "                         is used as root."
 */
 
+static void test_thread(void* userdata)
+{
+    uintptr_t *udata = userdata;
+    event* evnt = (event*)udata[0];
+    Core_WaitOnObject(WAITABLE_OBJECT(*evnt));
+    OBOS_Debug("Read %s.\n", udata[1]);
+    Core_ExitCurrentThread();
+}
 void Vfs_Initialize()
 {
     char* root_uuid = OBOS_GetOPTS("root-fs-uuid");
@@ -81,10 +96,27 @@ void Vfs_Initialize()
         OBOS_Debug("Could not open %s. Status: %s\n", pathspec, status);
         goto end;
     }
-    char buf[16];
-    Vfs_FdRead(&file, buf, 13, nullptr);
-    OBOS_Debug("%s:\n", pathspec);
-    printf("%s\n", buf);
+    Vfs_FdSeek(&file, 0, SEEK_END);
+    size_t filesize = Vfs_FdTellOff(&file);
+    Vfs_FdSeek(&file, 0, SEEK_SET);
+    char *buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, NULL, filesize, 0, VMA_FLAGS_HUGE_PAGE, nullptr);
+    event *evnt = Vfs_Calloc(1, sizeof(event));
+    *evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    OBOS_Debug("Reading %s\n", pathspec);
+    Vfs_FdARead(&file, buf, filesize, evnt);
+    thread* thr = CoreH_ThreadAllocate(nullptr);
+    thread_ctx ctx = {};
+    uintptr_t* udata = Vfs_Calloc(2, sizeof(uintptr_t));
+    udata[0] = (uintptr_t)evnt;
+    udata[1] = (uintptr_t)pathspec;
+    CoreS_SetupThreadContext(
+        &ctx, 
+        (uintptr_t)test_thread, (uintptr_t)udata,
+        false,
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 
+        0x10000);
+    CoreH_ThreadInitialize(thr, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadReady(thr);
     end:
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
