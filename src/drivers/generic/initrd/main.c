@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <memmanip.h>
 #include <cmdline.h>
@@ -19,12 +20,11 @@
 
 #include <uacpi_libc.h>
 
-#include "klog.h"
 #include "name.h"
 #include "ustar_hdr.h"
 #include "parse.h"
 
-obos_status get_blk_size(dev_desc desc, size_t* blkSize)
+OBOS_PAGEABLE_FUNCTION obos_status get_blk_size(dev_desc desc, size_t* blkSize)
 {
     OBOS_UNUSED(desc);
     if (!blkSize)
@@ -34,7 +34,7 @@ obos_status get_blk_size(dev_desc desc, size_t* blkSize)
 }
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
 OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
-obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
+OBOS_PAGEABLE_FUNCTION obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(buf);
@@ -45,14 +45,14 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
 }
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
-OBOS_WEAK obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {
     OBOS_ASSERT(nParameters);
     OBOS_ASSERT(request);
     OBOS_ASSERT(list);
     return OBOS_STATUS_INVALID_IOCTL; // we don't support any
 }
-OBOS_WEAK obos_status ioctl(size_t nParameters, uint64_t request, ...)
+OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl(size_t nParameters, uint64_t request, ...)
 {
     va_list list;
     va_start(list, request);
@@ -71,25 +71,25 @@ void driver_cleanup_callback()
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, const char* what);
 OBOS_WEAK obos_status get_linked_desc(dev_desc desc, dev_desc* found);
-obos_status move_desc_to(dev_desc desc, const char* where)
+OBOS_PAGEABLE_FUNCTION obos_status move_desc_to(dev_desc desc, const char* where)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(where);
     return OBOS_STATUS_READ_ONLY;
 }
-obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type) {
+OBOS_PAGEABLE_FUNCTION obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type) {
     OBOS_UNUSED(newDesc);
     OBOS_UNUSED(parent);
     OBOS_UNUSED(name);
     OBOS_UNUSED(type);
     return OBOS_STATUS_READ_ONLY;
 }
-obos_status remove_file(dev_desc desc)
+OBOS_PAGEABLE_FUNCTION obos_status remove_file(dev_desc desc)
 {
     OBOS_UNUSED(desc);
     return OBOS_STATUS_READ_ONLY;
 }
-obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
+OBOS_PAGEABLE_FUNCTION obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(newperm);
@@ -129,7 +129,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
 // dev_desc is simply a pointer to a ustar_hdr
 
-obos_status get_max_blk_count(dev_desc desc, size_t* count)
+OBOS_PAGEABLE_FUNCTION obos_status get_max_blk_count(dev_desc desc, size_t* count)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !count)
@@ -139,7 +139,7 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
     *count = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
+OBOS_PAGEABLE_FUNCTION obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !buf)
@@ -162,19 +162,19 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     memcpy(buf, iter, nToRead);
     return OBOS_STATUS_SUCCESS;
 }
-static uint64_t hash(const void *item, uint64_t seed0, uint64_t seed1)
+OBOS_PAGEABLE_FUNCTION static uint64_t hash(const void *item, uint64_t seed0, uint64_t seed1)
 {
     const char* pck = item;
     return hashmap_sip(pck, uacpi_strnlen(pck, 100), seed0, seed1);
 }
-static int cmp(const void *a, const void *b, void *udata)
+OBOS_PAGEABLE_FUNCTION static int cmp(const void *a, const void *b, void *udata)
 {
     OBOS_UNUSED(udata);
     const char* pck1 = a;
     const char* pck2 = b;
     return uacpi_strncmp(pck1, pck2, 100);
 }
-obos_status query_path(dev_desc desc, const char** path)
+OBOS_PAGEABLE_FUNCTION obos_status query_path(dev_desc desc, const char** path)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !path)
@@ -205,7 +205,7 @@ obos_status query_path(dev_desc desc, const char** path)
     *path = filepath;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status get_linked_desc(dev_desc desc, dev_desc* found)
+OBOS_PAGEABLE_FUNCTION obos_status get_linked_desc(dev_desc desc, dev_desc* found)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !found)
@@ -216,7 +216,7 @@ obos_status get_linked_desc(dev_desc desc, dev_desc* found)
     *found = (dev_desc)GetFile(hdr->linked, &status);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status path_search(dev_desc* found, const char* what)
+OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, const char* what)
 {
     if (!found || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -224,7 +224,7 @@ obos_status path_search(dev_desc* found, const char* what)
     *found = (dev_desc)GetFile(what, &status);
     return status;
 }
-obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
+OBOS_PAGEABLE_FUNCTION obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !perm)
@@ -241,7 +241,7 @@ obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
     perm->other_exec = filemode & FILEMODE_OTHER_EXEC;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status get_file_type(dev_desc desc, file_type *type)
+OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !type)
@@ -263,7 +263,7 @@ obos_status get_file_type(dev_desc desc, file_type *type)
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
 {
     const ustar_hdr* dir = (ustar_hdr*)dir_;
     if (!dir || !cb)

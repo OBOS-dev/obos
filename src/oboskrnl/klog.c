@@ -58,7 +58,7 @@ OBOS_EXPORT log_level OBOS_GetLogLevel()
 }
 static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
 static spinlock s_printfLock; bool s_printfLockInitialized = false;
-static OBOS_PAGEABLE_FUNCTION void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
+static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
 	{
@@ -72,28 +72,28 @@ static OBOS_PAGEABLE_FUNCTION void common_log(log_level minimumLevel, const char
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
-OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Debug(const char* format, ...)
+OBOS_EXPORT void OBOS_Debug(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_DEBUG, "DEBUG", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Log(const char* format, ...)
+OBOS_EXPORT void OBOS_Log(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Warning(const char* format, ...)
+OBOS_EXPORT void OBOS_Warning(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
 	common_log(LOG_LEVEL_WARNING, "WARN ", format, list);
 	va_end(list);
 }
-OBOS_PAGEABLE_FUNCTION OBOS_EXPORT void OBOS_Error(const char* format, ...)
+OBOS_EXPORT void OBOS_Error(const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -193,7 +193,7 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
-OBOS_EXPORT OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
+OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 {
 	va_list list;
 	va_start(list, format);
@@ -201,7 +201,7 @@ OBOS_EXPORT OBOS_PAGEABLE_FUNCTION size_t snprintf(char* buf, size_t bufSize, co
 	va_end(list);
 	return ret;
 }
-OBOS_EXPORT OBOS_PAGEABLE_FUNCTION size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
+OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
 	return stbsp_vsnprintf(buf, bufSize, format, list);
 }

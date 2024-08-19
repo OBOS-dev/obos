@@ -11,6 +11,8 @@ qemu-system-m68k \
 -m 512M \
 -d int \
 -D qemu_log.txt \
--serial file:/dev/stdout
+-serial file:/dev/stdout \
+-append "--root-fs-uuid=initrd" \
+-initrd "config/initrd.tar"
 
 cd scripts

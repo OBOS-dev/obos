@@ -16,15 +16,8 @@
 
 typedef LIST_HEAD(dirty_pc_list, struct pagecache_dirty_region) dirty_pc_list;
 LIST_PROTOTYPE(dirty_pc_list, struct pagecache_dirty_region, node);
-typedef struct pagecache_dirty_region
-{
-    // take this lock when any reads or writes are done on the region this represents.
-    // do not take it if expanding 'sz'
-    mutex lock;
-    size_t fileoff;
-    atomic_size_t sz;
-    LIST_NODE(dirty_pc_list, struct pagecache_dirty_region) node;
-} pagecache_dirty_region;
+typedef LIST_HEAD(mapped_region_list, struct pagecache_mapped_region) mapped_region_list;
+LIST_PROTOTYPE(mapped_region_list, struct pagecache_mapped_region, node);
 typedef struct pagecache
 {
     // Take this lock when expanding the page cache.
@@ -35,7 +28,28 @@ typedef struct pagecache
     mutex dirty_list_lock;
     dirty_pc_list dirty_regions;
     atomic_size_t refcnt;
+    mapped_region_list mapped_regions;
 } pagecache;
+typedef struct pagecache_dirty_region
+{
+    // take this lock when any reads or writes are done on the region this represents.
+    // do not take it if expanding 'sz'
+    mutex lock;
+    size_t fileoff;
+    atomic_size_t sz;
+    pagecache* owner;
+    LIST_NODE(dirty_pc_list, struct pagecache_dirty_region) node;
+} pagecache_dirty_region;
+typedef struct pagecache_mapped_region
+{
+    mutex lock;
+    size_t fileoff;
+    uintptr_t addr;
+    atomic_size_t sz;
+    pagecache* owner;
+    struct context* ctx;
+    LIST_NODE(mapped_region_list, struct pagecache_mapped_region) node;
+} pagecache_mapped_region;
 pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off);
 // Note!
 // Does a lookup first, and if there is already a dirty region that can fit the contraints passed, it is used.

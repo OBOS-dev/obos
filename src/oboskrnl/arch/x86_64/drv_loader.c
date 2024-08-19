@@ -400,7 +400,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
 			end = (void*)(curr->p_vaddr+curr->p_memsz);
     }
     szProgram = (size_t)end;
-    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, status);
+    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, nullptr, status);
     if (!base)
         return nullptr;
     // The pages are mapped in.

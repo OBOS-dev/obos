@@ -32,8 +32,6 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
-#include <arch/x86_64/pmm.h>
-
 #include <driver_interface/driverId.h>
 #include <driver_interface/loader.h>
 #include <driver_interface/header.h>
@@ -49,6 +47,7 @@
 
 #include <irq/irq.h>
 
+#include <mm/pmm.h>
 #include <mm/bare_map.h>
 #include <mm/init.h>
 #include <mm/swap.h>
@@ -76,6 +75,7 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
+#include "mm/pmm.h"
 
 #include <uacpi_libc.h>
 
@@ -311,8 +311,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 				break;
 			default:
 			{
-				static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
-				OBOS_Warning(format, mm_ec, getCR2());
+				OBOS_Warning("Handling page fault with error code 0x%x on address %p failed with status %d.\n", mm_ec, getCR2(), status);
 				break;
 			}
 		}
@@ -572,7 +571,7 @@ void Arch_KernelMainBootstrap()
 	//Core_Yield();
 	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
-	Arch_InitializePMM();
+	Mm_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (obos_is_error(status))
@@ -664,7 +663,7 @@ void Arch_KernelMainBootstrap()
 		// 	;
 		OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
 		size_t size = (Arch_Framebuffer->height*Arch_Framebuffer->pitch + OBOS_HUGE_PAGE_SIZE - 1) & ~(OBOS_HUGE_PAGE_SIZE - 1);
-		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr);
+		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr, nullptr);
 		uintptr_t base = (uintptr_t)base_;
 		if (base)
 		{
@@ -693,14 +692,14 @@ void Arch_KernelMainBootstrap()
 				// Present,Write,XD,Write-Combining (PAT: 0b110)
 				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
 				offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-				OBOSS_FreePhysicalPages(oldPhys, offset);
+				Mm_FreePhysicalPages(oldPhys, offset/OBOS_PAGE_SIZE);
 			}
 		}
 		OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(
 			&Mm_KernelContext, 
 			(void*)(0xffffa00000000000+size), size, 
 			0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
-			nullptr);
+			nullptr, nullptr);
 		memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
 		OBOS_TextRendererState.fb.base = base_;
 		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
@@ -916,9 +915,14 @@ if (st != UACPI_STATUS_OK)\
 		asm("int3");
 	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+		Mm_KernelContext.stat.committedMemory/0x400, 
+		Mm_KernelContext.stat.pageable/0x400, 
+		Mm_KernelContext.stat.paged/0x400,
+		Mm_KernelContext.stat.nonPaged/0x400);
 	Core_ExitCurrentThread();
 }
-void OBOS_TestLocks()
+OBOS_PAGEABLE_FUNCTION void OBOS_TestLocks()
 {
 	OBOS_Debug("Testing semaphores.\n");
 	const size_t nThreads = 3;
@@ -928,8 +932,10 @@ void OBOS_TestLocks()
 	{
 		thread* thr = &threads[i];
 		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)semaphore_test, (uintptr_t)&sem, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)semaphore_test, (uintptr_t)&sem, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x10000);
 		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		thr->stackFree = CoreH_VMAStackFree;
+		thr->stackFreeUserdata = &Mm_KernelContext;
 	}
 	OBOS_Debug("Acquiring semaphore %d times.\n", nThreads);
 	for (size_t i = 0; i < nThreads; i++)
@@ -966,8 +972,10 @@ void OBOS_TestLocks()
 	{
 		thread* thr = &threads[i];
 		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)mutex_test, (uintptr_t)&mut, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)mutex_test, (uintptr_t)&mut, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr),  0x10000);
 		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		thr->stackFree = CoreH_VMAStackFree;
+		thr->stackFreeUserdata = &Mm_KernelContext;
 	}
 	Core_MutexAcquire(&mut);
 	for (size_t i = 0; i < nThreads; i++)
@@ -998,8 +1006,10 @@ void OBOS_TestLocks()
 	{
 		thread* thr = &threads[i];
 		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)event_test, (uintptr_t)&e, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)event_test, (uintptr_t)&e, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr),  0x10000);
 		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		thr->stackFree = CoreH_VMAStackFree;
+		thr->stackFreeUserdata = &Mm_KernelContext;
 		CoreH_ThreadReady(thr);
 	}
 	OBOS_Debug("Sleeping for 5 seconds...\n");
@@ -1028,8 +1038,10 @@ void OBOS_TestLocks()
 	{
 		thread* thr = &threads[i];
 		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)not_event_test, (uintptr_t)&events, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
+		CoreS_SetupThreadContext(&ctx, (uintptr_t)not_event_test, (uintptr_t)&events, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr),  0x10000);
 		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+		thr->stackFree = CoreH_VMAStackFree;
+		thr->stackFreeUserdata = &Mm_KernelContext;
 		CoreH_ThreadReady(thr);
 	}
 	for (size_t i = 0; i < nThreads; i++)
@@ -1060,7 +1072,7 @@ void OBOS_TestLocks()
 	OBOS_Debug("Done.\n");
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
 }
-static void semaphore_test(void* userdata)
+static OBOS_PAGEABLE_FUNCTION void semaphore_test(void* userdata)
 {
 	semaphore* sem = (semaphore*)userdata;
 	OBOS_Debug("Thread %d attempted to acquire a semaphore.\n", Core_GetCurrentThread()->tid);
@@ -1069,7 +1081,7 @@ static void semaphore_test(void* userdata)
 	Core_SemaphoreRelease(sem);
 	Core_ExitCurrentThread();
 }
-static void mutex_test(void* userdata)
+static OBOS_PAGEABLE_FUNCTION void mutex_test(void* userdata)
 {
 	mutex* mut = (mutex*)userdata;
 	OBOS_Debug("Thread %d attempted to acquire a mutex.\n", Core_GetCurrentThread()->tid);
@@ -1083,7 +1095,7 @@ static void mutex_test(void* userdata)
 	OBOS_Debug("Done\n");
 	Core_ExitCurrentThread();
 }
-static void event_test(void* userdata)
+static OBOS_PAGEABLE_FUNCTION void event_test(void* userdata)
 {
 	event* e = (event*)userdata;
 	OBOS_Debug("Thread %d is waiting on an event.\n", Core_GetCurrentThread()->tid);
@@ -1097,7 +1109,7 @@ static void event_test(void* userdata)
 	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
 	Core_ExitCurrentThread();
 }
-static void not_event_test(void* userdata)
+static OBOS_PAGEABLE_FUNCTION void not_event_test(void* userdata)
 {
 	event* events = (event*)userdata;
 	OBOS_Debug("Thread %d waiting on events.\n", Core_GetCurrentThread()->tid);

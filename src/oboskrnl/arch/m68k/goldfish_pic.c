@@ -11,9 +11,11 @@
 #include <mm/bare_map.h>
 #include <mm/context.h>
 #include <mm/alloc.h>
+#include <mm/pmm.h>
 
 #include <arch/m68k/goldfish_pic.h>
 #include <arch/m68k/interrupt_frame.h>
+#include <arch/m68k/pmm.h>
 #include <arch/m68k/boot_info.h>
 
 #include <locks/spinlock.h>
@@ -43,13 +45,13 @@ static void initialize()
                 nullptr,
                 0x1000,
                 OBOS_PROTECTION_CACHE_DISABLE,
-                VMA_FLAGS_NON_PAGED, 
-                nullptr);
+                VMA_FLAGS_NON_PAGED,
+                nullptr, nullptr);
         uintptr_t oldPhys = 0;
         OBOSS_GetPagePhysicalAddress((void*)virt_base, &oldPhys);
         // Map as RW, Cache Disabled, and Supervisor
         Arch_MapPage(MmS_GetCurrentPageTable(), virt_base, Arch_PICBases[i].phys_base, (0b11|(0b11<<5)|(1<<7)));
-        OBOSS_FreePhysicalPages(oldPhys, 1);
+        Mm_FreePhysicalPages(oldPhys, 1);
         Arch_PICBases[i].base = virt_base;
     }
 }

@@ -20,6 +20,14 @@ irql CoreS_GetThreadIRQL(const thread_ctx* ctx)
 {
     return ctx->irql;
 }
+void* CoreS_GetThreadStack(const thread_ctx* ctx)
+{
+    return ctx->stackBase;
+}
+size_t CoreS_GetThreadStackSize(const thread_ctx* ctx)
+{
+    return ctx->stackSize;
+}
 obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize)
 {
     if (!ctx)

@@ -12,7 +12,7 @@
 #include <mm/swap.h>
 #include <mm/context.h>
 #include <mm/page.h>
-#include <stdint.h>
+#include <mm/pmm.h>
 
 swap_dev* Mm_SwapProvider;
 
@@ -53,15 +53,19 @@ obos_status Mm_SwapOut(page* page)
             return OBOS_STATUS_INTERNAL_ERROR;
         return status;
     }
-    status = OBOSS_FreePhysicalPages(phys, nPages);
-    if (obos_is_error(status))
+    if (phys)
     {
-        if (obos_is_error(Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages)))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        page->prot.present = true;
-        if (obos_is_error(MmS_SetPageMapping(page->owner->pt, page, phys)))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        return status;
+        // FIXME: Why is phys sometimes set to zero?
+        status = Mm_FreePhysicalPages(phys, nPages);
+        if (obos_is_error(status))
+        {
+            if (obos_is_error(Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages)))
+                return OBOS_STATUS_INTERNAL_ERROR;
+            page->prot.present = true;
+            if (obos_is_error(MmS_SetPageMapping(page->owner->pt, page, phys)))
+                return OBOS_STATUS_INTERNAL_ERROR;
+            return status;
+        }
     }
     page->pagedOut = true;
     return OBOS_STATUS_SUCCESS;
@@ -78,14 +82,14 @@ obos_status Mm_SwapIn(page* page)
     uintptr_t id = page->swapId;
     // Allocate a physical page.
     obos_status status = OBOS_STATUS_SUCCESS;
-    uintptr_t phys = OBOSS_AllocatePhysicalPages(nPages, nPages, &status);
+    uintptr_t phys = Mm_AllocatePhysicalPages(nPages, nPages, &status);
     if (obos_is_error(status))
         return status;
     // Read the page from the swap.
     status = Mm_SwapProvider->swap_read(Mm_SwapProvider, id, phys, nPages, 0);
     if (obos_is_error(status))
     {
-        if (obos_is_error(OBOSS_FreePhysicalPages(phys, nPages)))
+        if (obos_is_error(Mm_FreePhysicalPages(phys, nPages)))
             return OBOS_STATUS_INTERNAL_ERROR;
         return status;
     }
@@ -93,7 +97,7 @@ obos_status Mm_SwapIn(page* page)
     status = Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages);
     if (obos_is_error(status))
     {
-        if (obos_is_error(OBOSS_FreePhysicalPages(phys, nPages)))
+        if (obos_is_error(Mm_FreePhysicalPages(phys, nPages)))
             return OBOS_STATUS_INTERNAL_ERROR;
         return status;
     }

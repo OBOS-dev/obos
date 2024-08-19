@@ -10,6 +10,7 @@
 #include <klog.h>
 
 #include <mm/bare_map.h>
+#include <mm/pmm.h>
 
 #include <locks/spinlock.h>
 
@@ -90,7 +91,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, 
 	for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
 	{
 		obos_status stat = OBOS_STATUS_SUCCESS;
-		uintptr_t mem = OBOSS_AllocatePhysicalPages(1, 1, &stat);
+		uintptr_t mem = Mm_AllocatePhysicalPages(1, 1, &stat);
 		if (stat != OBOS_STATUS_SUCCESS)
 		{
 			if (status)
@@ -137,7 +138,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION obos_status OBOS_BasicMMFreePages(void* bas
 		OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
 		OBOSS_UnmapPage((void*)addr);
 		if (phys)
-			OBOSS_FreePhysicalPages(phys, 1);
+			Mm_FreePhysicalPages(phys, 1);
 	}
 	return OBOS_STATUS_SUCCESS;
 }

@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <cmdline.h>
 #include <text.h>
 #include <klog.h>
 #include <font.h>
@@ -36,6 +37,9 @@
 #include <mm/swap.h>
 #include <mm/bare_map.h>
 #include <mm/context.h>
+#include <mm/pmm.h>
+
+#include <vfs/init.h>
 
 #include <driver_interface/loader.h>
 #include <driver_interface/driverId.h>
@@ -62,6 +66,10 @@ volatile struct limine_kernel_file_request Arch_KernelFile = {
 };
 volatile struct limine_boot_info_request Arch_BootInfo = {
     .id = LIMINE_BOOT_INFO_REQUEST,
+    .revision = 0,
+};
+volatile struct limine_module_request Arch_InitrdRequest = {
+    .id = LIMINE_MODULE_REQUEST,
     .revision = 0,
 };
 cpu_local bsp_cpu;
@@ -161,7 +169,7 @@ asm (
     ".global Arch_ModuleEnd;"
     ".align 8;"
     "Arch_ModuleStart:;"
-    ".incbin \"" OBOS_BINARY_DIRECTORY "/test_driver\";"
+    ".incbin \"" OBOS_BINARY_DIRECTORY "/initrd\";"
     "Arch_ModuleEnd:;"
     ".section text;"
 );
@@ -175,7 +183,7 @@ void Arch_KernelEntry()
     for (uint8_t vec = 25; vec < 32; vec++)
         Arch_RawRegisterInterrupt(vec, (uintptr_t)Arch_PICHandleIRQ);
     OBOS_Debug("%s: Initializing PMM.\n", __func__);
-    Arch_InitializePMM();
+    Mm_InitializePMM();
     OBOS_Debug("%s: Initializing page tables.\n", __func__);
     Arch_InitializePageTables();
     Arch_TTYBase = Arch_BootInfo.response->uart_phys_base;
@@ -195,6 +203,9 @@ void Arch_KernelEntry()
     if (obos_is_error(status = OBOSH_ConstructBasicAllocator(&kalloc)))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize allocator. Status: %d.\n", status);
     OBOS_KernelAllocator = (allocator_info*)&kalloc;
+    OBOS_Debug("%s: Parsing command line.\n", __func__);
+    OBOS_KernelCmdLine = Arch_KernelFile.response->kernel_file->cmdline;
+    OBOS_ParseCMDLine();
     OBOS_Debug("%s: Initialize kernel process.\n", __func__);
     OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_is_error(status))
@@ -207,7 +218,7 @@ void Arch_KernelEntry()
     OBOS_Debug("%s: Initializing VMM.\n", __func__);
     static swap_dev swap;
     size_t swap_size = 16777216 /* 16 MiB */;
-    uintptr_t swap_buf = Arch_AllocatePhysicalPages(swap_size/OBOS_PAGE_SIZE, 1, nullptr);
+    uintptr_t swap_buf = Mm_AllocatePhysicalPages(swap_size/OBOS_PAGE_SIZE, 1, nullptr);
     Arch_InitializeInitialSwapDevice(&swap, Arch_MapToHHDM(swap_buf), swap_size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
@@ -282,7 +293,7 @@ void Arch_KernelEntry()
 		}
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
-    OBOS_Debug("%s: Loading test driver.\n", __func__);
+    OBOS_Debug("%s: Loading InitRD driver.\n", __func__);
     status = OBOS_STATUS_SUCCESS;
     const void* file = Arch_ModuleStart;
     size_t filesize = (uintptr_t)Arch_ModuleEnd-(uintptr_t)Arch_ModuleStart;
@@ -291,6 +302,16 @@ void Arch_KernelEntry()
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load driver! Status: %d.\n", status);
     Drv_StartDriver(id, nullptr);
+    OBOS_Debug("%s: Initializing VFS.\n", __func__);
+    OBOS_InitrdBinary = Arch_InitrdRequest.response->modules[0]->address;
+    OBOS_InitrdSize = Arch_InitrdRequest.response->modules[0]->size;
+    Vfs_Initialize();
+    OBOS_Log("%s: Done early boot.\n", __func__);
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+		Mm_KernelContext.stat.committedMemory/0x400, 
+		Mm_KernelContext.stat.pageable/0x400, 
+		Mm_KernelContext.stat.paged/0x400,
+		Mm_KernelContext.stat.nonPaged/0x400);
     Core_ExitCurrentThread();
 }
 void Arch_IdleTask()

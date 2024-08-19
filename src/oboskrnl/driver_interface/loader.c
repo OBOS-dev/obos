@@ -272,7 +272,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         stackSize = driver->header.stackSize;
     if (!stackSize)
         stackSize = 0x20000;
-    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, stackSize, 0, VMA_FLAGS_KERNEL_STACK, &status);
+    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, stackSize, 0, VMA_FLAGS_KERNEL_STACK, nullptr, &status);
     status = CoreS_SetupThreadContext(&ctx, 
         driver->entryAddr,
         (uintptr_t)driver,
@@ -290,6 +290,8 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;
     }
+    thr->stackFree = CoreH_VMAStackFree;
+    thr->stackFreeUserdata = &Mm_KernelContext;
     if (mainThread)
     {
         *mainThread = thr;

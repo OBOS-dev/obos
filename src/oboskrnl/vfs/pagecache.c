@@ -4,7 +4,10 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/bare_map.h"
+#include "mm/pmm.h"
 #include <int.h>
+#include <memmanip.h>
 #include <klog.h>
 
 #include <utils/list.h>
@@ -16,11 +19,15 @@
 #include <vfs/vnode.h>
 #include <vfs/mount.h>
 
+#include <mm/alloc.h>
+#include <mm/context.h>
+
 #include <driver_interface/header.h>
 
 #include <stdatomic.h>
 
 LIST_GENERATE(dirty_pc_list, struct pagecache_dirty_region, node);
+LIST_GENERATE(mapped_region_list, struct pagecache_mapped_region, node);
 pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 {
     Core_MutexAcquire(&pc->dirty_list_lock);
@@ -61,6 +68,7 @@ pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size
     dirty = Vfs_Calloc(1, sizeof(pagecache_dirty_region));
     dirty->fileoff = off;
     dirty->sz = sz;
+    dirty->owner = pc;
     Core_MutexAcquire(&pc->dirty_list_lock);
     LIST_APPEND(dirty_pc_list, &pc->dirty_regions, dirty);
     Core_MutexRelease(&pc->dirty_list_lock);
@@ -101,11 +109,50 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
     OBOS_ASSERT(newSize <= vn->filesize);
     if (newSize == pc->sz)
         return;
+    size_t filesize = newSize;
+    newSize = newSize + (OBOS_PAGE_SIZE-(newSize%OBOS_PAGE_SIZE));
     Core_MutexAcquire(&pc->lock);
     size_t oldSz = pc->sz;
-    pc->sz = newSize;
-    pc->data = Vfs_Realloc(pc->data, pc->sz);
-    if (pc->sz > oldSz)
-        vn->mount_point->fs_driver->driver->header.ftable.read_sync(vn->desc, pc->data, pc->sz-oldSz, oldSz, nullptr);
+    // pc->sz = newSize;
+    void* oldData = pc->data;
+    pc->data = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, newSize, 0, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
+    if (oldData)
+    {
+        memcpy(pc->data, oldData, oldSz);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, oldData, oldSz);
+    }
+    page what = {};
+    for (pagecache_mapped_region* curr = LIST_GET_HEAD(mapped_region_list, &pc->mapped_regions); curr && oldData; )
+    {
+        for (uintptr_t addr = curr->addr; addr < (curr->addr + curr->sz); addr += OBOS_PAGE_SIZE)
+        {
+            what.addr = addr;
+            page* const pg = RB_FIND(page_tree, &curr->ctx->pages, &what);
+            if (pg->isPrivateMapping)
+            {
+                curr = LIST_GET_NEXT(mapped_region_list, &pc->mapped_regions, curr);
+                break;
+            }
+            OBOS_ASSERT(pg->region == curr);
+            uintptr_t phys = 0;
+            OBOSS_GetPagePhysicalAddress((void*)oldData + curr->fileoff, &phys);
+            if (curr->fileoff >= pc->sz)
+            {
+                if (vn->filesize >= curr->fileoff)
+                    phys = Mm_AllocatePhysicalPages(1, 1, nullptr); // TODO: Do some sort of CoW?
+                else
+                {
+                    pg->prot.present = false;
+                    phys = 0;
+                }
+            }
+            MmS_SetPageMapping(curr->ctx->pt, pg, phys);
+        }
+
+        curr = LIST_GET_NEXT(mapped_region_list, &pc->mapped_regions, curr);
+    }
+    pc->sz = filesize;
+    if (filesize > oldSz)
+        vn->mount_point->fs_driver->driver->header.ftable.read_sync(vn->desc, pc->data, filesize-oldSz, oldSz, nullptr);
     Core_MutexRelease(&pc->lock);
 }

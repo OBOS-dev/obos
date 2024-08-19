@@ -16,6 +16,7 @@
 #include <mm/alloc.h>
 #include <mm/init.h>
 #include <mm/context.h>
+#include <mm/pmm.h>
 
 #include <sanitizers/asan.h>
 
@@ -68,7 +69,7 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
-			uintptr_t phys = OBOSS_AllocatePhysicalPages(nPages, 1, status);
+			uintptr_t phys = Mm_AllocatePhysicalPages(nPages, 1, status);
 			if (!phys)
 				return nullptr;
 			// Arch-specific:
@@ -87,7 +88,7 @@ static OBOS_NO_KASAN void* allocateBlock(basic_allocator* This, size_t size, int
 			memzero(ret, size);
 			return ret;
 		}
-		void* ret = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, size, 0, ((allocator_info*)This == OBOS_NonPagedPoolAllocator ? VMA_FLAGS_NON_PAGED : 0), status);
+		void* ret = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, size, 0, ((allocator_info*)This == OBOS_NonPagedPoolAllocator ? VMA_FLAGS_NON_PAGED : 0), nullptr, status);
 		if (!ret)
 			return nullptr;
 		if ((allocator_info*)This == OBOS_NonPagedPoolAllocator)
@@ -113,7 +114,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	if (!blk)
 		return nullptr;
 	blk->magic = PAGEBLOCK_MAGIC;
-	blk->size = initialSize + sizeof(basicalloc_node);
+	blk->size = initialSize+sizeof(basicalloc_region);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);
 	memzero(n, sizeof(*n));
 	n->magic = MEMBLOCK_MAGIC;
@@ -163,11 +164,15 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 			uintptr_t phys = 0;
 #ifdef __x86_64__
 			phys = Arch_UnmapFromHHDM(block);
+#elif defined(__m68k__)
+			phys = Arch_UnmapFromHHDM(block);
+#else
+#	error Unknown architecture
 #endif
 			size_t nPages = block->size / OBOS_PAGE_SIZE;
 			if (block->size % OBOS_PAGE_SIZE)
 				nPages++;
-			OBOSS_FreePhysicalPages(phys, nPages);
+			Mm_FreePhysicalPages(phys, nPages);
 			break;
 		}
 		default:

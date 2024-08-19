@@ -151,9 +151,10 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         &ctx, 
         (uintptr_t)async_write, (uintptr_t)irp,
         false,
-        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 
         0x10000);
     CoreH_ThreadInitialize(irp->worker, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, irp->worker);
     CoreH_ThreadReady(irp->worker);
     desc->offset += nBytes;
     return OBOS_STATUS_SUCCESS;
@@ -224,9 +225,11 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         &ctx, 
         (uintptr_t)async_read, (uintptr_t)irp,
         false,
-        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 
         0x10000);
     CoreH_ThreadInitialize(irp->worker, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    irp->worker->stackFree = CoreH_VMAStackFree;
+    irp->worker->stackFreeUserdata = &Mm_KernelContext;
     CoreH_ThreadReady(irp->worker);
     desc->offset += nBytes;
     return OBOS_STATUS_SUCCESS;

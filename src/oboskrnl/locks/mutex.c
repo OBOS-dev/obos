@@ -31,7 +31,7 @@ obos_status Core_MutexAcquire(mutex* mut)
     if (mut->who == Core_GetCurrentThread())
         return OBOS_STATUS_RECURSIVE_LOCK;
     // Spin for a bit.
-    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : IRQL_INVALID;
     int spin = 100000;
     bool success = true;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
@@ -40,7 +40,8 @@ obos_status Core_MutexAcquire(mutex* mut)
         if (spin-- >= 0)
             success = false;
     }
-    Core_LowerIrql(oldIrql);
+    if (oldIrql != IRQL_INVALID)
+        Core_LowerIrql(oldIrql);
     if (success)
     {
         mut->who = Core_GetCurrentThread();

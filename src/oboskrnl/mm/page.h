@@ -17,26 +17,31 @@ typedef struct page_node
 } page_node;
 typedef struct page
 {
-    struct context* owner;       // The context that this page is in.
-    RB_ENTRY(page) rb_node;      // The rb-tree node.
-    struct page_node ln_node;    // The linked-list node.
-    struct                       //
-    {                            //
-        bool present : 1;        // If set, the page is present.
-        bool rw : 1;             // If set, the page can be written
-        bool user : 1;           // If set, the page can be accessed in user mode.
-        bool touched : 1;        // If set, the page has been read or written.
-        bool huge_page : 1;      // If set, the page is a huge page.
-        bool executable : 1;     // If set, the page can be executed.
-    } prot;                      // The protection of the page.
-    bool pageable : 1;           // If set, the page is pageable.
-    bool pagedOut : 1;           // If set, the page is paged out.
-    size_t workingSets : 16;     // The amount of working sets the page is in.
-    bool isGuardPage : 1;        // If set, the page is a guard page.
-    bool allocated : 1;          // If set, this object was allocated by Mm_Allocator.
-    uint8_t age : 8;             // The page's age
-    uintptr_t addr : PTR_BITS;   // The page's address.
-    uintptr_t swapId : PTR_BITS; // The page's swap allocation id. Only valid if pagedOut == true.
+    struct context* owner;                  // The context that this page is in.
+    RB_ENTRY(page) rb_node;                 // The rb-tree node.
+    page_node ln_node;                      // The linked-list node.
+    struct pagecache_mapped_region* region; // A region of a vnode that is supposed to be mapped here.
+    bool isPrivateMapping;                  // Only valid if region != nullptr. Set to true if the file mapping is a private mapping.
+    struct                                  //
+    {                                       //
+        bool present : 1;                   // If set, the page is present.
+        bool rw : 1;                        // If set, the page can be written
+        bool user : 1;                      // If set, the page can be accessed in user mode.
+        bool touched : 1;                   // If set, the page has been read or written.
+        bool huge_page : 1;                 // If set, the page is a huge page.
+        bool executable : 1;                // If set, the page can be executed.
+        bool ro : 1;                        // If set, this page was originally allocated as read-only. This is only used in CoW pages as of now.
+    } prot;                                 // The protection of the page.
+    bool pageable : 1;                      // If set, the page is pageable.
+    bool pagedOut : 1;                      // If set, the page is paged out.
+    size_t workingSets : 16;                // The amount of working sets the page is in.
+    bool isGuardPage : 1;                   // If set, the page is a guard page.
+    bool allocated : 1;                     // If set, this object was allocated by Mm_Allocator.
+    uint8_t age : 8;                        // The page's age
+    uintptr_t addr : PTR_BITS;              // The page's address.
+    uintptr_t swapId : PTR_BITS;            // The page's swap allocation id. Only valid if pagedOut == true.
+    struct page* next_copied_page;          // If CoW is enabled on this page, this contains the pointer to the next page we're sharing data with.
+    struct page* prev_copied_page;          // If CoW is enabled on this page, this contains the pointer to the previous page we're sharing data with.
 } page;
 typedef struct page_list
 {

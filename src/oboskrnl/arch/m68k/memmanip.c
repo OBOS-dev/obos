@@ -63,5 +63,5 @@ OBOS_NO_KASAN OBOS_NO_UBSAN size_t strchr(const char* str, char ch)
 	size_t i = 0;
 	for (; str[i] != ch && str[i]; i++)
 		;
-	return i;
+	return i + (str[i] == ch ? 1 : 0);
 }

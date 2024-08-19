@@ -104,6 +104,16 @@ typedef _Bool bool;
 #if __STDC_HOSTED__
 #	error Must be compiled as freestanding.
 #endif
-#define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
-#define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
-#define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#if OBOS_KERNEL
+#	define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#	define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
+#	define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#elif defined(OBOS_DRIVER) && !defined(__m68k__)
+#	define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#	define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
+#	define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#else
+#	define OBOS_PAGEABLE_VARIABLE
+#	define OBOS_PAGEABLE_RO_VARIABLE
+#	define OBOS_PAGEABLE_FUNCTION
+#endif

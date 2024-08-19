@@ -13,6 +13,8 @@
 
 #include <locks/spinlock.h>
 
+#include <irq/dpc.h>
+
 #ifdef __x86_64__
 typedef uintptr_t page_table;
 #elif __m68k__
@@ -50,6 +52,17 @@ typedef struct working_set
     size_t capacity;
     size_t size;
 } working_set;
+typedef struct memstat
+{
+    // The size of all allocated (committed) memory.
+    size_t committedMemory;
+    // The size of all memory within this context which has been paged out.
+    size_t paged;
+    // The size of all pageable memory (memory that can be paged out).
+    size_t pageable;
+    // The size of all non-pageable memory (memory that cannot be paged out).
+    size_t nonPaged;
+} memstat;
 typedef struct context
 {
     struct process* owner;
@@ -59,6 +72,8 @@ typedef struct context
     page_list referenced;
     spinlock lock;
     page_table pt;
+    dpc file_mapping_dpc;
+    memstat stat;
 } context;
 extern context Mm_KernelContext;
 extern char MmS_MMPageableRangeStart[];
