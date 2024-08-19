@@ -45,36 +45,6 @@
     "                         is used as root."
 */
 
-static iterate_decision foreach_dev(dev_desc desc, size_t unused1, size_t unused2, void* udata)
-{
-    OBOS_UNUSED(unused1);
-    OBOS_UNUSED(unused2);
-    driver_id* drv = (driver_id*)udata;
-    const char* dev_name = nullptr;
-    drv->header.ftable.query_user_readable_name(desc, &dev_name);
-    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
-    vdev* vdrv = Vfs_Calloc(1, sizeof(vdev));
-    vdrv->driver = drv;
-    vdrv->data = nullptr;
-    vdrv->desc = desc;
-    vn->desc = desc;
-    vn->un.device = vdrv;
-    vn->vtype = VNODE_TYPE_CHR;
-    vn->filesize = 0;
-    vn->group_uid = ROOT_GID;
-    vn->owner_uid = ROOT_UID;
-    vn->perm.owner_read = true;
-    vn->perm.group_read = true;
-    vn->perm.owner_write = true;
-    vn->perm.group_write = true;
-    dirent* slash_dev = VfsH_DirentLookup("/dev");
-    vn->mount_point = slash_dev->vnode->mount_point;
-    dirent* ent = Vfs_Calloc(1, sizeof(dirent));
-    ent->vnode = vn;
-    OBOS_InitString(&ent->name, dev_name);
-    VfsH_DirentAppendChild(slash_dev, ent);
-    return ITERATE_DECISION_CONTINUE;
-}
 void Vfs_Initialize()
 {
     char* root_uuid = OBOS_GetOPTS("root-fs-uuid");
@@ -140,9 +110,8 @@ void Vfs_Initialize()
     // Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
     while (!(mainThr->flags & THREAD_FLAGS_DIED))
         ;
-    driver->header.ftable.foreach_device(foreach_dev, driver);
     Vfs_FdClose(&file);
-    pathspec = "/dev/COM1";
+    pathspec = OBOS_DEV_PREFIX "/COM1";
     Vfs_FdOpen(&file, pathspec, FD_OFLAGS_UNCACHED);
     Vfs_FdIoctl(&file, 6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
         1,
@@ -150,8 +119,7 @@ void Vfs_Initialize()
         /* EIGHT_DATABITS */ 3,
         /* ONE_STOPBIT */ 0,
         /* PARITYBIT_NONE */ 0,
-        &file.vn->desc);
-    file.vn->un.device->desc = file.vn->desc;
+        nullptr);
     char message[15] = {};
     Vfs_FdRead(&file, message, 14, nullptr);
     Vfs_FdWrite(&file, message, 14, nullptr);

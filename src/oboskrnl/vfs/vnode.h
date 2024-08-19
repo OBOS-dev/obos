@@ -75,7 +75,6 @@ typedef struct vnode
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;
-    size_t nWrites;
     file_perm perm;
     pagecache pagecache;
     size_t filesize; // filesize.
@@ -83,3 +82,4 @@ typedef struct vnode
     gid group_uid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
 } vnode;
+OBOS_EXPORT vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev, uint32_t type);

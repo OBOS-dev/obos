@@ -114,6 +114,7 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
     dirent* last = mountpoint->root;
     char* currentPath = Vfs_Calloc(pathlen + 1, sizeof(char));
     size_t currentPathLen = 0;
+    OBOS_Debug("%s\n", path);
     while (tok < (path+pathlen))
     {
         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));

@@ -43,7 +43,8 @@ set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 target_include_directories(oboskrnl 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/drivers"
-	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
+	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES}
+)
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
@@ -64,5 +65,5 @@ target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
 set_source_files_properties(
     "arch/m68k/entry.c"
     PROPERTIES
-    OBJECT_DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test_driver"
+    OBJECT_DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/initrd"
 )

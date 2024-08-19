@@ -86,6 +86,8 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
     *tok_len = strchr(*tok, '/');
     if (*tok_len != currentPathLen)
         (*tok_len)--;
+    while ((*tok)[(*tok_len) - 1] == '/')
+        (*tok_len)--;
     if (curr->vnode && curr->vnode->flags & VFLAGS_MOUNTPOINT)
     {
         (*lastMountPoint) = ((*tok)-(*path));
@@ -110,6 +112,8 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
     size_t tok_len = strchr(tok, '/');
     if (tok_len != path_len)
         tok_len--;
+    while (tok[tok_len - 1] == '/')
+        tok_len--;
     if (!tok_len)
         return nullptr;
     // Offset of the last mount point in the path.
@@ -128,7 +132,6 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
         if (OBOS_CompareStringNC(&root->name, tok, tok_len))
         {
             // Match!
-            // root = curr;
             root = curr->d_children.head ? curr->d_children.head : root;
             dirent* what = 
                 on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
@@ -145,6 +148,8 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
                     on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
                 if (what)
                     return what;
+                // else
+                //     return nullptr;
                 curr = curr->d_children.head ? curr->d_children.head : curr;
                 break;
             }
@@ -187,4 +192,59 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
         parent->d_children.tail = what->d_prev_child;
     parent->d_children.nChildren--;
     what->d_parent = nullptr; // we're now an orphan :(
+}
+
+vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev_p, uint32_t type)
+{
+    static file_perm default_fileperm = {
+        .owner_read = true,
+        .group_read = true,
+        .other_read = false,
+        .owner_write = true,
+        .group_write = true,
+        .other_write = false,
+        .owner_exec = false,
+        .group_exec = false,
+        .other_exec = false,
+    };
+    if (!drv)
+        return nullptr;
+    vdev* dev = Vfs_Calloc(1, sizeof(vdev));
+    dev->desc = desc;
+    dev->driver = drv;
+    vnode *vn = Vfs_Calloc(1, sizeof(vnode));
+    vn->desc = desc;
+    vn->filesize = filesize;
+    vn->un.device = dev;
+    vn->perm = default_fileperm;
+    vn->vtype = type;
+    vn->group_uid = ROOT_GID;
+    vn->owner_uid = ROOT_UID;
+    if (dev_p)
+        *dev_p = dev;
+    return vn;    
+}
+dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
+{
+    if (!vn || !dev_name)
+        return nullptr;
+    dirent* parent = VfsH_DirentLookup(OBOS_DEV_PREFIX);
+    if (!parent)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    dirent* ent = VfsH_DirentLookupFrom(dev_name, parent);
+    if (ent && ent->vnode == vn)
+        return ent;
+    if (!ent)
+        ent = Vfs_Calloc(1, sizeof(dirent));
+    else
+    {
+        ent->vnode = vn;
+        ent->vnode->mount_point = parent->vnode->mount_point;
+        return ent;
+    }
+    ent->vnode = vn;
+    ent->vnode->mount_point = parent->vnode->mount_point;
+    OBOS_InitString(&ent->name, dev_name);
+    VfsH_DirentAppendChild(parent, ent);
+    return ent;
 }

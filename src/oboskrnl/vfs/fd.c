@@ -41,6 +41,8 @@ obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags)
 {
     if (!desc || !path)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
     dirent* ent = VfsH_DirentLookup(path);
     if (!ent)
         return OBOS_STATUS_NOT_FOUND;
@@ -230,7 +232,7 @@ obos_status Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...)
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
     if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_INVALID_IOCTL;
     va_list list;
     va_start(list, request);
     obos_status status = desc->vn->un.device->driver->header.ftable.ioctl_var(nParameters, request, list);
@@ -239,6 +241,10 @@ obos_status Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...)
 }
 obos_status Vfs_FdFlush(fd* desc)
 {
+    if (!desc)
+        return OBOS_STATUS_SUCCESS;
+    if (desc->flags & FD_FLAGS_UNCACHED)
+        return OBOS_STATUS_INVALID_OPERATION;
     VfsH_PageCacheFlush(&desc->vn->pagecache, desc->vn);
     return OBOS_STATUS_SUCCESS;
 }

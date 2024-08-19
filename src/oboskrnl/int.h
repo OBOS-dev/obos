@@ -117,3 +117,5 @@ typedef _Bool bool;
 #	define OBOS_PAGEABLE_RO_VARIABLE
 #	define OBOS_PAGEABLE_FUNCTION
 #endif
+
+#include <dev_prefix.h>

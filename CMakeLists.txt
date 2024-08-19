@@ -116,6 +116,11 @@ if (DEFINED OBOS_ENABLE_FANALYZER AND DEFINED OBOS_ENABLE_WERROR)
 	message(WARNING "OBOS_ENABLE_FANALYZER and OBOS_ENABLE_WERROR are mutually exclusive. Preferring OBOS_ENABLE_FANALYZER.")
 endif()
 
+if (NOT DEFINED OBOS_DEV_PREFIX)
+	set(OBOS_DEV_PREFIX "/dev/")
+endif()
+configure_file(${CMAKE_SOURCE_DIR}/src/inc/dev_prefix.h.in ${CMAKE_SOURCE_DIR}/src/oboskrnl/dev_prefix.h @ONLY)
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")

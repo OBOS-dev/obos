@@ -30,7 +30,12 @@
 
 #include <locks/spinlock.h>
 
+#include <vfs/vnode.h>
+#include <vfs/dirent.h>
+
 #include "serial_port.h"
+
+#include <uacpi_libc.h>
 
 driver_id* this_driver;
 serial_port* serialPorts = nullptr;
@@ -296,6 +301,12 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             OBOS_Warning("Could not initialize GSI for COM%d. Status: %d.\n", port->com_port, status);
             continue;
         }
+
+        vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)port, 0, nullptr, VNODE_TYPE_CHR);
+        const char* dev_name = nullptr;
+        query_user_readable_name(vn->desc, &dev_name);
+        OBOS_Debug("%*s: Registering serial port at %s%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, dev_name);
+        Drv_RegisterVNode(vn, dev_name);
     }
     Core_ExitCurrentThread();
 }

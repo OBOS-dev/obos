@@ -40,3 +40,5 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what);
 // the lookup
 dirent* VfsH_DirentLookup(const char* path);
 dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);
+
+OBOS_EXPORT dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name);

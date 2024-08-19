@@ -58,7 +58,10 @@ struct async_irp
 
 static void async_read(struct async_irp* irp)
 {
-    irp->vn->mount_point->fs_driver->driver->header.ftable.read_sync(
+    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &irp->vn->mount_point->fs_driver->driver->header : nullptr;
+    if (irp->vn->vtype == VNODE_TYPE_CHR || irp->vn->vtype == VNODE_TYPE_BLK)
+        driver = &irp->vn->un.device->driver->header;
+    driver->ftable.read_sync(
         irp->vn->desc,
         irp->un.buf,
         irp->requestSize,
@@ -72,7 +75,10 @@ static void async_read(struct async_irp* irp)
 }
 static void async_write(struct async_irp* irp)
 {
-    irp->vn->mount_point->fs_driver->driver->header.ftable.write_sync(
+    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &irp->vn->mount_point->fs_driver->driver->header : nullptr;
+    if (irp->vn->vtype == VNODE_TYPE_CHR || irp->vn->vtype == VNODE_TYPE_BLK)
+        driver = &irp->vn->un.device->driver->header;
+    driver->ftable.write_sync(
         irp->vn->desc,
         irp->un.cbuf,
         irp->requestSize,
