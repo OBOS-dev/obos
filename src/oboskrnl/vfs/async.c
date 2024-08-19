@@ -40,27 +40,14 @@ static bool is_eof(vnode* vn, size_t off)
     return off >= vn->filesize;
 }
 
-struct async_irp
-{
-    // This event object is set the operation is finished.
-    event* e;
-    union {
-        const void* cbuf;
-        void* buf;
-    } un;
-    size_t requestSize;
-    thread* worker;
-    bool rw : 1; // if false, the operation is a read, otherwise it is a write.
-    bool cached : 1;
-    uoff_t fileoff;
-    vnode* vn;
-};
-
 static void async_read(struct async_irp* irp)
 {
-    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &irp->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = irp->vn->mount_point ? irp->vn->mount_point : irp->vn->un.mounted;
+    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (irp->vn->vtype == VNODE_TYPE_CHR || irp->vn->vtype == VNODE_TYPE_BLK)
         driver = &irp->vn->un.device->driver->header;
+    if (!VfsH_LockMountpoint(point))
+        goto abort;
     driver->ftable.read_sync(
         irp->vn->desc,
         irp->un.buf,
@@ -68,16 +55,22 @@ static void async_read(struct async_irp* irp)
         irp->fileoff,
         nullptr
     );
+    VfsH_UnlockMountpoint(point);
 
+    abort:
     Core_EventSet(irp->e, true);
+    irp->vn->nPendingAsyncIO--;
     Vfs_Free(irp);
     Core_ExitCurrentThread();
 }
 static void async_write(struct async_irp* irp)
 {
-    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &irp->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = irp->vn->mount_point ? irp->vn->mount_point : irp->vn->un.mounted;
+    const driver_header* driver = irp->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (irp->vn->vtype == VNODE_TYPE_CHR || irp->vn->vtype == VNODE_TYPE_BLK)
         driver = &irp->vn->un.device->driver->header;
+    if (!VfsH_LockMountpoint(point))
+        goto abort;
     driver->ftable.write_sync(
         irp->vn->desc,
         irp->un.cbuf,
@@ -85,8 +78,11 @@ static void async_write(struct async_irp* irp)
         irp->fileoff,
         nullptr
     );
+    VfsH_UnlockMountpoint(point);
     
+    abort:
     Core_EventSet(irp->e, true);
+    irp->vn->nPendingAsyncIO--;
     Vfs_Free(irp);
     Core_GetCurrentThread();
 }
@@ -109,12 +105,19 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         // If it is not, or the vnode is not backed by a drive, then an IRP is made.
         // Otherwise, the read is made, and the operation completes.
         size_t sector_size = 0;
-        if (!desc->vn->mount_point->device)
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+        if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
+            driver = &desc->vn->un.device->driver->header;
+        if (!point->device)
             goto irp;
-        desc->vn->mount_point->device->driver->header.ftable.get_blk_size(desc->vn->mount_point->device->desc, &sector_size);
+        driver->ftable.get_blk_size(point->device->desc, &sector_size);
         if (nBytes >= sector_size)
             goto irp;
-        obos_status status = desc->vn->mount_point->fs_driver->driver->header.ftable.write_sync(
+        
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
+        obos_status status = driver->ftable.write_sync(
             desc->vn->desc,
             buf,
             nBytes,
@@ -123,6 +126,7 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         );
         Core_EventSet(evnt, true);
         desc->offset += nBytes;
+        VfsH_UnlockMountpoint(point);
         return status;
     }
     else 
@@ -132,7 +136,11 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         size_t nBytesToRead = nBytes;
         if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
             nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
         memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytesToRead);
+        VfsH_UnlockMountpoint(point);
         if (!(nBytesToRead-nBytes))
         {
             desc->offset += nBytes;
@@ -160,7 +168,10 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 
         0x10000);
     CoreH_ThreadInitialize(irp->worker, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    irp->worker->stackFree = CoreH_VMAStackFree;
+    irp->worker->stackFreeUserdata = &Mm_KernelContext;
     Core_ProcessAppendThread(OBOS_KernelProcess, irp->worker);
+    desc->vn->nPendingAsyncIO++;
     CoreH_ThreadReady(irp->worker);
     desc->offset += nBytes;
     return OBOS_STATUS_SUCCESS;
@@ -183,12 +194,18 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         // If it is not, or the vnode is not backed by a drive, then an IRP is made.
         // Otherwise, the read is made, and the operation completes.
         size_t sector_size = 0;
-        if (!desc->vn->mount_point->device)
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+        if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
+            driver = &desc->vn->un.device->driver->header;
+        if (!point->device)
             goto irp;
-        desc->vn->mount_point->device->driver->header.ftable.get_blk_size(desc->vn->mount_point->device->desc, &sector_size);
+        point->device->driver->header.ftable.get_blk_size(point->device->desc, &sector_size);
         if (nBytes >= sector_size)
             goto irp;
-        obos_status status = desc->vn->mount_point->fs_driver->driver->header.ftable.read_sync(
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
+        obos_status status = driver->ftable.read_sync(
             desc->vn->desc,
             buf,
             nBytes,
@@ -197,6 +214,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         );
         Core_EventSet(evnt, true);
         desc->offset += nBytes;
+        VfsH_UnlockMountpoint(point);
         return status;
     }
     else 
@@ -206,7 +224,11 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         size_t nBytesToRead = nBytes;
         if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
             nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
         memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytesToRead);
+        VfsH_UnlockMountpoint(point);
         if (!(nBytesToRead-nBytes))
         {
             desc->offset += nBytes;
@@ -236,6 +258,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
     CoreH_ThreadInitialize(irp->worker, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
     irp->worker->stackFree = CoreH_VMAStackFree;
     irp->worker->stackFreeUserdata = &Mm_KernelContext;
+    desc->vn->nPendingAsyncIO++;
     CoreH_ThreadReady(irp->worker);
     desc->offset += nBytes;
     return OBOS_STATUS_SUCCESS;

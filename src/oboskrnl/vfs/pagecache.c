@@ -94,7 +94,8 @@ void VfsH_PageCacheFlush(pagecache* pc, void* vn_)
     OBOS_ASSERT(vn);
     OBOS_ASSERT(&vn->pagecache == pc);
     Core_MutexAcquire(&pc->dirty_list_lock);
-    driver_id* driver = vn->mount_point->fs_driver->driver;
+    mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    driver_id* driver = point->fs_driver->driver;
     for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
     {   
         pagecache_dirty_region* next = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
@@ -110,15 +111,16 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
     if (newSize == pc->sz)
         return;
     size_t filesize = newSize;
-    newSize = newSize + (OBOS_PAGE_SIZE-(newSize%OBOS_PAGE_SIZE));
+    if (newSize % OBOS_PAGE_SIZE)
+        newSize = newSize + (OBOS_PAGE_SIZE-(newSize%OBOS_PAGE_SIZE));
     Core_MutexAcquire(&pc->lock);
     size_t oldSz = pc->sz;
     // pc->sz = newSize;
     void* oldData = pc->data;
     pc->data = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, newSize, 0, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
-    if (oldData)
+    if (oldData && newSize)
     {
-        memcpy(pc->data, oldData, oldSz);
+        memcpy(pc->data, oldData, oldSz > newSize ? oldSz - newSize : oldSz);
         Mm_VirtualMemoryFree(&Mm_KernelContext, oldData, oldSz);
     }
     page what = {};

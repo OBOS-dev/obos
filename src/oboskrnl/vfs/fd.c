@@ -53,6 +53,8 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
     OBOS_ASSERT(ent->vnode);
     if (ent->vnode->vtype == VNODE_TYPE_DIR)
         return OBOS_STATUS_NOT_A_FILE;
+    if (ent->vnode->vtype == VNODE_TYPE_CHR)
+        oflags |= FD_FLAGS_UNCACHED;
     desc->vn = ent->vnode;
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;
@@ -89,12 +91,14 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
     if (oflags & FD_OFLAGS_UNCACHED)
         desc->flags |= FD_FLAGS_UNCACHED;
     desc->vn->refs++;
+    LIST_APPEND(fd_list, &desc->vn->opened, desc);
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
 {
-    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
         driver = &desc->vn->un.device->driver->header;
     size_t blkSize = 0;
@@ -103,7 +107,10 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
     const uintptr_t offset = desc->offset / blkSize;
+    if (!VfsH_LockMountpoint(point))
+        return OBOS_STATUS_ABORTED;
     obos_status status = driver->ftable.write_sync(desc->vn->desc, from, nBytes, offset, nWritten_);
+    VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
     return OBOS_STATUS_SUCCESS;
@@ -133,10 +140,14 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
     {
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
         OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
         Core_MutexAcquire(&dirty->lock);
         if (desc->vn->pagecache.sz <= desc->offset)
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
         memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytes);
+        VfsH_UnlockMountpoint(point);
         Core_MutexRelease(&dirty->lock);
 
         if (nWritten)
@@ -148,7 +159,8 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
 }
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
 {
-    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
         driver = &desc->vn->un.device->driver->header;
     size_t blkSize = 0;
@@ -157,7 +169,10 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
     const uintptr_t offset = desc->offset / blkSize;
+    if (!VfsH_LockMountpoint(point))
+        return OBOS_STATUS_ABORTED;
     obos_status status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, offset, nRead_);
+    VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
     return OBOS_STATUS_SUCCESS;
@@ -188,11 +203,15 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionLookup(&desc->vn->pagecache, desc->offset);
         if (dirty)
             Core_MutexAcquire(&dirty->lock);
+        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
         if ((desc->offset+nBytes) > desc->vn->pagecache.sz)
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
         memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytes);
         if (dirty)
             Core_MutexRelease(&dirty->lock);
+        VfsH_UnlockMountpoint(point);
 
         if (nRead)
             *nRead = nBytes;
@@ -222,7 +241,8 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     }
     if (is_eof(desc->vn, finalOff))
         return OBOS_STATUS_EOF;
-    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
         driver = &desc->vn->un.device->driver->header;
     size_t blkSize = 0;
@@ -242,7 +262,8 @@ size_t Vfs_FdGetBlkSz(const fd* desc)
 {
     if (!desc)
         return (size_t)-1;
-    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
         driver = &desc->vn->un.device->driver->header;
     size_t blkSize = 0;
@@ -281,14 +302,24 @@ obos_status Vfs_FdFlush(fd* desc)
         return OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
         return OBOS_STATUS_INVALID_OPERATION;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    if (!VfsH_LockMountpoint(point))
+        return OBOS_STATUS_ABORTED;
     VfsH_PageCacheFlush(&desc->vn->pagecache, desc->vn);
+    VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_FdClose(fd* desc)
 {
     Vfs_FdFlush(desc);
-    desc->flags &= ~FD_FLAGS_OPEN;
+    mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    if (!VfsH_LockMountpoint(point))
+        return OBOS_STATUS_ABORTED;
     vnode* vn = desc->vn;
+    LIST_REMOVE(fd_list, &desc->vn->opened, desc);
     vn->refs--;
+    desc->flags &= ~FD_FLAGS_OPEN;
+    VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;
 }
+LIST_GENERATE(fd_list, struct fd, node);

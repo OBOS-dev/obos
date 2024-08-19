@@ -13,6 +13,7 @@
 #include <utils/string.h>
 #include <utils/list.h>
 
+typedef LIST_HEAD(dirent_list, struct dirent) dirent_list;
 typedef struct dirent
 {
     struct
@@ -29,7 +30,9 @@ typedef struct dirent
     } tree_info;
     struct vnode* vnode;
     string name;
+    LIST_NODE(dirent_list, struct dirent) node;
 } dirent;
+LIST_PROTOTYPE(dirent_list, dirent, node);
 #define d_children tree_info.children
 #define d_next_child tree_info.next_child
 #define d_prev_child tree_info.prev_child

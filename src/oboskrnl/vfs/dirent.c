@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "vfs/vnode.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -46,6 +47,7 @@ static void namecache_insert(namecache* nc, dirent* what, const char* path, size
     namecache_ent* ent = Vfs_Calloc(1, sizeof(namecache_ent));
     ent->ent = what;
     ent->ref = what->vnode;
+    ent->ref->refs++;
     OBOS_StringSetAllocator(&ent->path, Vfs_Allocator);
     OBOS_InitStringLen(&ent->path, path, pathlen);
     if (!namecache_lookup_internal(nc, OBOS_GetStringCPtr(&ent->path)))
@@ -119,10 +121,10 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
     // Offset of the last mount point in the path.
     size_t lastMountPoint = 0;
     mount* lastMount = root->vnode->flags & VFLAGS_MOUNTPOINT ? root->vnode->un.mounted : root->vnode->mount_point;
-    if (root->vnode && root->vnode->mount_point && root == root->vnode->mount_point->root)
+    if (root->vnode && root->vnode->flags & VFLAGS_MOUNTPOINT)
     {
         // If 'root' is at the root of it's mount point, consult the name cache.
-        dirent* hit = namecache_lookup(&root->vnode->mount_point->nc, path);
+        dirent* hit = namecache_lookup(&root->vnode->un.mounted->nc, path);
         if (hit)
             return hit;
     }
@@ -179,6 +181,10 @@ void VfsH_DirentAppendChild(dirent* parent, dirent* child)
     parent->d_children.tail = child;
     parent->d_children.nChildren++;
     child->d_parent = parent;
+    mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
+    LIST_APPEND(dirent_list, &point->dirent_list, child);
+    if (child->vnode)
+        child->vnode->refs++;
 }
 void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
 {
@@ -192,6 +198,8 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
         parent->d_children.tail = what->d_prev_child;
     parent->d_children.nChildren--;
     what->d_parent = nullptr; // we're now an orphan :(
+    mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
+    LIST_REMOVE(dirent_list, &point->dirent_list, what);
 }
 
 vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev_p, uint32_t type)
@@ -212,6 +220,7 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vdev* dev = Vfs_Calloc(1, sizeof(vdev));
     dev->desc = desc;
     dev->driver = drv;
+    dev->refs++;
     vnode *vn = Vfs_Calloc(1, sizeof(vnode));
     vn->desc = desc;
     vn->filesize = filesize;
@@ -234,17 +243,24 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
     dirent* ent = VfsH_DirentLookupFrom(dev_name, parent);
     if (ent && ent->vnode == vn)
         return ent;
+    mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
     if (!ent)
         ent = Vfs_Calloc(1, sizeof(dirent));
     else
     {
         ent->vnode = vn;
-        ent->vnode->mount_point = parent->vnode->mount_point;
+
+        ent->vnode->mount_point = point;
         return ent;
     }
+    if (!VfsH_LockMountpoint(point))
+        return nullptr;
     ent->vnode = vn;
-    ent->vnode->mount_point = parent->vnode->mount_point;
+    ent->vnode->mount_point = point;
+    OBOS_StringSetAllocator(&ent->name, Vfs_Allocator);
     OBOS_InitString(&ent->name, dev_name);
     VfsH_DirentAppendChild(parent, ent);
+    VfsH_UnlockMountpoint(point);
     return ent;
 }
+LIST_GENERATE(dirent_list, dirent, node);

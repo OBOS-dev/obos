@@ -132,5 +132,9 @@ typedef enum
 	/// <summary>
 	/// The fd object hit EOF.
 	/// </summary>
-	OBOS_STATUS_EOF
+	OBOS_STATUS_EOF,
+	/// <summary>
+	/// The operation was aborted.
+	/// </summary>
+	OBOS_STATUS_ABORTED,
 } obos_status;

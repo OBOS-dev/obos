@@ -130,6 +130,9 @@ void Vfs_Initialize()
     Vfs_FdWrite(&file, message, uacpi_strnlen(message, 32), nullptr);
     Vfs_FdClose(&file);
     end:
+    Vfs_Unmount(Vfs_Root->vnode->mount_point);
+    status = Vfs_FdOpen(&file, "/dev/COM1", FD_OFLAGS_UNCACHED);
+    OBOS_ASSERT(obos_is_error(status));
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)

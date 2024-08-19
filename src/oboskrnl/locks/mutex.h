@@ -20,6 +20,8 @@ typedef struct mutex {
     // Whether the mutex is locked or not.
     atomic_flag lock;
     bool locked;
+    // set this when freeing an object.
+    bool ignoreAllAndBlowUp;
     // The thread that took the mutex.
     thread* who;
 } mutex;

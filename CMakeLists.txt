@@ -119,7 +119,6 @@ endif()
 if (NOT DEFINED OBOS_DEV_PREFIX)
 	set(OBOS_DEV_PREFIX "/dev/")
 endif()
-message("${OBOS_DEV_PREFIX}")
 configure_file(${CMAKE_SOURCE_DIR}/src/inc/dev_prefix.h.in ${CMAKE_SOURCE_DIR}/src/oboskrnl/inc/dev_prefix.h @ONLY)
 
 # Include the kernel

@@ -28,9 +28,17 @@ typedef struct mount
     vdev* device; // the block device the filesystem is situated on.
     vnode* mounted_on;
     namecache nc;
+    dirent_list dirent_list;
+    atomic_size_t nWaiting;
+    bool awaitingFree;
 } mount;
 extern struct dirent* Vfs_Root;
 extern mount_list Vfs_Mounted;
+
+// returns true if the operation succeeded.
+bool VfsH_LockMountpoint(mount* point);
+// returns true if the operation succeeded.
+bool VfsH_UnlockMountpoint(mount* point);
 
 obos_status Vfs_Mount(const char* at, vdev* device, vdev* fs_driver, mount** mountpoint);
 obos_status Vfs_Unmount(mount* what);

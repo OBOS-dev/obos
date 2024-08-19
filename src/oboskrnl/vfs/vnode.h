@@ -9,6 +9,7 @@
 #include <int.h>
 
 #include <vfs/pagecache.h>
+#include <vfs/fd.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
@@ -50,6 +51,7 @@ typedef struct vdev
     dev_desc desc;
     driver_id* driver;
     void* data;
+    size_t refs;
 } vdev;
 typedef struct file_perm
 {
@@ -75,11 +77,28 @@ typedef struct vnode
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;
+    atomic_size_t nPendingAsyncIO;
     file_perm perm;
     pagecache pagecache;
     size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.
     gid group_uid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
+    fd_list opened;
 } vnode;
+struct async_irp
+{
+    // This event object is set the operation is finished.
+    event* e;
+    union {
+        const void* cbuf;
+        void* buf;
+    } un;
+    size_t requestSize;
+    thread* worker;
+    bool rw : 1; // if false, the operation is a read, otherwise it is a write.
+    bool cached : 1;
+    uoff_t fileoff;
+    vnode* vn;
+};
 OBOS_EXPORT vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev, uint32_t type);

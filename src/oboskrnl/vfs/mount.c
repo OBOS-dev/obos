@@ -4,6 +4,10 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/wait.h"
+#include "scheduler/schedule.h"
+#include "vfs/fd.h"
+#include "vfs/pagecache.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -74,6 +78,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     vn->mount_point = mountpoint;
     vn->desc = desc;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
+    VfsH_PageCacheRef(&vn->pagecache);
     if (t)
         *t = type;
     return vn;
@@ -128,6 +133,7 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
         {
             // Allocate a new dirent.
             new = Vfs_Calloc(1, sizeof(dirent));
+            OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
             OBOS_InitStringLen(&new->name, token, tok_len);
             dev_desc curdesc = 0;
             file_type curtype = 0;
@@ -185,11 +191,14 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
         return OBOS_STATUS_INVALID_OPERATION;
     if (at->vnode->flags & VFLAGS_MOUNTPOINT)
         return OBOS_STATUS_ALREADY_MOUNTED;
+    if (at->d_children.nChildren)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     mount* mountpoint = Vfs_Calloc(1, sizeof(mount));
     if (pMountpoint)
         *pMountpoint = mountpoint;
     mountpoint->mounted_on = at->vnode;
     at->vnode->un.mounted = mountpoint;
+    // at->vnode->mount_point = mountpoint;
     at->vnode->flags |= VFLAGS_MOUNTPOINT;
     mountpoint->root = at;
     symbolic_link_list symlinks = {};
@@ -233,16 +242,121 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
         }
         lnk->ent->vnode = resolved->vnode;
         lnk->ent->vnode->refs++;
+        VfsH_PageCacheRef(&lnk->ent->vnode->pagecache);
         Vfs_Free(lnk); // free the temporary structure.
         lnk = next;
     }
     LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
     return OBOS_STATUS_SUCCESS;
 }
+bool VfsH_LockMountpoint(mount* point)
+{
+    point->nWaiting++;
+    obos_status status = Core_MutexAcquire(&point->lock);
+    if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
+        return false;
+    if (status == OBOS_STATUS_ABORTED)
+    {
+        if (point->awaitingFree && !(--point->nWaiting))
+            Vfs_Free(point);
+        return false;
+    }
+    point->nWaiting--;
+    return true;
+}
+bool VfsH_UnlockMountpoint(mount* point)
+{
+    return obos_is_success(Core_MutexRelease(&point->lock));
+}
+static void deref_vnode(vnode* vn)
+{
+    if (!(--vn->refs))
+    {
+        if (vn->pagecache.dirty_regions.nNodes)
+            OBOS_Warning("Freeing a vnode before dirty regions are freed. All cached writes will be dropped.\n");
+        VfsH_PageCacheResize(&vn->pagecache, vn, 0);
+        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+            if (!(vn->un.device->refs--))
+                Vfs_Free(vn->un.device);
+        Vfs_Free(vn);
+    }
+}
+static void close_fd(fd* desc)
+{
+    desc->flags &= ~FD_FLAGS_OPEN;
+    LIST_REMOVE(fd_list, &desc->vn->opened, desc);
+    deref_vnode(desc->vn);
+    
+}
+static void foreach_dirent(mount *what, void(*cb)(mount* what, dirent* ent, void* userdata), void* userdata)
+{
+    for (dirent* curr = LIST_GET_HEAD(dirent_list, &what->dirent_list); curr; )
+    {
+        dirent* next = LIST_GET_NEXT(dirent_list, &what->dirent_list, curr);
+        cb(what, curr, userdata);
+        curr = next;
+    }
+}
+// Closes FDs and waits for pending async IO operations to finish.
+static void stage_one(mount* unused, dirent* ent, void* userdata)
+{
+    OBOS_UNUSED(unused);
+    OBOS_UNUSED(userdata);
+    for (fd* curr = LIST_GET_HEAD(fd_list, &ent->vnode->opened); curr; )
+    {
+        fd* next = LIST_GET_NEXT(fd_list, &ent->vnode->opened, curr);
+        close_fd(curr);
+        curr = next;
+    }
+    // TODO: Use a proper synchronization primitive to deal with this.
+    while (ent->vnode->nPendingAsyncIO)
+        Core_Yield();
+}
+static void stage_two(mount* unused, dirent* ent, void* userdata)
+{
+    OBOS_UNUSED(unused);
+    OBOS_UNUSED(userdata);
+    VfsH_PageCacheFlush(&ent->vnode->pagecache, ent->vnode);
+    deref_vnode(ent->vnode);
+    OBOS_FreeString(&ent->name);
+    Vfs_Free(ent);
+}
 obos_status Vfs_Unmount(mount* what)
 {
-    OBOS_UNUSED(what);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    if (!what)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    Core_MutexAcquire(&what->lock);
+    what->mounted_on->un.mounted = nullptr;
+    what->mounted_on->flags &= ~VFLAGS_MOUNTPOINT;
+    foreach_dirent(what, stage_one, nullptr);
+    namecache_ent* curr;
+    for (curr = RB_MIN(namecache, &what->nc); curr;)
+    {
+        namecache_ent* next = RB_RIGHT(curr, rb_cache);
+        deref_vnode(curr->ref);
+        OBOS_FreeString(&curr->path);
+        Vfs_Free(curr);
+        curr = next;
+    }
+    what->root->d_children.head = nullptr;
+    what->root->d_children.tail = nullptr;
+    what->root->d_children.nChildren = 0;
+    foreach_dirent(what, stage_two, nullptr);
+    LIST_REMOVE(mount_list, &Vfs_Mounted, what);
+    if (what->root == Vfs_Root)
+    {
+        Vfs_Root->vnode->mount_point = nullptr;
+        Vfs_Root->vnode->un.mounted = nullptr;
+    }
+    what->awaitingFree = true;
+    if (!what->nWaiting)
+        Vfs_Free(what);
+    else // the last thread to be waken up will free the mount point.
+    {
+        what->lock.ignoreAllAndBlowUp = true;
+        CoreH_SignalWaitingThreads(WAITABLE_OBJECT(what->lock), true, false);
+    }
+    return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_UnmountP(const char* at)
 {
