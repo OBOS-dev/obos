@@ -82,57 +82,19 @@ void Vfs_Initialize()
     mount* root = nullptr;
     Vfs_Mount("/", nullptr, &initrd_dev, &root);
     Vfs_Root->vnode->mount_point = root;
-    const char* pathspec = "/uart";
-    fd file = {};
-    obos_status status = Vfs_FdOpen(&file, pathspec, FD_OFLAGS_READ_ONLY);
-    if (obos_is_error(status))
-    {
-        OBOS_Debug("Could not open %s. Status: %d\n", pathspec, status);
-        goto end;
-    }
-    Vfs_FdSeek(&file, 0, SEEK_END);
-    size_t filesize = Vfs_FdTellOff(&file);
-    Vfs_FdSeek(&file, 0, SEEK_SET);
-    void* buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &file, &status);
-    if (obos_is_error(status))
-    {
-        OBOS_Debug("Could not map view of %s. Status: %d\n", pathspec, status);
-        goto end;
-    }
-    driver_id* driver = Drv_LoadDriver(buf, filesize, &status);
-    if (obos_is_error(status))
-    {
-        OBOS_Debug("Could not load %s. Status: %d\n", pathspec, status);
-        goto end;
-    }
-    thread* mainThr = nullptr;
-    Drv_StartDriver(driver, &mainThr);
-    // Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
-    while (!(mainThr->flags & THREAD_FLAGS_DIED))
-        ;
-    Vfs_FdClose(&file);
-    pathspec = OBOS_DEV_PREFIX "/COM1";
-    Vfs_FdOpen(&file, pathspec, FD_OFLAGS_UNCACHED);
-    Vfs_FdIoctl(&file, 6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
-        1,
-        115200,
-        /* EIGHT_DATABITS */ 3,
-        /* ONE_STOPBIT */ 0,
-        /* PARITYBIT_NONE */ 0,
-        nullptr);
-    char message[32] = {};
-    for (size_t i = 0; i < 32; i++)
-    {
-        Vfs_FdRead(&file, &message[i], 1, nullptr);
-        if (message[i] == '\n')
-            break;
-    }
-    Vfs_FdWrite(&file, message, uacpi_strnlen(message, 32), nullptr);
-    Vfs_FdClose(&file);
+    if (root_partid)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+    if (root_uuid)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+}
+void Vfs_FinalizeInitialization()
+{
+    char* root_uuid = OBOS_GetOPTS("root-fs-uuid");
+    char* root_partid = OBOS_GetOPTS("root-fs-partid");
+    if (strcmp(root_partid ? root_partid : root_uuid, "initrd"))
+        goto end; // We needn't do anything.
+    OBOS_Debug("%s: Unimplemented.\n", __func__);
     end:
-    Vfs_Unmount(Vfs_Root->vnode->mount_point);
-    status = Vfs_FdOpen(&file, "/dev/COM1", FD_OFLAGS_UNCACHED);
-    OBOS_ASSERT(obos_is_error(status));
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)

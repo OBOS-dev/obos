@@ -882,6 +882,13 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_Debug("%s: Initializing VFS.\n", __func__);
 	Vfs_Initialize();
+	OBOS_Debug("%s: Loading drivers through PnP.\n", __func__);
+	// TODO:
+	// Load PnP drivers.
+	OBOS_Debug("%s: Unimplemented.\n", __func__);
+	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
+	Vfs_FinalizeInitialization();
+	// OBOS_Debug("%s: Loading init program...\n", __func__);
 	static gdb_connection gdb_conn = {};
 	// Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
 	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
