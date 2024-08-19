@@ -30,7 +30,12 @@
 
 #include <locks/spinlock.h>
 
+#include <vfs/vnode.h>
+#include <vfs/dirent.h>
+
 #include "serial_port.h"
+
+#include <uacpi_libc.h>
 
 driver_id* this_driver;
 serial_port* serialPorts = nullptr;
@@ -80,11 +85,11 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount))
+obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* udata), void* udata)
 {
     for (size_t i = 0; i < nSerialPorts; i++)
     {
-        switch (cb((dev_desc)&serialPorts[i], 1, -1))
+        switch (cb((dev_desc)&serialPorts[i], 1, -1, udata))
         {
             case ITERATE_DECISION_CONTINUE:
                 continue;
@@ -101,9 +106,11 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (!port || !buf || !blkCount)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t i = 0;
+    while(port->in_buffer.szBuf < blkCount)
+        ;
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
-    // TODO: Make sync instead of async.
-    for (; i < blkCount && i < port->in_buffer.szBuf; i++)
+    const size_t initialBufSize = port->in_buffer.szBuf;
+    for (; i < blkCount && i < initialBufSize; i++)
         ((char*)buf)[i] = pop_from_buffer(&port->in_buffer);
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
     if (nBlkRead)
@@ -137,6 +144,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     return OBOS_STATUS_SUCCESS;
 }
 obos_status ioctl(size_t nParameters, uint64_t request, ...);
+obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
@@ -148,6 +156,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = cleanup,
         .ioctl = ioctl,
+        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
@@ -204,11 +213,9 @@ static uacpi_ns_iteration_decision match_uart(void *user, uacpi_namespace_node *
     return UACPI_NS_ITERATION_DECISION_CONTINUE;
 }
 
-obos_status ioctl(size_t nParameters, uint64_t request, ...)
+obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
-    va_list list;
-    va_start(list, request);
     switch (request) 
     {
         case IOCTL_OPEN_SERIAL_CONNECTION:
@@ -245,6 +252,14 @@ obos_status ioctl(size_t nParameters, uint64_t request, ...)
             break;
         }
     }
+    return status;
+}
+obos_status ioctl(size_t nParameters, uint64_t request, ...)
+{
+    obos_status status = OBOS_STATUS_INVALID_IOCTL;
+    va_list list;
+    va_start(list, request);
+    status = ioctl_var(nParameters, request, list);
     va_end(list);
     return status;
 }
@@ -286,6 +301,12 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
             OBOS_Warning("Could not initialize GSI for COM%d. Status: %d.\n", port->com_port, status);
             continue;
         }
+
+        vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)port, 0, nullptr, VNODE_TYPE_CHR);
+        const char* dev_name = nullptr;
+        query_user_readable_name(vn->desc, &dev_name);
+        OBOS_Debug("%*s: Registering serial port at %s%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, dev_name);
+        Drv_RegisterVNode(vn, dev_name);
     }
     Core_ExitCurrentThread();
 }

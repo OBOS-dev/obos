@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define obos_expect(expr, eval) __builtin_expect((expr), (eval))
+
 #if OBOS_KERNEL
 #	define OBOS_EXPORT __attribute__((visibility("default")))
 // Usually redundant.
@@ -39,6 +41,10 @@
 #define PTR_BITS 16
 #endif
 
+typedef uint32_t uid, gid;
+#define ROOT_UID 0
+#define ROOT_GID 0
+
 #if !defined(__cplusplus) && !defined(true) && !defined(false)
 #	define true (1)
 #	define false (0)
@@ -46,7 +52,9 @@ typedef _Bool bool;
 #endif
 #ifndef __cplusplus
 #	define nullptr ((void*)0)
-#	undef NULL
+#	ifndef IS_UACPI_BUILD
+#		undef NULL
+#	endif
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
 #		define OBOS_ALIGNAS(x) _Alignas(x)
@@ -61,7 +69,9 @@ typedef _Bool bool;
 #	endif
 #else
 #	define OBOS_ALIGNAS(x) alignas(x)
-#	undef NULL
+#	ifndef IS_UACPI_BUILD
+#		undef NULL
+#	endif
 #endif
 
 #define OBOS_NORETURN [[noreturn]]
@@ -94,6 +104,18 @@ typedef _Bool bool;
 #if __STDC_HOSTED__
 #	error Must be compiled as freestanding.
 #endif
-#define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
-#define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
-#define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#if OBOS_KERNEL
+#	define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#	define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
+#	define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#elif defined(OBOS_DRIVER) && !defined(__m68k__)
+#	define OBOS_PAGEABLE_VARIABLE __attribute__((section(".pageable.data")))
+#	define OBOS_PAGEABLE_RO_VARIABLE __attribute__((section(".pageable.rodata")))
+#	define OBOS_PAGEABLE_FUNCTION __attribute__((section(".pageable.text")))
+#else
+#	define OBOS_PAGEABLE_VARIABLE
+#	define OBOS_PAGEABLE_RO_VARIABLE
+#	define OBOS_PAGEABLE_FUNCTION
+#endif
+
+#include <inc/dev_prefix.h>

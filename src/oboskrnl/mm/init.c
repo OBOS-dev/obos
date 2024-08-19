@@ -85,11 +85,14 @@ static bool register_pages(basicmm_region* region, void* udatablk)
                        region->mmioRange); 
         if (pg->pageable)
             udata->szPageablePages += (pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        else
+            Mm_KernelContext.stat.nonPaged += (pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         pg->workingSets = 0;
         pg->pagedOut = false;
         pg->age = 0;
         pg->owner = &Mm_KernelContext;
         RB_INSERT(page_tree, &Mm_KernelContext.pages, pg);
+        Mm_KernelContext.stat.committedMemory += (pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         if (pg->prot.huge_page)
             addr += OBOS_HUGE_PAGE_SIZE;
         else
@@ -125,17 +128,28 @@ void Mm_Initialize()
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate node buffer. Status: %d.\n", status);
     OBOSH_BasicMMIterateRegions(register_pages, &udata);
+    Mm_KernelContext.stat.pageable = udata.szPageablePages;
     // Do any architecture-specific rounding here.
 #if defined(__x86_64__) || defined(__m68k__)
     udata.szPageablePages = (udata.szPageablePages + 0x3fff) & ~0x3fff;
 #endif
     // Mm_KernelContext.workingSet.capacity = udata.szPageablePages;
-    Mm_KernelContext.workingSet.capacity = 0x20000 /* 128 KiB */;
+    Mm_KernelContext.workingSet.capacity = 0x80000 /* 512 KiB */;
     initialized = true;
     page* i = nullptr;
+    // size_t committedMemory;
+    // size_t paged;
+    // size_t pageable;
+    // size_t nonPaged;
+    
     RB_FOREACH(i, page_tree, &Mm_KernelContext.pages)
+    {
         if (i->pageable)
+        {
             Mm_SwapOut(i);
+            Mm_KernelContext.stat.paged += (i->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        }
+    }
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
 }
 bool Mm_IsInitialized()

@@ -47,22 +47,6 @@ typedef struct basicmm_region
 } basicmm_region;
 
 /// <summary>
-/// Allocates physical pages.
-/// </summary>
-/// <param name="nPages">The amount of pages to allocate.</param>
-/// <param name="alignment">The alignment (in pages) of the address returned. Must be a power of two.</param>
-/// <param name="status">[out,optional] The function's status. Can be nullptr.</param>
-/// <returns>The address of the allocated region.</returns>
-OBOS_WEAK uintptr_t OBOSS_AllocatePhysicalPages(size_t nPages, size_t alignment, obos_status* status);
-/// <summary>
-/// Frees physical pages.
-/// </summary>
-/// <param name="base">The base of said pages.</param>
-/// <param name="nPages">The amount of pages to free.</param>
-/// <returns>The status of the function.</returns>
-OBOS_WEAK obos_status OBOSS_FreePhysicalPages(uintptr_t base, size_t nPages);
-
-/// <summary>
 /// Allocates pages as RW XD.<para/>
 /// Only to be used in kernel-mode.
 /// </summary>

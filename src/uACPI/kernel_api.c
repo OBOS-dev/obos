@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/mutex.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -418,15 +419,9 @@ uacpi_status uacpi_kernel_io_write(
         return UACPI_STATUS_INVALID_ARGUMENT;
     return uacpi_kernel_raw_io_write(rng->base + offset, byte_width, value);
 }
-typedef struct mutex
-{
-    atomic_flag locked;
-    // If not nullptr, locked.
-    thread* owner;
-} mutex;
 uacpi_handle uacpi_kernel_create_mutex(void)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(mutex), nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
 }
 void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
@@ -434,31 +429,15 @@ void uacpi_kernel_free_mutex(uacpi_handle hnd)
 }
 uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
+    OBOS_UNUSED(t);
     mutex *mut = (mutex*)hnd;
-    uint64_t wakeTime = 0;
-    if (t != 0xffff)
-        wakeTime = CoreS_GetTimerTick() + t * 4;
-    else
-        wakeTime = 0xffffffffffffffff;
-    size_t spin = 0;
-    while (atomic_flag_test_and_set_explicit(&mut->locked, memory_order_seq_cst) && CoreS_GetTimerTick() < wakeTime)
-	{
-        if (spin++ == 10000)
-            spin_hung();
-        spinlock_hint();
-    }
-    mut->owner = Core_GetCurrentThread();
+    Core_MutexAcquire(mut);
     return UACPI_TRUE;
 }
 void uacpi_kernel_release_mutex(uacpi_handle hnd)
 {
     mutex *mut = (mutex*)hnd;
-    if (mut->owner != Core_GetCurrentThread())
-    {
-        OBOS_Debug("Failed release of mutex %p. Owner != currentThread\n", hnd);
-        return;
-    }
-	atomic_flag_clear_explicit(&mut->locked, memory_order_seq_cst);
+    Core_MutexRelease(mut);
 }
 uacpi_thread_id uacpi_kernel_get_thread_id()
 {

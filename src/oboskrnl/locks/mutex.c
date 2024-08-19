@@ -31,16 +31,29 @@ obos_status Core_MutexAcquire(mutex* mut)
     if (mut->who == Core_GetCurrentThread())
         return OBOS_STATUS_RECURSIVE_LOCK;
     // Spin for a bit.
-    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : IRQL_INVALID;
     int spin = 100000;
     bool success = true;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
     {
         spinlock_hint();
+        if (mut->ignoreAllAndBlowUp)
+        {
+            if (oldIrql != IRQL_INVALID)
+                Core_LowerIrql(oldIrql);
+            return OBOS_STATUS_ABORTED;
+        }
         if (spin-- >= 0)
             success = false;
     }
-    Core_LowerIrql(oldIrql);
+    if (mut->ignoreAllAndBlowUp)
+    {
+        if (oldIrql != IRQL_INVALID)
+            Core_LowerIrql(oldIrql);
+        return OBOS_STATUS_ABORTED;
+    }
+    if (oldIrql != IRQL_INVALID)
+        Core_LowerIrql(oldIrql);
     if (success)
     {
         mut->who = Core_GetCurrentThread();
@@ -48,6 +61,8 @@ obos_status Core_MutexAcquire(mutex* mut)
         return OBOS_STATUS_SUCCESS;
     }
     Core_WaitOnObject(&mut->hdr);
+    if (mut->ignoreAllAndBlowUp)
+        return OBOS_STATUS_ABORTED;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
         spinlock_hint();
     mut->who = Core_GetCurrentThread();
@@ -69,6 +84,7 @@ obos_status Core_MutexRelease(mutex* mut)
         return OBOS_STATUS_SUCCESS;
     if (mut->who != Core_GetCurrentThread())
         return OBOS_STATUS_ACCESS_DENIED;
+    mut->who = nullptr;
     atomic_flag_clear_explicit(&mut->lock, memory_order_seq_cst);
     obos_status status = CoreH_SignalWaitingThreads(&mut->hdr, false, false);
     if (obos_is_error(status))

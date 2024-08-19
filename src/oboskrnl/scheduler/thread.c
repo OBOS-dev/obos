@@ -19,6 +19,10 @@
 
 #include <irq/irql.h>
 
+#include <mm/alloc.h>
+#include <mm/bare_map.h>
+#include <mm/context.h>
+
 static uint64_t s_nextTID = 1;
 cpu_local* Core_CpuInfo;
 thread_affinity Core_DefaultThreadAffinity = 1;
@@ -224,6 +228,12 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 	CoreS_FreeThreadContext(&currentThread->context);
 	if (node->free)
 		node->free(node);
+	if (currentThread->stackFree)
+	{
+		currentThread->stackFree(CoreS_GetThreadStack(&currentThread->context), 
+								 CoreS_GetThreadStackSize(&currentThread->context),
+								currentThread->stackFreeUserdata);
+	}
 	if (!currentThread->references && currentThread->free)
 		currentThread->free(currentThread);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
@@ -235,4 +245,14 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 	(void)Core_RaiseIrqlNoThread(IRQL_DISPATCH);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
+}
+
+void CoreH_VMAStackFree(void* base, size_t sz, void* userdata)
+{
+	Mm_VirtualMemoryFree((context*)userdata, base, sz);
+}
+void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata)
+{
+	OBOS_UNUSED(userdata);
+	OBOS_BasicMMFreePages(base, sz);
 }

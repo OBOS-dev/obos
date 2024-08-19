@@ -18,11 +18,11 @@ git clone https://github.com/OBOS-dev/obos.git
 3. Run cmake to build the OS
 (x86_64)
 ```sh
-mkdir build
-alias rem=eval
-cmake -GNinja -DCMAKE_BUILD_TYPE=Release --toolchain=src/build/x86_64/toolchain.cmake -B build .
-rem chmod +x dependencies/hyper/hyper_install-linux-x86_64
-cmake --build build
+cmake -GNinja -DCMAKE_BUILD_TYPE=Debug --toolchain=src/build/x86_64/toolchain.cmake -B build/x86_64 .
+chmod +x dependencies/hyper/hyper_install-linux-x86_64
+cmake --build build/x86_64
+scripts/generate_initrd-x86_64.sh
+cmake --build build/x86_64
 ```
 4. To run the kernel, run the script under scripts/launch_qemu.\[bat,sh\]
 

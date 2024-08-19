@@ -111,10 +111,12 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     {
         thread_node* next = curr->next;
         CoreH_ThreadListRemove(&obj->waiting, curr);
-        if (boostPriority)
-            CoreH_ThreadBoostPriority(curr->data);
         if ((++curr->data->nSignaled) == curr->data->nWaiting)
+        {
+            if (boostPriority)
+                CoreH_ThreadBoostPriority(curr->data);
             CoreH_ThreadReadyNode(curr->data, curr->data->snode);
+        }
         if (curr->free)
             curr->free(curr);
         if (!all)

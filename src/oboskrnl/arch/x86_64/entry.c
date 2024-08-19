@@ -32,8 +32,6 @@
 
 #include <arch/x86_64/asm_helpers.h>
 
-#include <arch/x86_64/pmm.h>
-
 #include <driver_interface/driverId.h>
 #include <driver_interface/loader.h>
 #include <driver_interface/header.h>
@@ -49,6 +47,7 @@
 
 #include <irq/irq.h>
 
+#include <mm/pmm.h>
 #include <mm/bare_map.h>
 #include <mm/init.h>
 #include <mm/swap.h>
@@ -76,9 +75,14 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "locks/wait.h"
+#include "mm/pmm.h"
+
+#include <uacpi_libc.h>
+
+#include <vfs/init.h>
 
 #include <locks/mutex.h>
+#include <locks/wait.h>
 #include <locks/semaphore.h>
 #include <locks/event.h>
 
@@ -93,6 +97,7 @@ static swap_dev swap;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
+struct ultra_boot_context* Arch_BootContext;
 
 static cpu_local bsp_cpu;
 extern void Arch_IdleTask();
@@ -111,6 +116,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
 	Core_GetIrql();
 	ParseBootContext(bcontext);
+	Arch_BootContext = bcontext;
 	asm("sti");
 	if (!Arch_Framebuffer)
 		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
@@ -197,9 +203,26 @@ struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
 struct ultra_module_info_attribute* Arch_UARTDriver;
+struct ultra_module_info_attribute* Arch_InitRDDriver;
 struct ultra_framebuffer* Arch_Framebuffer;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN void ParseBootContext(struct ultra_boot_context* bcontext)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN struct ultra_module_info_attribute* FindBootModule(struct ultra_boot_context* bcontext, const char* name, size_t nameLen)
+{
+	if (!nameLen)
+		nameLen = strlen(name);
+	struct ultra_attribute_header* header = bcontext->attributes;
+	for (size_t i = 0; i < bcontext->attribute_count; i++, header = ULTRA_NEXT_ATTRIBUTE(header))
+	{
+		if (header->type == ULTRA_ATTRIBUTE_MODULE_INFO)
+		{
+			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
+			if (uacpi_strncmp(module->name, name, nameLen) == 0)
+				return module;
+		}
+	}
+	return nullptr;
+}
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(struct ultra_boot_context* bcontext)
 {
 	struct ultra_attribute_header* header = bcontext->attributes;
 	for (size_t i = 0; i < bcontext->attribute_count; i++, header = ULTRA_NEXT_ATTRIBUTE(header))
@@ -288,8 +311,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 				break;
 			default:
 			{
-				static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
-				OBOS_Warning(format, mm_ec, getCR2());
+				OBOS_Warning("Handling page fault with error code 0x%x on address %p failed with status %d.\n", mm_ec, getCR2(), status);
 				break;
 			}
 		}
@@ -549,7 +571,7 @@ void Arch_KernelMainBootstrap()
 	//Core_Yield();
 	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	OBOS_Debug("%s: Initializing PMM.\n", __func__);
-	Arch_InitializePMM();
+	Mm_InitializePMM();
 	OBOS_Debug("%s: Initializing page tables.\n", __func__);
 	obos_status status = Arch_InitializeKernelPageTable();
 	if (obos_is_error(status))
@@ -560,6 +582,28 @@ void Arch_KernelMainBootstrap()
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
 	OBOS_Debug("%s: Parsing command line.\n", __func__);
 	OBOS_ParseCMDLine();
+	{
+		char* initrd_module_name = OBOS_GetOPTS("initrd-module");
+		char* initrd_driver_module_name = OBOS_GetOPTS("initrd-driver-module");
+		if (initrd_module_name && initrd_driver_module_name)
+		{
+			OBOS_Debug("InitRD module name: %s, InitRD driver name: %s.\n", initrd_module_name, initrd_driver_module_name);
+			struct ultra_module_info_attribute* initrd = FindBootModule(Arch_BootContext, initrd_module_name, 0);
+			Arch_InitRDDriver = FindBootModule(Arch_BootContext, initrd_driver_module_name, 0);
+			if (!Arch_InitRDDriver)
+				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find module %s.\n", initrd_driver_module_name);
+			if (!initrd)
+				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find module %s.\n", initrd_module_name);
+			OBOS_InitrdBinary = (const char*)initrd->address;
+			OBOS_InitrdSize = initrd->size;
+		}
+		else
+			OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
+		if (initrd_module_name)
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
+		if (initrd_driver_module_name)
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
+	}
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
 	OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_is_error(status))
@@ -619,7 +663,7 @@ void Arch_KernelMainBootstrap()
 		// 	;
 		OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
 		size_t size = (Arch_Framebuffer->height*Arch_Framebuffer->pitch + OBOS_HUGE_PAGE_SIZE - 1) & ~(OBOS_HUGE_PAGE_SIZE - 1);
-		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr);
+		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr, nullptr);
 		uintptr_t base = (uintptr_t)base_;
 		if (base)
 		{
@@ -648,14 +692,14 @@ void Arch_KernelMainBootstrap()
 				// Present,Write,XD,Write-Combining (PAT: 0b110)
 				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
 				offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-				OBOSS_FreePhysicalPages(oldPhys, offset);
+				Mm_FreePhysicalPages(oldPhys, offset/OBOS_PAGE_SIZE);
 			}
 		}
 		OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(
 			&Mm_KernelContext, 
 			(void*)(0xffffa00000000000+size), size, 
 			0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
-			nullptr);
+			nullptr, nullptr);
 		memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
 		OBOS_TextRendererState.fb.base = base_;
 		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
@@ -696,8 +740,8 @@ if (st != UACPI_STATUS_OK)\
 
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
-
     Arch_IOAPICMaskIRQ(9, false);
+
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
 	Elf64_Shdr* sectionTable = (Elf64_Shdr*)(Arch_KernelBinary->address + ehdr->e_shoff);
@@ -762,48 +806,91 @@ if (st != UACPI_STATUS_OK)\
 		}
 		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
 	}
-	OBOS_Debug("Loading drivers through PnP.\n");
-	void* driver_bin = (void*)Arch_UARTDriver->address;
-	size_t sizeof_driver_bin = Arch_UARTDriver->size;
-	driver_header header;
-	status = Drv_LoadDriverHeader(driver_bin, sizeof_driver_bin, &header);
-	if (obos_is_error(status))
-		OBOS_Error("Could not load test driver #1. Status: %d.\n", status);
-	driver_header_node node = {.data = &header};
-	driver_header_list list = {.head=&node,.tail=&node,.nNodes=1};
-	driver_header_list toLoad;
-	memzero(&toLoad, sizeof(toLoad));
-	status = Drv_PnpDetectDrivers(list, &toLoad);
-	if (obos_is_error(status))
-		OBOS_Error("PnP failed. Status: %d.\n", status);
-	driver_id* drv1 = nullptr;
-	for (driver_header_node* node = toLoad.head; node; )
+	if (Arch_InitRDDriver)
 	{
-		OBOS_Debug("Loading driver '%s'.\n", node->data->driverName);
-		if (&header == node->data)
-			drv1 = Drv_LoadDriver(driver_bin, sizeof_driver_bin, nullptr);
-
-		node = node->next;
+		OBOS_Log("Loading InitRD driver.\n");
+		// Load the InitRD driver.
+		status = OBOS_STATUS_SUCCESS;
+		driver_id* drv = 
+			Drv_LoadDriver((void*)Arch_InitRDDriver->address, Arch_InitRDDriver->size, &status);
+		if (obos_is_error(status))
+			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load the InitRD driver passed in module %s.\nStatus: %d.\n", Arch_InitRDDriver->name, status);
+		status = Drv_StartDriver(drv, nullptr);
+		if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
+			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not start the InitRD driver passed in module %s.\nStatus: %d.\nNote: This is a bug, please report it.\n", Arch_InitRDDriver->name, status);
+		OBOS_Log("Loaded InitRD driver.\n");
 	}
-  	thread* main = nullptr;
-	Drv_StartDriver(drv1, &main);
-	while (!(main->flags & THREAD_FLAGS_DIED))
-		Core_Yield();
-	dev_desc connection = 0;
-    obos_status com1_status = 
-	status =
-    drv1->header.ftable.ioctl(6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
-        1,
-        115200,
-        /* EIGHT_DATABITS */ 3,
-        /* ONE_STOPBIT */ 0,
-        /* PARITYBIT_NONE */ 0,
-        &connection
-    );
-	if (obos_is_error(status))
-		OBOS_Error("Could not open COM1. Status: %d.\n", status);
+	else 
+	{
+		OBOS_Debug("No InitRD driver!\n");
+		OBOS_Debug("Scanning command line...\n");
+		char* modules_to_load = OBOS_GetOPTS("load-modules");
+		if (!modules_to_load)
+			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initrd, and no drivers passed via the command line. Further boot is impossible.\n");
+		size_t len = strlen(modules_to_load);
+		char* iter = modules_to_load;
+		while(iter < (modules_to_load + len))
+		{
+			status = OBOS_STATUS_SUCCESS;
+			size_t namelen = strchr(modules_to_load, ',');
+			if (namelen != len)
+				namelen--;
+			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
+			if (uacpi_strncmp(iter, "__KERNEL__", namelen) == 0)
+			{
+				OBOS_Error("Cannot load the kernel (__KERNEL__) as a driver.\n");
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			struct ultra_module_info_attribute* module = FindBootModule(Arch_BootContext, iter, namelen);
+			if (!module)
+			{
+				OBOS_Warning("Could not load driver %s. Status: %d\n", module->name, OBOS_STATUS_NOT_FOUND);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			driver_id* drv = 
+				Drv_LoadDriver((void*)module->address, module->size, &status);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %s. Status: %d\n", module->name, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			status = Drv_StartDriver(drv, nullptr);
+			if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
+			{
+				OBOS_Warning("Could not start driver %s. Status: %d\n", module->name, status);
+				status = Drv_UnloadDriver(drv);
+				if (obos_is_error(status))
+					OBOS_Warning("Could not unload driver %s. Status: %d\n", module->name, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			if (namelen != len)
+				namelen++;
+			iter += namelen;
+		}
+	}
+	OBOS_Debug("%s: Initializing VFS.\n", __func__);
+	Vfs_Initialize();
+	OBOS_Debug("%s: Loading drivers through PnP.\n", __func__);
+	// TODO:
+	// Load PnP drivers.
+	OBOS_Debug("%s: Unimplemented.\n", __func__);
+	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
+	Vfs_FinalizeInitialization();
+	// OBOS_Debug("%s: Loading init program...\n", __func__);
 	static gdb_connection gdb_conn = {};
-	Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
+	// Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
 	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
 	Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
 	Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
@@ -828,199 +915,17 @@ if (st != UACPI_STATUS_OK)\
 	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
 	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
 	Kdbg_CurrentConnection = &gdb_conn;
-	if (obos_is_success(com1_status) && OBOS_GetOPTF("enable-kdbg"))
+	if (OBOS_GetOPTF("enable-kdbg") && Kdbg_CurrentConnection->pipe_interface->read_sync)
 	{
 		OBOS_Debug("%s: Enabling KDBG.\n", __func__);
 		Kdbg_CurrentConnection->connection_active = true;
 		asm("int3");
 	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	Core_ExitCurrentThread();
-}
-void OBOS_TestLocks()
-{
-	OBOS_Debug("Testing semaphores.\n");
-	const size_t nThreads = 3;
-	sem = (semaphore)SEMAPHORE_INITIALIZE(nThreads);
-	thread* threads = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, nThreads, sizeof(thread), nullptr);
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)semaphore_test, (uintptr_t)&sem, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
-		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-	}
-	OBOS_Debug("Acquiring semaphore %d times.\n", nThreads);
-	for (size_t i = 0; i < nThreads; i++)
-		Core_SemaphoreAcquire(&sem);
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		CoreH_ThreadReady(thr);
-	}
-	OBOS_Debug("Sleeping for 5 seconds...\n");
-	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
-	while(CoreS_GetTimerTick() < deadline)
-		;
-	OBOS_Debug("Done.\n");
-	OBOS_Debug("Releasing semaphore %d times.\n", nThreads);
-	for (size_t i = 0; i < nThreads; i++)
-		Core_SemaphoreRelease(&sem);
-	while(sem.count < nThreads)
-		asm("pause");
-	bool allThreadsDead = false;
-	while(!allThreadsDead)
-	{
-		allThreadsDead = true;
-		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
-		{
-			if (!(threads[i].flags & THREAD_FLAGS_DIED))
-				allThreadsDead = false;
-		}
-	}
-	memzero(threads, sizeof(thread)*3);
-	OBOS_Debug("Testing mutexes.\n");
-	mut = MUTEX_INITIALIZE();
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)mutex_test, (uintptr_t)&mut, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
-		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-	}
-	Core_MutexAcquire(&mut);
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		CoreH_ThreadReady(thr);
-	}
-	OBOS_Debug("Sleeping for 5 seconds...\n");
-	deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(5000000);
-	while(CoreS_GetTimerTick() < deadline)
-		;
-	OBOS_Debug("Releasing mutex.\n");
-	Core_MutexRelease(&mut);
-	allThreadsDead = false;
-	while(!allThreadsDead)
-	{
-		allThreadsDead = true;
-		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
-		{
-			if (!(threads[i].flags & THREAD_FLAGS_DIED))
-				allThreadsDead = false;
-		}
-	}
-	memzero(threads, sizeof(thread)*3);
-	OBOS_Debug("Testing events.\n");
-	e = EVENT_INITIALIZE(EVENT_SYNC);
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)event_test, (uintptr_t)&e, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
-		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-		CoreH_ThreadReady(thr);
-	}
-	OBOS_Debug("Sleeping for 5 seconds...\n");
-	deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(5000000);
-	while(CoreS_GetTimerTick() < deadline)
-		;
-	OBOS_Debug("Setting event.\n");
-	Core_EventSet(&e, true);
-	allThreadsDead = false;
-	while(!allThreadsDead)
-	{
-		allThreadsDead = true;
-		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
-		{
-			if (!(threads[i].flags & THREAD_FLAGS_DIED))
-				allThreadsDead = false;
-		}
-	}
-	memzero(threads, sizeof(thread)*3);
-	OBOS_Debug("Testing notification events.\n");
-	static event events[3] = {};
-	events[0] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-	events[1] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-	events[2] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		thread_ctx ctx = {};
-		CoreS_SetupThreadContext(&ctx, (uintptr_t)not_event_test, (uintptr_t)&events, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr), 0x10000);
-		CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-		CoreH_ThreadReady(thr);
-	}
-	for (size_t i = 0; i < nThreads; i++)
-	{
-		thread* thr = &threads[i];
-		CoreH_ThreadReady(thr);
-	}
-	for (size_t i = 0; i < 3; i++)
-	{
-		deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
-		while(CoreS_GetTimerTick() < deadline)
-			;
-		Core_EventSet(&events[i], true);
-	}
-	allThreadsDead = false;
-	while(!allThreadsDead)
-	{
-		allThreadsDead = true;
-		for (size_t i = 0; i < nThreads && allThreadsDead; i++)
-		{
-			if (!(threads[i].flags & THREAD_FLAGS_DIED))
-				allThreadsDead = false;
-		}
-	}
-	Core_EventClear(&events[0]);
-	Core_EventClear(&events[1]);
-	Core_EventClear(&events[2]);
-	OBOS_Debug("Done.\n");
-	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, threads, sizeof(thread)*3);
-}
-static void semaphore_test(void* userdata)
-{
-	semaphore* sem = (semaphore*)userdata;
-	OBOS_Debug("Thread %d attempted to acquire a semaphore.\n", Core_GetCurrentThread()->tid);
-	Core_SemaphoreAcquire(sem);
-	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
-	Core_SemaphoreRelease(sem);
-	Core_ExitCurrentThread();
-}
-static void mutex_test(void* userdata)
-{
-	mutex* mut = (mutex*)userdata;
-	OBOS_Debug("Thread %d attempted to acquire a mutex.\n", Core_GetCurrentThread()->tid);
-	Core_MutexAcquire(mut);
-	OBOS_Debug("Thread %d acquired mutex.\n", Core_GetCurrentThread()->tid);
-	OBOS_Debug("Sleeping for one second before releasing...\n");
-	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
-	while(CoreS_GetTimerTick() < deadline)
-		;
-	Core_MutexRelease(mut);
-	OBOS_Debug("Done\n");
-	Core_ExitCurrentThread();
-}
-static void event_test(void* userdata)
-{
-	event* e = (event*)userdata;
-	OBOS_Debug("Thread %d is waiting on an event.\n", Core_GetCurrentThread()->tid);
-	Core_WaitOnObject(WAITABLE_OBJECT(*e));
-	Core_EventClear(e);
-	OBOS_Debug("Sleeping for one second before setting event...\n");
-	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000);
-	while(CoreS_GetTimerTick() < deadline)
-		;
-	Core_EventSet(e, true);
-	OBOS_Debug("Thread %d done.\n", Core_GetCurrentThread()->tid);
-	Core_ExitCurrentThread();
-}
-static void not_event_test(void* userdata)
-{
-	event* events = (event*)userdata;
-	OBOS_Debug("Thread %d waiting on events.\n", Core_GetCurrentThread()->tid);
-	Core_WaitOnObjects(3, WAITABLE_OBJECT(events[0]), WAITABLE_OBJECT(events[1]), WAITABLE_OBJECT(events[2]));
-	OBOS_Debug("Thread %d is done.\n", Core_GetCurrentThread()->tid);
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+		Mm_KernelContext.stat.committedMemory/0x400, 
+		Mm_KernelContext.stat.pageable/0x400, 
+		Mm_KernelContext.stat.paged/0x400,
+		Mm_KernelContext.stat.nonPaged/0x400);
 	Core_ExitCurrentThread();
 }

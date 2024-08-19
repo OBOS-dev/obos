@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <stdarg.h>
+
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
 // Not required, but can speed up loading times if the driver header is put in here.
 #define OBOS_DRIVER_HEADER_SECTION ".driverheader"
@@ -60,7 +62,7 @@ typedef enum iterate_decision
     ITERATE_DECISION_CONTINUE,
     ITERATE_DECISION_STOP,
 } iterate_decision;
-typedef struct file_perm
+typedef struct driver_file_perm
 {
     bool other_exec : 1;
     bool other_write : 1;
@@ -71,7 +73,7 @@ typedef struct file_perm
     bool owner_exec : 1;
     bool owner_write : 1;
     bool owner_read : 1;
-} OBOS_PACK file_perm;
+} OBOS_PACK driver_file_perm;
 typedef enum file_type
 {
     FILE_TYPE_DIRECTORY,
@@ -84,7 +86,7 @@ typedef enum file_type
 typedef uintptr_t dev_desc;
 typedef struct driver_ftable
 {
-    // Note: If there is not an OBOS_STATUS for an error that a driver needs to return, rather choose the error closest to the error that you want to report,
+    // Note: If there is not an OBOS_STATUS for an error that a driver needs to return, choose the error closest to the error that you want to report,
     // or return OBOS_STATUS_INTERNAL_ERROR.
 
     // ---------------------------------------
@@ -96,10 +98,11 @@ typedef struct driver_ftable
     obos_status(*get_max_blk_count)(dev_desc desc, size_t* count);
     obos_status(*read_sync)(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
     obos_status(*write_sync)(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
-    obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
+    obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.
     obos_status(*ioctl)(size_t nParameters, uint64_t request, ...);
+    obos_status(*ioctl_var)(size_t nParameters, uint64_t request, va_list list);
     // Called on driver unload.
     // Frees all the driver's allocated resources, as the kernel 
     // does not keep a track of allocated resources, and cannot free them on driver unload, causing a
@@ -117,13 +120,15 @@ typedef struct driver_ftable
     // lifetime of *path is dicated by the driver.
     obos_status(*query_path)(dev_desc desc, const char** path);
     obos_status(*path_search)(dev_desc* found, const char* what);
+    obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
     obos_status(*move_desc_to)(dev_desc desc, const char* where);
     obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
     obos_status(*remove_file)(dev_desc desc);
-    obos_status(*get_file_perms)(dev_desc desc, file_perm *perm);
-    obos_status(*set_file_perms)(dev_desc desc, file_perm newperm);
+    obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
+    obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
-    obos_status(*list_dir)(dev_desc dir, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
+    // If dir is UINTPTR_MAX, it refers to the root directory.
+    obos_status(*list_dir)(dev_desc dir, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 } driver_ftable;

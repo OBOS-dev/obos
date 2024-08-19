@@ -151,7 +151,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
 }
 static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
 {
-    driver_symbol* Symbol;
+    driver_symbol* Symbol = nullptr;
     driver_symbol internal_symbol = {};
     if (i.symbolTableOffset)
     {
@@ -175,6 +175,8 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
                 (uint8_t*)file, base, symbolTable, hashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
+            if (!obos_expect((uintptr_t)sym != 0, 1))
+                goto unresolved;
             if (sym->st_shndx == 0)
                 goto unresolved;
             internal_symbol.address = OffsetPtr(base, sym->st_value, uintptr_t);
@@ -245,10 +247,12 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     case R_AMD64_NONE:
         return true;
     case R_AMD64_64:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend;
         relocSize = 8;
         break;
     case R_AMD64_PC32:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend - relocAddr;
         relocSize = 4;
         break;
@@ -273,6 +277,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     {
         // Save copy relocations for the end because if we don't, it might contain unresolved addresses.
         // copy_relocations.push_back({ (void*)relocAddr, (void*)Symbol->address, Symbol->size });
+        OBOS_ASSERT(Symbol);
         struct copy_reloc reloc = { (void*)relocAddr, (void*)Symbol->address, Symbol->size };
         append_copy_reloc(copy_relocations, &reloc);
         relocSize = 0;
@@ -280,6 +285,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     }
     case R_AMD64_JUMP_SLOT:
     case R_AMD64_GLOB_DAT:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address;
         relocSize = 8;
         break;
@@ -297,34 +303,42 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         relocSize = 8;
         break;
     case R_AMD64_32:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend;
         relocSize = 4;
         break;
     case R_AMD64_32S:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend;
         relocSize = 4;
         break;
     case R_AMD64_16:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend;
         relocSize = 2;
         break;
     case R_AMD64_PC16:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend - relocAddr;
         relocSize = 2;
         break;
     case R_AMD64_8:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend;
         relocSize = 1;
         break;
     case R_AMD64_PC8:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend - relocAddr;
         relocSize = 1;
         break;
     case R_AMD64_PC64:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend - relocAddr;
         relocSize = 8;
         break;
     case R_AMD64_GOTOFF64:
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->address + i.addend - ((uint64_t)GOT);
         relocSize = 8;
         break;
@@ -334,10 +348,12 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         break;
     case R_AMD64_SIZE32:
         relocSize = 4;
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->size + i.addend;
         break;
     case R_AMD64_SIZE64:
         relocSize = 8;
+        OBOS_ASSERT(Symbol);
         relocResult = Symbol->size + i.addend;
         break;
     default:
@@ -384,7 +400,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
 			end = (void*)(curr->p_vaddr+curr->p_memsz);
     }
     szProgram = (size_t)end;
-    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, status);
+    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, nullptr, status);
     if (!base)
         return nullptr;
     // The pages are mapped in.
@@ -398,6 +414,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         // NOTE: Possible buffer overflow
         memzero(OffsetPtr(base, curr->p_vaddr + curr->p_offset, void*), curr->p_memsz - curr->p_filesz); 
     }
+    OBOS_ASSERT(obos_expect((uintptr_t)dynamic != 0, 1));
     // Apply relocations.
     struct relocation_array relocations = {.buf=nullptr,.nRelocations=0};
     Elf64_Sym* symbolTable = 0;

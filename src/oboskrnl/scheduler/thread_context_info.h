@@ -71,9 +71,28 @@ OBOS_WEAK void CoreS_SetThreadIRQL(thread_ctx* ctx, irql newIRQL);
 /// <param name="ctx">The thread's context.</param>
 /// <returns>The thread's IRQL.</returns>
 OBOS_WEAK irql CoreS_GetThreadIRQL(const thread_ctx* ctx);
+/// <summary>
+/// Gets the base of the stack of a thread.
+/// </summary>
+/// <param name="ctx">The thread's context.</param>
+/// <returns>The thread's stack.</returns>
+OBOS_WEAK void* CoreS_GetThreadStack(const thread_ctx* ctx);
+/// <summary>
+/// Gets the size of the stack of a thread.
+/// </summary>
+/// <param name="ctx">The thread's context.</param>
+/// <returns>The thread's stack size.</returns>
+OBOS_WEAK size_t CoreS_GetThreadStackSize(const thread_ctx* ctx);
 
 #ifdef __x86_64__
 #	include <arch/x86_64/thread_ctx.h>
 #elif defined(__m68k__)
 #	include <arch/m68k/thread_ctx.h>
 #endif
+
+// Some helpers to free stacks allocated using the VMA and the basic MM.
+
+// userdata should be the context* used to allocate the stack.
+void CoreH_VMAStackFree(void* base, size_t sz, void* userdata);
+// userdata is unused.
+void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata);

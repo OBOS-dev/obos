@@ -14,6 +14,8 @@
 #include <uacpi_libc.h>
 
 const char* OBOS_KernelCmdLine;
+const char* OBOS_InitrdBinary;
+size_t OBOS_InitrdSize;
 char** OBOS_argv;
 size_t OBOS_argc;
 
@@ -56,6 +58,16 @@ void OBOS_ParseCMDLine()
             "OBOSKRNL usage:\n"
             "NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
             "--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
+            "--initrd-module=name: The name or path of the initrd module.\n"
+            "--initrd-driver-module=name: The name or path of the initrd driver module.\n"
+            "--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"
+            "                            in the initrd, otherwise it is the name of a module to load as a driver.\n"
+            "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted\n"
+            "                         when 'init' is called.\n"
+            "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+            "                     is used as root.\n"
+            "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+            "                         is used as root.\n"
             "--help: Displays this help message.\n";
         printf("%s", help_message);
     }
@@ -74,8 +86,9 @@ char* OBOS_GetOPTS(const char* opt)
         size_t optlen = strchr(arg, '=');
         if (arglen != optlen || arg[arglen - 1] == '=')
             optlen--;
-        if (arglen == optlen && arg[arglen - 1] != '=')
-            continue;
+        // Wut?
+        // if (arglen == optlen && arg[arglen - 1] != '=')
+        //     continue;
         if (uacpi_strncmp(arg, opt, optlen) == 0)
         {
             if (i == (OBOS_argc - 1) && optlen == arglen)

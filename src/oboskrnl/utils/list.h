@@ -39,7 +39,7 @@ attrib type* name##_LIST_GET_PREV(name* list, type* what)
 #define LIST_GENERATE(name, type, field) \
 LIST_GENERATE_INTERNAL(name, type, field, )
 #define LIST_GENERATE_STATIC(name, type, field) \
-LIST_GENERATE_INTERNAL(name, type, field, static)
+LIST_GENERATE_INTERNAL(name, type, field, __attribute__((__unused__)) static)
 #define LIST_GENERATE_INTERNAL(name, type, field, attrib) \
 attrib void name##_LIST_APPEND(name* list, type* what)\
 {\

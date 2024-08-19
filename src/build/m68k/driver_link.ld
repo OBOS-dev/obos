@@ -11,8 +11,8 @@ PHDRS
   interp PT_INTERP ;
   text PT_LOAD FILEHDR PHDRS ;
   data PT_LOAD ;
-  pageable_text PT_LOAD FLAGS(PF_R|PF_X|0x00010000);
-  pageable_data PT_LOAD FLAGS(PF_R|PF_W|0x00010000);
+  pageable_text PT_LOAD FLAGS(PF_X|PF_R|0x00010000);
+  pageable_data PT_LOAD FLAGS(PF_W|PF_R|0x00010000);
   dynamic PT_DYNAMIC ;
 }
 SECTIONS
@@ -194,6 +194,7 @@ SECTIONS
       pad the .data section.  */
    . = ALIGN(. != 0 ? 32 / 8 : 1);
   } :pageable_data
+  . = ALIGN(32 / 8);
   _end = .; PROVIDE (end = .);
   . = DATA_SEGMENT_END (.);
   /* Stabs debugging sections.  */

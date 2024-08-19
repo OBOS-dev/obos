@@ -244,4 +244,22 @@ CoreS_GetThreadIRQL:
 
 	leave
 	ret
+global CoreS_GetThreadStack
+global CoreS_GetThreadStackSize
+CoreS_GetThreadStackSize:
+	push rbp
+	mov rbp, rsp
+
+	mov rax, [rdi+thread_ctx.stackSize]
+
+	leave
+	ret
+CoreS_GetThreadStack:
+	push rbp
+	mov rbp, rsp
+
+	mov rax, [rdi+thread_ctx.stackBase]
+
+	leave
+	ret
 section .text

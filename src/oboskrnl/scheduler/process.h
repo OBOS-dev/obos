@@ -16,6 +16,8 @@ typedef struct process
 	// If pid==1, this is the kernel process.
 	uint64_t pid;
 	thread_list threads;
+	uid currentUID;
+	gid currentGID;
 	struct context* ctx;
 } process;
 extern uint64_t Core_NextPID;

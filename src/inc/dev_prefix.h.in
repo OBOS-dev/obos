@@ -1,0 +1,1 @@
+#cmakedefine OBOS_DEV_PREFIX "@OBOS_DEV_PREFIX@"

@@ -124,11 +124,11 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     outb(port->port_base + IRQ_ENABLE, 1);
     Arch_IOAPICMaskIRQ(port->gsi, false);
     Core_LowerIrql(oldIrql);
-    *connection = (dev_desc)port;
+    if (connection)
+        *connection = (dev_desc)port;
     return OBOS_STATUS_SUCCESS;
 }
 
-static dpc com_dpc;
 // static dpc kdbg_int_dpc;
 static bool should_break;
 static void dpc_handler(dpc* obj, void* userdata)
@@ -156,8 +156,9 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     OBOS_UNUSED(frame);
     OBOS_UNUSED(oldIrql_);
     serial_port *port = userdata;
-    com_dpc.userdata = userdata;
-    CoreH_InitializeDPC(&com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
+    dpc* com_dpc = &port->com_dpc;
+    com_dpc->userdata = userdata;
+    CoreH_InitializeDPC(com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
     // Receive all the avaliable data.
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
     while (inb(port->port_base + LINE_STATUS) & BIT(0))

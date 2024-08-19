@@ -84,11 +84,17 @@ typedef struct thread
 	struct process* proc;
 	
 	thread_ctx context;
+	// Frees the thread's stack.
+	void* stackFreeUserdata;
+	void(*stackFree)(void* base, size_t sz, void* userdata);
 
 	// The node used by waitable_header (locks/wait.h)
 	thread_node lock_node;
 	size_t nWaiting; // the count of objects the thread is waiting on.
 	size_t nSignaled; // the count of objects that have signaled the thread.
+
+	thread_node phys_mem_node;
+	size_t nBytesWaitingFor;
 } thread;
 typedef struct thread_list
 {

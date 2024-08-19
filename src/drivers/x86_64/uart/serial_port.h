@@ -12,6 +12,7 @@
 #include <driver_interface/header.h>
 
 #include <irq/irq.h>
+#include <irq/dpc.h>
 
 #include <locks/spinlock.h>
 
@@ -43,6 +44,8 @@ typedef struct serial_port
     buffer out_buffer;
 
     bool isFaulty;
+
+    dpc com_dpc;
 } serial_port;
 void flush_out_buffer(serial_port* port);
 

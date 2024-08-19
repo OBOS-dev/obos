@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/pmm.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -122,12 +123,12 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
             0x1000,
             OBOS_PROTECTION_CACHE_DISABLE,
             VMA_FLAGS_NON_PAGED, 
-            nullptr);
+            nullptr, nullptr);
     uintptr_t oldPhys = 0;
     OBOSS_GetPagePhysicalAddress((void*)virt_base, &oldPhys);
     // Map as RW, Cache Disabled, and Supervisor
     Arch_MapPage(MmS_GetCurrentPageTable(), virt_base, Arch_RTCBase.base, (0b11|(0b11<<5)|(1<<7)));
-    OBOSS_FreePhysicalPages(oldPhys, 1);
+    Mm_FreePhysicalPages(oldPhys, 1);
     Arch_RTCBase.base = virt_base;
     irql oldIrql = Core_RaiseIrql(IRQL_TIMER);
     volatile gf_rtc* rtc = (volatile gf_rtc*)(Arch_RTCBase.base);

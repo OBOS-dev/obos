@@ -4,8 +4,8 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "arch/x86_64/pmm.h"
-#include "irq/irql.h"
+// Adapted from oboskrnl/arch/m68k/initial_swap.c
+
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -13,10 +13,13 @@
 #include <mm/swap.h>
 #include <mm/page.h>
 
-#include <stdint.h>
 #include <utils/tree.h>
 
+#include <irq/irql.h>
+
 #include <locks/spinlock.h>
+
+#include <arch/x86_64/pmm.h>
 
 #define SWAP_HEADER_MAGIC 0x535741504844524D
 

@@ -17,6 +17,7 @@
 #include <mm/bare_map.h>
 #include <mm/page.h>
 #include <mm/context.h>
+#include <mm/pmm.h>
 
 #include <elf/elf.h>
 #include <stdint.h>
@@ -50,7 +51,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_MapPage(page_table pt_root, uintptr
     if (!(pte3[pte3Index] & PT_FLAGS_RESIDENT))
     {
         obos_status status = OBOS_STATUS_SUCCESS;
-        uintptr_t phys = Arch_AllocatePhysicalPages(1, 1, &status);
+        uintptr_t phys = Mm_AllocatePhysicalPages(1, 1, &status);
         if (obos_is_error(status))
             return status;
         memzero(Arch_MapToHHDM(phys), OBOS_PAGE_SIZE);
@@ -67,7 +68,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_MapPage(page_table pt_root, uintptr
     if (!((uintptr_t)pte2[pte2Index] & PT_FLAGS_RESIDENT))
     {
         obos_status status = OBOS_STATUS_SUCCESS;
-        uintptr_t phys = Arch_AllocatePhysicalPages(1, 1, &status);
+        uintptr_t phys = Mm_AllocatePhysicalPages(1, 1, &status);
         if (obos_is_error(status))
             return status;
         memzero(Arch_MapToHHDM(phys), OBOS_PAGE_SIZE);
@@ -106,14 +107,14 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_UnmapPage(page_table pt_root, uintp
     if (memcmp_b(pte1, 0, 256))
     {
         pte2[pte2Index] = 0;
-        Arch_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte1), 1);
+        Mm_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte1), 1);
         if (memcmp_b(pte2, 0, 1024))
         {
             pte3[pte3Index] = 0;
-            Arch_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte2), 1);
+            Mm_FreePhysicalPages((uintptr_t)Arch_UnmapFromHHDM(pte2), 1);
             // Don't do this since pte3=pt_root, and we shouldn't be freeing that, or bad stuff might happen.
             // if (memcmp_b(pte3, 0, 1024))
-            //     Arch_FreePhysicalPages((uintptr_t)pte3, 1);
+            //     Mm_FreePhysicalPages((uintptr_t)pte3, 1);
         }
     }
     return OBOS_STATUS_SUCCESS;
@@ -167,13 +168,13 @@ static basicmm_region kernel_region;
 static basicmm_region hhdm_region;
 OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_InitializePageTables()
 {
-    page_table newPt = Arch_AllocatePhysicalPages(1, 1, nullptr);
+    page_table newPt = Mm_AllocatePhysicalPages(1, 1, nullptr);
     memzero(Arch_MapToHHDM(newPt), 4096);
     page_table oldPt = 0;
     asm("movec.l %%srp, %0" :"=a"(oldPt) :);
     // Map the HHDM.
     uintptr_t hhdm_base = Arch_HHDMRequest.response->offset;
-    for (uintptr_t addr = 0; addr < Arch_PhysicalMemoryBoundaries; addr += OBOS_PAGE_SIZE)
+    for (uintptr_t addr = 0; addr < Mm_PhysicalMemoryBoundaries; addr += OBOS_PAGE_SIZE)
         Arch_MapPage(newPt, hhdm_base+addr, addr, PT_FLAGS_RESIDENT|PT_FLAGS_CACHE_COPYBACK|PT_FLAGS_SUPERVISOR);
     // Map the kernel.
     Elf_Ehdr* ehdr = (Elf_Ehdr*)Arch_KernelFile.response->kernel_file->address;
@@ -203,9 +204,9 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_InitializePageTables()
     }
     kernelSize = top-Arch_KernelAddressRequest.response->virtual_base;
     asm volatile ("movec %0, %%srp" : :"r"(newPt));
-    Arch_FreePhysicalPages(oldPt, 1);
+    Mm_FreePhysicalPages(oldPt, 1);
     OBOSH_BasicMMAddRegion(&kernel_region, (void*)(uintptr_t)Arch_KernelAddressRequest.response->virtual_base, kernelSize);
-    OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_MapToHHDM(0), Arch_PhysicalMemoryBoundaries);
+    OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_MapToHHDM(0), Mm_PhysicalMemoryBoundaries);
 }
 OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 {
