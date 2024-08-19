@@ -120,9 +120,14 @@ void Vfs_Initialize()
         /* ONE_STOPBIT */ 0,
         /* PARITYBIT_NONE */ 0,
         nullptr);
-    char message[15] = {};
-    Vfs_FdRead(&file, message, 14, nullptr);
-    Vfs_FdWrite(&file, message, 14, nullptr);
+    char message[32] = {};
+    for (size_t i = 0; i < 32; i++)
+    {
+        Vfs_FdRead(&file, &message[i], 1, nullptr);
+        if (message[i] == '\n')
+            break;
+    }
+    Vfs_FdWrite(&file, message, uacpi_strnlen(message, 32), nullptr);
     Vfs_FdClose(&file);
     end:
     if (root_partid)

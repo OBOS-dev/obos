@@ -44,6 +44,7 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt);
 obos_status  Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt);
 obos_status   Vfs_FdSeek(fd* desc, off_t off, whence_t whence);
 uoff_t     Vfs_FdTellOff(const fd* desc);
+size_t    Vfs_FdGetBlkSz(const fd* desc);
 // Returns OBOS_STATUS_EOF on EOF, OBOS_STATUS_SUCCESS if not on EOF. anything else is an error.
 obos_status    Vfs_FdEOF(const fd* desc); 
 vnode*    Vfs_FdGetVnode(fd* desc);

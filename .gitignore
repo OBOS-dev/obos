@@ -10,3 +10,4 @@
 /dependencies/needs_download.cmake
 /qemu_log.txt
 /tar
+/src/oboskrnl/inc/*
