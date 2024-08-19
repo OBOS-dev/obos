@@ -80,11 +80,11 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount))
+obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* udata), void* udata)
 {
     for (size_t i = 0; i < nSerialPorts; i++)
     {
-        switch (cb((dev_desc)&serialPorts[i], 1, -1))
+        switch (cb((dev_desc)&serialPorts[i], 1, -1, udata))
         {
             case ITERATE_DECISION_CONTINUE:
                 continue;
@@ -101,9 +101,11 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (!port || !buf || !blkCount)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t i = 0;
+    while(port->in_buffer.szBuf < blkCount)
+        ;
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
-    // TODO: Make sync instead of async.
-    for (; i < blkCount && i < port->in_buffer.szBuf; i++)
+    const size_t initialBufSize = port->in_buffer.szBuf;
+    for (; i < blkCount && i < initialBufSize; i++)
         ((char*)buf)[i] = pop_from_buffer(&port->in_buffer);
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
     if (nBlkRead)

@@ -33,6 +33,8 @@
 
 static bool is_eof(vnode* vn, size_t off)
 {
+    if (vn->vtype != VNODE_TYPE_REG)
+        return false;
     return off >= vn->filesize;
 }
 obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags)
@@ -84,8 +86,10 @@ obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags)
 }
 static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
 {
-    const driver_header* const fs_drv = &desc->vn->mount_point->fs_driver->driver->header;
-    obos_status status = fs_drv->ftable.write_sync(desc->vn->desc, from, nBytes, desc->offset, nWritten_);
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
+        driver = &desc->vn->un.device->driver->header;
+    obos_status status = driver->ftable.write_sync(desc->vn->desc, from, nBytes, desc->offset, nWritten_);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
     return OBOS_STATUS_SUCCESS;
@@ -102,7 +106,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset))
+    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
         desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
@@ -130,8 +134,10 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
 }
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
 {
-    const driver_header* const fs_drv = &desc->vn->mount_point->fs_driver->driver->header;
-    obos_status status = fs_drv->ftable.read_sync(desc->vn->desc, into, nBytes, desc->offset, nRead_);
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &desc->vn->mount_point->fs_driver->driver->header : nullptr;
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
+        driver = &desc->vn->un.device->driver->header;
+    obos_status status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, desc->offset, nRead_);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
     return OBOS_STATUS_SUCCESS;
@@ -148,7 +154,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset))
+    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
         nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)

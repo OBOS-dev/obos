@@ -98,7 +98,7 @@ typedef struct driver_ftable
     obos_status(*get_max_blk_count)(dev_desc desc, size_t* count);
     obos_status(*read_sync)(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
     obos_status(*write_sync)(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
-    obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));  // unrequired for fs drivers.
+    obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.
     obos_status(*ioctl)(size_t nParameters, uint64_t request, ...);

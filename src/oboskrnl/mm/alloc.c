@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "vfs/vnode.h"
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -124,6 +125,11 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     size_t filesize = 0;
     if (file)
     {
+        if (file->vn->vtype != VNODE_TYPE_REG)
+        {
+            set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
+            return nullptr;
+        }
         if (file->vn->filesize < size)
             size = file->vn->filesize; // Truncated.
         if ((file->offset+size >= file->vn->filesize))
@@ -406,8 +412,10 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             ctx->stat.nonPaged -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         if (curr->prot.present)
         {
-            curr->prot.present = false;
-            MmS_SetPageMapping(ctx->pt, curr, 0); // Unmap the page.
+            uintptr_t phys = 0;
+            OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
+            if (!curr->region || !curr->isPrivateMapping)
+                Mm_FreePhysicalPages(phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
         }
         else 
         {
@@ -419,8 +427,18 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
     ctx->stat.committedMemory -= size;
-
     Core_SpinlockRelease(&ctx->lock, oldIrql);
+    struct page current = {};
+    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    {
+        MmS_QueryPageInfo(ctx->pt, addr, &current);
+        if (curr->prot.present)
+        {
+            curr->prot.present = false;
+            MmS_SetPageMapping(ctx->pt, &current, 0); // Unmap the page.
+        }
+        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
 
     return OBOS_STATUS_SUCCESS;
 }

@@ -118,7 +118,7 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		nPages += (alignmentPages - (nPages % alignmentPages));
 	size_t alignmentMask = alignmentPages*OBOS_PAGE_SIZE-1;
 	size_t nPagesRequired = 0;
-	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_MASKED, true);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
 	struct freelist_node* node = MAP_TO_HHDM(s_head, struct freelist_node);
 	while (UNMAP_FROM_HHDM(node) && !IsRegionSufficient(node, nPages, alignmentMask, &nPagesRequired))
 		node = MAP_TO_HHDM(node->next, struct freelist_node);
@@ -163,7 +163,7 @@ OBOS_NO_KASAN obos_status Mm_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	addr -= (addr%OBOS_PAGE_SIZE);
 	if (!addr)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_MASKED, true);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
 	struct freelist_node* node = MAP_TO_HHDM(addr, struct freelist_node);
 #if OBOS_KASAN_ENABLED
 	memset(node->poison, OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], sizeof(node->poison));

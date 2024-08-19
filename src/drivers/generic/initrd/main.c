@@ -43,7 +43,7 @@ OBOS_PAGEABLE_FUNCTION obos_status write_sync(dev_desc desc, const void* buf, si
     OBOS_UNUSED(nBlkWritten);
     return OBOS_STATUS_READ_ONLY;
 }
-OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount));
+OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
 OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {

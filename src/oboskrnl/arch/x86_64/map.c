@@ -241,7 +241,7 @@ static obos_status invlpg_impl(uintptr_t at)
 	{
 		static irq irq;
 		invlpg_ipi_packet.irq = &irq;
-		enum { IRQL_INVLPG_IPI=14 };
+		enum { IRQL_INVLPG_IPI=15 };
 		Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
 		irq.handler = invlpg_ipi_bootstrap;
 		irq.handlerUserdata = nullptr;
@@ -422,6 +422,7 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 		pml2Entry = (uintptr_t)MmS_MapVirtFromPhys(pml2Entry);
 		((uintptr_t*)pml2Entry)[AddressToIndex(addr, 0)] &= ~(BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	}
+	ppage->addr = addr;
 	memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
 	return OBOS_STATUS_SUCCESS;	
 }

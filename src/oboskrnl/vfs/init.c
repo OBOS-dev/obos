@@ -4,6 +4,8 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "driver_interface/header.h"
+#include "driver_interface/loader.h"
 #include "mm/alloc.h"
 #include "mm/context.h"
 #include "scheduler/thread.h"
@@ -43,14 +45,35 @@
     "                         is used as root."
 */
 
-static void test_thread(void* userdata)
+static iterate_decision foreach_dev(dev_desc desc, size_t unused1, size_t unused2, void* udata)
 {
-    uintptr_t *udata = userdata;
-    event* evnt = (event*)udata[0];
-    Core_WaitOnObject(WAITABLE_OBJECT(*evnt));
-    OBOS_Debug("Read %s. File contents:\n", udata[1]);
-    printf("%*s\n", udata[3], udata[2]);
-    Core_ExitCurrentThread();
+    OBOS_UNUSED(unused1);
+    OBOS_UNUSED(unused2);
+    driver_id* drv = (driver_id*)udata;
+    const char* dev_name = nullptr;
+    drv->header.ftable.query_user_readable_name(desc, &dev_name);
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
+    vdev* vdrv = Vfs_Calloc(1, sizeof(vdev));
+    vdrv->driver = drv;
+    vdrv->data = nullptr;
+    vdrv->desc = desc;
+    vn->desc = desc;
+    vn->un.device = vdrv;
+    vn->vtype = VNODE_TYPE_CHR;
+    vn->filesize = 0;
+    vn->group_uid = ROOT_GID;
+    vn->owner_uid = ROOT_UID;
+    vn->perm.owner_read = true;
+    vn->perm.group_read = true;
+    vn->perm.owner_write = true;
+    vn->perm.group_write = true;
+    dirent* slash_dev = VfsH_DirentLookup("/dev");
+    vn->mount_point = slash_dev->vnode->mount_point;
+    dirent* ent = Vfs_Calloc(1, sizeof(dirent));
+    ent->vnode = vn;
+    OBOS_InitString(&ent->name, dev_name);
+    VfsH_DirentAppendChild(slash_dev, ent);
+    return ITERATE_DECISION_CONTINUE;
 }
 void Vfs_Initialize()
 {
@@ -89,7 +112,7 @@ void Vfs_Initialize()
     mount* root = nullptr;
     Vfs_Mount("/", nullptr, &initrd_dev, &root);
     Vfs_Root->vnode->mount_point = root;
-    const char* const pathspec = "/test_folder/file.txt";
+    const char* pathspec = "/uart";
     fd file = {};
     obos_status status = Vfs_FdOpen(&file, pathspec, FD_OFLAGS_READ_ONLY);
     if (obos_is_error(status))
@@ -100,32 +123,39 @@ void Vfs_Initialize()
     Vfs_FdSeek(&file, 0, SEEK_END);
     size_t filesize = Vfs_FdTellOff(&file);
     Vfs_FdSeek(&file, 0, SEEK_SET);
-    char *buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, NULL, filesize, 0, VMA_FLAGS_PRIVATE, &file, nullptr);
-    OBOS_Debug("Mapped %s. Contents:\n%*s\n", pathspec, filesize, buf);
-    buf[0] = 'g';
-    OBOS_Debug("Modified buffer. Contents:\n%*s\n", filesize, buf);
-    // event *evnt = Vfs_Calloc(1, sizeof(event));
-    // *evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    // OBOS_Debug("Reading %s\n", pathspec);
-    // Vfs_FdARead(&file, buf, filesize, evnt);
-    // thread* thr = CoreH_ThreadAllocate(nullptr);
-    // thread_ctx ctx = {};
-    // uintptr_t* udata = Vfs_Calloc(4, sizeof(uintptr_t));
-    // udata[0] = (uintptr_t)evnt;
-    // udata[1] = (uintptr_t)pathspec;
-    // udata[2] = (uintptr_t)buf;
-    // udata[3] = (uintptr_t)filesize;
-    // CoreS_SetupThreadContext(
-    //     &ctx, 
-    //     (uintptr_t)test_thread, (uintptr_t)udata,
-    //     false,
-    //     Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 
-    //     0x10000);
-    // CoreH_ThreadInitialize(thr, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
-    // thr->stackFree = CoreH_VMAStackFree;
-    // thr->stackFreeUserdata = &Mm_KernelContext;
-    // OBOS_Debug("Starting thread %d.\n", thr->tid);
-    // CoreH_ThreadReady(thr);
+    void* buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &file, &status);
+    if (obos_is_error(status))
+    {
+        OBOS_Debug("Could not map view of %s. Status: %d\n", pathspec, status);
+        goto end;
+    }
+    driver_id* driver = Drv_LoadDriver(buf, filesize, &status);
+    if (obos_is_error(status))
+    {
+        OBOS_Debug("Could not load %s. Status: %d\n", pathspec, status);
+        goto end;
+    }
+    thread* mainThr = nullptr;
+    Drv_StartDriver(driver, &mainThr);
+    // Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
+    while (!(mainThr->flags & THREAD_FLAGS_DIED))
+        ;
+    driver->header.ftable.foreach_device(foreach_dev, driver);
+    Vfs_FdClose(&file);
+    pathspec = "/dev/COM1";
+    Vfs_FdOpen(&file, pathspec, FD_OFLAGS_UNCACHED);
+    Vfs_FdIoctl(&file, 6, /* IOCTL_OPEN_SERIAL_CONNECTION */0, 
+        1,
+        115200,
+        /* EIGHT_DATABITS */ 3,
+        /* ONE_STOPBIT */ 0,
+        /* PARITYBIT_NONE */ 0,
+        &file.vn->desc);
+    file.vn->un.device->desc = file.vn->desc;
+    char message[15] = {};
+    Vfs_FdRead(&file, message, 14, nullptr);
+    Vfs_FdWrite(&file, message, 14, nullptr);
+    Vfs_FdClose(&file);
     end:
     if (root_partid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
