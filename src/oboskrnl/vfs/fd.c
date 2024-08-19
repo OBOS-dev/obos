@@ -37,16 +37,22 @@ static bool is_eof(vnode* vn, size_t off)
         return false;
     return off >= vn->filesize;
 }
-obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags)
+obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags) 
 {
-    if (!desc || !path)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (desc->flags & FD_FLAGS_OPEN)
-        return OBOS_STATUS_ALREADY_INITIALIZED;
     dirent* ent = VfsH_DirentLookup(path);
     if (!ent)
         return OBOS_STATUS_NOT_FOUND;
+    return Vfs_FdOpenDirent(desc, ent, oflags);
+}
+obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
+{
+    if (!desc || !ent)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
     OBOS_ASSERT(ent->vnode);
+    if (ent->vnode->vtype == VNODE_TYPE_DIR)
+        return OBOS_STATUS_NOT_A_FILE;
     desc->vn = ent->vnode;
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;

@@ -10,6 +10,7 @@
 #include <error.h>
 
 #include <vfs/vnode.h>
+#include <vfs/dirent.h>
 #include <vfs/limits.h>
 
 #include <utils/list.h>
@@ -38,6 +39,7 @@ typedef struct fd
     LIST_NODE(fd_list, struct fd) node;
 } fd;
 obos_status   Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags);
+obos_status   Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags);
 obos_status  Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status   Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead);
 obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt);
