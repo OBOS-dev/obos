@@ -10,6 +10,7 @@
 #include <memmanip.h>
 
 #include <driver_interface/header.h>
+#include <driver_interface/loader.h>
 #include <driver_interface/pnp.h>
 #include <driver_interface/pci.h>
 
@@ -20,6 +21,13 @@
 #include <uacpi_libc.h>
 
 #include <utils/list.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
+
+#include <vfs/alloc.h>
+#include <vfs/dirent.h>
+#include <vfs/fd.h>
 
 #include <uacpi/uacpi.h>
 #include <uacpi/namespace.h>
@@ -290,7 +298,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
             free,
             sizeof(struct pnp_device),
             0, 0, 0,
-            pnp_acpi_driver_hash, pnp_acpi_driver_compare, free, nullptr);
+            pnp_acpi_driver_hash, pnp_acpi_driver_compare, nullptr, nullptr);
 #else
     bool acpi_drivers = 0;
 #endif
@@ -301,7 +309,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
             free,
             sizeof(struct pnp_device),
             0, 0, 0,
-            pnp_pci_driver_hash, pnp_pci_driver_cmp, free, nullptr) : nullptr;
+            pnp_pci_driver_hash, pnp_pci_driver_cmp, nullptr, nullptr) : nullptr;
     if (!pci_drivers || !acpi_drivers)
         return OBOS_STATUS_INTERNAL_ERROR;
     // Divide the drivers into their respective hashmaps.
@@ -345,4 +353,139 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
 #endif
     // Return success;
     return OBOS_STATUS_SUCCESS;
+}
+struct driver_file
+{
+    driver_header* hdr;
+    void* base;
+    fd* file;
+};
+static int driver_file_compare(const void* a_, const void* b_, void* udata)
+{
+    OBOS_UNUSED(udata);
+    struct driver_file* a = (struct driver_file*)a_;
+    struct driver_file* b = (struct driver_file*)b_;
+    return (a->hdr < b->hdr) ? -1 : ((a->hdr > b->hdr) ? 1 : 0);
+}
+static uint64_t driver_file_hash(const void *item, uint64_t seed0, uint64_t seed1) 
+{
+    const struct driver_file* drv = item;
+    return hashmap_sip(drv->hdr, sizeof(*drv->hdr), seed0, seed1);
+}
+static void driver_file_free(void* ele)
+{
+    struct driver_file* drv = ele;
+    Vfs_FdSeek(drv->file, 0, SEEK_END);
+    size_t filesize = Vfs_FdTellOff(drv->file);
+    Vfs_FdSeek(drv->file, 0, SEEK_SET);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, filesize);
+    // drv->hdr is invalid.
+    Vfs_FdClose(drv->file);
+}
+obos_status Drv_PnpLoadDriversAt(dirent* directory)
+{
+    if (!directory)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    struct hashmap* drivers = 
+        hashmap_new_with_allocator(
+            malloc,
+            realloc,
+            free,
+            sizeof(struct driver_file),
+            0, 0, 0,
+            driver_file_hash, driver_file_compare, driver_file_free, nullptr);
+    driver_header_list what = {};
+    for (dirent* ent = directory->d_children.head; ent; )
+    {
+        fd* file = Vfs_Calloc(1, sizeof(fd));
+        obos_status status = Vfs_FdOpenDirent(file, ent, FD_OFLAGS_READ_ONLY);
+        if (obos_is_error(status))
+        {
+            if (status != OBOS_STATUS_NOT_A_FILE)
+                OBOS_Warning("Could not open file. Status: %d.\n", status);
+            Vfs_Free(file);
+            ent = ent->d_next_child;
+            continue;
+        }
+        Vfs_FdSeek(file, 0, SEEK_END);
+        size_t filesize = Vfs_FdTellOff(file);
+        Vfs_FdSeek(file, 0, SEEK_SET);
+        void* buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, file, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_Warning("Could not allocate file contents. Status: %d.\n", status);
+            Vfs_FdClose(file);
+            Vfs_Free(file);
+            ent = ent->d_next_child;
+            continue;
+        }
+        driver_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header), nullptr);
+        Drv_LoadDriverHeader(buf, filesize, hdr);
+        if (obos_is_error(status))
+        {
+            OBOS_Warning("Could not load driver header. Status: %d.\n", status);
+            Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
+            Vfs_FdClose(file);
+            Vfs_Free(file);
+            ent = ent->d_next_child;
+            continue;
+        }
+        if (uacpi_strnlen(hdr->driverName, 64))
+            OBOS_Log("Found driver '%*s'\n", uacpi_strnlen(hdr->driverName, 64), hdr->driverName);
+        else
+            OBOS_Log("Found a driver.\n", uacpi_strnlen(hdr->driverName, 64), hdr->driverName);
+        struct driver_file drv_file = { .hdr=hdr, .base=buf, .file=file };
+        driver_header_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header_node), nullptr);
+        hashmap_set(drivers, &drv_file);
+        node->data = hdr;
+        APPEND_DRIVER_HEADER_NODE(what, node);
+
+        ent = ent->d_next_child;
+    }
+    if (!hashmap_count(drivers))
+        return OBOS_STATUS_SUCCESS;
+    driver_header_list toLoad = {};
+    obos_status status = Drv_PnpDetectDrivers(what, &toLoad);
+    if (obos_is_success(status))
+    {
+        for (driver_header_node* node = toLoad.head; node; )
+        {
+            driver_header_node* next = node->next;
+            driver_header* const curr = node->data;
+            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+            node = next;
+            struct driver_file ele = { .hdr=curr };
+            const struct driver_file* file = hashmap_get(drivers, &ele);
+            Vfs_FdSeek(file->file, 0, SEEK_END);
+            size_t filesize = Vfs_FdTellOff(file->file);
+            Vfs_FdSeek(file->file, 0, SEEK_SET);
+            obos_status loadStatus = OBOS_STATUS_SUCCESS;
+            if (uacpi_strnlen(file->hdr->driverName, 64))
+                OBOS_Log("Loading '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+            else
+                OBOS_Log("Loading a driver...\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+            driver_id* drv = Drv_LoadDriver(file->base, filesize, &loadStatus);
+            if (obos_is_error(loadStatus))
+            {
+                OBOS_Warning("Could not load '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+                continue;
+            }
+            loadStatus = Drv_StartDriver(drv, nullptr);
+            if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
+            {
+                OBOS_Warning("Could not start '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+                Drv_UnloadDriver(drv);
+                continue;
+            }
+        }
+    }
+    for (driver_header_node* node = what.head; node; )
+    {
+        driver_header_node* next = node->next;
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+        node = next;
+    }
+    hashmap_clear(drivers, true);
+    hashmap_free(drivers);
+    return status;
 }

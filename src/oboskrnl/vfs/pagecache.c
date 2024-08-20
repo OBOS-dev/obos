@@ -145,6 +145,9 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
                 else
                 {
                     pg->prot.present = false;
+                    pg->region->sz -= OBOS_PAGE_SIZE;
+                    if (!pg->region->sz)
+                        Mm_Allocator->Free(Mm_Allocator, pg->region, sizeof(*pg->region));
                     phys = 0;
                 }
             }

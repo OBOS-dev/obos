@@ -54,6 +54,7 @@
 #include <mm/context.h>
 #include <mm/handler.h>
 #include <mm/alloc.h>
+#include <mm/pmm.h>
 
 #include <scheduler/process.h>
 #include <scheduler/thread_context_info.h>
@@ -75,11 +76,11 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "mm/pmm.h"
 
 #include <uacpi_libc.h>
 
 #include <vfs/init.h>
+#include <vfs/mount.h>
 
 #include <locks/mutex.h>
 #include <locks/wait.h>
@@ -559,13 +560,6 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
 	return UACPI_INTERRUPT_HANDLED;
 }
-static void semaphore_test(void* userdata);
-static void mutex_test(void* userdata);
-static void event_test(void* userdata);
-static void not_event_test(void* userdata);
-static semaphore sem;
-static mutex mut;
-static event e;
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -883,9 +877,7 @@ if (st != UACPI_STATUS_OK)\
 	OBOS_Debug("%s: Initializing VFS.\n", __func__);
 	Vfs_Initialize();
 	OBOS_Debug("%s: Loading drivers through PnP.\n", __func__);
-	// TODO:
-	// Load PnP drivers.
-	OBOS_Debug("%s: Unimplemented.\n", __func__);
+	Drv_PnpLoadDriversAt(Vfs_Root);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);

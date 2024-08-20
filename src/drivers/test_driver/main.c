@@ -11,7 +11,8 @@ void cleanup()
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) volatile driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = 0,
-    .ftable.driver_cleanup_callback = cleanup
+    .ftable.driver_cleanup_callback = cleanup,
+    .driverName = "Test driver"
 };
 
 driver_id* this_driver;
