@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <driver_interface/pci.h>
@@ -97,7 +98,7 @@ uint32_t pciReadDwordRegister(uint8_t bus, uint8_t slot, uint8_t func, uint8_t o
 
     return ((ind(0xCFC) >> ((offset & 2) * 8)));
 }
-obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata)
+OBOS_EXPORT obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata)
 {
     int16_t currentSlot = 0;
     for (int16_t bus = 0; bus < 256; bus++)
@@ -118,7 +119,7 @@ obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_devic
                 uint8_t progIF = ((uint8_t*)&tmp)[1];
                 uint16_t deviceId = pciReadDwordRegister(bus, currentSlot, function, 0) & 0xff;
                 uint16_t vendorId = pciReadDwordRegister(bus, currentSlot, function, 0) >> 16;
-                uint16_t int_info = pciReadDwordRegister(bus, currentSlot, function, 0xf);
+                uint16_t int_info = pciReadDwordRegister(bus, currentSlot, function, 0xf*4);
                 pci_device_node dev = {
                     .info = {
                         .bus = bus,
@@ -136,12 +137,12 @@ obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_devic
                     },
                     .bars = {
                         .arr32 = {
-                            pciReadDwordRegister(bus, currentSlot, function, 4),
-                            pciReadDwordRegister(bus, currentSlot, function, 5),
-                            pciReadDwordRegister(bus, currentSlot, function, 6),
-                            pciReadDwordRegister(bus, currentSlot, function, 7),
-                            pciReadDwordRegister(bus, currentSlot, function, 8),
-                            pciReadDwordRegister(bus, currentSlot, function, 9),
+                            pciReadDwordRegister(bus, currentSlot, function, 4*4) & 0xfffffff0,
+                            pciReadDwordRegister(bus, currentSlot, function, 5*4) & 0xfffffff0,
+                            pciReadDwordRegister(bus, currentSlot, function, 6*4) & 0xfffffff0,
+                            pciReadDwordRegister(bus, currentSlot, function, 7*4) & 0xfffffff0,
+                            pciReadDwordRegister(bus, currentSlot, function, 8*4) & 0xfffffff0,
+                            pciReadDwordRegister(bus, currentSlot, function, 9*4) & 0xfffffff0,
                         }
                     },
                     .irq = {
@@ -159,7 +160,7 @@ obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_devic
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node)
+OBOS_EXPORT obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node)
 {
     if (pciReadWordRegister(loc.bus, loc.slot, loc.function, 0) == 0xFFFF)
         return OBOS_STATUS_NOT_FOUND; // There is no device here.
@@ -170,9 +171,9 @@ obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* nod
     uint8_t classCode = ((uint8_t*)&tmp)[3];
     uint8_t subclass = ((uint8_t*)&tmp)[2];
     uint8_t progIF = ((uint8_t*)&tmp)[1];
-    uint16_t deviceId = pciReadDwordRegister(bus, currentSlot, function, 0) & 0xff;
-    uint16_t vendorId = pciReadDwordRegister(bus, currentSlot, function, 0) >> 16;
-    uint16_t int_info = pciReadDwordRegister(bus, currentSlot, function, 0xf);
+    uint16_t deviceId = pciReadDwordRegister(bus, currentSlot, function, 0*4) & 0xff;
+    uint16_t vendorId = pciReadDwordRegister(bus, currentSlot, function, 0*4) >> 16;
+    uint16_t int_info = pciReadDwordRegister(bus, currentSlot, function, 0xf*4);
     pci_device_node dev = {
         .info = {
             .bus = bus,
@@ -190,12 +191,12 @@ obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* nod
         },
         .bars = {
             .arr32 = {
-                pciReadDwordRegister(bus, currentSlot, function, 4),
-                pciReadDwordRegister(bus, currentSlot, function, 5),
-                pciReadDwordRegister(bus, currentSlot, function, 6),
-                pciReadDwordRegister(bus, currentSlot, function, 7),
-                pciReadDwordRegister(bus, currentSlot, function, 8),
-                pciReadDwordRegister(bus, currentSlot, function, 9),
+                pciReadDwordRegister(bus, currentSlot, function, 4*4),
+                pciReadDwordRegister(bus, currentSlot, function, 5*4),
+                pciReadDwordRegister(bus, currentSlot, function, 6*4),
+                pciReadDwordRegister(bus, currentSlot, function, 7*4),
+                pciReadDwordRegister(bus, currentSlot, function, 8*4),
+                pciReadDwordRegister(bus, currentSlot, function, 9*4),
             }
         },
         .irq = {
@@ -206,7 +207,7 @@ obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* nod
     *node = dev;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val)
+OBOS_EXPORT obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val)
 {
     if (!val)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -226,7 +227,7 @@ obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val)
+OBOS_EXPORT obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val)
 {
     if (!val)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -245,4 +246,24 @@ obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
     return OBOS_STATUS_SUCCESS;
+}
+OBOS_EXPORT size_t DrvS_GetBarSize(pci_device_location loc, uint8_t bar_index, bool is64bit, obos_status* status)
+{
+    const uint8_t bus = loc.bus;
+    const uint8_t slot = loc.slot;
+    const uint8_t function = loc.function;
+    if (status)
+        *status = OBOS_STATUS_SUCCESS;
+    if (bar_index > 5+(!is64bit))
+    {
+        if (status)
+            *status = OBOS_STATUS_INVALID_ARGUMENT;
+        return (size_t)-1;
+    }
+    uint32_t bar = pciReadDwordRegister(bus, slot, function, (4+bar_index)*4) & 0xfffffff0;
+    pciWriteDwordRegister(bus, slot, function, (4+bar_index)*4, 0xFFFFFFFF);
+    size_t size = (~pciReadDwordRegister(bus, slot, function, (4+bar_index)*4) & 0xfffffff0) + 1;
+    // size = ((size >> 12) + 1) << 12;
+    pciWriteDwordRegister(bus, slot, function, (4+bar_index)*4, bar);
+    return size;
 }

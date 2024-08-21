@@ -276,6 +276,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             node->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
             node->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
             node->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+            node->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
             status = MmS_SetPageMapping(ctx->pt, node, phys);
             if (obos_is_error(status))
             {

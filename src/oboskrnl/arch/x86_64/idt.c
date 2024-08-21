@@ -76,17 +76,17 @@ OBOS_PAGEABLE_FUNCTION void Arch_InitializeIDT(bool isBSP)
 	idtPtr.idt = (uintptr_t)g_idtEntries;
 	Arch_FlushIDT(&idtPtr);
 }
-OBOS_PAGEABLE_FUNCTION void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
+void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f)
 {
 	Arch_IRQHandlers[vec] = f;
 }
-OBOS_PAGEABLE_FUNCTION void Arch_PutInterruptOnIST(uint8_t vec, uint8_t ist)
+void Arch_PutInterruptOnIST(uint8_t vec, uint8_t ist)
 {
 	if (ist > 8)
 		return;
 	g_idtEntries[vec].ist = ist;
 }
-OBOS_PAGEABLE_FUNCTION obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
+obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interrupt_frame* frame))
 {
 	obos_status s = OBOS_STATUS_SUCCESS;
 	if ((s = CoreS_IsIRQVectorInUse(vector)) && handler)
@@ -98,7 +98,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_RegisterIRQHandler(irq_vector_id vector
 	Arch_IRQHandlers[vector + 32] = (uintptr_t)handler;
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
+obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 {
 	if (vector > 224)
 		return OBOS_STATUS_INVALID_ARGUMENT;

@@ -5,6 +5,7 @@ then
 fi
 cd $(git rev-parse --show-toplevel)
 cp out/uart tar
+cp out/ahci tar
 if [[ ! -d tar/dev ]]
 then
     mkdir tar/dev

@@ -30,6 +30,7 @@ typedef struct page
         bool touched : 1;                   // If set, the page has been read or written.
         bool huge_page : 1;                 // If set, the page is a huge page.
         bool executable : 1;                // If set, the page can be executed.
+        bool uc : 1;                        // If set, this page is uncacheable.
         bool ro : 1;                        // If set, this page was originally allocated as read-only. This is only used in CoW pages as of now.
     } prot;                                 // The protection of the page.
     bool pageable : 1;                      // If set, the page is pageable.

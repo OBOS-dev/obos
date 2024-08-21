@@ -44,7 +44,7 @@ OBOS_WEAK page_table MmS_GetCurrentPageTable();
 /// <param name="page">The page. Cannot be nullptr.</param>
 /// <param name="phys">The physical page. Ignored if !page->prot.present.</param>
 /// <returns>The status of the function.</returns>
-OBOS_WEAK obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys);
+OBOS_EXPORT obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys);
 
 typedef struct working_set
 {
@@ -75,7 +75,7 @@ typedef struct context
     dpc file_mapping_dpc;
     memstat stat;
 } context;
-extern context Mm_KernelContext;
+extern OBOS_EXPORT context Mm_KernelContext;
 extern char MmS_MMPageableRangeStart[];
 extern char MmS_MMPageableRangeEnd[];
 bool MmH_IsAddressUnPageable(uintptr_t addr);

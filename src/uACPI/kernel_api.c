@@ -326,8 +326,8 @@ void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
     return Arch_MapToHHDM(addr);
 #endif
 }
-void uacpi_kernel_unmap(void *, uacpi_size )
-{ /* Does nothing. */}
+void uacpi_kernel_unmap(void* b, uacpi_size s)
+{ OBOS_UNUSED(b); OBOS_UNUSED(s); /* Does nothing. */}
 uacpi_handle uacpi_kernel_create_spinlock(void)
 {
     return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(spinlock), nullptr);
@@ -421,7 +421,9 @@ uacpi_status uacpi_kernel_io_write(
 }
 uacpi_handle uacpi_kernel_create_mutex(void)
 {
-    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
+    mutex* mut = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
+    *mut = MUTEX_INITIALIZE();
+    return (uacpi_handle)mut;
 }
 void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
@@ -450,6 +452,7 @@ uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
     case UACPI_FIRMWARE_REQUEST_TYPE_BREAKPOINT:
         break;
     case UACPI_FIRMWARE_REQUEST_TYPE_FATAL:
+        OBOS_Debug("Firmware requested fatal error. Panicking.\n");
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR,
             "Your bios fucked up, so now you have to deal with the consequences, also known as possible data loss. Firmware Error Code: 0x%016x, argument: %016lx\n",
             req->fatal.code, req->fatal.arg);
@@ -489,7 +492,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 )
 {
     struct irq* irqHnd = Core_IrqObjectAllocate(nullptr);
-    obos_status status = Core_IrqObjectInitializeIRQL(irqHnd, IRQL_DISPATCH, false, true);
+    obos_status status = Core_IrqObjectInitializeIRQL(irqHnd, IRQL_GPE, false, true);
     if (obos_is_error(status))
     {
         OBOS_Debug("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
@@ -505,7 +508,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
         return UACPI_STATUS_INTERNAL_ERROR;
     // TODO: Fix issue where some hardware gets infinite GPEs.
     // NOTE(oberrow): It's quite a funny issue, except it's kinda annoying.
-    Arch_IOAPICMaskIRQ(irq, /* false */ false);
+    Arch_IOAPICMaskIRQ(irq, /* false */ true);
 #endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;

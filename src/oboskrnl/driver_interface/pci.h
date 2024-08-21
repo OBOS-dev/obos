@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <struct_packing.h>
 
 typedef enum pci_iteration_decision
 {
@@ -24,7 +25,7 @@ typedef union pci_device
         uint8_t revId;
         uint16_t vendorId;
         uint16_t deviceId;
-    } indiv;
+    } OBOS_PACK indiv;
     uint64_t id;
 } pci_device;
 typedef union pci_bar
@@ -67,7 +68,16 @@ typedef struct pci_device_node
 
     pci_irq_info irq;
 } pci_device_node;
+#if OBOS_ARCHITECTURE_HAS_PCI
+OBOS_EXPORT obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata);
+OBOS_EXPORT obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node);
+OBOS_EXPORT obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val);
+OBOS_EXPORT obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val);
+OBOS_EXPORT size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bool is64bit, obos_status* status);
+#else
 OBOS_WEAK obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata);
 OBOS_WEAK obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node);
 OBOS_WEAK obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val);
 OBOS_WEAK obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val);
+OBOS_WEAK size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bool is64bit, size_t* size);
+#endif

@@ -228,6 +228,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
     page.prot.executable = true;
     page.prot.touched = (entry & PT_FLAGS_USED) || (entry & PT_FLAGS_MODIFIED);
     page.prot.user = !(entry & PT_FLAGS_SUPERVISOR);
+    page.prot.uc = ((entry >> 5) & 0b11) == PT_FLAGS_CACHE_DISABLE;
     if (page.prot.touched)
     {
         // Unset the bit(s).
@@ -250,7 +251,10 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_SetPageMapping(page_table pt, const 
         flags |= PT_FLAGS_READONLY;
     if (!page->prot.user)
         flags |= PT_FLAGS_SUPERVISOR;
-    flags |= PT_FLAGS_CACHE_COPYBACK;
+    if (!page->prot.uc)
+        flags |= PT_FLAGS_CACHE_COPYBACK;
+    else
+        flags |= PT_FLAGS_CACHE_DISABLE;
     return !page->prot.huge_page ? 
         Arch_MapPage(pt, (page->addr & ~0xfff), phys, flags) :
         OBOS_STATUS_UNIMPLEMENTED;

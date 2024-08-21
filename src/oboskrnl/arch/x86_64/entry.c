@@ -77,6 +77,9 @@
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
 
+#include <uacpi/kernel_api.h>
+#include <uacpi/utilities.h>
+
 #include <uacpi_libc.h>
 
 #include <vfs/init.h>
@@ -203,7 +206,6 @@ struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 struct ultra_kernel_info_attribute* Arch_KernelInfo;
 struct ultra_module_info_attribute* Arch_KernelBinary;
 struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
-struct ultra_module_info_attribute* Arch_UARTDriver;
 struct ultra_module_info_attribute* Arch_InitRDDriver;
 struct ultra_framebuffer* Arch_Framebuffer;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
@@ -247,8 +249,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 				Arch_KernelBinary = module;
 			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
 				Arch_InitialSwapBuffer = module;
-			else if (strcmp(module->name, "uart_driver"))
-				Arch_UARTDriver = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -275,6 +275,7 @@ extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
+	sti();
 	uintptr_t virt = getCR2();
 	virt &= ~0xfff;
 	if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
@@ -335,6 +336,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		what.addr = virt;
 		pg = RB_FIND(page_tree, &CoreS_GetCPULocalPtr()->currentContext->pages, &what);
 	}
+	asm("cli");
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -416,8 +418,10 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 		nCPUsWithInitializedTimer++;
 		// TODO: Move the PAT initialization code somewhere else.
-		wrmsr(0x277, 0x0001040600070406);
 		// UC UC- WT WB UC WC WT WB
+		wrmsr(0x277, 0x0001040600070406);
+		asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
+		wbinvd();
 	}
 	else
 		Core_Yield();
@@ -653,8 +657,6 @@ void Arch_KernelMainBootstrap()
 	Mm_Initialize();
 	if (Arch_Framebuffer->physical_address)
 	{
-		// for (volatile bool b = true; b;)
-		// 	;
 		OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
 		size_t size = (Arch_Framebuffer->height*Arch_Framebuffer->pitch + OBOS_HUGE_PAGE_SIZE - 1) & ~(OBOS_HUGE_PAGE_SIZE - 1);
 		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr, nullptr);
@@ -713,6 +715,7 @@ if (st != UACPI_STATUS_OK)\
 #ifdef __x86_64__
 	rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
 #endif
+	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	uacpi_init_params params = {
 		rsdp,
 		UACPI_LOG_INFO,
@@ -734,7 +737,13 @@ if (st != UACPI_STATUS_OK)\
 
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
-    Arch_IOAPICMaskIRQ(9, false);
+
+	// Set the interrupt model.
+	uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
+
+	Core_LowerIrql(oldIrql);
+    // TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
+	Arch_IOAPICMaskIRQ(9, false);
 
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;

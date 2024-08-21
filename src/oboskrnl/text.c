@@ -85,6 +85,7 @@ static void flush_buffers(text_renderer_state* state)
 				memcpy((void*)currentLine, (void*)currentLineBackbuffer, state->fb.pitch*16);
 			currentLine += state->fb.pitch*16;
 			currentLineBackbuffer += state->fb.pitch*16;
+			state->fb.modified_line_bitmap[j] &= ~BIT(i);
 		}
 	}
 }
