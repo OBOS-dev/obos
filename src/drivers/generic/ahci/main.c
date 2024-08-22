@@ -7,7 +7,6 @@
 #include <int.h>
 #include <error.h>
 #include <klog.h>
-#include <memmanip.h>
 
 #include <scheduler/thread.h>
 
@@ -24,26 +23,21 @@
 #include <utils/tree.h>
 
 #include <irq/irq.h>
+
 #include <irq/timer.h>
 
-#include <locks/event.h>
-
-#include <allocators/base.h>
-
-#include <locks/wait.h>
-
 #include "command.h"
-#include "structs.h"
 #include "ahci_irq.h"
-
-#include <vfs/dirent.h>
-#include <vfs/vnode.h>
+#include "structs.h"
 
 #include <uacpi/namespace.h>
 #include <uacpi/resources.h>
 #include <uacpi/types.h>
 #include <uacpi/utilities.h>
 #include <uacpi_libc.h>
+
+#include <vfs/vnode.h>
+#include <vfs/dirent.h>
 
 #if defined(__x86_64__)
 #include <arch/x86_64/ioapic.h>
@@ -99,18 +93,10 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 volatile HBA_MEM* HBA;
 // Arch-specific.
 uint32_t HbaIrqNumber;
-enum {
-    POLARITY_ACTIVE_LOW,
-    POLARITY_ACTIVE_HIGH,
-} HbaIrqPolarity;
-enum {
-    TRIGGER_MODE_LEVEL,
-    TRIGGER_MODE_EDGE,
-} HbaIrqTriggerMode;
 Port Ports[32];
-size_t PortCount;
 pci_device_node PCINode;
 bool FoundPCINode;
+pci_irq_handle PCIIrqHandle;
 pci_iteration_decision find_pci_node(void* udata, pci_device_node node)
 {
     OBOS_UNUSED(udata);
@@ -171,7 +157,7 @@ const char* const DeviceNames[32] = {
     "sdy", "sdz", "sd1", "sd2",
     "sd3", "sd4", "sd5", "sd6",
 };
-pci_irq_handle PCIIrqHandle;
+// https://forum.osdev.org/viewtopic.php?t=40969
 void OBOS_DriverEntry(driver_id* this)
 {
     DrvS_EnumeratePCI(find_pci_node, nullptr);
@@ -193,22 +179,14 @@ void OBOS_DriverEntry(driver_id* this)
     OBOS_Debug("Enabling bus master and memory space access in PCI command.\n");
     DrvS_ReadPCIRegister(PCINode.info, 1*4, 2, &pciCommand);
     pciCommand |= 6; // memory space + bus master
-    pciCommand &= ~BIT(0); // io space off
-    pciCommand &= ~BIT(10);
-    OBOS_Debug("PCI Command/Status: 0x%08x.\n", pciCommand);
-    DrvS_WritePCIRegister(PCINode.info, 1*4, 4, pciCommand);
+    DrvS_WritePCIRegister(PCINode.info, 1*4, 2, pciCommand);
     OBOS_Debug("Mapping HBA memory.\n");
     HBA = map_registers(bar, barlen, true);
     OBOS_Debug("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, IRQL_AHCI, status);
-    if (!HBA->cap.sam)
-    {
-        HBA->ghc.ae = true;
-        while(!HBA->ghc.ae)
-            OBOSS_SpinlockHint();
-    }
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", IRQL_AHCI, status);
+    HBA->ghc.ae = true;
     if (HBA->cap2 & BIT(0) /* Bios/OS Handoff (BOH) */)
     {
         OBOS_Debug("Performing Bios/OS handoff. This might take a couple seconds.\n");
@@ -237,104 +215,79 @@ void OBOS_DriverEntry(driver_id* this)
                 OBOSS_SpinlockHint();
         } while(0);
     }
-    OBOS_Debug("Resetting HBA....\n");
-    // for (uint8_t i = 0; i < 32; i++)
-    // {
-    //     if (!(HBA->pi & BIT(i)))
-    //         continue;
-    //     StopCommandEngine(HBA->ports + i);
-    // }
-    // HBA->ghc.hr = 1;
-    // while (HBA->ghc.hr)
-    //     OBOSS_SpinlockHint();
-    if (!HBA->cap.sam)
-    {
-        HBA->ghc.ae = true;
-        while(!HBA->ghc.ae)
-            OBOSS_SpinlockHint();
-    }
     for (uint8_t i = 0; i < 32; i++)
     {
         if (!(HBA->pi & BIT(i)))
             continue;
-        Port* port = &Ports[i];
-        PortCount++;
-        port->hbaPort = &HBA->ports[i];
-        port->lock = SEMAPHORE_INITIALIZE(32);
-        port->works = false;
-        port->fisBasePhys = HBAAllocate(OBOS_PAGE_SIZE*1, 256);
-        port->clBasePhys = HBAAllocate(OBOS_PAGE_SIZE*7, 1024);
-        port->clBase = map_registers(port->clBasePhys, OBOS_PAGE_SIZE*7, true);
-        port->fisBase = map_registers(port->fisBasePhys, OBOS_PAGE_SIZE*1, true);
-        port->dev_name = DeviceNames[i];
-        memzero((void*)port->clBase, OBOS_PAGE_SIZE*7);
-        memzero((void*)port->fisBase, OBOS_PAGE_SIZE*1);
-        AHCISetAddress(port->clBasePhys, HBA->ports[i].clb);
-        AHCISetAddress(port->fisBasePhys, HBA->ports[i].fb);
+        HBA_PORT* hPort = HBA->ports + i;
+        //  PxCMD.ST: Bit 0
+        // PxCMD.FRE: Bit 4
+        //  PxCMD.FR: Bit 14
+        //  PxCMD.CR: Bit 15
+        if (!(hPort->cmd & (BIT(0) | BIT(4) | BIT(14) | BIT(15))))
+            continue;
+        // The DMA engine is running.
+        // Disable it.
+        hPort->cmd &= ~BIT(0);
+        hPort->cmd &= ~BIT(4);
+        while (hPort->cmd & (BIT(14) | BIT(15)))
+            OBOSS_SpinlockHint();
+    }
+    HBA->ghc.hr = true;
+    while (HBA->ghc.hr)
+        OBOSS_SpinlockHint();
+    HBA->ghc.ae = true;
+    while (!HBA->ghc.ae)
+        OBOSS_SpinlockHint();
+    for (uint8_t port = 0; port < 32; port++)
+    {
+        if (!(HBA->pi & BIT(port)))
+            continue;
+        HBA_PORT* hPort = HBA->ports + port;
+        Port* curr = Ports + port;
+        curr->clBasePhys = HBAAllocate(sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32, 0);
+        curr->clBase = map_registers(curr->clBasePhys, sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32, true);
+        curr->fisBasePhys = HBAAllocate(4096, 0);
+        curr->fisBase = map_registers(curr->fisBasePhys, 4096, true);
         for (uint8_t slot = 0; slot < HBA->cap.nsc; slot++)
         {
-            HBA_CMD_HEADER* cmdHeader = (HBA_CMD_HEADER*)port->clBase + slot;
-			uintptr_t ctba = port->clBasePhys + sizeof(HBA_CMD_HEADER) * 32 + slot * sizeof(HBA_CMD_TBL);
+            HBA_CMD_HEADER* cmdHeader = (HBA_CMD_HEADER*)curr->clBase + slot;
+			uintptr_t ctba = curr->clBasePhys + sizeof(HBA_CMD_HEADER) * 32 + slot * sizeof(HBA_CMD_TBL);
             AHCISetAddress(ctba, cmdHeader->ctba);
         }
-        // StartCommandEngine(HBA->ports + i);
-        HBA->ports[i].cmd |= BIT(4) /* FRE */;
-        HBA->ports[i].cmd |= BIT(0) /* ST */;
+        AHCISetAddress(curr->clBasePhys, hPort->clb);
+        AHCISetAddress(curr->fisBasePhys, hPort->fb);
+        hPort->cmd |= BIT(4);
         if (HBA->cap.sss)
-            HBA->ports[i].cmd |= BIT(1); // Staggered spin-up
-        timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000000  /* 1S */);
-		while ((HBA->ports[i].ssts & 0xf) != HBA_PORT_DET_PRESENT && CoreS_GetTimerTick() < deadline)
+            hPort->cmd |= BIT(1);
+        timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
+        while ((hPort->ssts & 0xf) != 0x3 && deadline < CoreS_GetTimerTick())
             OBOSS_SpinlockHint();
-		if ((HBA->ports[i].ssts & 0xf) != HBA_PORT_DET_PRESENT)
-		{
-			OBOS_Warning("%*s: No drive found on port %d, even though it is implemented.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
-			continue;
-		}
-        HBA->ports[i].serr = ~0;
-        // Wait for the port.
-        // 0x88: ATA_DEV_BUSY | ATA_DEV_DRQ
-        while ((port->hbaPort->tfd & 0x88))
-            OBOSS_SpinlockHint();
-        HBA->ports[i].serr = ~0;
-        OBOS_Debug("Found a port at index %d.\n", i);
-        port->works = true;
-    }
-    HBA->ghc.ie = true;
-    Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
-    HbaIrq.handler = ahci_irq_handler;
-    HbaIrq.irqChecker = ahci_irq_checker;
-    Drv_MaskPCIIrq(&PCIIrqHandle, false);
-    for (uint8_t i = 0; i < 32; i++)
-    {
-        Port* port = &Ports[i];
-        if (!port->works)
+        if ((hPort->ssts & 0xf) != 0x3)
             continue;
-        OBOS_Debug("Resetting port %d.\n", i);
-        StopCommandEngine(port->hbaPort);
-        HBA->ports[i].cmd |= BIT(4) /* FRE */;
-        HBA->ports[i].sctl |= 1 /* DET=INIT */;
-        timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000  /* 1 ms */);
-		while (CoreS_GetTimerTick() < deadline)
+        hPort->serr = 0xffffffff;
+        while (hPort->tfd & 0x88)
             OBOSS_SpinlockHint();
-        HBA->ports[i].sctl &= ~0xf /* DET=NONE_REQUESTED */;
-        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(2000000  /* 2S */);
-		while ((HBA->ports[i].ssts & 0xf) != HBA_PORT_DET_PRESENT && CoreS_GetTimerTick() < deadline)
-            OBOSS_SpinlockHint();
-        if ((HBA->ports[i].ssts & 0xf) != HBA_PORT_DET_PRESENT)
-            OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Port physical layer not online after reset.\n");
-        HBA->ports[i].serr = ~0;
-        // Wait for the port.
-        // 0x88: ATA_DEV_BUSY | ATA_DEV_DRQ
-        while ((port->hbaPort->tfd & 0x88))
-            OBOSS_SpinlockHint();
-        HBA->ports[i].serr = ~0;
-        HBA->ports[i].is = HBA->ports[i].is;
-        HBA->ports[i].ie = 0xffffffff;
-        StartCommandEngine(port->hbaPort);
+        StartCommandEngine(hPort);
+        OBOS_Debug("Done port init for port %d.\n", port);
+        curr->works = true;
+        curr->hbaPort = hPort;
+        curr->type = curr->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
+        curr->hbaPort->is = 0xffffffff;
+        curr->hbaPort->ie = 0xffffffff;
     }
+    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize HBA Irq. Status: %d.\n", status);
+    HbaIrq.irqChecker = ahci_irq_checker;
+    HbaIrq.handler = ahci_irq_handler;
+    status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
+    HBA->ghc.ie = true;
     for (uint8_t i = 0; i < 32; i++)
     {
-        Port* port = &Ports[i];
+        Port* port = Ports + i;
         if (!port->works)
             continue;
         // Send Identify ATA.
@@ -348,22 +301,21 @@ void OBOS_DriverEntry(driver_id* this)
         data.cmd = ATA_IDENTIFY_DEVICE;
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+        port->dev_name = DeviceNames[i];
+        port->lock = SEMAPHORE_INITIALIZE(32);
         size_t tries = 0;
+        if (port->type == DRIVE_TYPE_SATAPI)
+            continue;
         OBOS_Debug("Sending IDENTIFY_ATA to port %d.\n", i);
         retry:
-        HBA->ports[i].is = HBA->ports[i].is;
-        HBA->ports[i].ie = 0xffffffff;
         SendCommand(port, &data, 0, 0, 0);
-        while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
-            OBOSS_SpinlockHint();
-        OBOS_Debug("PxIe: 0x%08x\n", HBA->ports[i].ie);
-        OBOS_Debug("PxIs: 0x%08x\n", HBA->ports[i].is);
-        OBOS_Debug("GhcIe: 0x%x\n", HBA->ghc.ie);
+        // while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
+        //     OBOSS_SpinlockHint();
         Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
         Core_EventClear(&data.completionEvent);
         if (data.commandStatus != OBOS_STATUS_SUCCESS)
         {
-            if (tries++ >= 10)
+            if (tries++ >= 3)
             {
                 Mm_FreePhysicalPages(reg.phys, reg.sz/OBOS_PAGE_SIZE);
                 Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)port->clBase, OBOS_PAGE_SIZE);

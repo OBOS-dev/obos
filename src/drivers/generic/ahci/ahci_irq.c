@@ -56,7 +56,6 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
         if (!portStatus)
             continue;
         curr->hbaPort->is = portStatus;
-        OBOS_Debug("port.is: 0x%08x.\n", portStatus);
         // Signal each finished event here.
         obos_status status = OBOS_STATUS_SUCCESS;
         if (portStatus & (0xFD800000))

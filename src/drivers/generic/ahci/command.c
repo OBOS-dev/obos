@@ -92,9 +92,9 @@ void StopCommandEngine(volatile HBA_PORT* port)
 }
 void StartCommandEngine(volatile HBA_PORT* port)
 {
+    // Set FRE (bit 4) and ST (bit 0)
     while (port->cmd & (1<<15))
         OBOSS_SpinlockHint();
-    // Set FRE (bit 4) and ST (bit 0)
     port->cmd |= (1<<4);
     port->cmd |= (1<<0);
 }
