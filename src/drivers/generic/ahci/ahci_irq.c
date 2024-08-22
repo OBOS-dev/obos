@@ -39,8 +39,7 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
     OBOS_UNUSED(frame);
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(oldIrql);
-    OBOS_Debug("AHCI IRQ.\n");
-        HBA->is = HBA->is;
+    HBA->is = HBA->is;
     for (uint8_t i = 0; i < 32; i++)
     {
         if (!(HBA->is & BIT(i)))
@@ -51,7 +50,6 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
             HBA->ports[i].is = HBA->ports[i].is;
             continue;
         }
-        OBOS_Debug("Port %d IRQ.\n", i);
         uint32_t portStatus = curr->hbaPort->is;
         if (!portStatus)
             continue;
@@ -72,7 +70,6 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
                 continue;
             if (!curr->PendingCommands[slot])
                 continue; // There was never a command issued in the first place.
-            OBOS_Debug("Slot %d IRQ.\n", slot);
             curr->PendingCommands[slot]->commandStatus = status;
             Core_EventSet(&curr->PendingCommands[slot]->completionEvent, false);
             Core_SemaphoreRelease(&curr->lock);

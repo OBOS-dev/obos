@@ -22,10 +22,11 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         return OBOS_STATUS_INVALID_ARGUMENT;
     Core_SemaphoreAcquire(&port->lock);
     StopCommandEngine(port->hbaPort);
+    // uint32_t cmdSlot = 31;
     uint32_t cmdSlot = __builtin_ctz(~(port->hbaPort->ci | port->hbaPort->sact));
     port->PendingCommands[cmdSlot] = data;
     obos_status status = OBOS_STATUS_SUCCESS;
-    HBA_CMD_HEADER* cmdHeader = (HBA_CMD_HEADER*)port->clBase + cmdSlot;
+    HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
     HBA_CMD_TBL* cmdTBL = 
     (HBA_CMD_TBL*)
     (
@@ -67,8 +68,9 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         OBOSS_SpinlockHint();
     // Issue the command
     data->internal.cmdSlot = cmdSlot;
-    port->hbaPort->ci |= (1 << cmdSlot);
     StartCommandEngine(port->hbaPort);
+    port->hbaPort->sact |= (1 << cmdSlot);
+    port->hbaPort->ci |= (1 << cmdSlot);
     // Release the semaphore in the IRQ handler instead.
     // Core_SemaphoreRelease(&port->lock);
     return status;

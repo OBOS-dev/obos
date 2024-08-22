@@ -94,6 +94,7 @@ volatile HBA_MEM* HBA;
 // Arch-specific.
 uint32_t HbaIrqNumber;
 Port Ports[32];
+size_t PortCount;
 pci_device_node PCINode;
 bool FoundPCINode;
 pci_irq_handle PCIIrqHandle;
@@ -270,15 +271,13 @@ void OBOS_DriverEntry(driver_id* this)
         if ((hPort->ssts & 0xf) != 0x3)
             continue;
         hPort->serr = 0xffffffff;
-        while (hPort->tfd & 0x88)
+        while (hPort->tfd & 0x80 && hPort->tfd & 0x8)
             OBOSS_SpinlockHint();
         // StartCommandEngine(hPort);
         OBOS_Debug("Done port init for port %d.\n", port);
         curr->works = true;
         curr->hbaPort = hPort;
         curr->type = curr->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
-        curr->hbaPort->is = 0xffffffff;
-        curr->hbaPort->ie = 0xffffffff;
     }
     status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
@@ -294,6 +293,8 @@ void OBOS_DriverEntry(driver_id* this)
         Port* port = Ports + i;
         if (!port->works)
             continue;
+        port->hbaPort->is = 0xffffffff;
+        port->hbaPort->ie = 0xffffffff;
         // Send Identify ATA.
         struct ahci_phys_region reg = {
             .phys = HBAAllocate(4096, 4096),
@@ -305,7 +306,7 @@ void OBOS_DriverEntry(driver_id* this)
         data.cmd = ATA_IDENTIFY_DEVICE;
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-        port->dev_name = DeviceNames[i];
+        port->dev_name = DeviceNames[PortCount++];
         port->lock = SEMAPHORE_INITIALIZE(32);
         size_t tries = 0;
         if (port->type == DRIVE_TYPE_SATAPI)
