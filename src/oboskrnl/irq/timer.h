@@ -54,14 +54,14 @@ obos_status Core_InitializeTimerInterface();
 /// </summary>
 /// <param name="status">[out, optional] The status of the function.</param>
 /// <returns>The object, or nullptr on failure.</returns>
-timer* Core_TimerObjectAllocate(obos_status* status);
+OBOS_EXPORT timer* Core_TimerObjectAllocate(obos_status* status);
 /// <summary>
 /// Frees a timer object allocated with Core_TimerObjectAllocate.<para></para>
 /// The timer must be cancelled, or uninitialized.
 /// </summary>
 /// <param name="obj">The timer to free.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_TimerObjectFree(timer* obj);
+OBOS_EXPORT obos_status Core_TimerObjectFree(timer* obj);
 /// <summary>
 /// Registers a timer object.
 /// </summary>
@@ -69,25 +69,25 @@ obos_status Core_TimerObjectFree(timer* obj);
 /// <param name="mode">The timer's mode.</param>
 /// <param name="period">The period of time in microseconds the timer shall run on.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t period);
+OBOS_EXPORT obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t period);
 /// <summary>
 /// Cancels a timer.
 /// </summary>
 /// <param name="obj">The timer object.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_CancelTimer(timer* obj);
+OBOS_EXPORT obos_status Core_CancelTimer(timer* obj);
 
 /// <summary>
 /// Gets the current tick.
 /// </summary>
 /// <returns>The current timer tick.</returns>
-OBOS_WEAK timer_tick CoreS_GetTimerTick();
+OBOS_EXPORT timer_tick CoreS_GetTimerTick();
 /// <summary>
 /// Converts a time frame in us to timer ticks.
 /// </summary>
 /// <param name="us">The time frame in microseconds.</param>
 /// <returns>The object, or nullptr on failure.</returns>
-timer_tick CoreH_TimeFrameToTick(uint64_t us);
+OBOS_EXPORT timer_tick CoreH_TimeFrameToTick(uint64_t us);
 
 /// <summary>
 /// Initializes the timer irq (should already be allocated) and the timer.

@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "scheduler/process.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -290,6 +291,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;
     }
+    Core_ProcessAppendThread(OBOS_KernelProcess, thr);
     thr->stackFree = CoreH_VMAStackFree;
     thr->stackFreeUserdata = &Mm_KernelContext;
     if (mainThread)

@@ -31,18 +31,19 @@ static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
 void Core_IRQDispatcher(interrupt_frame* frame)
 {
-	CoreS_SendEOI(frame);
 #if !OBOS_ARCH_EMULATED_IRQL
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	if (!CoreS_EnterIRQHandler(frame))
-		return; // some archs do IRQL emulation this way.
+		return;
+	CoreS_SendEOI(frame);
 #else
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (!CoreS_EnterIRQHandler(frame))
 		return; // some archs do IRQL emulation this way.
 	if (irql_ <= Core_GetIrql())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ <= Core_GetIrql()\").");
+	CoreS_SendEOI(frame);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
 	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
@@ -85,11 +86,8 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			oldIrql2);
 	}
 	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
-	// Core_LowerIrqlNoDPCDispatch(oldIrql2);
-	// We can't really do that
-	// otherwise DPCs have no other way to execute when the kernel idles.
-	Core_LowerIrqlNoThread(oldIrql2);	
 	CoreS_ExitIRQHandler(frame);
+	Core_LowerIrqlNoDPCDispatch(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

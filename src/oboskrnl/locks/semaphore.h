@@ -24,7 +24,7 @@ typedef struct semaphore {
 
 #define SEMAPHORE_INITIALIZE(cnt) (semaphore){ .hdr=WAITABLE_HEADER_INITIALIZE(true, false), .count=cnt }
 
-obos_status Core_SemaphoreAcquire(semaphore* sem);
-obos_status Core_SemaphoreTryAcquire(semaphore* sem);
-obos_status Core_SemaphoreRelease(semaphore* sem);
-size_t Core_SemaphoreGetValue(semaphore* sem);
+OBOS_EXPORT obos_status Core_SemaphoreAcquire(semaphore* sem);
+OBOS_EXPORT obos_status Core_SemaphoreTryAcquire(semaphore* sem);
+OBOS_EXPORT obos_status Core_SemaphoreRelease(semaphore* sem);
+OBOS_EXPORT size_t Core_SemaphoreGetValue(semaphore* sem);

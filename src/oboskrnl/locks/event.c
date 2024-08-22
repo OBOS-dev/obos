@@ -51,16 +51,16 @@ obos_status Core_EventReset(event* event)
 }
 obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
 {
-    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    // irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     event->signaled = true;
     if (event->type == EVENT_SYNC)
     {
         CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
-        Core_LowerIrql(oldIrql);
+        // Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
     }
     CoreH_SignalWaitingThreads(&event->hdr, true, boostWaitingThreadPriority);
-    Core_LowerIrql(oldIrql);
+    // Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_EventClear(event* event)

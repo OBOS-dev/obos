@@ -11,6 +11,12 @@
 #include <driver_interface/pci.h>
 
 #include <arch/x86_64/asm_helpers.h>
+#include <arch/x86_64/ioapic.h>
+
+#include <uacpi/namespace.h>
+#include <uacpi/resources.h>
+#include <uacpi/types.h>
+#include <uacpi/utilities.h>
 
 // Funny how these same functions for io from PCI registers have been in use since OBOS Rewrite #2
 // (Branch old_code2 in OBOS-dev/obos-old)
@@ -266,4 +272,87 @@ OBOS_EXPORT size_t DrvS_GetBarSize(pci_device_location loc, uint8_t bar_index, b
     // size = ((size >> 12) + 1) << 12;
     pciWriteDwordRegister(bus, slot, function, (4+bar_index)*4, bar);
     return size;
+}
+uint64_t DrvS_MSIAddressAndData(uint64_t* data, irq_vector_id vec, uint32_t processor, bool edgetrigger, bool deassert)
+{
+     if (!data)
+        return 0;
+    vec += 0x20;
+    // Shamelessly stolen from the osdev wiki.
+    *data = (vec & 0xFF) | (edgetrigger == 1 ? 0 : (1 << 15)) | (deassert == 1 ? 0 : (1 << 14));
+	return (0xFEE00000 | (processor << 12));
+}
+uacpi_ns_iteration_decision pci_bus_match(void *user, uacpi_namespace_node *node)
+{
+    uacpi_namespace_node** pNode = (uacpi_namespace_node**)user;
+    *pNode = node;
+    return UACPI_NS_ITERATION_DECISION_BREAK;
+}
+obos_status DrvS_RegisterIRQPin(const pci_device_node* dev, uint32_t* handle, irq_vector_id vector)
+{
+    if (!dev || !handle)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    // Get PCI bus.
+    uacpi_namespace_node* pciBus = nullptr;
+    uacpi_find_devices("PNP0A03", pci_bus_match, &pciBus);
+    uacpi_pci_routing_table *pci_routing_table = nullptr;
+    uacpi_get_pci_routing_table(pciBus, &pci_routing_table);
+    bool wasGoodMatch = false;
+    ioapic_trigger_mode triggerMode = 0;
+    bool polarity = false;
+    uint32_t gsi = 0;
+    for (size_t i = 0, pi = 0; i < pci_routing_table->num_entries; i++, pi++)
+    {
+        if (pci_routing_table->entries[i].pin != (dev->irq.int_pin - 1))
+            continue;
+        // OBOS_Debug("Found PIN%c.\n", (dev->irq.int_pin - 1) + 'A');
+        uint16_t function = (pci_routing_table->entries[i].address & 0xffff);
+        uint16_t slot = (pci_routing_table->entries[i].address >> 16);
+        // OBOS_Debug("slot: 0x%04x\n", slot);
+        // OBOS_Debug("function: 0x%04x\n", function);
+        if (slot != dev->info.slot && (function != dev->info.function || function == 0xffff))
+            continue;
+        if (pci_routing_table->entries[i].source == 0)
+            gsi = pci_routing_table->entries[i].index;
+        else
+        {
+            uacpi_resources* resources = nullptr;
+            uacpi_get_current_resources(pci_routing_table->entries[i].source, &resources);
+
+            switch (resources->entries[pci_routing_table->entries[i].index].type)
+            {
+                case UACPI_RESOURCE_TYPE_IRQ:
+                    gsi = resources->entries[pci_routing_table->entries[i].index].irq.irqs[0];
+                    polarity = resources->entries[pci_routing_table->entries[i].index].irq.polarity == UACPI_POLARITY_ACTIVE_LOW ?
+                        true : false;
+                    triggerMode = resources->entries[pci_routing_table->entries[i].index].irq.triggering == UACPI_TRIGGERING_EDGE ?
+                        TriggerModeEdgeSensitive : TriggerModeLevelSensitive;
+                    break;
+                case UACPI_RESOURCE_TYPE_EXTENDED_IRQ:
+                    gsi = resources->entries[pci_routing_table->entries[i].index].extended_irq.irqs[0];
+                    polarity = resources->entries[pci_routing_table->entries[i].index].extended_irq.polarity == UACPI_POLARITY_ACTIVE_LOW ?
+                        true : false;
+                    triggerMode = resources->entries[pci_routing_table->entries[i].index].extended_irq.triggering == UACPI_TRIGGERING_EDGE ?
+                        TriggerModeEdgeSensitive : TriggerModeLevelSensitive;
+                    break;
+                default:
+                    OBOS_ASSERT(false && "Invalid resource type");
+                    break;
+            }
+            wasGoodMatch = (function != 0xffff);
+            uacpi_free_resources(resources);
+            if (wasGoodMatch)
+                break;
+        }
+        break;
+    }
+    uacpi_free_pci_routing_table(pci_routing_table);
+    Arch_IOAPICMapIRQToVector(gsi, vector+0x20, polarity, triggerMode);
+    *handle = gsi;
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask)
+{
+    // handle is the GSI.
+    return Arch_IOAPICMaskIRQ(handle & 0xffffffff, mask);
 }

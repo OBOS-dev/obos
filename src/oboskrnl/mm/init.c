@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
 #include <error.h>
@@ -134,7 +135,9 @@ void Mm_Initialize()
     udata.szPageablePages = (udata.szPageablePages + 0x3fff) & ~0x3fff;
 #endif
     // Mm_KernelContext.workingSet.capacity = udata.szPageablePages;
-    Mm_KernelContext.workingSet.capacity = 0x80000 /* 512 KiB */;
+    Mm_KernelContext.workingSet.capacity = OBOS_GetOPTD("working-set-cap");
+    if (!Mm_KernelContext.workingSet.capacity)
+        Mm_KernelContext.workingSet.capacity = 4*1024*1024;
     initialized = true;
     page* i = nullptr;
     // size_t committedMemory;

@@ -153,7 +153,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
         if (file->vn->pagecache.sz <= file->offset)
             VfsH_PageCacheResize(&file->vn->pagecache, file->vn, file->offset+filesize);
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
     top:
     if (!base)
     {
@@ -377,7 +377,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     // We've possibly located a guard page that we need to free with the rest of the buffer.
     // Now we must unmap the pages and dereference them.
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
 
     offset = 0;
     curr = nullptr;
@@ -459,7 +459,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
 
     // Verify each pages' existence
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
 
     uintptr_t offset = 0;
     page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 

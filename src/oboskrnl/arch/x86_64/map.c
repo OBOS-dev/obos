@@ -238,11 +238,11 @@ static obos_status invlpg_impl(uintptr_t at)
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
+	enum { IRQL_INVLPG_IPI=15 };
 	if (!invlpg_ipi_packet.irq && Core_IrqInterfaceInitialized())
 	{
 		static irq irq;
 		invlpg_ipi_packet.irq = &irq;
-		enum { IRQL_INVLPG_IPI=15 };
 		Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
 		irq.handler = invlpg_ipi_bootstrap;
 		irq.handlerUserdata = nullptr;
@@ -251,8 +251,11 @@ static obos_status invlpg_impl(uintptr_t at)
 	if (Arch_LAPICAddress->interruptRequest224_255 & (1<<16))
 	{
 		irql oldIrql = Core_GetIrql();
-		Core_LowerIrql(IRQL_DISPATCH);
-		Core_RaiseIrql(oldIrql);
+		if (oldIrql >= IRQL_INVLPG_IPI)
+		{
+			Core_LowerIrql(IRQL_DISPATCH);
+			Core_RaiseIrql(oldIrql);
+		}
 	}
 	while (invlpg_ipi_packet.active)
 		pause();
@@ -339,7 +342,7 @@ extern uintptr_t Arch_KernelCR3;
 obos_status Arch_InitializeKernelPageTable()
 {
 	obos_status status = OBOS_STATUS_SUCCESS;
-	uintptr_t newCR3 = Mm_AllocatePhysicalPages(1,1, &status);
+	uintptr_t newCR3 = Mm_AllocatePhysicalPages32(1,1, &status);
 	uintptr_t oldCR3 = getCR3();
 	memzero(MmS_MapVirtFromPhys(newCR3), 4096);
 	if (status != OBOS_STATUS_SUCCESS)
