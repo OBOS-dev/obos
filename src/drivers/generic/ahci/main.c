@@ -278,7 +278,7 @@ void OBOS_DriverEntry(driver_id* this)
         curr->hbaPort = hPort;
         curr->type = curr->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
         curr->hbaPort->is = 0xffffffff;
-        curr->hbaPort->ie = 0x3;
+        curr->hbaPort->ie = 0xffffffff;
     }
     status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
@@ -302,7 +302,7 @@ void OBOS_DriverEntry(driver_id* this)
         struct command_data data = {};
         data.phys_regions = &reg;
         data.physRegionCount = 1;
-        data.cmd = ATA_READ_DMA_EXT;
+        data.cmd = ATA_IDENTIFY_DEVICE;
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         port->dev_name = DeviceNames[i];
@@ -312,13 +312,13 @@ void OBOS_DriverEntry(driver_id* this)
             continue;
         OBOS_Debug("Sending IDENTIFY_ATA to port %d.\n", i);
         retry:
-        SendCommand(port, &data, 0, 0x40, 1);
+        SendCommand(port, &data, 0, 0, 0);
         // while (!HBA->ports[i].is)
         //     OBOSS_SpinlockHint();
-        while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
-            OBOSS_SpinlockHint();
-        // Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
-        // Core_EventClear(&data.completionEvent);
+        // while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
+        //     OBOSS_SpinlockHint();
+        Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
+        Core_EventClear(&data.completionEvent);
         if (data.commandStatus != OBOS_STATUS_SUCCESS)
         {
             if (tries++ >= 3)
