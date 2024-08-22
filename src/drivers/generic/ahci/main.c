@@ -187,6 +187,8 @@ void OBOS_DriverEntry(driver_id* this)
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", IRQL_AHCI, status);
     HBA->ghc.ae = true;
+    while (!HBA->ghc.ae)
+        OBOSS_SpinlockHint();
     if (HBA->cap2 & BIT(0) /* Bios/OS Handoff (BOH) */)
     {
         OBOS_Debug("Performing Bios/OS handoff. This might take a couple seconds.\n");
@@ -228,10 +230,12 @@ void OBOS_DriverEntry(driver_id* this)
             continue;
         // The DMA engine is running.
         // Disable it.
-        hPort->cmd &= ~BIT(0);
-        hPort->cmd &= ~BIT(4);
-        while (hPort->cmd & (BIT(14) | BIT(15)))
-            OBOSS_SpinlockHint();
+        hPort->cmd &= ~(1<<0);
+        while(hPort->cmd & (1<<15) /*PxCMD.CR*/)
+            ;
+		hPort->cmd &= ~(1<<4);
+        while(hPort->cmd & (1<<14) /*PxCMD.FR*/)
+            ;
     }
     HBA->ghc.hr = true;
     while (HBA->ghc.hr)
@@ -268,13 +272,13 @@ void OBOS_DriverEntry(driver_id* this)
         hPort->serr = 0xffffffff;
         while (hPort->tfd & 0x88)
             OBOSS_SpinlockHint();
-        StartCommandEngine(hPort);
+        // StartCommandEngine(hPort);
         OBOS_Debug("Done port init for port %d.\n", port);
         curr->works = true;
         curr->hbaPort = hPort;
         curr->type = curr->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
         curr->hbaPort->is = 0xffffffff;
-        curr->hbaPort->ie = 0xffffffff;
+        curr->hbaPort->ie = 0x3;
     }
     status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
@@ -298,7 +302,7 @@ void OBOS_DriverEntry(driver_id* this)
         struct command_data data = {};
         data.phys_regions = &reg;
         data.physRegionCount = 1;
-        data.cmd = ATA_IDENTIFY_DEVICE;
+        data.cmd = ATA_READ_DMA_EXT;
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         port->dev_name = DeviceNames[i];
@@ -308,11 +312,13 @@ void OBOS_DriverEntry(driver_id* this)
             continue;
         OBOS_Debug("Sending IDENTIFY_ATA to port %d.\n", i);
         retry:
-        SendCommand(port, &data, 0, 0, 0);
-        // while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
+        SendCommand(port, &data, 0, 0x40, 1);
+        // while (!HBA->ports[i].is)
         //     OBOSS_SpinlockHint();
-        Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
-        Core_EventClear(&data.completionEvent);
+        while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
+            OBOSS_SpinlockHint();
+        // Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
+        // Core_EventClear(&data.completionEvent);
         if (data.commandStatus != OBOS_STATUS_SUCCESS)
         {
             if (tries++ >= 3)

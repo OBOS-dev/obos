@@ -43,9 +43,9 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         if (!HBA->cap.s64a)
             OBOS_ASSERT(!(data->phys_regions[i].phys >> 32));
         memzero((void*)&cmdTBL->prdt_entry[i], sizeof(cmdTBL->prdt_entry[i]));
-        cmdTBL->prdt_entry[i].dbc = data->phys_regions[i].sz;
-        cmdTBL->prdt_entry[i].i = 1;
         AHCISetAddress(data->phys_regions[i].phys, cmdTBL->prdt_entry[i].dba);
+        cmdTBL->prdt_entry[i].dbc = data->phys_regions[i].sz - 1;
+        cmdTBL->prdt_entry[i].i = 1;
     }
     FIS_REG_H2D* fis = (void*)cmdTBL->cfis;
     memzero(fis, sizeof(*fis));
@@ -93,8 +93,8 @@ void StopCommandEngine(volatile HBA_PORT* port)
 void StartCommandEngine(volatile HBA_PORT* port)
 {
     // Set FRE (bit 4) and ST (bit 0)
+    port->cmd |= (1<<4);
     while (port->cmd & (1<<15))
         OBOSS_SpinlockHint();
-    port->cmd |= (1<<4);
     port->cmd |= (1<<0);
 }
