@@ -329,6 +329,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
         if (!node->data)
             continue;
         driver_header* drv = node->data;
+        OBOS_UNUSED(drv);
 #if OBOS_ARCHITECTURE_HAS_ACPI
         if ((drv->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI))
             for (size_t i = 0; i < drv->acpiId.nPnpIds; i++) 
@@ -342,12 +343,13 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
         node = node->next;
     }
     struct callback_userdata udata;
+    OBOS_UNUSED(udata);
 #if OBOS_ARCHITECTURE_HAS_ACPI
     udata.acpi_drivers = acpi_drivers;
 #endif
-    udata.pci_drivers = pci_drivers;
     udata.detected = toLoad;
 #if OBOS_ARCHITECTURE_HAS_PCI
+    udata.pci_drivers = pci_drivers;
     // Enumerate the PCI bus.
     DrvS_EnumeratePCI(pci_driver_callback, &udata);
     // Free the pci driver map.

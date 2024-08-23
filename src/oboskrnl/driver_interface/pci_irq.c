@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <irq/irq.h>
@@ -99,26 +100,37 @@ obos_status Drv_RegisterPCIIrq(irq* irq, const pci_device_node* dev, pci_irq_han
     uint64_t offset = 0;
     DrvS_ReadPCIRegister(dev->info, 0x34, 1, &offset);
     DrvS_ReadPCIRegister(dev->info, offset, 2, &cap_header);
-    for (; offset != 0; offset = ((cap_header >> 8) & 0xff))
+    OBOS_Debug("First capability at 0x%02x.\n", offset);
+    size_t nEntries = 0;
+    const size_t threshold = 10;
+    for (; offset != 0 && nEntries < threshold; offset = ((cap_header >> 8) & 0xff), nEntries++)
     {
         cap_header = 0;
         DrvS_ReadPCIRegister(dev->info, offset, 2, &cap_header);
+        bool abort = false;
         switch (cap_header & 0xff)
         {
             case 0x05:
                 has_msi = true;
                 msi_offset = offset;
+                OBOS_Debug("Found MSI capability at 0x%02x.\n", msi_offset);
                 break;
             case 0x11:
                 has_msix = true;
                 msix_offset = offset;
+                OBOS_Debug("Found MSI-X capability at 0x%02x.\n", msix_offset);
+                break;
+            case 0x00:
+                abort = true;
                 break;
             default:
                 break;
         }
-        if (has_msix)
+        if (has_msix || abort)
             break; // If we have MSI-X, break.
     }
+    if (!has_msi && !has_msix)
+        goto fallback;
     uint64_t msi_data = 0;
     uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, irq->vector->id, 0, true, false);
     if (has_msix)
@@ -201,8 +213,14 @@ obos_status Drv_MaskPCIIrq(const pci_irq_handle* handle, bool mask)
             msix_entry[3] &= ~BIT(0);
         return OBOS_STATUS_SUCCESS;
     }
-    // Mask IRQ.
-    DrvS_WritePCIRegister(handle->dev, handle->msi_capability+0x10, 4, 1);
+    // Fallback to MSI.
+    uint64_t header = 0; // 32-bit
+    DrvS_ReadPCIRegister(handle->dev, handle->msi_capability+0, 4, &header);
+    if (header & BIT(8+16))
+    {
+        // Mask IRQ.
+        DrvS_WritePCIRegister(handle->dev, handle->msi_capability+0x10, 4, 1);
+    }
     return OBOS_STATUS_SUCCESS;
 }
 #endif

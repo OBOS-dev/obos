@@ -88,7 +88,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	}
 	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoDPCDispatch(oldIrql2);
+	Core_LowerIrqlNoThread(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

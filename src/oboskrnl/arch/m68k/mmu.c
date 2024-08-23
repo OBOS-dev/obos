@@ -228,7 +228,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
     page.prot.executable = true;
     page.prot.touched = (entry & PT_FLAGS_USED) || (entry & PT_FLAGS_MODIFIED);
     page.prot.user = !(entry & PT_FLAGS_SUPERVISOR);
-    page.prot.uc = ((entry >> 5) & 0b11) == PT_FLAGS_CACHE_DISABLE;
+    page.prot.uc = ((entry >> 5) & 0b11) == (PT_FLAGS_CACHE_DISABLE >> 5);
     if (page.prot.touched)
     {
         // Unset the bit(s).

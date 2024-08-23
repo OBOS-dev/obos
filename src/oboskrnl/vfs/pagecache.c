@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/bare_map.h"
-#include "mm/pmm.h"
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
@@ -21,6 +19,8 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+#include <mm/bare_map.h>
+#include <mm/pmm.h>
 
 #include <driver_interface/header.h>
 

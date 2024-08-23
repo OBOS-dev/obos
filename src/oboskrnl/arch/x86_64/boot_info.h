@@ -8,10 +8,10 @@
 
 #include <UltraProtocol/ultra_protocol.h>
 
-extern struct ultra_memory_map_attribute* Arch_MemoryMap;
-extern struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
-extern struct ultra_kernel_info_attribute* Arch_KernelInfo;
-extern struct ultra_module_info_attribute* Arch_KernelBinary;
-extern struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
-extern struct ultra_framebuffer* Arch_Framebuffer;
-extern struct ultra_boot_context* Arch_BootContext;
+extern volatile struct ultra_memory_map_attribute* Arch_MemoryMap;
+extern volatile struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
+extern volatile struct ultra_kernel_info_attribute* Arch_KernelInfo;
+extern volatile struct ultra_module_info_attribute* Arch_KernelBinary;
+extern volatile struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
+extern volatile struct ultra_framebuffer* Arch_Framebuffer;
+extern volatile struct ultra_boot_context* Arch_BootContext;

@@ -48,27 +48,27 @@ allocator_info* OBOS_KernelAllocator;
 process *OBOS_KernelProcess;
 timer_frequency CoreS_TimerFrequency;
 
-volatile struct limine_memmap_request Arch_MemmapRequest = {
+OBOS_ALIGNAS(0x10) volatile struct limine_memmap_request Arch_MemmapRequest = {
 	.id = LIMINE_MEMMAP_REQUEST,
 	.revision = 0
 };
-volatile struct limine_kernel_address_request Arch_KernelAddressRequest = {
+OBOS_ALIGNAS(0x10) volatile struct limine_kernel_address_request Arch_KernelAddressRequest = {
     .id = LIMINE_KERNEL_ADDRESS_REQUEST,
     .revision = 0,
 };
-volatile struct limine_hhdm_request Arch_HHDMRequest = {
+OBOS_ALIGNAS(0x10) volatile struct limine_hhdm_request Arch_HHDMRequest = {
     .id = LIMINE_HHDM_REQUEST,
     .revision = 0
 };
-volatile struct limine_kernel_file_request Arch_KernelFile = {
+OBOS_ALIGNAS(0x10) volatile struct limine_kernel_file_request Arch_KernelFile = {
     .id = LIMINE_KERNEL_FILE_REQUEST,
     .revision = 0,
 };
-volatile struct limine_boot_info_request Arch_BootInfo = {
+OBOS_ALIGNAS(0x10) volatile struct limine_boot_info_request Arch_BootInfo = {
     .id = LIMINE_BOOT_INFO_REQUEST,
     .revision = 0,
 };
-volatile struct limine_module_request Arch_InitrdRequest = {
+OBOS_ALIGNAS(0x10) volatile struct limine_module_request Arch_InitrdRequest = {
     .id = LIMINE_MODULE_REQUEST,
     .revision = 0,
 };
@@ -171,7 +171,7 @@ asm (
     "Arch_ModuleStart:;"
     ".incbin \"" OBOS_BINARY_DIRECTORY "/initrd\";"
     "Arch_ModuleEnd:;"
-    ".section text;"
+    ".section .text;"
 );
 extern const char Arch_ModuleStart[];
 extern const char Arch_ModuleEnd[];

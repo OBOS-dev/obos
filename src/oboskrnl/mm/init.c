@@ -46,6 +46,8 @@ static bool count_pages(basicmm_region* region, void* udatablk)
     OBOS_ASSERT(udatablk);
     if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
         return true;
+    size_t size = round_down(region->size);
+    uintptr_t limit = round_down(region->addr)+size;
     mm_regions_udata* udata = (mm_regions_udata*)udatablk;
     if (region->size < OBOS_HUGE_PAGE_SIZE)
     {
@@ -55,7 +57,7 @@ static bool count_pages(basicmm_region* region, void* udatablk)
     page pg;
     memzero(&pg, sizeof(pg));
     for (uintptr_t addr = round_down(region->addr); 
-        addr < round_up(round_down(region->addr) + region->size);
+        addr < limit;
         (udata->nNodes)++)
     {
         MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &pg);
@@ -71,15 +73,16 @@ static bool register_pages(basicmm_region* region, void* udatablk)
     OBOS_ASSERT(udatablk);
     if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
         return true;
+    size_t size = round_down(region->size);
+    uintptr_t limit = round_down(region->addr)+size;
     mm_regions_udata* udata = (mm_regions_udata*)udatablk;
-    for (uintptr_t addr = round_down(region->addr); 
-        addr < round_down(region->addr) + region->size;
-        )
+    OBOS_Debug("%p-%p\n", round_down(region->addr), limit);
+    for (uintptr_t addr = round_down(region->addr); addr < limit; )
     {
         OBOS_ASSERT(udata->i++ < udata->nNodes);
-        page *pg = &udata->buf[udata->i - 1];
+        page* volatile pg = &udata->buf[udata->i - 1];
         memzero(pg, sizeof(*pg));
-        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, pg);
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, (page*)pg);
         pg->addr = addr;
         pg->pageable = !(MmH_IsAddressUnPageable(addr) ||
                        ((addr >= round_down(udata->buf)) && (addr < round_up(&udata->buf[udata->nNodes]))) ||
@@ -92,7 +95,7 @@ static bool register_pages(basicmm_region* region, void* udatablk)
         pg->pagedOut = false;
         pg->age = 0;
         pg->owner = &Mm_KernelContext;
-        RB_INSERT(page_tree, &Mm_KernelContext.pages, pg);
+        RB_INSERT(page_tree, &Mm_KernelContext.pages, (page*)pg);
         Mm_KernelContext.stat.committedMemory += (pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         if (pg->prot.huge_page)
             addr += OBOS_HUGE_PAGE_SIZE;

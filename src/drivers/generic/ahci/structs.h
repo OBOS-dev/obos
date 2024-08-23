@@ -293,7 +293,7 @@ typedef enum drive_type
 } drive_type;
 typedef struct Port
 {
-	volatile HBA_PORT* hbaPort;
+	uint8_t hbaPortIndex;
 	volatile void* clBase;
 	volatile void* fisBase;
 	uintptr_t clBasePhys, fisBasePhys;
@@ -333,9 +333,16 @@ extern irq HbaIrq;
 #	error Funny buisness.
 #endif
 
+#if OBOS_ARCHITECTURE_BITS == 64
 #define AHCISetAddress(phys, field) \
 do {\
     field = (phys & 0xffffffff);\
     if (HBA->cap.s64a)\
         field##u = (phys >> 32);\
 } while(0)
+#else
+#define AHCISetAddress(phys, field) \
+do {\
+    field = (phys & 0xffffffff);\
+} while(0)
+#endif

@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
 #include <error.h>
@@ -29,6 +30,8 @@ static struct
 	basicmm_region* tail;
 	size_t nNodes;
 } s_regionList;
+static basicmm_region bump_region;
+static size_t bump_offset;
 static spinlock s_regionListLock;
 static bool s_regionListLockInitialized;
 static OBOS_PAGEABLE_FUNCTION irql Lock()
@@ -48,98 +51,130 @@ static OBOS_PAGEABLE_FUNCTION void Unlock(irql oldIrql)
 
 OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
-	sz += sizeof(basicmm_region);
-	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
 	irql oldIrql = Lock();
-	// Find a basicmm_region.
-	basicmm_region* node = nullptr;
-	basicmm_region* currentNode = nullptr;
-	uintptr_t lastAddress = OBOS_KERNEL_ADDRESS_SPACE_BASE;
-	uintptr_t found = 0;
-	for (currentNode = s_regionList.head; currentNode;)
+	if (!bump_region.addr)
 	{
-		uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE);
-		if (currentNodeAddr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
-		{
-			currentNode = currentNode->next;
-			continue;
-		}
-		if ((currentNodeAddr - lastAddress) >= (sz + OBOS_PAGE_SIZE))
-		{
-			found = lastAddress;
-			break;
-		}
-		lastAddress = currentNodeAddr + currentNode->size;
-
-		currentNode = currentNode->next;
+		OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[4*1024*1024]; // 4M
+		bump_region.size = sizeof(region);
+		bump_region.addr = (uintptr_t)region;
+		// for (uintptr_t addr = bump_region.addr; addr < (bump_region.addr + bump_region.size); addr += OBOS_PAGE_SIZE)
+		// {
+		// 	obos_status stat = OBOS_STATUS_SUCCESS;
+		// 	uintptr_t mem = Mm_AllocatePhysicalPages(1, 1, &stat);
+		// 	if (stat != OBOS_STATUS_SUCCESS)
+		// 	{
+		// 		if (status)
+		// 			*status = stat;
+		// 		return nullptr;
+		// 	}
+		// 	OBOSS_MapPage_RW_XD((void*)addr, mem);
+		// }
 	}
-	if (!found)
-	{
-		basicmm_region* currentNode = s_regionList.tail;
-		if (currentNode)
-			found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + currentNode->size;
-		else
-			found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
-	}
-	if (!found)
-	{
-		if (status)
-			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
-		return nullptr;
-	}
-	node = (basicmm_region*)found;
-	for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
-	{
-		obos_status stat = OBOS_STATUS_SUCCESS;
-		uintptr_t mem = Mm_AllocatePhysicalPages(1, 1, &stat);
-		if (stat != OBOS_STATUS_SUCCESS)
-		{
-			if (status)
-				*status = stat;
-			return nullptr;
-		}
-		OBOSS_MapPage_RW_XD((void*)addr, mem);
-	}
-	memzero(node, sizeof(*node));
-	Unlock(oldIrql);
-	OBOSH_BasicMMAddRegion(node, node + 1, sz);
+	sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
+	if ((bump_offset + sz) >= bump_region.size)
+		OBOS_Panic(OBOS_PANIC_NO_MEMORY, "BasicMM: No more space in bump allocator.\n");
 	if (status)
 		*status = OBOS_STATUS_SUCCESS;
-	return (node + 1);
+	uintptr_t addr = bump_region.addr + bump_offset;
+	bump_offset += sz;
+	Unlock(oldIrql);
+	return (void*)addr;
+	// sz += sizeof(basicmm_region);
+	// sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
+	// irql oldIrql = Lock();
+	// // Find a basicmm_region.
+	// basicmm_region* node = nullptr;
+	// basicmm_region* currentNode = nullptr;
+	// uintptr_t lastAddress = OBOS_KERNEL_ADDRESS_SPACE_BASE;
+	// uintptr_t found = 0;
+	// for (currentNode = s_regionList.head; currentNode;)
+	// {
+	// 	uintptr_t currentNodeAddr = currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE);
+	// 	if (currentNodeAddr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+	// 	{
+	// 		currentNode = currentNode->next;
+	// 		continue;
+	// 	}
+	// 	if ((currentNodeAddr - lastAddress) >= (sz + OBOS_PAGE_SIZE))
+	// 	{
+	// 		found = lastAddress;
+	// 		break;
+	// 	}
+	// 	lastAddress = currentNodeAddr + currentNode->size;
+
+	// 	currentNode = currentNode->next;
+	// }
+	// if (!found)
+	// {
+	// 	basicmm_region* currentNode = s_regionList.tail;
+	// 	if (currentNode)
+	// 		found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + currentNode->size;
+	// 	else
+	// 		found = OBOS_KERNEL_ADDRESS_SPACE_BASE;
+	// }
+	// if (!found)
+	// {
+	// 	if (status)
+	// 		*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
+	// 	return nullptr;
+	// }
+	// node = (basicmm_region*)found;
+	// for (uintptr_t addr = found; addr < (found + sz); addr += OBOS_PAGE_SIZE)
+	// {
+	// 	obos_status stat = OBOS_STATUS_SUCCESS;
+	// 	uintptr_t mem = Mm_AllocatePhysicalPages(1, 1, &stat);
+	// 	if (stat != OBOS_STATUS_SUCCESS)
+	// 	{
+	// 		if (status)
+	// 			*status = stat;
+	// 		return nullptr;
+	// 	}
+	// 	OBOSS_MapPage_RW_XD((void*)addr, mem);
+	// }
+	// memzero(node, sizeof(*node));
+	// Unlock(oldIrql);
+	// OBOSH_BasicMMAddRegion(node, node + 1, sz);
+	// if (status)
+	// 	*status = OBOS_STATUS_SUCCESS;
+	// return (node + 1);
 }
 OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION obos_status OBOS_BasicMMFreePages(void* base_, size_t sz)
 {
-	sz += sizeof(basicmm_region);
-	sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
-	uintptr_t base = (uintptr_t)base_;
-	basicmm_region* reg = ((basicmm_region*)base - 1);
-	if (((uintptr_t)reg & ~0xfff) != (base & ~0xfff))
-		return OBOS_STATUS_MISMATCH;
-	if (reg->magic.integer != REGION_MAGIC_INT)
-		return OBOS_STATUS_MISMATCH;
-	if (reg->size != sz)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	irql oldIrql = Lock();
-	if (reg->next)
-		reg->next->prev = reg->prev;
-	if (reg->prev)
-		reg->prev->next = reg->next;
-	if (s_regionList.head == reg)
-		s_regionList.head = reg->next;
-	if (s_regionList.tail == reg)
-		s_regionList.tail = reg->prev;
-	s_regionList.nNodes--;
-	Unlock(oldIrql);
-	// Unmap the basicmm_region.
-	base &= ~0xfff;;
-	for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
-	{
-		uintptr_t phys = 0;
-		OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
-		OBOSS_UnmapPage((void*)addr);
-		if (phys)
-			Mm_FreePhysicalPages(phys, 1);
-	}
+	OBOS_UNUSED(base_);
+	OBOS_UNUSED(sz);
+	// sz += sizeof(basicmm_region);
+	// sz += (OBOS_PAGE_SIZE - (sz % OBOS_PAGE_SIZE));
+	// uintptr_t base = (uintptr_t)base_;
+	// basicmm_region* reg = ((basicmm_region*)base - 1);
+	// if (((uintptr_t)reg & ~0xfff) != (base & ~0xfff))
+	// 	return OBOS_STATUS_MISMATCH;
+	// if (reg->magic.integer != REGION_MAGIC_INT)
+	// 	return OBOS_STATUS_MISMATCH;
+	// if (reg->size != sz)
+	// 	return OBOS_STATUS_INVALID_ARGUMENT;
+	// irql oldIrql = Lock();
+	// if (reg->next)
+	// 	reg->next->prev = reg->prev;
+	// if (reg->prev)
+	// 	reg->prev->next = reg->next;
+	// if (s_regionList.head == reg)
+	// 	s_regionList.head = reg->next;
+	// if (s_regionList.tail == reg)
+	// 	s_regionList.tail = reg->prev;
+	// s_regionList.nNodes--;
+	// Unlock(oldIrql);
+	// // Unmap the basicmm_region.
+	// base &= ~0xfff;;
+	// for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
+	// {
+	// 	uintptr_t phys = 0;
+	// 	OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
+	// 	OBOSS_UnmapPage((void*)addr);
+	// 	if (phys)
+	// 		Mm_FreePhysicalPages(phys, 1);
+	// }
+	// return OBOS_STATUS_SUCCESS;
+	// Bump allocators don't do freeing.
 	return OBOS_STATUS_SUCCESS;
 }
 
@@ -185,7 +220,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMAddRegion(basicmm_region*
 		while (n && n->next)
 		{
 			if (n->addr < base &&
-				n->next->addr > node->addr)
+				n->next->addr >= node->addr)
 			{
 				found = n;
 				break;
@@ -219,12 +254,14 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMAddRegion(basicmm_region*
 }
 OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
 {
+	// callback(&bump_region, udata);
 	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
 	for (basicmm_region* cur = s_regionList.head; cur; )
 	{
 		if (cur->mmioRange)
 			goto next;
 		
+		// OBOS_Debug("%p-%p\n", cur->addr, cur->addr+cur->size);
 		if (!callback(cur, udata))
 		{
 			Core_SpinlockRelease(&s_regionListLock, oldIrql);
@@ -234,8 +271,4 @@ OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_
 		cur = cur->next;
 	}
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);
-}
-OBOS_PAGEABLE_FUNCTION size_t OBOSH_BasicMMGetRegionCount()
-{
-	return s_regionList.nNodes;
 }

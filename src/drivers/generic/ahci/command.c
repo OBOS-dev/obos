@@ -11,6 +11,7 @@
 
 #include <locks/semaphore.h>
 
+#include "irq/timer.h"
 #include "structs.h"
 #include "command.h"
 
@@ -21,17 +22,16 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     if (data->physRegionCount > 32)
         return OBOS_STATUS_INVALID_ARGUMENT;
     Core_SemaphoreAcquire(&port->lock);
-    StopCommandEngine(port->hbaPort);
-    // uint32_t cmdSlot = 31;
-    uint32_t cmdSlot = __builtin_ctz(~(port->hbaPort->ci | port->hbaPort->sact));
+    HBA->ports[port->hbaPortIndex].is = 0xffffffff;
+    uint32_t cmdSlot = __builtin_ctz(~(HBA->ports[port->hbaPortIndex].ci | HBA->ports[port->hbaPortIndex].sact));
     port->PendingCommands[cmdSlot] = data;
     obos_status status = OBOS_STATUS_SUCCESS;
     HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
     HBA_CMD_TBL* cmdTBL = 
-    (HBA_CMD_TBL*)
+    (HBA_CMD_TBL*)(uintptr_t)
     (
         (uintptr_t)port->clBase +
-            ((cmdHeader->ctba | ((uintptr_t)cmdHeader->ctbau << 32)) - port->clBasePhys) // The offset of the HBA_CMD_TBL
+            ((cmdHeader->ctba | ((uint64_t)cmdHeader->ctbau << 32)) - port->clBasePhys) // The offset of the HBA_CMD_TBL
     );
     cmdHeader->cfl = sizeof(FIS_REG_H2D) / sizeof(uint32_t);
     if (data->direction == COMMAND_DIRECTION_READ)
@@ -41,8 +41,10 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     cmdHeader->prdtl = data->physRegionCount;
     for (size_t i = 0; i < data->physRegionCount; i++)
     {
+#if OBOS_ARCHITECTURE_BITS == 64
         if (!HBA->cap.s64a)
             OBOS_ASSERT(!(data->phys_regions[i].phys >> 32));
+#endif
         memzero((void*)&cmdTBL->prdt_entry[i], sizeof(cmdTBL->prdt_entry[i]));
         AHCISetAddress(data->phys_regions[i].phys, cmdTBL->prdt_entry[i].dba);
         cmdTBL->prdt_entry[i].dbc = data->phys_regions[i].sz - 1;
@@ -64,37 +66,48 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     fis->c = 1;
     // Wait for the port.
     // 0x88: ATA_DEV_BUSY | ATA_DEV_DRQ
-    while ((port->hbaPort->tfd & 0x88))
+    while ((HBA->ports[port->hbaPortIndex].tfd & 0x88))
         OBOSS_SpinlockHint();
     // Issue the command
     data->internal.cmdSlot = cmdSlot;
-    StartCommandEngine(port->hbaPort);
-    port->hbaPort->sact |= (1 << cmdSlot);
-    port->hbaPort->ci |= (1 << cmdSlot);
+    HBA->ports[port->hbaPortIndex].sact |= (1 << cmdSlot);
+    HBA->ports[port->hbaPortIndex].ci |= (1 << cmdSlot);
     // Release the semaphore in the IRQ handler instead.
     // Core_SemaphoreRelease(&port->lock);
     return status;
 }
-void StopCommandEngine(volatile HBA_PORT* port)
+obos_status ClearCommand(Port* port, struct command_data* data)
 {
-    port->cmd &= ~(1<<0); // PxCMD.st
-
-    // Clear FRE (bit 4)
-    port->cmd &= ~(1<<4);
-
-    // Wait until FR (bit 14), CR (bit 15) are cleared
-    while (1)
-    {
-        if (port->cmd & (1<<14))
-                continue;
-        if (port->cmd & (1<<15))
-                continue;
-        break;
-    }
+    uint8_t cmdSlot = data->internal.cmdSlot;
+    HBA->ports[port->hbaPortIndex].ci &= ~(1 << cmdSlot);
+    port->PendingCommands[cmdSlot] = nullptr;
+    return OBOS_STATUS_SUCCESS;
+}
+void StopCommandEngine(volatile HBA_PORT* hPort)
+{
+    //  PxCMD.ST: Bit 0
+    // PxCMD.FRE: Bit 4
+    //  PxCMD.FR: Bit 14
+    //  PxCMD.CR: Bit 15
+    if (!(hPort->cmd & (BIT(0) | BIT(4) | BIT(14) | BIT(15))))
+        return;
+    // The DMA engine is running.
+    // Disable it.
+    hPort->cmd &= ~(1<<0);
+    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(3000000 /* 1s */);
+    while(hPort->cmd & (1<<15) /*PxCMD.CR*/ && deadline > CoreS_GetTimerTick())
+        OBOSS_SpinlockHint();
+    if (hPort->cmd & (1<<15) /*PxCMD.CR*/)
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Port did not go idle after 3 seconds (PxCMD.CR=1). PxCMD: 0x%08x\n", hPort->cmd);
+    hPort->cmd &= ~(1<<4);
+    deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(3000000);
+    while(hPort->cmd & (1<<14) /*PxCMD.FR*/ && deadline > CoreS_GetTimerTick())
+        OBOSS_SpinlockHint();
+    if (hPort->cmd & (1<<14) /*PxCMD.FR*/)
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Port did not go idle after 3 seconds (PxCMD.FR=1). PxCMD: 0x%08x\n", hPort->cmd);
 }
 void StartCommandEngine(volatile HBA_PORT* port)
 {
-    // Set FRE (bit 4) and ST (bit 0)
     port->cmd |= (1<<4);
     while (port->cmd & (1<<15))
         OBOSS_SpinlockHint();

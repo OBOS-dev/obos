@@ -38,5 +38,5 @@ typedef struct BootInfoTag
     uint16_t size;
 } OBOS_PACK BootInfoTag;
 
-BootInfoTag* Arch_GetBootInfo(BootInfoType type);
-BootInfoTag* Arch_GetBootInfoFrom(BootInfoType type, BootInfoTag* tag);
+OBOS_EXPORT BootInfoTag* Arch_GetBootInfo(BootInfoType type);
+OBOS_EXPORT BootInfoTag* Arch_GetBootInfoFrom(BootInfoType type, BootInfoTag* tag);

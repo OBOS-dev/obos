@@ -175,7 +175,7 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 2);
-	bool shouldInvplg = pm[AddressToIndex(at, 0)] & 0b1;
+	bool shouldInvplg = pm[AddressToIndex(at, 1)] & 0b1;
 	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
 	if (shouldInvplg)
 		invlpg_impl(at);
@@ -198,7 +198,7 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (getCR3() == invlpg_ipi_packet.cr3)
 		invlpg(invlpg_ipi_packet.addr);
 	invlpg_ipi_packet.nCPUsRan++;
-	if (invlpg_ipi_packet.nCPUsRan == Core_CpuCount)
+	if (invlpg_ipi_packet.nCPUsRan >= Core_CpuCount)
 		invlpg_ipi_packet.active = false;
 	// Arch_LAPICAddress->eoi = 0;
 	return true;
@@ -283,6 +283,7 @@ static obos_status invlpg_impl(uintptr_t at)
 	invlpg_ipi_packet.sender = CoreS_GetCPULocalPtr();
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
 	OBOS_ASSERT(obos_is_success(status));
+	OBOS_UNUSED(status);
 	// This can be done async.
 	// while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 	// 	pause();

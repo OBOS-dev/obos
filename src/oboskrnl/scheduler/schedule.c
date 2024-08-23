@@ -166,7 +166,7 @@ schedule:
 	// thread* oldCurThread = getCurrentThread;
 	// getCurrentThread = nullptr;
 	// (void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
-	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
+	// (void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
 #ifndef OBOS_UP
@@ -253,7 +253,7 @@ switch_thread:
 	if (getCurrentThread && threadCanRunThread(getCurrentThread))
 		getCurrentThread->status = THREAD_STATUS_READY;
 	// Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
-	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
+	// Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;

@@ -36,5 +36,6 @@ struct command_data
     } internal;
 };
 obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uint8_t device, uint16_t count);
+obos_status ClearCommand(Port* port, struct command_data* data);
 void StopCommandEngine(volatile HBA_PORT* port);
 void StartCommandEngine(volatile HBA_PORT* port);

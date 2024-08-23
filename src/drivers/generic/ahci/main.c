@@ -183,10 +183,20 @@ void OBOS_DriverEntry(driver_id* this)
     DrvS_WritePCIRegister(PCINode.info, 1*4, 2, pciCommand);
     OBOS_Debug("Mapping HBA memory.\n");
     HBA = map_registers(bar, barlen, true);
-    OBOS_Debug("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
+    // OBOS_Log("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", IRQL_AHCI, status);
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", uacpi_strnlen(drv_hdr.driverName, 64), IRQL_AHCI, status);
+    OBOS_Debug("Enabling IRQs...\n");
+    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize HBA Irq. Status: %d.\n", status);
+    HbaIrq.irqChecker = ahci_irq_checker;
+    HbaIrq.handler = ahci_irq_handler;
+    status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
+    OBOS_Debug("Enabled IRQs.\n");
     HBA->ghc.ae = true;
     while (!HBA->ghc.ae)
         OBOSS_SpinlockHint();
@@ -214,7 +224,8 @@ void OBOS_DriverEntry(driver_id* this)
                 break;
             // It is set...
             // Spin on it for two seconds, otherwise assume control.
-            while (HBA->bohc & BIT(4) /* BOHC.BB */)
+            deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(2*1000000  /* 2s */);
+            while (HBA->bohc & BIT(4) /* BOHC.BB */ && CoreS_GetTimerTick() < deadline)
                 OBOSS_SpinlockHint();
         } while(0);
     }
@@ -223,20 +234,13 @@ void OBOS_DriverEntry(driver_id* this)
         if (!(HBA->pi & BIT(i)))
             continue;
         HBA_PORT* hPort = HBA->ports + i;
-        //  PxCMD.ST: Bit 0
-        // PxCMD.FRE: Bit 4
-        //  PxCMD.FR: Bit 14
-        //  PxCMD.CR: Bit 15
-        if (!(hPort->cmd & (BIT(0) | BIT(4) | BIT(14) | BIT(15))))
-            continue;
-        // The DMA engine is running.
-        // Disable it.
+        // StopCommandEngine(hPort);
         hPort->cmd &= ~(1<<0);
         while(hPort->cmd & (1<<15) /*PxCMD.CR*/)
-            ;
-		hPort->cmd &= ~(1<<4);
+            OBOSS_SpinlockHint();
+        hPort->cmd &= ~(1<<4);
         while(hPort->cmd & (1<<14) /*PxCMD.FR*/)
-            ;
+            OBOSS_SpinlockHint();
     }
     HBA->ghc.hr = true;
     while (HBA->ghc.hr)
@@ -273,28 +277,23 @@ void OBOS_DriverEntry(driver_id* this)
         hPort->serr = 0xffffffff;
         while (hPort->tfd & 0x80 && hPort->tfd & 0x8)
             OBOSS_SpinlockHint();
-        // StartCommandEngine(hPort);
         OBOS_Debug("Done port init for port %d.\n", port);
+        StartCommandEngine(hPort);
         curr->works = true;
-        curr->hbaPort = hPort;
-        curr->type = curr->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
+        curr->hbaPortIndex = port;
     }
-    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
-    if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize HBA Irq. Status: %d.\n", status);
-    HbaIrq.irqChecker = ahci_irq_checker;
-    HbaIrq.handler = ahci_irq_handler;
-    status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
-    if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
     HBA->ghc.ie = true;
     for (uint8_t i = 0; i < 32; i++)
     {
+        if (!(HBA->pi & BIT(i)))
+            continue;
         Port* port = Ports + i;
+        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         if (!port->works)
             continue;
-        port->hbaPort->is = 0xffffffff;
-        port->hbaPort->ie = 0xffffffff;
+        HBA->ports[port->hbaPortIndex].is = 0xffffffff;
+        HBA->ports[port->hbaPortIndex].ie = 0xffffffff;
+        HBA->ports[port->hbaPortIndex].serr = 0xffffffff;
         // Send Identify ATA.
         struct ahci_phys_region reg = {
             .phys = HBAAllocate(4096, 4096),
@@ -309,17 +308,17 @@ void OBOS_DriverEntry(driver_id* this)
         port->dev_name = DeviceNames[PortCount++];
         port->lock = SEMAPHORE_INITIALIZE(32);
         size_t tries = 0;
-        if (port->type == DRIVE_TYPE_SATAPI)
-            continue;
-        OBOS_Debug("Sending IDENTIFY_ATA to port %d.\n", i);
         retry:
         SendCommand(port, &data, 0, 0, 0);
-        // while (!HBA->ports[i].is)
-        //     OBOSS_SpinlockHint();
-        // while (HBA->ports[i].ci & BIT(data.internal.cmdSlot))
-        //     OBOSS_SpinlockHint();
         Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
         Core_EventClear(&data.completionEvent);
+        port->type = HBA->ports[port->hbaPortIndex].sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
+        if (port->type == DRIVE_TYPE_SATAPI)
+        {
+            OBOS_Log("%*s: Cannot send IDENTIFY_ATA to a SATAPI port.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
+            ClearCommand(port, &data);
+            continue;
+        }
         if (data.commandStatus != OBOS_STATUS_SUCCESS)
         {
             if (tries++ >= 3)
@@ -333,12 +332,12 @@ void OBOS_DriverEntry(driver_id* this)
             data.commandStatus = OBOS_STATUS_SUCCESS;
             goto retry;
         }
+        ClearCommand(port, &data);
         void* response = map_registers(reg.phys, reg.sz, false);
         port->sectorSize = *(uint32_t*)(response + (117 * 2));
-		if (!port->sectorSize)
-			port->sectorSize = 512; // Assume one sector = 512 bytes.
-		port->type = port->hbaPort->sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
-		port->nSectors = *(uint64_t*)(response + (100 * 2));
+        if (!port->sectorSize)
+            port->sectorSize = 512; // Assume one sector = 512 bytes.
+        port->nSectors = *(uint64_t*)(response + (100 * 2));
         OBOS_Log("AHCI: Found %s drive at port %s. Sector count: 0x%016X, sector size 0x%08X.\n",
 			port->type == DRIVE_TYPE_SATA ? "SATA" : "SATAPI",
 			port->dev_name,
@@ -347,5 +346,6 @@ void OBOS_DriverEntry(driver_id* this)
         port->vn = Drv_AllocateVNode(this, (dev_desc)port, port->nSectors*port->sectorSize, nullptr, VNODE_TYPE_BLK);
         Drv_RegisterVNode(port->vn, port->dev_name);
     }
+    OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
     Core_ExitCurrentThread();
 }

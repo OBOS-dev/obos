@@ -14,7 +14,7 @@ qemu-system-x86_64 \
 -serial tcp:0.0.0.0:1534,server,nowait \
 -smp cores=4,threads=1,sockets=1 \
 -M smm=off \
--d trace:*ahci* \
+-d int \
 -D qemu_log.txt
 # -nographic
 # -drive if=pflash,format=raw,unit=1,file=ovmf/OVMF_VARS_4M.fd \

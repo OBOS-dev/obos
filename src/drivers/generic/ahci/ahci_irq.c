@@ -45,15 +45,15 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
         if (!(HBA->is & BIT(i)))
             continue;
         Port* curr = &Ports[i];
-        if (!curr->hbaPort)
+        if (!curr->works)
         {
             HBA->ports[i].is = HBA->ports[i].is;
             continue;
         }
-        uint32_t portStatus = curr->hbaPort->is;
+        uint32_t portStatus = HBA->ports[i].is;
         if (!portStatus)
             continue;
-        curr->hbaPort->is = portStatus;
+        HBA->ports[i].is = portStatus;
         // Signal each finished event here.
         obos_status status = OBOS_STATUS_SUCCESS;
         if (portStatus & (0xFD800000))
@@ -66,10 +66,11 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
         }
         for (uint8_t slot = 0; slot < HBA->cap.nsc; slot++)
         {
-            if ((curr->hbaPort->ci & BIT(slot)) && status == OBOS_STATUS_SUCCESS)
+            if ((HBA->ports[i].ci & BIT(slot)) && status == OBOS_STATUS_SUCCESS)
                 continue;
             if (!curr->PendingCommands[slot])
                 continue; // There was never a command issued in the first place.
+            HBA->ports[i].ci &= ~BIT(slot);
             curr->PendingCommands[slot]->commandStatus = status;
             Core_EventSet(&curr->PendingCommands[slot]->completionEvent, false);
             Core_SemaphoreRelease(&curr->lock);
