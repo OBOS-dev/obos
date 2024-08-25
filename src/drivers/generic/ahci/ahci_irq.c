@@ -26,34 +26,32 @@
 //     OBOS_UNUSED(userdata);
     
 // }
-bool ahci_irq_checker(struct irq* i, void* userdata)
+OBOS_NO_KASAN OBOS_NO_UBSAN bool ahci_irq_checker(struct irq* i, void* userdata)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(userdata);
+    // OBOS_Debug("bonjour HBA->is: 0x%08x\n", HBA->is);
     return HBA->is != 0;
 }
 irq HbaIrq;
-void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+OBOS_NO_KASAN OBOS_NO_UBSAN void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(oldIrql);
-    HBA->is = HBA->is;
-    for (uint8_t i = 0; i < 32; i++)
+    // OBOS_Debug("hola\n");
+    for (uint8_t port = 0; port < PortCount; port++)
     {
-        if (!(HBA->is & BIT(i)))
+        Port* curr = &Ports[port];
+        if (!(HBA->is & BIT(curr->hbaPortIndex)))
             continue;
-        Port* curr = &Ports[i];
+        uint32_t portStatus = HBA->ports[curr->hbaPortIndex].is;
         if (!curr->works)
         {
-            HBA->ports[i].is = HBA->ports[i].is;
+            HBA->ports[curr->hbaPortIndex].is = portStatus;
             continue;
         }
-        uint32_t portStatus = HBA->ports[i].is;
-        if (!portStatus)
-            continue;
-        HBA->ports[i].is = portStatus;
         // Signal each finished event here.
         obos_status status = OBOS_STATUS_SUCCESS;
         if (portStatus & (0xFD800000))
@@ -66,15 +64,16 @@ void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irq
         }
         for (uint8_t slot = 0; slot < HBA->cap.nsc; slot++)
         {
-            if ((HBA->ports[i].ci & BIT(slot)) && status == OBOS_STATUS_SUCCESS)
+            if ((HBA->ports[curr->hbaPortIndex].ci & BIT(slot)) && status == OBOS_STATUS_SUCCESS)
                 continue;
             if (!curr->PendingCommands[slot])
                 continue; // There was never a command issued in the first place.
-            HBA->ports[i].ci &= ~BIT(slot);
             curr->PendingCommands[slot]->commandStatus = status;
             Core_EventSet(&curr->PendingCommands[slot]->completionEvent, false);
             Core_SemaphoreRelease(&curr->lock);
         }
+        HBA->ports[curr->hbaPortIndex].is = portStatus;
     }
+    HBA->is = HBA->is;
     // CoreH_InitializeDPC(&ahci_dpc, ahci_dpc_handler, Core_DefaultThreadAffinity);
 }

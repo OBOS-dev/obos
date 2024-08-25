@@ -4,7 +4,6 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/mutex.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -22,6 +21,7 @@
 #include <irq/dpc.h>
 
 #include <locks/spinlock.h>
+#include <locks/mutex.h>
 
 #include <uacpi_libc.h>
 
@@ -176,7 +176,7 @@ uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth
     if (!isPower2(byteWidth))
         return UACPI_STATUS_INVALID_ARGUMENT;
     if (byteWidth > 8)
-        return UACPI_STATUS_INVALID_ARGUMENT;
+       return UACPI_STATUS_INVALID_ARGUMENT;
     uacpi_status status = UACPI_STATUS_OK;
     if (byteWidth == 1)
     {
@@ -387,8 +387,10 @@ typedef struct io_range
 } io_range;
 uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle *out_handle)
 {
+#if defined(__x86_64__) || defined(__i386__)
     if (base > 0xffff)
         return UACPI_STATUS_INVALID_ARGUMENT;
+#endif
     io_range* rng = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(io_range), nullptr);
     rng->base = base;
     rng->len = len;
@@ -495,7 +497,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
     obos_status status = Core_IrqObjectInitializeIRQL(irqHnd, IRQL_GPE, false, true);
     if (obos_is_error(status))
     {
-        OBOS_Debug("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
+        OBOS_Error("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
     uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uintptr_t), nullptr);

@@ -2,7 +2,7 @@
 # 
 # Copyright (c) 2024 Omar Berrow
 
-add_executable(ahci "main.c" "ahci_irq.c" "command.c")
+add_executable(ahci "main.c" "ahci_irq.c" "command.c" "interface.c")
 
 target_compile_options(ahci
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>

@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <memmanip.h>
 #include <klog.h>
 
 #include <scheduler/thread.h>
@@ -23,8 +24,10 @@
 #include <utils/tree.h>
 
 #include <irq/irq.h>
-
 #include <irq/timer.h>
+#include <irq/irql.h>
+
+#include <allocators/base.h>
 
 #include "command.h"
 #include "ahci_irq.h"
@@ -66,6 +69,24 @@ OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl(size_t nParameters, uint64_t 
 }
 void driver_cleanup_callback()
 {
+    for (uint8_t porti = 0; porti < PortCount; porti++)
+    {
+        Port* port = Ports+porti;
+        if (!port->works)
+            continue;
+        // To ensure no more actions on the port happen.
+        port->works = false;   
+        obos_status status = OBOS_STATUS_SUCCESS;
+        for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
+            status = Core_SemaphoreTryAcquire(&port->lock);
+        // Abort all pending commands.
+        for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
+            ClearCommand(port, port->PendingCommands[i]);
+    }
+    Drv_MaskPCIIrq(&PCIIrqHandle, true);
+    Core_IrqObjectFree(&HbaIrq);
+    // TODO: Free HBA, port clb, and fb
+    
 }
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -158,6 +179,7 @@ const char* const DeviceNames[32] = {
     "sdy", "sdz", "sd1", "sd2",
     "sd3", "sd4", "sd5", "sd6",
 };
+static void hexdump(void* _buff, size_t nBytes, const size_t width);
 // https://forum.osdev.org/viewtopic.php?t=40969
 void OBOS_DriverEntry(driver_id* this)
 {
@@ -248,12 +270,13 @@ void OBOS_DriverEntry(driver_id* this)
     HBA->ghc.ae = true;
     while (!HBA->ghc.ae)
         OBOSS_SpinlockHint();
+    HBA->ghc.ie = true;
     for (uint8_t port = 0; port < 32; port++)
     {
         if (!(HBA->pi & BIT(port)))
             continue;
         HBA_PORT* hPort = HBA->ports + port;
-        Port* curr = Ports + port;
+        Port* curr = &Ports[PortCount++];
         curr->clBasePhys = HBAAllocate(sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32, 0);
         curr->clBase = map_registers(curr->clBasePhys, sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32, true);
         curr->fisBasePhys = HBAAllocate(4096, 0);
@@ -272,6 +295,7 @@ void OBOS_DriverEntry(driver_id* this)
         timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
         while ((hPort->ssts & 0xf) != 0x3 && deadline < CoreS_GetTimerTick())
             OBOSS_SpinlockHint();
+        curr->hbaPortIndex = port;
         if ((hPort->ssts & 0xf) != 0x3)
             continue;
         hPort->serr = 0xffffffff;
@@ -280,13 +304,10 @@ void OBOS_DriverEntry(driver_id* this)
         OBOS_Debug("Done port init for port %d.\n", port);
         StartCommandEngine(hPort);
         curr->works = true;
-        curr->hbaPortIndex = port;
     }
-    HBA->ghc.ie = true;
-    for (uint8_t i = 0; i < 32; i++)
+    OBOS_Log("%*s: Initialized %d ports.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, PortCount);
+    for (uint8_t i = 0; i < PortCount; i++)
     {
-        if (!(HBA->pi & BIT(i)))
-            continue;
         Port* port = Ports + i;
         OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         if (!port->works)
@@ -296,21 +317,29 @@ void OBOS_DriverEntry(driver_id* this)
         HBA->ports[port->hbaPortIndex].serr = 0xffffffff;
         // Send Identify ATA.
         struct ahci_phys_region reg = {
-            .phys = HBAAllocate(4096, 4096),
-            .sz = 4096
+            .phys = HBAAllocate(512, 0),
+            .sz = 512
         };
+        void* response = map_registers(reg.phys, reg.sz, false);
+        memzero(response, reg.sz);
+        uint16_t* res_data = (uint16_t*)response;
         struct command_data data = {};
         data.phys_regions = &reg;
         data.physRegionCount = 1;
         data.cmd = ATA_IDENTIFY_DEVICE;
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-        port->dev_name = DeviceNames[PortCount++];
-        port->lock = SEMAPHORE_INITIALIZE(32);
+        port->dev_name = DeviceNames[i];
+        port->lock = SEMAPHORE_INITIALIZE(HBA->cap.nsc);
         size_t tries = 0;
         retry:
+        HBA->ghc.ie = false;
+        irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
         SendCommand(port, &data, 0, 0, 0);
-        Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
+        Core_LowerIrql(oldIrql);
+        while (!(HBA->ports[port->hbaPortIndex].is))
+            OBOSS_SpinlockHint();
+        HBA->ghc.ie = true;
         Core_EventClear(&data.completionEvent);
         port->type = HBA->ports[port->hbaPortIndex].sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
         if (port->type == DRIVE_TYPE_SATAPI)
@@ -333,11 +362,27 @@ void OBOS_DriverEntry(driver_id* this)
             goto retry;
         }
         ClearCommand(port, &data);
-        void* response = map_registers(reg.phys, reg.sz, false);
-        port->sectorSize = *(uint32_t*)(response + (117 * 2));
-        if (!port->sectorSize)
-            port->sectorSize = 512; // Assume one sector = 512 bytes.
-        port->nSectors = *(uint64_t*)(response + (100 * 2));
+        uint16_t cmd_feature_set = res_data[83];
+        uint16_t cmd_feature_set2 = res_data[86];
+        if ((cmd_feature_set & BIT(14)) && !(cmd_feature_set & BIT(15)))
+            port->supports48bitLBA = cmd_feature_set & BIT(10);
+        if (!port->supports48bitLBA)
+        {
+            if ((res_data[87] & BIT(14)) && !(res_data[87] & BIT(15)))
+            {
+                cmd_feature_set = cmd_feature_set2;
+                port->supports48bitLBA = cmd_feature_set & BIT(10);
+            }
+        }
+        if (port->supports48bitLBA)
+            port->nSectors = *(uint64_t*)(&res_data[100]);
+        else
+            port->nSectors = *(uint32_t*)(&res_data[60]);
+        uint16_t sectorInfo = res_data[106];
+        port->sectorSize = 512; // Assume one sector = 512 bytes.
+        if ((sectorInfo & BIT(14)) && !(sectorInfo & BIT(15)))
+            if (sectorInfo & BIT(12))
+                port->sectorSize = *((uint32_t*)&res_data[117]);
         OBOS_Log("AHCI: Found %s drive at port %s. Sector count: 0x%016X, sector size 0x%08X.\n",
 			port->type == DRIVE_TYPE_SATA ? "SATA" : "SATAPI",
 			port->dev_name,
@@ -347,5 +392,67 @@ void OBOS_DriverEntry(driver_id* this)
         Drv_RegisterVNode(port->vn, port->dev_name);
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
+    OBOS_Debug("Reading LBA0.\n");
+    // for (volatile bool b = true; b;)
+    //     ;
+    const size_t sizeof_buf = (512*1);
+    uint8_t *buf = map_registers(HBAAllocate(sizeof_buf, 0), sizeof_buf, false);
+    memzero(buf, sizeof_buf);
+    if (obos_is_success(status = read_sync((dev_desc)&Ports[0], buf, sizeof_buf/512, 0, nullptr)))
+    {
+        OBOS_Debug("success.\n");
+        hexdump(buf, sizeof_buf, 15);
+    }
+    else
+        OBOS_Debug("failed with %d.\n", status);
+    for (volatile bool b = true; b;)
+        ;
     Core_ExitCurrentThread();
+}
+
+
+static OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
+{
+	bool printCh = false;
+	uint8_t* buff = (uint8_t*)_buff;
+	printf("         Address: ");
+	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
+		printf("%02x ", i);
+	printf("\n%016lx: ", buff);
+	for (size_t i = 0, chI = 0; i < nBytes; i++, chI++)
+	{
+		if (printCh)
+		{
+			char ch = buff[i];
+			switch (ch)
+			{
+			case '\n':
+			case '\t':
+			case '\r':
+			case '\b':
+			case '\a':
+			case '\0':
+			{
+				ch = '.';
+				break;
+			}
+			default:
+				break;
+			}
+			printf("%c", ch);
+		}
+		else
+			printf("%02x ", buff[i]);
+		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
+		{
+			chI = 0;
+			if (!printCh)
+				i -= (width + 1);
+			else
+				printf(" |\n%016lx: ", &buff[i + 1]);
+			printCh = !printCh;
+			if (printCh)
+				printf("\t| ");
+		}
+	}
 }

@@ -357,6 +357,7 @@ obos_status Core_IrqObjectFree(irq* obj)
 		obj->vector->nIRQsWithChosenID -= (size_t)obj->choseVector;
 		Core_SpinlockRelease(&s_lock, oldIrql);
 	}
+	// FIXME: Set a free callback in the irq object instead of assuming the kernel allocator.
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 	return OBOS_STATUS_SUCCESS;
 }

@@ -45,6 +45,10 @@ typedef enum prot_flags
 	/// </summary>
 	OBOS_PROTECTION_CACHE_DISABLE = 0x8,
 	/// <summary>
+	/// For Mm_VirtualMemoryProtect. Sets the protection to the same thing it was before.
+	/// </summary>
+	OBOS_PROTECTION_SAME_AS_BEFORE = 0x10,
+	/// <summary>
 	/// Bits from here to OBOS_PROTECTION_PLATFORM_END are reserved for the architecture.
 	/// </summary>
 	OBOS_PROTECTION_PLATFORM_START = 0x01000000,

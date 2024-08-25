@@ -10,8 +10,10 @@
 #include <error.h>
 
 #include <locks/semaphore.h>
+#include <locks/mutex.h>
 
-#include "irq/timer.h"
+#include <irq/timer.h>
+
 #include "structs.h"
 #include "command.h"
 
@@ -19,12 +21,14 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
 {
     if (!port || !data)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (data->physRegionCount > 32)
+    if (data->physRegionCount > sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY))
         return OBOS_STATUS_INVALID_ARGUMENT;
     Core_SemaphoreAcquire(&port->lock);
     HBA->ports[port->hbaPortIndex].is = 0xffffffff;
-    uint32_t cmdSlot = __builtin_ctz(~(HBA->ports[port->hbaPortIndex].ci | HBA->ports[port->hbaPortIndex].sact));
+    Core_MutexAcquire(&port->bitmask_lock);
+    uint32_t cmdSlot = __builtin_ctz(~port->CommandBitmask);
     port->PendingCommands[cmdSlot] = data;
+    Core_MutexRelease(&port->bitmask_lock);
     obos_status status = OBOS_STATUS_SUCCESS;
     HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
     HBA_CMD_TBL* cmdTBL = 
@@ -39,7 +43,7 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     else
         cmdHeader->w = 1;   // Host to Device.
     cmdHeader->prdtl = data->physRegionCount;
-    for (size_t i = 0; i < data->physRegionCount; i++)
+    for (uint16_t i = 0; i < data->physRegionCount; i++)
     {
 #if OBOS_ARCHITECTURE_BITS == 64
         if (!HBA->cap.s64a)
@@ -48,7 +52,8 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         memzero((void*)&cmdTBL->prdt_entry[i], sizeof(cmdTBL->prdt_entry[i]));
         AHCISetAddress(data->phys_regions[i].phys, cmdTBL->prdt_entry[i].dba);
         cmdTBL->prdt_entry[i].dbc = data->phys_regions[i].sz - 1;
-        cmdTBL->prdt_entry[i].i = 1;
+        // cmdTBL->prdt_entry[i].i = (i == (data->physRegionCount - 1));
+        cmdTBL->prdt_entry[i].i = true;
     }
     FIS_REG_H2D* fis = (void*)cmdTBL->cfis;
     memzero(fis, sizeof(*fis));

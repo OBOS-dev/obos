@@ -29,7 +29,7 @@ OBOS_WEAK obos_status OBOSS_UnmapPage(void* at);
 /// <param name="at">The address to query.</param>
 /// <param name="oPhys">[out] The physical address.</param>
 /// <returns>The status of the function.</returns>
-OBOS_WEAK obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
+OBOS_EXPORT obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
 
 typedef struct basicmm_region
 {

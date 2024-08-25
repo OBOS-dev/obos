@@ -235,8 +235,6 @@ OBOS_EXPORT obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t of
 }
 OBOS_EXPORT obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val)
 {
-    if (!val)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     switch (accessSize)
     {
         case 1:

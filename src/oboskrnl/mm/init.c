@@ -139,7 +139,9 @@ void Mm_Initialize()
 #endif
     // Mm_KernelContext.workingSet.capacity = udata.szPageablePages;
     Mm_KernelContext.workingSet.capacity = OBOS_GetOPTD("working-set-cap");
-    if (!Mm_KernelContext.workingSet.capacity)
+    if (Mm_KernelContext.workingSet.capacity < OBOS_PAGE_SIZE && Mm_KernelContext.workingSet.capacity != 0)
+        OBOS_Warning("Working set capacity set to < PAGE_SIZE.\n");
+    if (Mm_KernelContext.workingSet.capacity < OBOS_PAGE_SIZE)
         Mm_KernelContext.workingSet.capacity = 4*1024*1024;
     initialized = true;
     page* i = nullptr;

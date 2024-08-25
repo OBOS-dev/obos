@@ -25,7 +25,7 @@ enum {
 struct command_data
 {
     struct ahci_phys_region* phys_regions;
-    uint8_t physRegionCount : 5;
+    uint16_t physRegionCount;
     uint8_t direction;
     uint8_t cmd;
     // Set when the command is done.

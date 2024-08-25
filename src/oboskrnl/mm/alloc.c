@@ -455,7 +455,9 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
-    
+    if (prot == OBOS_PROTECTION_SAME_AS_BEFORE && isPageable > 1)
+        return OBOS_STATUS_SUCCESS;
+
     page what;
     memzero(&what, sizeof(what));
     what.addr = base;
@@ -504,10 +506,13 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             return OBOS_STATUS_NOT_FOUND;
         }
-        curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-        curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
-        curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-        curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        if (!(prot & OBOS_PROTECTION_SAME_AS_BEFORE))
+        {
+            curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+            curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+            curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+            curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        }
         if (curr->pagedOut && !isPageable)
         {
             // Page in curr if:

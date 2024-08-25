@@ -743,7 +743,7 @@ if (st != UACPI_STATUS_OK)\
 
 	Core_LowerIrql(oldIrql);
     // TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
-	Arch_IOAPICMaskIRQ(9, false);
+	// Arch_IOAPICMaskIRQ(9, false);
 
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;

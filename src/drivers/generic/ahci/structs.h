@@ -9,6 +9,7 @@
 #include <int.h>
 
 #include <locks/semaphore.h>
+#include <locks/mutex.h>
 
 #include <irq/irq.h>
 
@@ -282,7 +283,7 @@ typedef struct HBA_CMD_TBL
  
 	volatile uint8_t rsv[48];
  
-	volatile HBA_PRDT_ENTRY prdt_entry[32];
+	volatile HBA_PRDT_ENTRY prdt_entry[256];
 } HBA_CMD_TBL;
 
 typedef enum drive_type
@@ -293,24 +294,29 @@ typedef enum drive_type
 } drive_type;
 typedef struct Port
 {
-	uint8_t hbaPortIndex;
+	struct command_data* PendingCommands[32];
+	uint32_t CommandBitmask; // should be an exact representation of hbaPort->ci
+	mutex bitmask_lock;
+	semaphore lock; // can have a maximum of 32 slots
 	volatile void* clBase;
 	volatile void* fisBase;
-	uintptr_t clBasePhys, fisBasePhys;
-	uint32_t sectorSize; // used in get_blk_size
-	uint64_t nSectors; // used in get_max_blk_count
-	semaphore lock; // can have a maximum of 32 slots
 	struct vnode* vn;
+	uintptr_t clBasePhys, fisBasePhys;
 	const char* dev_name;
-	struct command_data* PendingCommands[32];
+	uint64_t nSectors; // used in get_max_blk_count
+	uint32_t sectorSize; // used in get_blk_size
 	drive_type type;
-	bool works;
+	uint8_t hbaPortIndex;
+	bool works : 1;
+	bool supports48bitLBA : 1;
 } Port;
 
 enum
 {
 	ATA_READ_DMA_EXT    = 0x25,
+	ATA_READ_DMA        = 0xC8,
 	ATA_WRITE_DMA_EXT   = 0x35,
+	ATA_WRITE_DMA       = 0xCA,
 	ATA_IDENTIFY_DEVICE = 0xEC,
 };
 
