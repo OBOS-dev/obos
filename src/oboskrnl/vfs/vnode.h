@@ -85,6 +85,8 @@ typedef struct vnode
     gid group_uid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
     fd_list opened;
+    struct partition* partitions;
+    size_t nPartitions;
 } vnode;
 struct async_irp
 {
