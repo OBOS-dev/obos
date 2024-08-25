@@ -179,7 +179,6 @@ const char* const DeviceNames[32] = {
     "sdy", "sdz", "sd1", "sd2",
     "sd3", "sd4", "sd5", "sd6",
 };
-static void hexdump(void* _buff, size_t nBytes, const size_t width);
 // https://forum.osdev.org/viewtopic.php?t=40969
 void OBOS_DriverEntry(driver_id* this)
 {
@@ -392,67 +391,52 @@ void OBOS_DriverEntry(driver_id* this)
         Drv_RegisterVNode(port->vn, port->dev_name);
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
-    OBOS_Debug("Reading LBA0.\n");
-    // for (volatile bool b = true; b;)
-    //     ;
-    const size_t sizeof_buf = (512*1);
-    uint8_t *buf = map_registers(HBAAllocate(sizeof_buf, 0), sizeof_buf, false);
-    memzero(buf, sizeof_buf);
-    if (obos_is_success(status = read_sync((dev_desc)&Ports[0], buf, sizeof_buf/512, 0, nullptr)))
-    {
-        OBOS_Debug("success.\n");
-        hexdump(buf, sizeof_buf, 15);
-    }
-    else
-        OBOS_Debug("failed with %d.\n", status);
-    for (volatile bool b = true; b;)
-        ;
     Core_ExitCurrentThread();
 }
 
-
-static OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
-{
-	bool printCh = false;
-	uint8_t* buff = (uint8_t*)_buff;
-	printf("         Address: ");
-	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
-		printf("%02x ", i);
-	printf("\n%016lx: ", buff);
-	for (size_t i = 0, chI = 0; i < nBytes; i++, chI++)
-	{
-		if (printCh)
-		{
-			char ch = buff[i];
-			switch (ch)
-			{
-			case '\n':
-			case '\t':
-			case '\r':
-			case '\b':
-			case '\a':
-			case '\0':
-			{
-				ch = '.';
-				break;
-			}
-			default:
-				break;
-			}
-			printf("%c", ch);
-		}
-		else
-			printf("%02x ", buff[i]);
-		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
-		{
-			chI = 0;
-			if (!printCh)
-				i -= (width + 1);
-			else
-				printf(" |\n%016lx: ", &buff[i + 1]);
-			printCh = !printCh;
-			if (printCh)
-				printf("\t| ");
-		}
-	}
-}
+// hexdump clone lol
+// static OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
+// {
+// 	bool printCh = false;
+// 	uint8_t* buff = (uint8_t*)_buff;
+// 	printf("         Address: ");
+// 	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
+// 		printf("%02x ", i);
+// 	printf("\n%016lx: ", buff);
+// 	for (size_t i = 0, chI = 0; i < nBytes; i++, chI++)
+// 	{
+// 		if (printCh)
+// 		{
+// 			char ch = buff[i];
+// 			switch (ch)
+// 			{
+// 			case '\n':
+// 			case '\t':
+// 			case '\r':
+// 			case '\b':
+// 			case '\a':
+// 			case '\0':
+// 			{
+// 				ch = '.';
+// 				break;
+// 			}
+// 			default:
+// 				break;
+// 			}
+// 			printf("%c", ch);
+// 		}
+// 		else
+// 			printf("%02x ", buff[i]);
+// 		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
+// 		{
+// 			chI = 0;
+// 			if (!printCh)
+// 				i -= (width + 1);
+// 			else
+// 				printf(" |\n%016lx: ", &buff[i + 1]);
+// 			printCh = !printCh;
+// 			if (printCh)
+// 				printf("\t| ");
+// 		}
+// 	}
+// }

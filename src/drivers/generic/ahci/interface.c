@@ -133,6 +133,9 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 {
     if (!desc || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    // FIXME: Allow for reads greater than 0x10000 sectors.
+    if (blkCount > 0x10000)
+        return OBOS_STATUS_INTERNAL_ERROR;
     Port* port = (Port*)desc;
     if (!port->works)
     {
@@ -164,7 +167,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     {
         irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
         HBA->ghc.ie = true;
-        SendCommand(port, &data, blkOffset, 0x40, blkCount);
+        SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount);
         Core_LowerIrql(oldIrql);
         Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
         Core_EventClear(&data.completionEvent);
@@ -189,6 +192,9 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
 {
     if (!desc || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    // FIXME: Allow for writes greater than 0x10000 sectors.
+    if (blkCount > 0x10000)
+        return OBOS_STATUS_INTERNAL_ERROR;
     Port* port = (Port*)desc;
     if (!port->works)
     {
@@ -218,7 +224,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         return status;
     for (uint8_t try = 0; try < 5; try++)
     {
-        SendCommand(port, &data, blkOffset, 0x40, blkCount);
+        SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount);
         HBA->ghc.ie = true;
         Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
         Core_EventClear(&data.completionEvent);
