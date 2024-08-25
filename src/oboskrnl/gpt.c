@@ -132,7 +132,7 @@ obos_status OBOS_IdentifyGPTPartitions(fd *desc, partition *partition_list, size
     return OBOS_STATUS_SUCCESS;
 }
 static bool initialized_crc32 = false;
-uint32_t crctab[256];
+static uint32_t crctab[256];
 
 // For future reference, we cannot hardware-accelerate the crc32 algorithm as
 // x86-64's crc32 uses a different polynomial than that of GPT.
