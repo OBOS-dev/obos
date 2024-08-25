@@ -104,7 +104,8 @@ add_compile_definitions(
 )
 
 set_property(GLOBAL PROPERTY C_STANDARD 17
-					PROPERTY C_STANDARD_REQUIRED true)
+					PROPERTY C_STANDARD_REQUIRED true
+					PROPERTY C_EXTENSIONS On)
 
 if (DEFINED OBOS_ENABLE_WERROR AND NOT DEFINED OBOS_ENABLE_FANALYZER)
 	add_compile_options("-Werror")
@@ -121,6 +122,11 @@ if (NOT DEFINED OBOS_DEV_PREFIX)
 endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/inc/dev_prefix.h.in ${CMAKE_SOURCE_DIR}/src/oboskrnl/inc/dev_prefix.h @ONLY)
 
+add_compile_definitions(
+	OBOS_ARCHITECTURE_HAS_ACPI=${OBOS_ARCHITECTURE_HAS_ACPI}
+	OBOS_ARCHITECTURE_HAS_PCI=${OBOS_ARCHITECTURE_HAS_PCI}
+)
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")
@@ -131,6 +137,7 @@ if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86_64/uart")
 	endif()
 add_subdirectory("src/drivers/generic/initrd")
+add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/isogen")
 if (OBOS_ARCHITECTURE STREQUAL "m68k")

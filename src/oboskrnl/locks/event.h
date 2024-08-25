@@ -28,8 +28,8 @@ typedef struct event {
 
 #define EVENT_INITIALIZE(t) (event){ .hdr=WAITABLE_HEADER_INITIALIZE(false, true), .signaled=0, .type=(t) }
 
-obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority);
-bool        Core_EventGetState(const event* event);
-obos_status Core_EventReset(event* event);
-obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority);
-obos_status Core_EventClear(event* event);
+OBOS_EXPORT obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority);
+OBOS_EXPORT bool        Core_EventGetState(const event* event);
+OBOS_EXPORT obos_status Core_EventReset(event* event);
+OBOS_EXPORT obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority);
+OBOS_EXPORT obos_status Core_EventClear(event* event);

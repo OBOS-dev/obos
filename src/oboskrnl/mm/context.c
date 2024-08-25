@@ -74,4 +74,4 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 		return true;
 	return false;
 }
-RB_GENERATE(page_tree, page, rb_node, pg_cmp_pages);
+RB_GENERATE_INTERNAL(page_tree, page, rb_node, pg_cmp_pages, OBOS_EXPORT);

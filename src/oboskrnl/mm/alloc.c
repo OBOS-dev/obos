@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "klog.h"
 #include "vfs/vnode.h"
 #include <int.h>
 #include <error.h>
@@ -55,7 +56,8 @@ void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_
         limit = 0xfffff000;
     }
 	page* currentNode = nullptr;
-	page* lastNode = nullptr;
+    page what = {.addr=base};
+	page* lastNode = RB_FIND(page_tree, &ctx->pages, &what);
 	uintptr_t lastAddress = base;
 	uintptr_t found = 0;
 	for (currentNode = RB_MIN(page_tree, &ctx->pages); 
@@ -69,9 +71,10 @@ void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_
             break; // Because of the properties of an RB-Tree, we can break here.
 		if ((currentNodeAddr - lastAddress) >= (size + pgSize))
 		{
-			found = lastAddress + (lastNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-            // found += (pgSize-(found%pgSize));
-			break;
+            if (!lastNode)
+                continue;
+            found = lastAddress + (lastNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            break;
 		}
 		lastAddress = currentNodeAddr + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         lastNode = currentNode;
@@ -153,7 +156,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
         if (file->vn->pagecache.sz <= file->offset)
             VfsH_PageCacheResize(&file->vn->pagecache, file->vn, file->offset+filesize);
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
     top:
     if (!base)
     {
@@ -276,6 +279,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             node->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
             node->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
             node->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+            node->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
             status = MmS_SetPageMapping(ctx->pt, node, phys);
             if (obos_is_error(status))
             {
@@ -376,7 +380,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     // We've possibly located a guard page that we need to free with the rest of the buffer.
     // Now we must unmap the pages and dereference them.
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
 
     offset = 0;
     curr = nullptr;
@@ -432,12 +436,12 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     for (uintptr_t addr = base; addr < (base + size); addr += offset)
     {
         MmS_QueryPageInfo(ctx->pt, addr, &current);
-        if (curr->prot.present)
+        if (current.prot.present)
         {
-            curr->prot.present = false;
+            current.prot.present = false;
             MmS_SetPageMapping(ctx->pt, &current, 0); // Unmap the page.
         }
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        offset = current.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
 
     return OBOS_STATUS_SUCCESS;
@@ -451,14 +455,16 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
-    
+    if (prot == OBOS_PROTECTION_SAME_AS_BEFORE && isPageable > 1)
+        return OBOS_STATUS_SUCCESS;
+
     page what;
     memzero(&what, sizeof(what));
     what.addr = base;
 
     // Verify each pages' existence
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
 
     uintptr_t offset = 0;
     page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 
@@ -500,10 +506,13 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             return OBOS_STATUS_NOT_FOUND;
         }
-        curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-        curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
-        curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-        curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        if (!(prot & OBOS_PROTECTION_SAME_AS_BEFORE))
+        {
+            curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+            curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+            curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+            curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        }
         if (curr->pagedOut && !isPageable)
         {
             // Page in curr if:

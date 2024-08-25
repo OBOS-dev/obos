@@ -23,7 +23,8 @@
 
 spinlock Core_SpinlockCreate()
 {
-	spinlock tmp = {.val=ATOMIC_FLAG_INIT, false, false, nullptr};
+	spinlock tmp = {};
+	tmp.val = (atomic_flag)ATOMIC_FLAG_INIT;
 	return tmp;
 }
 OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)

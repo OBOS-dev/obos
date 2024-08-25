@@ -30,6 +30,7 @@ typedef struct page
         bool touched : 1;                   // If set, the page has been read or written.
         bool huge_page : 1;                 // If set, the page is a huge page.
         bool executable : 1;                // If set, the page can be executed.
+        bool uc : 1;                        // If set, this page is uncacheable.
         bool ro : 1;                        // If set, this page was originally allocated as read-only. This is only used in CoW pages as of now.
     } prot;                                 // The protection of the page.
     bool pageable : 1;                      // If set, the page is pageable.
@@ -49,6 +50,8 @@ typedef struct page_list
     size_t nNodes;
 } page_list;
 typedef RB_HEAD(page_tree, page) page_tree;
+#pragma GCC push_options
+#pragma GCC optimize ("-O0")
 inline static int pg_cmp_pages(const page* left, const page* right)
 {
     if (left->addr == right->addr)
@@ -56,6 +59,7 @@ inline static int pg_cmp_pages(const page* left, const page* right)
     return (left->addr < right->addr) ? -1 : 1;
     // return (intptr_t)left->addr - (intptr_t)right->addr;
 }
+#pragma GCC pop_options
 RB_PROTOTYPE(page_tree, page, rb_node, pg_cmp_pages);
 #define APPEND_PAGE_NODE(list, node) do {\
 	(node)->next = nullptr;\

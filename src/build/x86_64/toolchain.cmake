@@ -82,4 +82,5 @@ set (OBOS_ARCHITECTURE_ENDIANNESS "Little-Endian") # Little-Endian architecture.
 set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/x86_64/link.ld")
 set (DRIVER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/x86_64/driver_link.ld")
 set (OBOS_ARCHITECTURE_HAS_ACPI 1)
+set (OBOS_ARCHITECTURE_HAS_PCI 1)
 set (OBOS_IRQL_COUNT 16)

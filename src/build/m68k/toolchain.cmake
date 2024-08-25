@@ -69,5 +69,6 @@ set (OBOS_ARCHITECTURE_ENDIANNESS "Big-Endian") # Big-Endian architecture.
 set (LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/link.ld")
 set (DRIVER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/src/build/m68k/driver_link.ld")
 set (OBOS_ARCHITECTURE_HAS_ACPI 0)
+set (OBOS_ARCHITECTURE_HAS_PCI 0)
 set (OBOS_IRQL_COUNT 8)
 set (OBOS_UP 1) # The m68k doesn't support SMP, so we disable it as a [POSSIBLE] optimization

@@ -175,7 +175,7 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 2);
-	bool shouldInvplg = pm[AddressToIndex(at, 0)] & 0b1;
+	bool shouldInvplg = pm[AddressToIndex(at, 1)] & 0b1;
 	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
 	if (shouldInvplg)
 		invlpg_impl(at);
@@ -188,6 +188,7 @@ static struct {
 	atomic_size_t nCPUsRan;
 	bool active;
 	irq* irq;
+	cpu_local* sender;
 } invlpg_ipi_packet;
 bool Arch_InvlpgIPI(interrupt_frame* frame)
 {
@@ -197,7 +198,7 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (getCR3() == invlpg_ipi_packet.cr3)
 		invlpg(invlpg_ipi_packet.addr);
 	invlpg_ipi_packet.nCPUsRan++;
-	if (invlpg_ipi_packet.nCPUsRan == Core_CpuCount)
+	if (invlpg_ipi_packet.nCPUsRan >= Core_CpuCount)
 		invlpg_ipi_packet.active = false;
 	// Arch_LAPICAddress->eoi = 0;
 	return true;
@@ -237,16 +238,25 @@ static obos_status invlpg_impl(uintptr_t at)
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
+	enum { IRQL_INVLPG_IPI=15 };
 	if (!invlpg_ipi_packet.irq && Core_IrqInterfaceInitialized())
 	{
 		static irq irq;
 		invlpg_ipi_packet.irq = &irq;
-		enum { IRQL_INVLPG_IPI=15 };
 		Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
 		irq.handler = invlpg_ipi_bootstrap;
 		irq.handlerUserdata = nullptr;
 	}
 	extern bool Arch_HaltCPUs;
+	if (Arch_LAPICAddress->interruptRequest224_255 & (1<<16))
+	{
+		irql oldIrql = Core_GetIrql();
+		if (oldIrql >= IRQL_INVLPG_IPI)
+		{
+			Core_LowerIrql(IRQL_DISPATCH);
+			Core_RaiseIrql(oldIrql);
+		}
+	}
 	while (invlpg_ipi_packet.active)
 		pause();
 	Arch_HaltCPUs = false;
@@ -270,8 +280,10 @@ static obos_status invlpg_impl(uintptr_t at)
 	invlpg_ipi_packet.addr = at;
 	invlpg_ipi_packet.cr3 = getCR3();
 	invlpg_ipi_packet.nCPUsRan = 1;
+	invlpg_ipi_packet.sender = CoreS_GetCPULocalPtr();
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
 	OBOS_ASSERT(obos_is_success(status));
+	OBOS_UNUSED(status);
 	// This can be done async.
 	// while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
 	// 	pause();
@@ -331,7 +343,7 @@ extern uintptr_t Arch_KernelCR3;
 obos_status Arch_InitializeKernelPageTable()
 {
 	obos_status status = OBOS_STATUS_SUCCESS;
-	uintptr_t newCR3 = Mm_AllocatePhysicalPages(1,1, &status);
+	uintptr_t newCR3 = Mm_AllocatePhysicalPages32(1,1, &status);
 	uintptr_t oldCR3 = getCR3();
 	memzero(MmS_MapVirtFromPhys(newCR3), 4096);
 	if (status != OBOS_STATUS_SUCCESS)
@@ -410,6 +422,7 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 	page.prot.user = entry & BIT_TYPE(2, UL);
 	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
+    // page.prot.uc = (entry & BIT_TYPE(4, UL));
 	if (page.prot.huge_page)
 	{
 		uintptr_t pml3Entry = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML3Entry(pt, addr));
@@ -439,6 +452,8 @@ obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)
 		flags |= BIT_TYPE(2, UL);
 	if (!page->prot.executable)
 		flags |= BIT_TYPE(63, UL);
+	// if (page->prot.uc)
+	// 	flags |= BIT_TYPE(4, UL);
 	return !page->prot.huge_page ? 
 		Arch_MapPage(pt, (void*)(page->addr & ~0xfff), phys, flags) : 
 		Arch_MapHugePage(pt, (void*)(page->addr & ~0x1fffff), phys, flags);

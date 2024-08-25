@@ -27,8 +27,8 @@ struct waitable_header
 // otherwise, this will not work, and will corrupt stuff.
 #define WAITABLE_OBJECT(obj) (struct waitable_header*)(&(obj))
 
-obos_status Core_WaitOnObject(struct waitable_header* obj);
-obos_status Core_WaitOnObjects(size_t nObjects, ...);
-obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitable_header* objs);
-obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bool boostPriority);
-void        CoreH_ClearSignaledState(struct waitable_header* obj);
+OBOS_EXPORT obos_status Core_WaitOnObject(struct waitable_header* obj);
+OBOS_EXPORT obos_status Core_WaitOnObjects(size_t nObjects, ...);
+OBOS_EXPORT obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitable_header* objs);
+OBOS_EXPORT obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bool boostPriority);
+OBOS_EXPORT void        CoreH_ClearSignaledState(struct waitable_header* obj);

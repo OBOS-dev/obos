@@ -19,24 +19,22 @@
 
 #include <stdarg.h>
 
-static spinlock wait_lock;
-
 obos_status Core_WaitOnObject(struct waitable_header* obj)
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (obj->signaled && obj->use_signaled)
         return OBOS_STATUS_SUCCESS;
-    irql oldIrql = Core_SpinlockAcquire(&wait_lock);
     thread* curr = Core_GetCurrentThread();
     // We're waiting on one object.
     curr->nSignaled = 0;
     curr->nWaiting = 1;
     curr->lock_node.data = curr;
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
-    Core_SpinlockRelease(&wait_lock, oldIrql);
     if (obos_is_error(status))
         return status;
+    if (obj->signaled && obj->use_signaled)
+        return OBOS_STATUS_SUCCESS; // there is a possibility that a dpc ran which signalled the objectq.
     CoreH_ThreadBlock(curr, true);
     return OBOS_STATUS_SUCCESS;
 }
@@ -48,7 +46,6 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquire(&wait_lock);
     va_list list;
     va_start(list, nObjects);
     thread* curr = Core_GetCurrentThread();
@@ -69,7 +66,6 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
         curr->nWaiting++;
     }
     va_end(list);
-    Core_SpinlockRelease(&wait_lock, oldIrql);
     if (curr->nWaiting)
         CoreH_ThreadBlock(curr, true);
     return OBOS_STATUS_SUCCESS;
@@ -78,7 +74,6 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitabl
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquire(&wait_lock);
     thread* curr = Core_GetCurrentThread();
     curr->nSignaled = 0;
     curr->nWaiting = 0;
@@ -95,7 +90,6 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitabl
             continue;
         curr->nWaiting++;
     }
-    Core_SpinlockRelease(&wait_lock, oldIrql);
     if (curr->nWaiting)
         CoreH_ThreadBlock(curr, true);
     return OBOS_STATUS_SUCCESS;
@@ -104,7 +98,6 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    irql oldIrql = Core_SpinlockAcquire(&wait_lock);
     if (obj->use_signaled)
         obj->signaled = true;
     for (thread_node* curr = obj->waiting.head; curr; )
@@ -123,7 +116,6 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
             break;
         curr = next;
     }
-    Core_SpinlockRelease(&wait_lock, oldIrql);
     return OBOS_STATUS_SUCCESS;   
 }
 void CoreH_ClearSignaledState(struct waitable_header* obj)

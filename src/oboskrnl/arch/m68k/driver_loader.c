@@ -142,7 +142,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf_Sym* s
 {
     if (status)
         *status = OBOS_STATUS_SUCCESS;
-    driver_symbol* Symbol;
+    driver_symbol* Symbol = nullptr;
     driver_symbol internal_symbol = {};
     if (i.symbolTableOffset)
     {

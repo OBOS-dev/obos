@@ -12,6 +12,7 @@ list (APPEND oboskrnl_sources
 	"locks/event.c" "locks/wait.c" "cmdline.c" "vfs/init.c" 
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
+	"driver_interface/pci_irq.c"
 )
 
 add_executable(oboskrnl)
@@ -57,7 +58,6 @@ target_compile_definitions(oboskrnl
 	PRIVATE FIXEDPT_BITS=${OBOS_ARCHITECTURE_BITS}
 	PRIVATE OBOS_KERNEL=1
 	PRIVATE "FIXEDPT_WBITS=(${OBOS_ARCHITECTURE_BITS}-8)"
-	PRIVATE OBOS_ARCHITECTURE_HAS_ACPI=${OBOS_ARCHITECTURE_HAS_ACPI}
 )
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
@@ -65,5 +65,5 @@ target_sources(oboskrnl PRIVATE ${oboskrnl_sources})
 set_source_files_properties(
     "arch/m68k/entry.c"
     PROPERTIES
-    OBJECT_DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/initrd"
+    OBJECT_DEPENDS "${OUTPUT_DIR}/initrd"
 )

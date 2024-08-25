@@ -119,3 +119,11 @@ typedef _Bool bool;
 #endif
 
 #include <inc/dev_prefix.h>
+
+#if defined(__x86_64__) || defined(__i386__)
+#	define OBOSS_SpinlockHint() asm("pause")
+#elif defined(__m68k__)
+#	define OBOSS_SpinlockHint() asm("nop")
+#else
+#	define OBOSS_SpinlockHint() asm("")
+#endif

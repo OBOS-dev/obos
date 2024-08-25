@@ -47,9 +47,9 @@ OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
 OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {
-    OBOS_ASSERT(nParameters);
-    OBOS_ASSERT(request);
-    OBOS_ASSERT(list);
+    OBOS_UNUSED(nParameters);
+    OBOS_UNUSED(request);
+    OBOS_UNUSED(list);
     return OBOS_STATUS_INVALID_IOCTL; // we don't support any
 }
 OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl(size_t nParameters, uint64_t request, ...)

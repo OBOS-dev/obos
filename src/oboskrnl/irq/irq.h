@@ -20,6 +20,8 @@
 // Converts an irq_vector_id to IRQL (for internal use only)
 // #define OBOS_IRQ_VECTOR_ID_TO_IRQL(x)
 // Converts an IRQL to an irq_vector_id (for internal use only)
+// #define OBOS_IRQ_VECTOR_ID_TO_VECTOR(x)
+// Converts a vector id to a native irq vector number.
 // #define OBOS_IRQL_TO_IRQ_VECTOR_ID(x)
 // The amount of 'irq_vector_id's per IRQL.
 // #define OBOS_IRQ_VECTOR_ID_COUNT_PER_IRQL
@@ -27,6 +29,7 @@
 #	include <arch/x86_64/irq_vector.h>
 #	include <arch/x86_64/interrupt_frame.h>
 #	define OBOS_MAX_INTERRUPT_VECTORS (256-32)
+#	define OBOS_IRQ_VECTOR_ID_TO_VECTOR(id) (id+0x20)
 #elif defined(__m68k__)
 #	include <arch/m68k/interrupt_frame.h>
 typedef uint8_t irq_vector_id;
@@ -35,6 +38,7 @@ typedef uint8_t irq_vector_id;
 #	define OBOS_IRQ_VECTOR_ID_COUNT_PER_IRQL (32)
 #	define OBOS_IRQ_VECTOR_ID_TO_IRQL(x) ((irql)((x)/32+1))
 #	define OBOS_IRQL_TO_IRQ_VECTOR_ID(x) ((irq_vector_id)(((x)<<4)))
+#	define OBOS_IRQ_VECTOR_ID_TO_VECTOR(id) (id+0x40)
 #else
 #	error Unknown platform.
 #endif

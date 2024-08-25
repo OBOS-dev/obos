@@ -67,7 +67,7 @@ void OBOS_ParseCMDLine()
             "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
             "                     is used as root.\n"
             "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
-            "                         is used as root.\n"
+            "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
             "--help: Displays this help message.\n";
         printf("%s", help_message);
     }
@@ -173,11 +173,12 @@ static uint64_t oct2bin(const char* str, size_t size)
 static bool isNumber(char ch)
 {
 	char temp = ch - '0';
-	return temp > 0 && temp < 10;
+	return temp >= 0 && temp < 10;
 }
 static uint64_t strtoull(const char* str, char** endptr, int base)
 {
-	while (!isNumber(*str++));
+	while (!isNumber(*str))
+        str++;
 	if (!base)
 	{
 		base = 10;
@@ -190,7 +191,7 @@ static uint64_t strtoull(const char* str, char** endptr, int base)
 		}
 	}
 	size_t sz = 0;
-	while (isNumber(*str++))
+	while (isNumber(*(str + sz)))
 		sz++;
 	if (endptr)
 		*endptr = (char*)(str + sz);

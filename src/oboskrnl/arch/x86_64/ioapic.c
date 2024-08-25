@@ -116,6 +116,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 	}
     return OBOS_STATUS_SUCCESS;
 }
+// FIXME: Optimizations break things for some reason.
+#pragma GCC optimize("-O0")
 OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
 {
     obos_status status = ParseMADT();
@@ -228,22 +230,24 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICGSIUsed(uint32_t gsi)
     ioapic_descriptor* ioapic = find_ioapic(gsi);
     if (!ioapic)
         return OBOS_STATUS_NOT_FOUND;
-    uint32_t ent[2];
+    volatile uint32_t ent[2];
     ent[0] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi])));
     ent[1] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4));
-    ioapic_redirection_entry *entry = (ioapic_redirection_entry*)&ent;
+    volatile ioapic_redirection_entry *entry = (ioapic_redirection_entry*)&ent;
     return entry->vector == 0 ? OBOS_STATUS_SUCCESS : OBOS_STATUS_IN_USE;
 }
-OBOS_PAGEABLE_FUNCTION void ArchH_IOAPICWriteRegister(ioapic* ioapic, uint32_t offset, uint32_t value)
+OBOS_PAGEABLE_FUNCTION void ArchH_IOAPICWriteRegister(ioapic* ioapic_, uint32_t offset, uint32_t value)
 {
+    volatile ioapic* const ioapic = ioapic_;
     OBOS_ASSERT(!(offset % 4));
     if (offset % 4)
         return;
     ioapic->ioregsel = offset/4;
     ioapic->iowin = value;
 }
-OBOS_PAGEABLE_FUNCTION uint32_t ArchH_IOAPICReadRegister(ioapic* ioapic, uint32_t offset)
+OBOS_PAGEABLE_FUNCTION uint32_t ArchH_IOAPICReadRegister(ioapic* ioapic_, uint32_t offset)
 {
+    volatile ioapic* const ioapic = ioapic_;
     ioapic->ioregsel = offset/4;
     return ioapic->iowin >> ((offset % 4)*8);
 }

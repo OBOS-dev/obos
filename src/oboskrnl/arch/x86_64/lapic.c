@@ -45,10 +45,9 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 		lapic_msr |= APIC_BSP;
 	wrmsr(IA32_APIC_BASE, lapic_msr);
 	Arch_LAPICAddress->spuriousInterruptVector = 0x1ff /* LAPIC Enabled, spurious vector 0xff */;
+	Arch_LAPICAddress->lvtLINT0 = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	if (isBSP)
-		Arch_LAPICAddress->lvtLINT0 = 0x7fe /* Vector 0xFE, ExtInt, Unmasked */;
-	else
-		Arch_LAPICAddress->lvtLINT0 = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
+		Arch_LAPICAddress->lvtLINT0 |= 0x700;
 	Arch_LAPICAddress->lvtLINT1 = isBSP ? 0x400 /* NMI, Unmasked */ : 0xfe;
 	Arch_LAPICAddress->lvtCMCI = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtError = 0xfe /* Vector 0xFE, Fixed, Unmasked */;

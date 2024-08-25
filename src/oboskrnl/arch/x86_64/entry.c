@@ -77,6 +77,9 @@
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
 
+#include <uacpi/kernel_api.h>
+#include <uacpi/utilities.h>
+
 #include <uacpi_libc.h>
 
 #include <vfs/init.h>
@@ -98,7 +101,7 @@ static swap_dev swap;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
-struct ultra_boot_context* Arch_BootContext;
+volatile struct ultra_boot_context* Arch_BootContext;
 
 static cpu_local bsp_cpu;
 extern void Arch_IdleTask();
@@ -138,14 +141,14 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
-	// OBOS_SetLogLevel(LOG_LEVEL_LOG);
+	OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
 	__cpuid__(0, 0, nullptr, (uint32_t*)&cpu_vendor[0],(uint32_t*)&cpu_vendor[8], (uint32_t*)&cpu_vendor[4]);
 	uint32_t ecx = 0;
 	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
-	bool isHypervisor = ecx & (1<<31) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
 	char brand_string[49];
 	memset(brand_string, 0, sizeof(brand_string));
 	__cpuid__(0x80000002, 0, (uint32_t*)&brand_string[0], (uint32_t*)&brand_string[4], (uint32_t*)&brand_string[8], (uint32_t*)&brand_string[12]);
@@ -198,20 +201,19 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	while (1)
 		asm volatile("nop" : : :);
 }
-struct ultra_memory_map_attribute* Arch_MemoryMap;
-struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
-struct ultra_kernel_info_attribute* Arch_KernelInfo;
-struct ultra_module_info_attribute* Arch_KernelBinary;
-struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
-struct ultra_module_info_attribute* Arch_UARTDriver;
-struct ultra_module_info_attribute* Arch_InitRDDriver;
-struct ultra_framebuffer* Arch_Framebuffer;
+volatile struct ultra_memory_map_attribute* Arch_MemoryMap;
+volatile struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
+volatile struct ultra_kernel_info_attribute* Arch_KernelInfo;
+volatile struct ultra_module_info_attribute* Arch_KernelBinary;
+volatile struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
+volatile struct ultra_module_info_attribute* Arch_InitRDDriver;
+volatile struct ultra_framebuffer* Arch_Framebuffer;
 extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
-static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN struct ultra_module_info_attribute* FindBootModule(struct ultra_boot_context* bcontext, const char* name, size_t nameLen)
+static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN struct ultra_module_info_attribute* FindBootModule(volatile struct ultra_boot_context* bcontext, const char* name, size_t nameLen)
 {
 	if (!nameLen)
 		nameLen = strlen(name);
-	struct ultra_attribute_header* header = bcontext->attributes;
+	volatile struct ultra_attribute_header* header = bcontext->attributes;
 	for (size_t i = 0; i < bcontext->attribute_count; i++, header = ULTRA_NEXT_ATTRIBUTE(header))
 	{
 		if (header->type == ULTRA_ATTRIBUTE_MODULE_INFO)
@@ -247,8 +249,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 				Arch_KernelBinary = module;
 			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
 				Arch_InitialSwapBuffer = module;
-			else if (strcmp(module->name, "uart_driver"))
-				Arch_UARTDriver = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -275,6 +275,7 @@ extern obos_status Arch_InitializeKernelPageTable();
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
+	sti();
 	uintptr_t virt = getCR2();
 	virt &= ~0xfff;
 	if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
@@ -335,6 +336,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		what.addr = virt;
 		pg = RB_FIND(page_tree, &CoreS_GetCPULocalPtr()->currentContext->pages, &what);
 	}
+	asm("cli");
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
 		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
@@ -416,8 +418,10 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 		nCPUsWithInitializedTimer++;
 		// TODO: Move the PAT initialization code somewhere else.
-		wrmsr(0x277, 0x0001040600070406);
 		// UC UC- WT WB UC WC WT WB
+		wrmsr(0x277, 0x0001040600070406);
+		asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
+		wbinvd();
 	}
 	else
 		Core_Yield();
@@ -506,7 +510,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	uint32_t irqRouting = timer->timerConfigAndCapabilities >> 32;
 	if (!irqRouting)
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "HPET Timer does not support irq routing through the I/O APIC.");
-	uint32_t gsi = UINT32_MAX;
+	volatile uint32_t gsi = UINT32_MAX;
 	do {
 		uint32_t cgsi = __builtin_ctz(irqRouting);
 		if (Arch_IOAPICGSIUsed(cgsi) == OBOS_STATUS_SUCCESS)
@@ -517,7 +521,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 		irqRouting &= (1<cgsi);
 	} while (irqRouting);
 	if (gsi == UINT32_MAX)
-		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET.");
+		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET. irqRouting=0x%08x\n", irqRouting);
 	OBOS_ASSERT(gsi <= 32);
 	timer->timerConfigAndCapabilities |= (1<6)|(1<<3)|((uint8_t)gsi<<9); // Edge-triggered IRQs, set GSI, Periodic timer
 	CoreS_TimerFrequency = 500;
@@ -653,8 +657,6 @@ void Arch_KernelMainBootstrap()
 	Mm_Initialize();
 	if (Arch_Framebuffer->physical_address)
 	{
-		// for (volatile bool b = true; b;)
-		// 	;
 		OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
 		size_t size = (Arch_Framebuffer->height*Arch_Framebuffer->pitch + OBOS_HUGE_PAGE_SIZE - 1) & ~(OBOS_HUGE_PAGE_SIZE - 1);
 		void* base_ = Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)0xffffa00000000000, size, 0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE, nullptr, nullptr);
@@ -713,6 +715,7 @@ if (st != UACPI_STATUS_OK)\
 #ifdef __x86_64__
 	rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
 #endif
+	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	uacpi_init_params params = {
 		rsdp,
 		UACPI_LOG_INFO,
@@ -734,7 +737,13 @@ if (st != UACPI_STATUS_OK)\
 
 	st = uacpi_finalize_gpe_initialization();
 	verify_status(st, uacpi_finalize_gpe_initialization);
-    Arch_IOAPICMaskIRQ(9, false);
+
+	// Set the interrupt model.
+	uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
+
+	Core_LowerIrql(oldIrql);
+    // TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
+	// Arch_IOAPICMaskIRQ(9, false);
 
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;

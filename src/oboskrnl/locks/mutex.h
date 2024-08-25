@@ -28,7 +28,7 @@ typedef struct mutex {
 
 #define MUTEX_INITIALIZE() (mutex){ .hdr=WAITABLE_HEADER_INITIALIZE(true, false), .locked=false, .who=nullptr }
 
-obos_status Core_MutexAcquire(mutex* mut);
-obos_status Core_MutexTryAcquire(mutex* mut);
-obos_status Core_MutexRelease(mutex* mut);
-bool Core_MutexAcquired(mutex* mut);
+OBOS_EXPORT obos_status Core_MutexAcquire(mutex* mut);
+OBOS_EXPORT obos_status Core_MutexTryAcquire(mutex* mut);
+OBOS_EXPORT obos_status Core_MutexRelease(mutex* mut);
+OBOS_EXPORT bool Core_MutexAcquired(mutex* mut);

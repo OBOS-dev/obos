@@ -19,7 +19,7 @@
 #endif
 
 typedef uint8_t uacpi_cpu_flags;
-typedef uint64_t uacpi_thread_id;
+typedef uint32_t uacpi_thread_id;
 
 #ifndef UACPI_THREAD_ID_NONE
 #    define UACPI_THREAD_ID_NONE ((uacpi_thread_id)-1)

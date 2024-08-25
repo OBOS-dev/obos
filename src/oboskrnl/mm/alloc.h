@@ -45,6 +45,10 @@ typedef enum prot_flags
 	/// </summary>
 	OBOS_PROTECTION_CACHE_DISABLE = 0x8,
 	/// <summary>
+	/// For Mm_VirtualMemoryProtect. Sets the protection to the same thing it was before.
+	/// </summary>
+	OBOS_PROTECTION_SAME_AS_BEFORE = 0x10,
+	/// <summary>
 	/// Bits from here to OBOS_PROTECTION_PLATFORM_END are reserved for the architecture.
 	/// </summary>
 	OBOS_PROTECTION_PLATFORM_START = 0x01000000,
@@ -53,14 +57,14 @@ typedef enum prot_flags
 
 extern allocator_info* Mm_Allocator;
 
-void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
+OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.
-void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status);
+OBOS_EXPORT void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status);
 // Note: base must be the exact address as returned by AllocateVirtualMemory.
-obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t size);
+OBOS_EXPORT obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t size);
 // Note: base must be the exact address as returned by AllocateVirtualMemory.
 // isPageable values:
 // 0: Non-pageable
 // 1: Pageable
 // >1: Same as previous value.
-obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t size, prot_flags newProt, int isPageable);
+OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t size, prot_flags newProt, int isPageable);
