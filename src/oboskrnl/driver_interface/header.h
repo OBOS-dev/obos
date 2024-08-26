@@ -129,6 +129,9 @@ typedef struct driver_ftable
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
     // If dir is UINTPTR_MAX, it refers to the root directory.
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+    // Can only be nullptr for the InitRD driver.
+    // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
+    bool(*probe)(void* vn);
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 } driver_ftable;
