@@ -28,6 +28,7 @@ struct command_data
     uint16_t physRegionCount;
     uint8_t direction;
     uint8_t cmd;
+    bool awaitingSignal;
     // Set when the command is done.
     event completionEvent;
     obos_status commandStatus;

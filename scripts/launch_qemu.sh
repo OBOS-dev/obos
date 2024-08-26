@@ -3,9 +3,11 @@ cd ../
 rm qemu_log.txt
 
 qemu-system-x86_64 \
--drive file=out/obos.iso,format=raw \
+-cdrom out/obos.iso \
+-drive file=disk.img,format=raw \
 -m 1G \
 -gdb tcp:0.0.0.0:1234 -S \
+-boot order=d \
 -M q35 \
 -cpu host \
 -accel kvm \
@@ -14,7 +16,7 @@ qemu-system-x86_64 \
 -serial tcp:0.0.0.0:1534,server,nowait \
 -smp cores=4,threads=1,sockets=1 \
 -M smm=off \
--d int \
+-d trace:*ahci* \
 -D qemu_log.txt
 # -bios /usr/share/ovmf/OVMF.fd
 # -nographic

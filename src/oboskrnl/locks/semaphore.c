@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <scheduler/thread.h>
@@ -22,6 +23,9 @@ obos_status Core_SemaphoreAcquire(semaphore* sem)
 {
     if (!sem)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     irql oldIrql = Core_SpinlockAcquire(&sem->lock);
     if (sem->count)
     {

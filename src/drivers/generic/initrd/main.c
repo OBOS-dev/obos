@@ -69,7 +69,7 @@ void driver_cleanup_callback()
 }
 
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
-OBOS_WEAK obos_status path_search(dev_desc* found, const char* what);
+OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
 OBOS_WEAK obos_status get_linked_desc(dev_desc desc, dev_desc* found);
 OBOS_PAGEABLE_FUNCTION obos_status move_desc_to(dev_desc desc, const char* where)
 {
@@ -97,7 +97,7 @@ OBOS_PAGEABLE_FUNCTION obos_status set_file_perms(dev_desc desc, driver_file_per
 }
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -216,8 +216,9 @@ OBOS_PAGEABLE_FUNCTION obos_status get_linked_desc(dev_desc desc, dev_desc* foun
     *found = (dev_desc)GetFile(hdr->linked, &status);
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, const char* what)
+OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, const char* what)
 {
+    OBOS_UNUSED(unused);
     if (!found || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -263,8 +264,9 @@ OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
     }
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
 {
+    OBOS_UNUSED(unused);
     const ustar_hdr* dir = (ustar_hdr*)dir_;
     if (!dir || !cb)
         return OBOS_STATUS_INVALID_ARGUMENT;

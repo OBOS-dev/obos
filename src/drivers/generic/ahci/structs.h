@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "irq/dpc.h"
 #include <int.h>
 
 #include <locks/semaphore.h>
@@ -46,43 +47,45 @@ typedef volatile struct HBA_PORT
 typedef struct HBA_MEM
 {
 	// 0x00 - 0x2B, Generic Host Control
-	volatile struct
-	{
-		const volatile uint8_t np : 5;
-		const volatile bool sxs : 1;
-		const volatile bool ems : 1;
-		const volatile bool ccsc : 1;
-		const volatile uint8_t nsc : 5;
-		const volatile bool psc : 1;
-		const volatile bool ssc : 1;
-		const volatile bool pmd : 1;
-		const volatile bool fbss : 1;
-		const volatile bool spm : 1;
-		const volatile bool sam : 1;
-		const volatile bool resv1 : 1;
-		const volatile uint8_t iss : 4;
-		const volatile bool sclo : 1;
-		const volatile bool sal : 1;
-		const volatile bool salp : 1;
-		const volatile bool sss : 1;
-		const volatile bool smps : 1;
-		const volatile bool ssntf : 1;
-		const volatile bool sncq : 1;
-		const volatile bool s64a : 1;
-	} cap;		// 0x00, Host capability
-	volatile struct 
-	{
-		// HBA Reset.
-		volatile bool hr : 1;
-		// Interrupt Enable.
-		volatile bool ie : 1;
-		// MSI Revert to Single Message
-		volatile bool mrsm : 1;
-		// Reserved.
-		volatile uint32_t revs : 28;
-		// AHCI Enable.
-		volatile bool ae : 1;
-	} __attribute__((packed)) ghc;		// 0x04, Global host control
+	// volatile struct
+	// {
+	// 	const volatile uint8_t np : 5;
+	// 	const volatile bool sxs : 1;
+	// 	const volatile bool ems : 1;
+	// 	const volatile bool ccsc : 1;
+	// 	const volatile uint8_t nsc : 5;
+	// 	const volatile bool psc : 1;
+	// 	const volatile bool ssc : 1;
+	// 	const volatile bool pmd : 1;
+	// 	const volatile bool fbss : 1;
+	// 	const volatile bool spm : 1;
+	// 	const volatile bool sam : 1;
+	// 	const volatile bool resv1 : 1;
+	// 	const volatile uint8_t iss : 4;
+	// 	const volatile bool sclo : 1;
+	// 	const volatile bool sal : 1;
+	// 	const volatile bool salp : 1;
+	// 	const volatile bool sss : 1;
+	// 	const volatile bool smps : 1;
+	// 	const volatile bool ssntf : 1;
+	// 	const volatile bool sncq : 1;
+	// 	const volatile bool s64a : 1;
+	// } cap;		// 0x00, Host capability
+	uint32_t cap;
+	// volatile struct 
+	// {
+	// 	// HBA Reset.
+	// 	volatile bool hr : 1;
+	// 	// Interrupt Enable.
+	// 	volatile bool ie : 1;
+	// 	// MSI Revert to Single Message
+	// 	volatile bool mrsm : 1;
+	// 	// Reserved.
+	// 	volatile uint32_t revs : 28;
+	// 	// AHCI Enable.
+	// 	volatile bool ae : 1;
+	// } __attribute__((packed)) ghc;		// 0x04, Global host control
+	volatile uint32_t ghc;
 	volatile uint32_t is;		// 0x08, Interrupt status
 	volatile uint32_t pi;		// 0x0C, Port implemented
 	volatile uint32_t vs;		// 0x10, Version
@@ -119,9 +122,10 @@ typedef struct FIS_REG_H2D
 {
 	volatile uint8_t fis_type; // FIS_TYPE_REG_H2D
 
-	volatile uint8_t pmport : 4;
-	volatile uint8_t rsv0 : 3;
-	volatile uint8_t c : 1;
+	// volatile uint8_t pmport : 4;
+	// volatile uint8_t rsv0 : 3;
+	// volatile uint8_t c : 1;
+	volatile uint8_t b1;
 
 	volatile uint8_t command;
 	volatile uint8_t featurel;
@@ -148,10 +152,11 @@ typedef struct FIS_REG_D2H
 {
 	volatile uint8_t fis_type; // FIS_TYPE_REG_D2H
 
-	volatile uint8_t pmport : 4;
-	volatile uint8_t rsv0 : 2;
-	volatile uint8_t i : 1;
-	volatile uint8_t resv1 : 1;
+	// volatile uint8_t pmport : 4;
+	// volatile uint8_t rsv0 : 2;
+	// volatile uint8_t i : 1;
+	// volatile uint8_t resv1 : 1;
+	volatile uint8_t b1;
 
 	volatile uint8_t status;
 	volatile uint8_t error;
@@ -177,8 +182,9 @@ typedef struct FIS_DATA
 {
 	volatile uint8_t fis_type; // FIS_TYPE_DATA
 
-	volatile uint8_t pmport : 4;
-	volatile uint8_t rsv0 : 4;
+	// volatile uint8_t pmport : 4;
+	// volatile uint8_t rsv0 : 4;
+	volatile uint8_t b1;
 
 	volatile uint8_t  rsv1[2];
 
@@ -190,11 +196,12 @@ typedef struct FIS_PIO_SETUP
 {
 	volatile uint8_t  fis_type; // FIS_TYPE_PIO_SETUP
 
-	volatile uint8_t pmport : 4;
-	volatile uint8_t rsv0 : 1;
-	volatile uint8_t d : 1;
-	volatile uint8_t i : 1;
-	volatile uint8_t resv1 : 1;
+	// volatile uint8_t pmport : 4;
+	// volatile uint8_t rsv0 : 1;
+	// volatile uint8_t d : 1;
+	// volatile uint8_t i : 1;
+	// volatile uint8_t resv1 : 1;
+	volatile uint8_t b1;
 
 	volatile uint8_t status;
 	volatile uint8_t error;
@@ -220,13 +227,14 @@ typedef struct FIS_PIO_SETUP
 
 typedef struct FIS_DMA_SETUP
 {
-	uint8_t fis_type; // FIS_TYPE_DMA_SETUP
+	volatile uint8_t fis_type; // FIS_TYPE_DMA_SETUP
+	volatile uint8_t b1;
 
-	volatile uint8_t pmport : 4;
-	volatile uint8_t resv0 : 1;
-	volatile uint8_t d : 1;
-	volatile uint8_t i : 1;
-	volatile uint8_t a : 1;
+	// volatile uint8_t pmport : 4;
+	// volatile uint8_t resv0 : 1;
+	// volatile uint8_t d : 1;
+	// volatile uint8_t i : 1;
+	// volatile uint8_t a : 1;
 
 	volatile uint8_t resv1[2];
 
@@ -243,16 +251,18 @@ typedef struct FIS_DMA_SETUP
 
 typedef volatile struct HBA_CMD_HEADER
 {
-	volatile uint8_t cfl:5;
-	volatile uint8_t a:1;
-	volatile uint8_t w:1;
-	volatile uint8_t p:1;
+	// volatile uint8_t cfl:5;
+	// volatile uint8_t a:1;
+	// volatile uint8_t w:1;
+	// volatile uint8_t p:1;
 
-	volatile uint8_t r:1;
-	volatile uint8_t b:1;
-	volatile uint8_t c:1;
-	volatile uint8_t rsv0:1;
-	volatile uint8_t pmp:4;
+	// volatile uint8_t r:1;
+	// volatile uint8_t b:1;
+	// volatile uint8_t c:1;
+	// volatile uint8_t rsv0:1;
+	// volatile uint8_t pmp:4;
+	volatile uint8_t b0;
+	volatile uint8_t b1;
  
 	volatile uint16_t prdtl;
  
@@ -270,12 +280,13 @@ typedef struct HBA_PRDT_ENTRY
 	volatile uint32_t dbau;
 	volatile uint32_t rsv0;
  
-	volatile uint32_t dbc:22;
-	volatile uint32_t rsv1:9;
-	volatile uint32_t i:1;
+	// volatile uint32_t dbc:22;
+	// volatile uint32_t rsv1:9;
+	// volatile uint32_t i:1;
+	volatile uint32_t dw4;
 } HBA_PRDT_ENTRY;
 
-typedef struct HBA_CMD_TBL
+typedef volatile struct HBA_CMD_TBL
 {
 	volatile uint8_t cfis[64];
 
@@ -295,9 +306,9 @@ typedef enum drive_type
 typedef struct Port
 {
 	struct command_data* PendingCommands[32];
-	uint32_t CommandBitmask; // should be an exact representation of hbaPort->ci
 	mutex bitmask_lock;
 	semaphore lock; // can have a maximum of 32 slots
+	dpc port_dpc;
 	volatile void* clBase;
 	volatile void* fisBase;
 	struct vnode* vn;
@@ -305,6 +316,7 @@ typedef struct Port
 	const char* dev_name;
 	uint64_t nSectors; // used in get_max_blk_count
 	uint32_t sectorSize; // used in get_blk_size
+	uint32_t CommandBitmask; // should be an exact representation of hbaPort->ci
 	drive_type type;
 	uint8_t hbaPortIndex;
 	bool works : 1;
@@ -343,7 +355,7 @@ extern irq HbaIrq;
 #define AHCISetAddress(phys, field) \
 do {\
     field = (phys & 0xffffffff);\
-    if (HBA->cap.s64a)\
+    if (HBA->cap & BIT(31))\
         field##u = (phys >> 32);\
 } while(0)
 #else

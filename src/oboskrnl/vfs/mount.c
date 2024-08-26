@@ -140,7 +140,7 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
             if (is_base)
                 curdesc = desc;
             else
-                fs_driver->driver->header.ftable.path_search(&curdesc, currentPath);
+                fs_driver->driver->header.ftable.path_search(&curdesc, (void*)udata[2], currentPath);
             mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
             if (curtype == FILE_TYPE_SYMBOLIC_LINK)
             {
@@ -174,12 +174,11 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
             is_base = true;
     }
     if (type == FILE_TYPE_DIRECTORY)
-        fs_driver->driver->header.ftable.list_dir(desc, callback, udata);
+        fs_driver->driver->header.ftable.list_dir(desc, (void*)udata[2], callback, udata);
     return ITERATE_DECISION_CONTINUE;
 }
-obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pMountpoint)
+obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMountpoint)
 {
-    OBOS_UNUSED(device);
     if (!Vfs_Root)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!at_ || !fs_driver)
@@ -205,13 +204,14 @@ obos_status Vfs_Mount(const char* at_, vdev* device, vdev* fs_driver, mount** pM
     uintptr_t udata[4] = {
         (uintptr_t)mountpoint,
         (uintptr_t)fs_driver,
-        (uintptr_t)device,
+        (uintptr_t)on,
         (uintptr_t)&symlinks,
     };
     mountpoint->fs_driver = memcpy(Vfs_Calloc(1, sizeof(vdev)), fs_driver, sizeof(*fs_driver));
-    if (device)
-        mountpoint->device = memcpy(Vfs_Calloc(1, sizeof(vdev)), device, sizeof(*device));
-    fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, callback, udata);
+    if (mountpoint->device)
+        mountpoint->device->refs++;
+    mountpoint->device = on;
+    fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
     for (symbolic_link* lnk = LIST_GET_HEAD(symbolic_link_list, &symlinks); lnk; )
     {
         symbolic_link* next = LIST_GET_NEXT(symbolic_link_list, &symlinks, lnk);

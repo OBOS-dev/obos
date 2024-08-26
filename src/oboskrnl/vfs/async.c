@@ -200,7 +200,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
             driver = &desc->vn->un.device->driver->header;
         if (!point->device)
             goto irp;
-        point->device->driver->header.ftable.get_blk_size(point->device->desc, &sector_size);
+        driver->ftable.get_blk_size(point->device->desc, &sector_size);
         if (nBytes >= sector_size)
             goto irp;
         if (!VfsH_LockMountpoint(point))

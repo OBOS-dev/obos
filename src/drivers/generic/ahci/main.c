@@ -152,7 +152,7 @@ void* map_registers(uintptr_t phys, size_t size, bool uc)
     {
         what.addr = (uintptr_t)virt + offset;
         page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        page->prot.uc = true;
+        page->prot.uc = uc;
         MmS_SetPageMapping(Mm_KernelContext.pt, page, phys + offset);
     }
     return virt;
@@ -163,7 +163,7 @@ uintptr_t HBAAllocate(size_t size, size_t alignment)
     alignment = alignment + (OBOS_PAGE_SIZE - (alignment % OBOS_PAGE_SIZE));
     alignment /= OBOS_PAGE_SIZE;
     size /= OBOS_PAGE_SIZE;
-    if (HBA->cap.s64a)
+    if (HBA->cap & BIT(31))
         return Mm_AllocatePhysicalPages(size, alignment, nullptr);
     else
         return Mm_AllocatePhysicalPages32(size, alignment, nullptr);
@@ -218,8 +218,8 @@ void OBOS_DriverEntry(driver_id* this)
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
     OBOS_Debug("Enabled IRQs.\n");
-    HBA->ghc.ae = true;
-    while (!HBA->ghc.ae)
+    HBA->ghc |= BIT(31);
+    while (!(HBA->ghc & BIT(31)))
         OBOSS_SpinlockHint();
     if (HBA->cap2 & BIT(0) /* Bios/OS Handoff (BOH) */)
     {
@@ -263,13 +263,13 @@ void OBOS_DriverEntry(driver_id* this)
         while(hPort->cmd & (1<<14) /*PxCMD.FR*/)
             OBOSS_SpinlockHint();
     }
-    HBA->ghc.hr = true;
-    while (HBA->ghc.hr)
+    HBA->ghc |= BIT(0);
+    while (HBA->ghc & BIT(0))
         OBOSS_SpinlockHint();
-    HBA->ghc.ae = true;
-    while (!HBA->ghc.ae)
+    HBA->ghc |= BIT(31);
+    while (!(HBA->ghc & BIT(31)))
         OBOSS_SpinlockHint();
-    HBA->ghc.ie = true;
+    HBA->ghc |= BIT(1);
     for (uint8_t port = 0; port < 32; port++)
     {
         if (!(HBA->pi & BIT(port)))
@@ -280,7 +280,9 @@ void OBOS_DriverEntry(driver_id* this)
         curr->clBase = map_registers(curr->clBasePhys, sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32, true);
         curr->fisBasePhys = HBAAllocate(4096, 0);
         curr->fisBase = map_registers(curr->fisBasePhys, 4096, true);
-        for (uint8_t slot = 0; slot < HBA->cap.nsc; slot++)
+        memzero((void*)curr->fisBase, 4096);
+        memzero((void*)curr->clBase, sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32);
+        for (uint8_t slot = 0; slot < (((HBA->cap >> 8) & 0b11111)+1); slot++)
         {
             HBA_CMD_HEADER* cmdHeader = (HBA_CMD_HEADER*)curr->clBase + slot;
 			uintptr_t ctba = curr->clBasePhys + sizeof(HBA_CMD_HEADER) * 32 + slot * sizeof(HBA_CMD_TBL);
@@ -289,7 +291,7 @@ void OBOS_DriverEntry(driver_id* this)
         AHCISetAddress(curr->clBasePhys, hPort->clb);
         AHCISetAddress(curr->fisBasePhys, hPort->fb);
         hPort->cmd |= BIT(4);
-        if (HBA->cap.sss)
+        if (HBA->cap & BIT(27) /* CapSSS */)
             hPort->cmd |= BIT(1);
         timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
         while ((hPort->ssts & 0xf) != 0x3 && deadline < CoreS_GetTimerTick())
@@ -329,16 +331,16 @@ void OBOS_DriverEntry(driver_id* this)
         data.direction = COMMAND_DIRECTION_READ;
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         port->dev_name = DeviceNames[i];
-        port->lock = SEMAPHORE_INITIALIZE(HBA->cap.nsc);
+        port->lock = SEMAPHORE_INITIALIZE((((HBA->cap >> 8) & 0b11111)+1));
         size_t tries = 0;
         retry:
-        HBA->ghc.ie = false;
-        irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
+        HBA->ghc &= ~BIT(1);
+        // irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
         SendCommand(port, &data, 0, 0, 0);
-        Core_LowerIrql(oldIrql);
+        // Core_LowerIrql(oldIrql);
         while (!(HBA->ports[port->hbaPortIndex].is))
             OBOSS_SpinlockHint();
-        HBA->ghc.ie = true;
+        HBA->ghc |= BIT(1);
         Core_EventClear(&data.completionEvent);
         port->type = HBA->ports[port->hbaPortIndex].sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
         if (port->type == DRIVE_TYPE_SATAPI)

@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <scheduler/thread.h>
@@ -30,8 +31,11 @@ obos_status Core_MutexAcquire(mutex* mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (mut->who == Core_GetCurrentThread())
         return OBOS_STATUS_RECURSIVE_LOCK;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     // Spin for a bit.
-    irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : IRQL_INVALID;
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     int spin = 100000;
     bool success = true;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)

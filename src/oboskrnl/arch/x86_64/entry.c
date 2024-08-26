@@ -13,6 +13,7 @@
 #include <memmanip.h>
 #include <text.h>
 #include <font.h>
+#include <partition.h>
 
 #include <UltraProtocol/ultra_protocol.h>
 
@@ -76,6 +77,7 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
+#include "partition.h"
 
 #include <uacpi/kernel_api.h>
 #include <uacpi/utilities.h>
@@ -715,7 +717,6 @@ if (st != UACPI_STATUS_OK)\
 #ifdef __x86_64__
 	rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
 #endif
-	oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	uacpi_init_params params = {
 		rsdp,
 		UACPI_LOG_INFO,
@@ -741,8 +742,7 @@ if (st != UACPI_STATUS_OK)\
 	// Set the interrupt model.
 	uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
 
-	Core_LowerIrql(oldIrql);
-    // TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
+	// TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
 	// Arch_IOAPICMaskIRQ(9, false);
 
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
@@ -885,8 +885,10 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_Debug("%s: Initializing VFS.\n", __func__);
 	Vfs_Initialize();
-	OBOS_Debug("%s: Loading drivers through PnP.\n", __func__);
-	Drv_PnpLoadDriversAt(Vfs_Root);
+	OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
+	Drv_PnpLoadDriversAt(Vfs_Root, true);
+	OBOS_Log("%s: Probing partitions.\n", __func__);
+	OBOS_PartProbeAllDrives(true);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);

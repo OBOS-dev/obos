@@ -43,13 +43,14 @@ enum
 {
     VFLAGS_MOUNTPOINT = 1,
     VFLAGS_IS_TTY = 2,
+    VFLAGS_PARTITION = 4,
 };
 
 // basically a struct specinfo, but renamed.
 typedef struct vdev
 {
     dev_desc desc;
-    driver_id* driver;
+    struct driver_id* driver;
     void* data;
     size_t refs;
 } vdev;
@@ -85,6 +86,8 @@ typedef struct vnode
     gid group_uid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
     fd_list opened;
+    struct partition* partitions;
+    size_t nPartitions;
 } vnode;
 struct async_irp
 {
