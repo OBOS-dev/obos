@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <scheduler/thread.h>
@@ -23,8 +24,15 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
+    irql oldIrql = Core_SpinlockAcquire(&obj->lock);
     if (obj->signaled && obj->use_signaled)
+    {
+        Core_SpinlockRelease(&obj->lock, oldIrql);
         return OBOS_STATUS_SUCCESS;
+    }
     thread* curr = Core_GetCurrentThread();
     // We're waiting on one object.
     curr->nSignaled = 0;
@@ -32,9 +40,13 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     curr->lock_node.data = curr;
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
     if (obos_is_error(status))
+    {
+        Core_SpinlockRelease(&obj->lock, oldIrql);
         return status;
+    }
+    Core_SpinlockRelease(&obj->lock, oldIrql);
     if (obj->signaled && obj->use_signaled)
-        return OBOS_STATUS_SUCCESS; // there is a possibility that a dpc ran which signalled the objectq.
+        return OBOS_STATUS_SUCCESS;
     CoreH_ThreadBlock(curr, true);
     return OBOS_STATUS_SUCCESS;
 }
@@ -46,6 +58,9 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     va_list list;
     va_start(list, nObjects);
     thread* curr = Core_GetCurrentThread();
@@ -55,12 +70,17 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
     for (size_t i = 0; i < nObjects; i++)
     {
         struct waitable_header* obj = va_arg(list, struct waitable_header*);
+        irql oldIrql = Core_SpinlockAcquire(&obj->lock);
         if (obj->signaled && obj->use_signaled)
+        {
+            Core_SpinlockRelease(&obj->lock, oldIrql);
             continue;
+        }
         thread_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
         node->data = curr;
         node->free = free_node;
         obos_status status = CoreH_ThreadListAppend(&obj->waiting, node);
+        Core_SpinlockRelease(&obj->lock, oldIrql);
         if (obos_is_error(status))
             continue;
         curr->nWaiting++;
@@ -74,18 +94,26 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitabl
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     thread* curr = Core_GetCurrentThread();
     curr->nSignaled = 0;
     curr->nWaiting = 0;
     for (size_t i = 0; i < nObjects; i++)
     {
         struct waitable_header* obj = (struct waitable_header*)((uintptr_t)objs + stride*i);
+        irql oldIrql = Core_SpinlockAcquire(&obj->lock);
         if (obj->signaled && obj->use_signaled)
+        {
+            Core_SpinlockRelease(&obj->lock, oldIrql);
             continue;
+        }
         thread_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
         node->data = curr;
         node->free = free_node;
         obos_status status = CoreH_ThreadListAppend(&obj->waiting, node);
+        Core_SpinlockRelease(&obj->lock, oldIrql);
         if (obos_is_error(status))
             continue;
         curr->nWaiting++;
@@ -100,6 +128,9 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (obj->use_signaled)
         obj->signaled = true;
+    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     for (thread_node* curr = obj->waiting.head; curr; )
     {
         thread_node* next = curr->next;

@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "scheduler/thread.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -371,6 +372,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
 struct driver_file
 {
     driver_header* hdr;
+    thread* main;
     void* base;
     fd* file;
 };
@@ -389,6 +391,9 @@ static uint64_t driver_file_hash(const void *item, uint64_t seed0, uint64_t seed
 static void driver_file_free(void* ele)
 {
     struct driver_file* drv = ele;
+    if (drv->main)
+        if (!(--drv->main->references) && drv->main->free)
+            drv->main->free(drv->main);
     Vfs_FdSeek(drv->file, 0, SEEK_END);
     size_t filesize = Vfs_FdTellOff(drv->file);
     Vfs_FdSeek(drv->file, 0, SEEK_SET);
@@ -396,7 +401,7 @@ static void driver_file_free(void* ele)
     // drv->hdr is invalid.
     Vfs_FdClose(drv->file);
 }
-obos_status Drv_PnpLoadDriversAt(dirent* directory)
+obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
 {
     if (!directory)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -469,7 +474,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory)
             OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
             node = next;
             struct driver_file ele = { .hdr=curr };
-            const struct driver_file* file = hashmap_get(drivers, &ele);
+            struct driver_file* file = (struct driver_file*)hashmap_get(drivers, &ele);
             Vfs_FdSeek(file->file, 0, SEEK_END);
             size_t filesize = Vfs_FdTellOff(file->file);
             Vfs_FdSeek(file->file, 0, SEEK_SET);
@@ -484,13 +489,38 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory)
                 OBOS_Warning("Could not load '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
                 continue;
             }
-            loadStatus = Drv_StartDriver(drv, nullptr);
+            loadStatus = Drv_StartDriver(drv, &file->main);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
             {
                 OBOS_Warning("Could not start '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
                 Drv_UnloadDriver(drv);
                 continue;
             }
+        }
+    }
+    if (wait)
+    {
+        bool done = true;
+        while (1)
+        {
+            done = true;
+            size_t i = 0;
+            void* item = nullptr;
+            while (hashmap_iter(drivers, &i, &item))
+            {
+                if (!item)
+                    continue; // fnuy
+                struct driver_file* file = item;
+                if (!file->main)
+                    continue;
+                if (!(file->main->flags & THREAD_FLAGS_DIED))
+                {
+                    done = false;
+                    break;
+                }
+            }
+            if (done)
+                break;
         }
     }
     for (driver_header_node* node = what.head; node; )

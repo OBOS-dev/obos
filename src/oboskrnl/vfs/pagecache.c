@@ -158,6 +158,12 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
     }
     pc->sz = filesize;
     if (filesize > oldSz)
-        vn->mount_point->fs_driver->driver->header.ftable.read_sync(vn->desc, pc->data, filesize-oldSz, oldSz, nullptr);
+    {
+        mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+        const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+            driver = &vn->un.device->driver->header;
+        driver->ftable.read_sync(vn->desc, pc->data, filesize-oldSz, oldSz, nullptr);
+    }
     Core_MutexRelease(&pc->lock);
 }

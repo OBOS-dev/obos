@@ -43,13 +43,14 @@ enum
 {
     VFLAGS_MOUNTPOINT = 1,
     VFLAGS_IS_TTY = 2,
+    VFLAGS_PARTITION = 4,
 };
 
 // basically a struct specinfo, but renamed.
 typedef struct vdev
 {
     dev_desc desc;
-    driver_id* driver;
+    struct driver_id* driver;
     void* data;
     size_t refs;
 } vdev;

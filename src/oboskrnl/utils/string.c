@@ -42,29 +42,34 @@ void OBOS_AppendStringC(string* obj, const char* str)
     size_t str_len = strlen(str);
     size_t newlen = obj->len + str_len;
     OBOS_ResizeString(obj, newlen);
-    memcpy(OBOS_GetStringPtr(obj) + (newlen-str_len), OBOS_GetStringPtr(obj), str_len);
+    memcpy(OBOS_GetStringPtr(obj) + (newlen-str_len), str, str_len);
 }
 void OBOS_AppendStringS(string* obj, string* str)
 {
     size_t newlen = obj->len + str->len;
     OBOS_ResizeString(obj, newlen);
-    memcpy(OBOS_GetStringPtr(obj) + (newlen-str->len), OBOS_GetStringPtr(obj), str->len);
+    memcpy(OBOS_GetStringPtr(obj) + (newlen-str->len), OBOS_GetStringPtr(str), str->len);
 }
 void OBOS_ResizeString(string* obj, size_t len)
 {
     if (((len + 0x1f) & ~0x1f) != obj->cap)
         OBOS_SetCapacityString(obj, len);
     if (len < obj->len)
-        memzero(obj->ls + obj->len, obj->len - len);
+        memzero(OBOS_GetStringPtr(obj) + obj->len, obj->len - len);
+    else
+        memzero(OBOS_GetStringPtr(obj) + obj->len, len - obj->len);
     obj->len = len;
+    OBOS_GetStringPtr(obj)[obj->len] = 0;
 }
 void OBOS_SetCapacityString(string* obj, size_t cap)
 {
     if (cap <= 32)
         return;
     cap = (cap + 0x1f) & ~0x1f;
+    size_t oldCap = obj->cap;
     obj->cap = cap;
     obj->ls = obj->allocator->Reallocate(obj->allocator, obj->ls, obj->cap, nullptr);
+    memzero(obj->ls + oldCap, cap-oldCap);
 }
 size_t OBOS_GetStringCapacity(const string* obj)
 {

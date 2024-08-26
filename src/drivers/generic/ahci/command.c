@@ -30,30 +30,40 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     port->PendingCommands[cmdSlot] = data;
     Core_MutexRelease(&port->bitmask_lock);
     obos_status status = OBOS_STATUS_SUCCESS;
-    HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
-    HBA_CMD_TBL* cmdTBL = 
+    volatile HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
+#if OBOS_ARCHITECTURE_BITS == 64
+    volatile HBA_CMD_TBL* cmdTBL = 
     (HBA_CMD_TBL*)(uintptr_t)
     (
         (uintptr_t)port->clBase +
             ((cmdHeader->ctba | ((uint64_t)cmdHeader->ctbau << 32)) - port->clBasePhys) // The offset of the HBA_CMD_TBL
     );
-    cmdHeader->cfl = sizeof(FIS_REG_H2D) / sizeof(uint32_t);
+#else
+    HBA_CMD_TBL* cmdTBL = 
+    (HBA_CMD_TBL*)(uintptr_t)
+    (
+        (uintptr_t)port->clBase +
+            ((cmdHeader->ctba - port->clBasePhys)) // The offset of the HBA_CMD_TBL
+    );
+#endif
+    cmdHeader->b0 |= ((sizeof(FIS_REG_H2D) / sizeof(uint32_t)) & 0x1f) << 0;
     if (data->direction == COMMAND_DIRECTION_READ)
-        cmdHeader->w = 0;   // Device to Host.
+        cmdHeader->b0 &= ~BIT(6);   // Device to Host.
     else
-        cmdHeader->w = 1;   // Host to Device.
+        cmdHeader->b0 |= BIT(6);   // Host to Device.
+    // cmdHeader->b1 |= BIT(2);
     cmdHeader->prdtl = data->physRegionCount;
     for (uint16_t i = 0; i < data->physRegionCount; i++)
     {
 #if OBOS_ARCHITECTURE_BITS == 64
-        if (!HBA->cap.s64a)
+        if (!(HBA->cap & BIT(31)))
             OBOS_ASSERT(!(data->phys_regions[i].phys >> 32));
 #endif
         memzero((void*)&cmdTBL->prdt_entry[i], sizeof(cmdTBL->prdt_entry[i]));
         AHCISetAddress(data->phys_regions[i].phys, cmdTBL->prdt_entry[i].dba);
-        cmdTBL->prdt_entry[i].dbc = data->phys_regions[i].sz - 1;
+        cmdTBL->prdt_entry[i].dw4 = ((data->phys_regions[i].sz - 1) & 0x3fffff) << 0;
         // cmdTBL->prdt_entry[i].i = (i == (data->physRegionCount - 1));
-        cmdTBL->prdt_entry[i].i = true;
+        cmdTBL->prdt_entry[i].dw4 &= ~BIT(31);
     }
     FIS_REG_H2D* fis = (void*)cmdTBL->cfis;
     memzero(fis, sizeof(*fis));
@@ -68,7 +78,7 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     fis->lba3 = (lba >> 24) & 0xff;
     fis->lba4 = (lba >> 32) & 0xff;
     fis->lba5 = (lba >> 40) & 0xff;
-    fis->c = 1;
+    fis->b1 |= BIT(7);
     // Wait for the port.
     // 0x88: ATA_DEV_BUSY | ATA_DEV_DRQ
     while ((HBA->ports[port->hbaPortIndex].tfd & 0x88))

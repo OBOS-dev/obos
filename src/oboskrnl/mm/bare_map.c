@@ -261,7 +261,6 @@ OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_
 		if (cur->mmioRange)
 			goto next;
 		
-		// OBOS_Debug("%p-%p\n", cur->addr, cur->addr+cur->size);
 		if (!callback(cur, udata))
 		{
 			Core_SpinlockRelease(&s_regionListLock, oldIrql);

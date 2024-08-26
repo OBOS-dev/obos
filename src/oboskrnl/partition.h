@@ -10,8 +10,12 @@
 #include <error.h>
 
 #include <vfs/limits.h>
+#include <vfs/dirent.h>
 
-#include <driver_interface/driverId.h>
+// #include <driver_interface/driverId.h>
+
+#include <utils/uuid.h>
+#include <utils/string.h>
 
 typedef enum partition_format
 {
@@ -21,11 +25,16 @@ typedef enum partition_format
 } partition_format;
 typedef struct partition
 {
-    struct dirent* ent;
+    dirent* ent;
     struct vnode* vn;
     struct vnode* drive;
     uoff_t off;
     size_t size;
     partition_format format;
-    driver_id* fs_driver;
+    struct driver_id* fs_driver;
+    uuid part_uuid; // invalid when format != GPT
+    string part_name; // optional
+    string partid;
 } partition;
+void OBOS_PartProbeAllDrives(bool check_checksum);
+obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum);

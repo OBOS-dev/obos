@@ -76,7 +76,6 @@ static bool register_pages(basicmm_region* region, void* udatablk)
     size_t size = round_down(region->size);
     uintptr_t limit = round_down(region->addr)+size;
     mm_regions_udata* udata = (mm_regions_udata*)udatablk;
-    OBOS_Debug("%p-%p\n", round_down(region->addr), limit);
     for (uintptr_t addr = round_down(region->addr); addr < limit; )
     {
         OBOS_ASSERT(udata->i++ < udata->nNodes);

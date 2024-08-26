@@ -45,9 +45,15 @@ typedef enum prot_flags
 	/// </summary>
 	OBOS_PROTECTION_CACHE_DISABLE = 0x8,
 	/// <summary>
-	/// For Mm_VirtualMemoryProtect. Sets the protection to the same thing it was before.
+	/// For Mm_VirtualMemoryProtect. Sets the protection to the same thing it was before.</br>
+	/// If other protection bits are set, said protection bit is overrided in the page.
 	/// </summary>
 	OBOS_PROTECTION_SAME_AS_BEFORE = 0x10,
+	/// <summary>
+	/// Enables cache on the pages. This is the default.</br>
+	/// Overrided by OBOS_PROTECTION_CACHE_DISABLE.
+	/// </summary>
+	OBOS_PROTECTION_CACHE_ENABLE = 0x20,
 	/// <summary>
 	/// Bits from here to OBOS_PROTECTION_PLATFORM_END are reserved for the architecture.
 	/// </summary>

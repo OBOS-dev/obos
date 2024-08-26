@@ -25,7 +25,7 @@ typedef struct mount
     mutex lock;
     dirent* root;
     vdev* fs_driver;
-    vdev* device; // the block device the filesystem is situated on.
+    vnode* device; // the block device the filesystem is situated on.
     vnode* mounted_on;
     namecache nc;
     dirent_list dirent_list;
@@ -40,6 +40,6 @@ bool VfsH_LockMountpoint(mount* point);
 // returns true if the operation succeeded.
 bool VfsH_UnlockMountpoint(mount* point);
 
-obos_status Vfs_Mount(const char* at, vdev* device, vdev* fs_driver, mount** mountpoint);
+obos_status Vfs_Mount(const char* at, vnode* on, vdev* fs_driver, mount** mountpoint);
 obos_status Vfs_Unmount(mount* what);
 obos_status Vfs_UnmountP(const char* at);

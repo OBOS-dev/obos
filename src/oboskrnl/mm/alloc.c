@@ -128,7 +128,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     size_t filesize = 0;
     if (file)
     {
-        if (file->vn->vtype != VNODE_TYPE_REG)
+        if (file->vn->vtype != VNODE_TYPE_REG && file->vn->vtype != VNODE_TYPE_BLK /* hopefully doesn't break */)
         {
             set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
             return nullptr;
@@ -512,6 +512,26 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
             curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
             curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+            curr->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+            if (!(prot & OBOS_PROTECTION_CACHE_DISABLE))
+                curr->prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
+        }
+        else
+        {
+            if (prot & OBOS_PROTECTION_EXECUTABLE)
+                curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+            if (!(prot & OBOS_PROTECTION_USER_PAGE))
+                curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+            if (!(prot & OBOS_PROTECTION_READ_ONLY))
+            {
+                curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);\
+                curr->prot.ro = false;
+            }
+            if (prot & OBOS_PROTECTION_CACHE_DISABLE)
+                curr->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+            if ((prot & OBOS_PROTECTION_CACHE_ENABLE) && !(prot & OBOS_PROTECTION_CACHE_DISABLE))
+                curr->prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
+
         }
         if (curr->pagedOut && !isPageable)
         {

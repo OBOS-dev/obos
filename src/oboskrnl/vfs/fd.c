@@ -113,6 +113,8 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
+    if (nWritten_)
+        *nWritten_ *= blkSize;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten)
@@ -175,6 +177,8 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
+    if (nRead_)
+        *nRead_ *= blkSize;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
@@ -227,28 +231,34 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
     size_t finalOff = 0;
-    switch (whence)
-    {
-        case SEEK_SET:
-            finalOff = off;
-            break;
-        case SEEK_END:
-            finalOff = (off_t)desc->vn->filesize - 1 + off;
-            break;
-        case SEEK_CUR:
-            finalOff = (off_t)desc->offset + off;
-            break;
-    }
-    if (is_eof(desc->vn, finalOff))
-        return OBOS_STATUS_EOF;
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
         driver = &desc->vn->un.device->driver->header;
     size_t blkSize = 0;
     driver->ftable.get_blk_size(desc->vn->desc, &blkSize);
-    if (finalOff % blkSize)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (whence)
+    {
+        case SEEK_SET:
+            if (off % blkSize)
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            finalOff = off;
+            break;
+        case SEEK_END:
+            if (off % blkSize)
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            finalOff = (off_t)desc->vn->filesize - 1 + off;
+            finalOff -= finalOff % blkSize;
+            break;
+        case SEEK_CUR:
+            if (off % blkSize)
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            finalOff = (off_t)desc->offset + off;
+            finalOff -= finalOff % blkSize;
+            break;
+    }
+    if (is_eof(desc->vn, finalOff))
+        return OBOS_STATUS_EOF;
     desc->offset = finalOff;
     return OBOS_STATUS_SUCCESS;
 }

@@ -60,7 +60,7 @@ inline static int pg_cmp_pages(const page* left, const page* right)
     // return (intptr_t)left->addr - (intptr_t)right->addr;
 }
 #pragma GCC pop_options
-RB_PROTOTYPE(page_tree, page, rb_node, pg_cmp_pages);
+RB_PROTOTYPE_INTERNAL(page_tree, page, rb_node, pg_cmp_pages, __attribute__((noinline)));
 #define APPEND_PAGE_NODE(list, node) do {\
 	(node)->next = nullptr;\
 	(node)->prev = nullptr;\
