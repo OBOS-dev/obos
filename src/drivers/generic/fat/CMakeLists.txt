@@ -2,7 +2,7 @@
 # 
 # Copyright (c) 2024 Omar Berrow
 
-add_executable(fat "main.c")
+add_executable(fat "main.c" "probe.c")
 
 target_compile_options(fat
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>

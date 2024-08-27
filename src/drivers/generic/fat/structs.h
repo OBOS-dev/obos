@@ -9,6 +9,9 @@
 #include <int.h>
 #include <struct_packing.h>
 
+#include <utils/list.h>
+#include <utils/string.h>
+
 typedef struct fsinfo
 {
     uint32_t leadSignature; // 0x41615252
@@ -111,5 +114,66 @@ typedef struct lfn_dirent
     uint16_t mustBeZero; // fstClusLO
     char name3[4];
 } OBOS_PACK lfn_dirent;
-OBOS_STATIC_ASSERT(sizeof(fat_dirent) == 32, "sizeof(fat_dirEntry) isn't 32 bytes.");
+OBOS_STATIC_ASSERT(sizeof(fat_dirent) == 32, "sizeof(fat_dirent) isn't 32 bytes.");
 OBOS_STATIC_ASSERT(sizeof(lfn_dirent) == 32, "sizeof(lfn_dirent) isn't 32 bytes.");
+typedef struct fat_dirent_cache
+{
+    fat_dirent data;
+    string name;
+    struct
+    {
+        struct fat_dirent_cache* parent;
+        struct
+        {
+            struct fat_dirent_cache* head;
+            struct fat_dirent_cache* tail;
+            size_t nChildren;
+        } children;
+        struct fat_dirent_cache* next_child;
+        struct fat_dirent_cache* prev_child;
+    } tree_info;
+} fat_dirent_cache;
+#define fdc_children tree_info.children
+#define fdc_next_child tree_info.next_child
+#define fdc_prev_child tree_info.prev_child
+#define fdc_parent tree_info.parent
+enum {
+    FAT32_VOLUME,
+    FAT16_VOLUME,
+    FAT12_VOLUME,
+};
+typedef LIST_HEAD(fat_cache_list, struct fat_cache) fat_cache_list;
+LIST_PROTOTYPE(fat_cache_list, struct fat_cache, node);
+typedef struct fat_cache {
+    fat_dirent_cache* root;
+    uint8_t fatType;
+    bpb* bpb;
+    struct fd* volume;
+    struct vnode* vn;
+    LIST_NODE(fat_cache_list, struct fat_cache) node;
+    uint32_t FirstDataSector;
+    uint32_t RootDirSectors;
+    uint32_t fatSz;
+    size_t blkSize;
+} fat_cache;
+extern fat_cache_list FATVolumes;
+void CacheAppendChild(fat_dirent_cache* parent, fat_dirent_cache* child);
+void CacheRemoveChild(fat_dirent_cache* parent, fat_dirent_cache* what);
+typedef struct fat_entry_addr
+{
+    uint32_t lba;
+    uint8_t offset;
+} fat_entry_addr;
+typedef struct {
+    uint32_t ent : 28; 
+} OBOS_ALIGN(4) fat32_entry;
+typedef struct {
+    uint16_t ent; 
+} OBOS_ALIGN(2) fat16_entry;
+// FAT12 is funny.
+typedef struct {
+    uint16_t ent : 12; 
+} OBOS_ALIGN(2) fat12_entry;
+fat_entry_addr GetFatEntryAddrForCluster(fat_cache* cache, uint32_t cluster);
+fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster);
+#define ClusterToSector(cache, n) (((n - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)

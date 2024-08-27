@@ -5,9 +5,10 @@
 */
 
 #include <int.h>
-#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <error.h>
+#include <partition.h>
 
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
@@ -106,7 +107,8 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     if (nBytes % blkSize)
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
-    const uintptr_t offset = desc->offset / blkSize;
+    const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
+    const uintptr_t offset = (desc->offset + base_offset) / blkSize;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     obos_status status = driver->ftable.write_sync(desc->vn->desc, from, nBytes, offset, nWritten_);
@@ -146,9 +148,10 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
         Core_MutexAcquire(&dirty->lock);
-        if (desc->vn->pagecache.sz <= desc->offset)
+        const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
+        if (desc->vn->pagecache.sz <= (desc->offset+base_offset))
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
-        memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytes);
+        memcpy(desc->vn->pagecache.data + desc->offset + base_offset, buf, nBytes);
         VfsH_UnlockMountpoint(point);
         Core_MutexRelease(&dirty->lock);
 
@@ -170,7 +173,8 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     if (nBytes % blkSize)
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
-    const uintptr_t offset = desc->offset / blkSize;
+    const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
+    const uintptr_t offset = (desc->offset+base_offset) / blkSize;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     obos_status status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, offset, nRead_);
@@ -208,11 +212,12 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         if (dirty)
             Core_MutexAcquire(&dirty->lock);
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        if ((desc->offset+nBytes) > desc->vn->pagecache.sz)
+        if ((desc->offset+nBytes+base_offset) > desc->vn->pagecache.sz)
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
-        memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytes);
+        memcpy(buf, desc->vn->pagecache.data + desc->offset + base_offset, nBytes);
         if (dirty)
             Core_MutexRelease(&dirty->lock);
         VfsH_UnlockMountpoint(point);
