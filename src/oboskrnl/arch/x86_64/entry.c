@@ -77,7 +77,6 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "partition.h"
 
 #include <uacpi/kernel_api.h>
 #include <uacpi/utilities.h>
@@ -86,6 +85,8 @@
 
 #include <vfs/init.h>
 #include <vfs/mount.h>
+#include <vfs/fd.h>
+#include <vfs/limits.h>
 
 #include <locks/mutex.h>
 #include <locks/wait.h>
@@ -887,6 +888,77 @@ if (st != UACPI_STATUS_OK)\
 	Vfs_Initialize();
 	OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
 	Drv_PnpLoadDriversAt(Vfs_Root, true);
+	do {
+		char* modules_to_load = OBOS_GetOPTS("load-modules");
+		if (!modules_to_load)
+			break;
+		size_t len = strlen(modules_to_load);
+		char* iter = modules_to_load;
+		while(iter < (modules_to_load + len))
+		{
+			status = OBOS_STATUS_SUCCESS;
+			size_t namelen = strchr(modules_to_load, ',');
+			if (namelen != len)
+				namelen--;
+			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
+			char* path = memcpy(
+				OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, namelen+1, sizeof(char), nullptr),
+				iter,
+				namelen
+			);
+			fd file = {};
+			status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ_ONLY);
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, namelen+1);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			Vfs_FdSeek(&file, 0, SEEK_END);
+			size_t filesize = Vfs_FdTellOff(&file);
+			Vfs_FdSeek(&file, 0, SEEK_SET);
+			void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				Vfs_FdClose(&file);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			driver_id* drv = 
+				Drv_LoadDriver(buff, filesize, &status);
+			Mm_VirtualMemoryFree(&Mm_KernelContext, buff, filesize);
+			Vfs_FdClose(&file);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			status = Drv_StartDriver(drv, nullptr);
+			if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
+			{
+				OBOS_Warning("Could not start driver %*s. Status: %d\n", namelen, iter, status);
+				status = Drv_UnloadDriver(drv);
+				if (obos_is_error(status))
+					OBOS_Warning("Could not unload driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			if (namelen != len)
+				namelen++;
+			iter += namelen;
+		}
+	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);

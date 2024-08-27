@@ -221,7 +221,7 @@ fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster)
         return (fat12_entry){ .ent=(val & 0xfff) };
     return (fat12_entry){ .ent=((val >> 4) & 0xfff) };
 }
-void DirentAppendChild(dirent* parent, dirent* child)
+void CacheAppendChild(fat_dirent_cache* parent, fat_dirent_cache* child)
 {
     if(!parent->fdc_children.head)
         parent->fdc_children.head = child;

@@ -188,6 +188,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
                 cur->prev_copied_page->next_copied_page = cur->next_copied_page;
             if (cur->next_copied_page)
                 cur->next_copied_page->prev_copied_page = cur->prev_copied_page;
+            cur->next_copied_page = nullptr;
+            cur->prev_copied_page = nullptr;
             cur = next;
         }
         for (struct page* cur = page->prev_copied_page; cur; )
@@ -198,6 +200,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
                 cur->prev_copied_page->next_copied_page = cur->next_copied_page;
             if (cur->next_copied_page)
                 cur->next_copied_page->prev_copied_page = cur->prev_copied_page;
+            cur->next_copied_page = nullptr;
+            cur->prev_copied_page = nullptr;
             cur = next;
         }
     }

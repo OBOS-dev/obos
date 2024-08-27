@@ -3,10 +3,8 @@
  * 
  * Copyright (c) 2024 Omar Berrow
 */
-
-#include "klog.h"
-#include "vfs/vnode.h"
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <memmanip.h>
 
@@ -19,13 +17,15 @@
 
 #include <scheduler/process.h>
 
-#include <stdint.h>
 #include <utils/tree.h>
+#include <utils/list.h>
 
 #include <vfs/fd.h>
+#include <vfs/vnode.h>
 #include <vfs/pagecache.h>
 
 #include <irq/irql.h>
+
 #include <locks/spinlock.h>
 
 allocator_info* OBOS_NonPagedPoolAllocator;
@@ -400,6 +400,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         }
 
         RB_REMOVE(page_tree, &ctx->pages, curr);
+        if (curr->region && !LIST_IS_NODE_UNLINKED(mapped_region_list, &curr->region->owner->mapped_regions, curr->region))
+            LIST_REMOVE(mapped_region_list, &curr->region->owner->mapped_regions, curr->region);
         if (curr->ln_node.next || curr->ln_node.prev || &curr->ln_node == ctx->referenced.head || &curr->ln_node == ctx->workingSet.pages.head)
         {
             if (curr->workingSets > 0)
@@ -418,7 +420,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         {
             uintptr_t phys = 0;
             OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
-            if (!curr->region || !curr->isPrivateMapping)
+            if (!curr->region && !curr->isPrivateMapping)
                 Mm_FreePhysicalPages(phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
         }
         else 
@@ -426,6 +428,12 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             if (curr->pageable)
                 ctx->stat.paged -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         }
+        if (curr->prev_copied_page)
+            curr->prev_copied_page->next_copied_page = curr->next_copied_page;
+        if (curr->next_copied_page)
+            curr->next_copied_page->prev_copied_page = curr->prev_copied_page;
+        curr->next_copied_page = nullptr;
+        curr->prev_copied_page = nullptr;
         if (curr->allocated)
             Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;

@@ -155,7 +155,6 @@ obos_status OBOS_IdentifyGPTPartitions(fd *desc, partition *partition_list, size
                 char ch[2] = { table[partEntry].part_name[j]&0xff, 0 };
                 OBOS_AppendStringC(&partition_list[id].part_name, ch);
             }
-            printf("%s\n", OBOS_GetStringCPtr(&partition_list[id].part_name));
         }
         // iter = (uint8_t*)(((uintptr_t)iter + (blkSize - 1)) & ~(blkSize - 1));
         iter += (blkSize - (uintptr_t)iter % blkSize);

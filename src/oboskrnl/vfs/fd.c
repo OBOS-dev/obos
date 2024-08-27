@@ -337,4 +337,4 @@ obos_status Vfs_FdClose(fd* desc)
     VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;
 }
-LIST_GENERATE(fd_list, struct fd, node);
+LIST_GENERATE_INTERNAL(fd_list, struct fd, node, OBOS_EXPORT);

@@ -82,6 +82,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     int64_t bytesLeft = size;
     int64_t bytesInPage = 0;
     int64_t initialBytesInPage = 0;
+    bool trunc = false;
     for (uintptr_t addr = base; bytesLeft && (addr == base || (bytesInPage > 0)); addr += bytesInPage)
     {
         found = RB_NEXT(page_tree, &context->pages, found);
@@ -97,10 +98,17 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
             bytesInPage = bytesLeft;
         else
             bytesInPage = pg_size - (addr % pg_size);
+        if (((addr + bytesInPage) & ~(OBOS_PAGE_SIZE-1)) != (addr & ~(OBOS_PAGE_SIZE-1)))
+        {
+            trunc = true;
+            bytesInPage = pg_size - (addr % pg_size);
+        }
+        else
+            trunc = false;
         if (addr == base)
         {
             initialBytesInPage = bytesInPage;
-            reg_base = physical_page;
+            reg_base = trunc ? 0 : physical_page;
         }
         if (bytesLeft <= pg_size && ((int64_t)size) > pg_size)
             bytesInPage -= initialBytesInPage;
@@ -117,8 +125,8 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
                 reg->phys = reg_base ? reg_base : physical_page;
                 reg->sz = reg_size ? reg_size : (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
             }
-            reg_base = physical_page;
-            reg_size = (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
+            reg_base = !trunc ? physical_page : 0;
+            reg_size = !trunc ? (bytesLeft > bytesInPage ? bytesInPage : bytesLeft) : 0;
         }
         prev_phys = physical_page;
         bytesLeft -= bytesInPage;
