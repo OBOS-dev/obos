@@ -106,13 +106,13 @@ typedef struct lfn_dirent
 {
     // if bit 6 is set, this is the last entry. this is always set in the first lfn entry of a set
     uint8_t order;
-    char name1[10];
+    uint16_t name1[5];
     uint8_t attrib; // must be LFN
     uint8_t type; // TODO: what is this?
     uint8_t checksum;
-    char name2[12];
+    uint16_t name2[6];
     uint16_t mustBeZero; // fstClusLO
-    char name3[4];
+    uint16_t name3[2];
 } OBOS_PACK lfn_dirent;
 OBOS_STATIC_ASSERT(sizeof(fat_dirent) == 32, "sizeof(fat_dirent) isn't 32 bytes.");
 OBOS_STATIC_ASSERT(sizeof(lfn_dirent) == 32, "sizeof(lfn_dirent) isn't 32 bytes.");
@@ -120,6 +120,8 @@ typedef struct fat_dirent_cache
 {
     fat_dirent data;
     string name;
+    string path;
+    struct fat_cache* owner;
     struct
     {
         struct fat_dirent_cache* parent;
@@ -153,6 +155,7 @@ typedef struct fat_cache {
     LIST_NODE(fat_cache_list, struct fat_cache) node;
     uint32_t FirstDataSector;
     uint32_t RootDirSectors;
+    uint32_t root_sector;
     uint32_t fatSz;
     size_t blkSize;
 } fat_cache;
@@ -176,4 +179,5 @@ typedef struct {
 } OBOS_ALIGN(2) fat12_entry;
 fat_entry_addr GetFatEntryAddrForCluster(fat_cache* cache, uint32_t cluster);
 fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster);
+fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root);
 #define ClusterToSector(cache, n) (((n - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)

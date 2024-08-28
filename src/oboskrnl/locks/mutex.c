@@ -29,8 +29,9 @@ obos_status Core_MutexAcquire(mutex* mut)
 {
     if (!mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (mut->who == Core_GetCurrentThread())
-        return OBOS_STATUS_RECURSIVE_LOCK;
+    // oops
+    // if (mut->who == Core_GetCurrentThread())
+    //     return OBOS_STATUS_RECURSIVE_LOCK;
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;

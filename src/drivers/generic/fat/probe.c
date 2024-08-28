@@ -11,6 +11,7 @@
 
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
+#include <vfs/limits.h>
 
 #include <allocators/base.h>
 
@@ -18,12 +19,13 @@
 #include <utils/string.h>
 
 #include "structs.h"
-#include "uacpi_libc.h"
+
+#include <uacpi_libc.h>
 
 #define read_next_sector(buff, cache) do {\
     size_t nRead = 0;\
     Vfs_FdRead(cache->volume, buff, cache->blkSize, &nRead);\
-    OBOS_ASSERT(nRead != cache->blkSize);\
+    OBOS_ASSERT(nRead == cache->blkSize);\
 } while(0)
 static char lfn_at(const lfn_dirent* lfn, size_t i)
 {
@@ -34,6 +36,8 @@ static char lfn_at(const lfn_dirent* lfn, size_t i)
         ret = lfn->name2[i - 5];
     else if (i == 11 || i == 12)
         ret = lfn->name3[i - 11];
+    if (ret < 0)
+        ret = 0;
     return ret;
 }
 static size_t lfn_strlen(const lfn_dirent* lfn)
@@ -45,6 +49,7 @@ static size_t lfn_strlen(const lfn_dirent* lfn)
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba)
 {
     void* buff = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, cache->blkSize, nullptr);
+    uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
     Vfs_FdSeek(cache->volume, lba*cache->blkSize, SEEK_SET);
     read_next_sector(buff, cache);
     fat_dirent* curr = buff;
@@ -55,30 +60,41 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
     while(curr->filename_83[0] != 0)
     {
         if ((uint8_t)curr->filename_83[0] == 0xE5)
-            continue;
+            goto done;
         if (curr->attribs & LFN)
         {
             lfn_dirent* lfn = (lfn_dirent*)curr;
-            if (lfn->order >= lfn_entry_count)
+            // NOTE(oberrow): Do not check if there was already a chain before, just truncate the list.
+            if ((lfn->order & 0x40))
             {
-                lfn_entry_count = lfn->order + 1;
+                // Allocate all the memory we'll need for this LFN chain.
+                lfn_entry_count = (lfn->order & ~0x40 /* last entry */);
                 lfn_entries = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, lfn_entries, sizeof(lfn_dirent)*lfn_entry_count, nullptr);
             }
-            lfn_entries[lfn->order] = lfn;
+            lfn_entries[(lfn->order & ~0x40) - 1] = lfn;
             goto done;
         }
         if (curr->filename_83[0] == 0x5)
             curr->filename_83[0] = 0xE5;
+        
+        if (memcmp_b(&curr->filename_83[0], '.', 2))
+            goto done;
+        if (curr->filename_83[0] == '.')
+            goto done;
         if (lfn_entry_count)
         {
             for (size_t i = 0; i < lfn_entry_count; i++)
             {
                 lfn_dirent* lfn = lfn_entries[i];
+                if (!lfn)
+                    continue;
                 size_t len = lfn_strlen(lfn);
                 char ch[2] = {};
                 for (size_t j = 0; j < len; j++)
                 {
                     ch[0] = lfn_at(lfn, j);
+                    if (!ch[0])
+                        continue;
                     OBOS_AppendStringC(&current_filename, ch);
                 }
             }
@@ -89,13 +105,16 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
         else
         {
             char ch[2] = {};
-            size_t len = uacpi_strnlen(curr->filename_83, 8);
+            size_t len = 0;
+            for (len = 0; len < 8 && curr->filename_83[len] != ' ' && curr->filename_83[len]; len++)
+                ;
             for (size_t i = 0; i < len; i++)
             {
                 ch[0] = curr->filename_83[i];
                 OBOS_AppendStringC(&current_filename, ch);
             }
-            len = uacpi_strnlen(&curr->filename_83[8], 3);
+            for (len = 0; len < 3 && curr->filename_83[len+8] != ' ' && curr->filename_83[len+8]; len++)
+                ;
             if (len != 0)
             {
                 ch[0] = '.';
@@ -110,8 +129,14 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
         fat_dirent_cache* dir_cache = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(fat_dirent_cache), nullptr);
         dir_cache->data = *curr;
         dir_cache->name = current_filename;
+        dir_cache->owner = cache;
+        OBOS_InitStringLen(&dir_cache->path, OBOS_GetStringCPtr(&parent->path), OBOS_GetStringSize(&parent->path));
+        if (OBOS_GetStringSize(&dir_cache->path))
+            OBOS_AppendStringC(&dir_cache->path, "/");
+        OBOS_AppendStringS(&dir_cache->path, &dir_cache->name);
         current_filename = (string){};
         CacheAppendChild(parent, dir_cache);
+        // OBOS_Debug("%s\n", OBOS_GetStringCPtr(&dir_cache->path));
         if (curr->attribs & DIRECTORY)
         {
             uint32_t cluster = curr->first_cluster_low;
@@ -121,7 +146,7 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
         }
         done:
         curr += 1;
-        if ((uintptr_t)curr > ((uintptr_t)buff + cache->blkSize))
+        if ((uintptr_t)curr >= ((uintptr_t)buff + cache->blkSize))
         {
             // Fetch the next sector.
             curr = buff;
@@ -129,6 +154,7 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
         }
     }
     OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, buff, cache->blkSize);
+    Vfs_FdSeek(cache->volume, oldOffset, SEEK_SET);
 }
 #undef read_next_sector
 
@@ -182,12 +208,15 @@ bool probe(void* vn_)
         cache->fatType = FAT16_VOLUME;
     else
         cache->fatType = FAT32_VOLUME;
-    cache->fatSz = fatSz;
     cache->bpb = bpb;
+    cache->root_sector = cache->fatType == FAT32_VOLUME ? ClusterToSector(cache, bpb->ebpb.fat32.rootCluster) : (FirstDataSector-RootDirSectors);
+    cache->fatSz = fatSz;
     cache->blkSize = Vfs_FdGetBlkSz(volume);
     cache->root = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*cache->root), nullptr);
     cache->root->data = (fat_dirent){}; // simply has nothing
-    dir_iterate(cache, cache->root, RootDirSectors);
+    OBOS_InitString(&cache->root->path, "");
+    OBOS_InitString(&cache->root->name, "");
+    dir_iterate(cache, cache->root, cache->root_sector);
     LIST_APPEND(fat_cache_list, &FATVolumes, cache);
     return true;
 }

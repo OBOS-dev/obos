@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "scheduler/process.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -17,6 +16,7 @@
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
+#include <scheduler/process.h>
 
 #include <allocators/base.h>
 
@@ -37,6 +37,7 @@
 
 symbol_table OBOS_KernelSymbolTable;
 driver_list Drv_LoadedDrivers;
+driver_list Drv_LoadedFsDrivers;
 RB_GENERATE(symbol_table, driver_symbol, rb_entry, cmp_symbols);
 
 #define OffsetPtr(ptr, off, type) ((type)(((uintptr_t)ptr) + ((intptr_t)off)))
@@ -248,6 +249,9 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     }
     driver->node.data = driver;
     APPEND_DRIVER_NODE(Drv_LoadedDrivers, &driver->node);
+    driver->other_node.data = driver;
+    if (driver->header.ftable.probe)
+        APPEND_DRIVER_NODE(Drv_LoadedFsDrivers, &driver->other_node); // pretty high chance it is a fs driver
     if (strlen(driver->header.driverName))
         OBOS_Debug("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     else

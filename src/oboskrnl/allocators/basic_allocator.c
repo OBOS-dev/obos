@@ -349,7 +349,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 	if (newSize < objSize)
 	{
 		basicalloc_node* n = ((basicalloc_node*)base - 1);
-		memzero((char*)base + n->size, newSize - objSize);
+		// memzero((char*)base + objSize, newSize-objSize);
 		n->size = newSize;
 		return base;
 	}

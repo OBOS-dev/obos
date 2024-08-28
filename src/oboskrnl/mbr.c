@@ -61,6 +61,7 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
         }
         if (!partition_list)
             continue;
+        partition_list[i].vn = desc->vn;
         partition_list[i].off = curr->lba * blkSize;
         partition_list[i].size = curr->nSectors * blkSize;
         partition_list[i].drive = desc->vn;

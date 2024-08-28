@@ -25,8 +25,12 @@ void OBOS_InitStringLen(string* obj, const char* str, size_t len)
 {
     if (!obj->allocator)
         obj->allocator = OBOS_KernelAllocator;
+    obj->ls = nullptr;
+    obj->cap = 0;
+    obj->len = 0;
     if (len <= 32)
     {
+        memzero(obj->sso, 33);
         memcpy(obj->sso, str, len);
         obj->cap = 32;
         obj->len = len;
@@ -34,6 +38,8 @@ void OBOS_InitStringLen(string* obj, const char* str, size_t len)
     else 
     {
         OBOS_SetCapacityString(obj, len);
+        obj->len = len;
+        memzero(obj->ls, obj->cap);
         memcpy(obj->ls, str, len);
     }
 }
@@ -69,6 +75,8 @@ void OBOS_SetCapacityString(string* obj, size_t cap)
     size_t oldCap = obj->cap;
     obj->cap = cap;
     obj->ls = obj->allocator->Reallocate(obj->allocator, obj->ls, obj->cap, nullptr);
+    if (oldCap <= 32)
+        memcpy(obj->ls, obj->sso, oldCap);
     memzero(obj->ls + oldCap, cap-oldCap);
 }
 size_t OBOS_GetStringCapacity(const string* obj)

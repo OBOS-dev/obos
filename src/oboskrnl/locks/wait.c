@@ -27,10 +27,12 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
-    irql oldIrql = Core_SpinlockAcquire(&obj->lock);
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    irql spinlockIrql = Core_SpinlockAcquire(&obj->lock);
     if (obj->signaled && obj->use_signaled)
     {
-        Core_SpinlockRelease(&obj->lock, oldIrql);
+        Core_LowerIrql(oldIrql);
+        Core_SpinlockRelease(&obj->lock, spinlockIrql);
         return OBOS_STATUS_SUCCESS;
     }
     thread* curr = Core_GetCurrentThread();
@@ -41,13 +43,15 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
     if (obos_is_error(status))
     {
-        Core_SpinlockRelease(&obj->lock, oldIrql);
+        Core_LowerIrql(oldIrql);
+        Core_SpinlockRelease(&obj->lock, spinlockIrql);
         return status;
     }
-    Core_SpinlockRelease(&obj->lock, oldIrql);
+    Core_SpinlockRelease(&obj->lock, spinlockIrql);
     if (obj->signaled && obj->use_signaled)
         return OBOS_STATUS_SUCCESS;
     CoreH_ThreadBlock(curr, true);
+    Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
 static void free_node(thread_node* n)
