@@ -961,6 +961,16 @@ if (st != UACPI_STATUS_OK)\
 	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
+	fd file = {};
+	const char* const filespec = "/mnt/file.txt";
+	Vfs_FdOpen(&file, filespec, 0);
+	Vfs_FdSeek(&file, 0, SEEK_END);
+	size_t filesize = Vfs_FdTellOff(&file);
+	Vfs_FdSeek(&file, 0, SEEK_SET);
+	char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
+	Vfs_FdRead(&file, buf, filesize, nullptr);
+	OBOS_Debug("%s:\n%s\n", filespec, buf);
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);

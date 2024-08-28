@@ -9,6 +9,8 @@
 #include <int.h>
 #include <struct_packing.h>
 
+#include <locks/mutex.h>
+
 #include <utils/list.h>
 #include <utils/string.h>
 
@@ -151,6 +153,7 @@ typedef struct fat_cache {
     uint8_t fatType;
     bpb* bpb;
     struct fd* volume;
+    mutex fd_lock;
     struct vnode* vn;
     LIST_NODE(fat_cache_list, struct fat_cache) node;
     uint32_t FirstDataSector;
@@ -180,4 +183,4 @@ typedef struct {
 fat_entry_addr GetFatEntryAddrForCluster(fat_cache* cache, uint32_t cluster);
 fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster);
 fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root);
-#define ClusterToSector(cache, n) (((n - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)
+#define ClusterToSector(cache, n) ((((n) - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)

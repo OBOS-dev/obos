@@ -22,6 +22,8 @@
 
 #include <uacpi_libc.h>
 
+#include <locks/mutex.h>
+
 #include "structs.h"
 
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
@@ -32,7 +34,54 @@ OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
     *count = cache_entry->data.filesize;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
+obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
+{
+    if (!desc || !buf_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!blkCount)
+        return OBOS_STATUS_SUCCESS;
+    fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+    fat_cache* cache = cache_entry->owner;
+    if (blkOffset >= cache_entry->data.filesize)
+    {
+        *nBlkRead = 0;
+        return OBOS_STATUS_SUCCESS;
+    }
+    size_t nToRead = blkCount;
+    if ((blkOffset + blkCount) >= cache_entry->data.filesize)
+        nToRead = cache_entry->data.filesize - blkOffset;
+    size_t bytesPerCluster = (cache->bpb->sectorsPerCluster*cache->blkSize);
+    size_t nClustersToRead = (nToRead / bytesPerCluster) + (((nToRead % bytesPerCluster) != 0) ? 1 : 0);
+    uint32_t cluster = cache_entry->data.first_cluster_low;
+    if (cache->fatType == FAT32_VOLUME)
+        cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
+    uint8_t* cluster_buf = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, bytesPerCluster, nullptr);
+    size_t current_offset = 0;
+    size_t cluster_offset = blkOffset % bytesPerCluster;
+    int64_t bytesLeft = blkCount;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    uint8_t *buf = buf_;
+    Core_MutexAcquire(&cache->fd_lock);
+    for (size_t i = 0; i < nClustersToRead && bytesLeft > 0; i++)
+    {
+        Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+i)*cache->blkSize, SEEK_SET);
+        status = Vfs_FdRead(cache->volume, cluster_buf + cluster_offset, bytesPerCluster, nullptr);
+        if (obos_is_error(status))
+        {
+            OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, cluster_buf, bytesPerCluster);
+            Core_MutexRelease(&cache->fd_lock);
+            return status;
+        }
+        memcpy(buf+current_offset, cluster_buf, bytesPerCluster > (size_t)bytesLeft ? bytesPerCluster : (size_t)bytesLeft);
+
+        current_offset += bytesPerCluster;
+        // cluster_offset += bytesPerCluster;
+        cluster_offset = 0;
+        bytesLeft -= bytesPerCluster;
+    }
+    Core_MutexRelease(&cache->fd_lock);
+    return OBOS_STATUS_SUCCESS;
+}
 OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
 
 obos_status query_path(dev_desc desc, const char** path)
