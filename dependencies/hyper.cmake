@@ -6,23 +6,23 @@ include(FetchContent)
 
 file(MAKE_DIRECTORY "dependencies/include/UltraProtocol")
 file(DOWNLOAD
-	https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_iso_boot
+	https://github.com/UltraOS/Hyper/releases/download/v0.9.0/hyper_iso_boot
 	${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot
 )
 file(DOWNLOAD
-	https://github.com/UltraOS/Hyper/releases/download/v0.7.0/BOOTX64.EFI
+	https://github.com/UltraOS/Hyper/releases/download/v0.9.0/BOOTX64.EFI
 	${CMAKE_SOURCE_DIR}/dependencies/hyper/BOOTX64.efi
 )
 if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-win64.exe CACHE INTERNAL "The hyper install binary")
 	file(DOWNLOAD
-		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-win64.exe
+		https://github.com/UltraOS/Hyper/releases/download/v0.9.0/hyper_install-win64.exe
 		${hyper_install}
 	)
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
 	set (hyper_install ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_install-linux-x86_64 CACHE INTERNAL "The hyper install binary")
 	file(DOWNLOAD
-		https://github.com/UltraOS/Hyper/releases/download/v0.7.0/hyper_install-linux-x86_64
+		https://github.com/UltraOS/Hyper/releases/download/v0.9.0/hyper_install-linux-x86_64
 		${hyper_install}
 	)
 else()
