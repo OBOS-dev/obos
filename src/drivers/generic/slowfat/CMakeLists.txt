@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Omar Berrow
 
 add_executable(slowfat "main.c" "probe.c" "lookup.c" "interface.c"
-				   "cls_alloc.c" "io.c"
+				   "cls_alloc.c" "io.c" "create.c"
 )
 
 target_compile_options(slowfat

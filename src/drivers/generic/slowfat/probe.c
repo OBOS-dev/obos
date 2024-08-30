@@ -20,9 +20,10 @@
 #include <utils/list.h>
 #include <utils/string.h>
 
+#include <vfs/pagecache.h>
+
 #include "structs.h"
 #include "alloc.h"
-#include "vfs/pagecache.h"
 
 #include <uacpi_libc.h>
 

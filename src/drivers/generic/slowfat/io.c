@@ -208,15 +208,20 @@ obos_status trunc_file(dev_desc desc, size_t blkCount)
     uint32_t szClusters = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
     cache_entry->data.filesize = blkCount;
     uint32_t newSizeCls = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
-    if (szClusters == newSizeCls)
-        return OBOS_STATUS_SUCCESS;
     uint32_t cluster = cache_entry->data.first_cluster_low;
     if (cache->fatType == FAT32_VOLUME)
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
     Core_MutexAcquire(&cache->fat_lock);
     TruncateClusters(cache, cluster, newSizeCls, szClusters);
+    if (!newSizeCls)
+    {
+        FreeClusters(cache, cluster, szClusters);
+        cache_entry->data.first_cluster_low = 0;
+        cache_entry->data.first_cluster_high = 0;
+    }
     Core_MutexRelease(&cache->fat_lock);
     WriteFatDirent(cache, cache_entry);
+    Vfs_FdFlush(cache->volume);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry)

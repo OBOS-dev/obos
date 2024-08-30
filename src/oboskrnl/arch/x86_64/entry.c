@@ -976,19 +976,21 @@ if (st != UACPI_STATUS_OK)\
 	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
 	// for (size_t i = 0; i < 1048576; i++)
 	// 	Vfs_FdWrite(&file, "o", 1, nullptr);
-	Vfs_FdSeek(&file, 0, SEEK_END);
-	size_t filesize = 1048576;
-	char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
-	memset(buf, 'O', filesize);
-	Vfs_FdSeek(&file, 0, SEEK_END);
-	Vfs_FdWrite(&file, buf, filesize, nullptr);
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
-	Vfs_FdSeek(&file, 0, SEEK_SET);
+	// Vfs_FdSeek(&file, 0, SEEK_END);
+	// size_t filesize = 1048576;
+	// char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
+	// memset(buf, 'O', filesize);
+	// Vfs_FdSeek(&file, 0, SEEK_END);
+	// Vfs_FdWrite(&file, buf, filesize, nullptr);
+	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
+	// Vfs_FdSeek(&file, 0, SEEK_SET);
 	// buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
 	// Vfs_FdRead(&file, buf, filesize, nullptr);
 	// OBOS_Debug("%s:\n%s\n", filespec, buf);
 	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
 	Vfs_FdClose(&file);
+	file.vn->mount_point->fs_driver->driver->header.ftable.trunc_file(file.vn->desc, 0);
+	file.vn->mount_point->fs_driver->driver->header.ftable.remove_file(file.vn->desc);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
@@ -1031,6 +1033,6 @@ if (st != UACPI_STATUS_OK)\
 		Mm_KernelContext.stat.paged/0x400,
 		Mm_KernelContext.stat.nonPaged/0x400,
 		Mm_KernelContext.stat.reserved/0x400
-		);
+	);
 	Core_ExitCurrentThread();
 }
