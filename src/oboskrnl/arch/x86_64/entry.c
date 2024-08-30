@@ -1025,10 +1025,12 @@ if (st != UACPI_STATUS_OK)\
 		asm("int3");
 	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged. and %ld KiB uncommitted.\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 
 		Mm_KernelContext.stat.paged/0x400,
-		Mm_KernelContext.stat.nonPaged/0x400);
+		Mm_KernelContext.stat.nonPaged/0x400,
+		Mm_KernelContext.stat.reserved/0x400
+		);
 	Core_ExitCurrentThread();
 }

@@ -235,6 +235,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
         node->age = 0;
         node->region = reg;
+        if (node->reserved && !(flags & VMA_FLAGS_RESERVE))
+            ctx->stat.reserved -= (node->prot.huge_page) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         node->reserved = flags & VMA_FLAGS_RESERVE;
         if (!file)
             phys = node->reserved ? 0 : Mm_AllocatePhysicalPages(pgSize/OBOS_PAGE_SIZE, pgSize/OBOS_PAGE_SIZE, &status);
@@ -322,14 +324,20 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     // TODO: Error handling?
     for (size_t i = 0; i < nNodes && !(flags & (VMA_FLAGS_NON_PAGED|VMA_FLAGS_RESERVE)); i++)
         Mm_SwapOut(nodes[i]);
-    if (!(flags & VMA_FLAGS_NON_PAGED))
+    if (!(flags & VMA_FLAGS_RESERVE))
     {
-        ctx->stat.paged += size;
-        ctx->stat.pageable += size;
+        if (!(flags & VMA_FLAGS_NON_PAGED))
+        {
+            ctx->stat.paged += size;
+            ctx->stat.pageable += size;
+        }
+        else
+            ctx->stat.nonPaged += size;
+        ctx->stat.committedMemory += size;
     }
-    else
-        ctx->stat.nonPaged += size;
-    ctx->stat.committedMemory += size;
+    else {
+        ctx->stat.reserved += size;
+    }
     Mm_Allocator->Free(Mm_Allocator, nodes, nNodes*sizeof(page*));
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     if (flags & VMA_FLAGS_GUARD_PAGE)

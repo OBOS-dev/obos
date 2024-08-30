@@ -29,6 +29,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
         Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
         Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
     }   
+    Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
