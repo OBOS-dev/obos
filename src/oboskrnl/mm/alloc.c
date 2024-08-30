@@ -156,8 +156,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size += pgSize;
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
-        if (file->vn->pagecache.sz <= file->offset)
-            VfsH_PageCacheResize(&file->vn->pagecache, file->vn, file->offset+filesize);
+        VfsH_PageCacheGetEntry(&file->vn->pagecache, file->vn, file->offset, size);
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
     top:
     if (!base)
@@ -264,9 +263,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             }
             else
             {
-                if (file->offset < file->vn->pagecache.sz)
-                    OBOSS_GetPagePhysicalAddress((void*)(file->vn->pagecache.data + currFileOff), &phys);
-                else
+                OBOSS_GetPagePhysicalAddress((void*)(file->vn->pagecache.data + currFileOff), &phys);
+                if (!phys)
                     isPresent = false;
             }
         }

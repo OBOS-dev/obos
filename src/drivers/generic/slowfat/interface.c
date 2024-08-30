@@ -122,6 +122,7 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
                 return OBOS_STATUS_NOT_ENOUGH_MEMORY;
             }
             Core_MutexAcquire(&cache->fd_lock);
+            Vfs_FdFlush(cache->volume);
             for (size_t i = 0; i < szClusters; i++)
             {
                 Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+i)*cache->blkSize, SEEK_SET);
@@ -152,7 +153,7 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         }
         Core_MutexRelease(&cache->fat_lock);
         Vfs_FdSeek(cache->volume, cache_entry->dirent_lba*cache->blkSize, SEEK_SET);
-        status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
+        status = Vfs_FdRead(cache->volume, cluster_buf, cache->blkSize, nullptr);
         if (obos_is_error(status))
         {
             FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
@@ -162,13 +163,14 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         memcpy(cluster_buf+cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
         // Vfs_FdSeek(cache->volume, -(int64_t)cache->blkSize, SEEK_CUR);
         Vfs_FdSeek(cache->volume, cache_entry->dirent_lba*cache->blkSize, SEEK_SET);
-        status = Vfs_FdWrite(cache->volume, cluster_buf, bytesPerCluster, nullptr);
+        status = Vfs_FdWrite(cache->volume, cluster_buf, cache->blkSize, nullptr);
         if (obos_is_error(status))
         {
             FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
             Core_MutexRelease(&cache->fd_lock);
             return status;
         }
+        Vfs_FdFlush(cache->volume);
         Core_MutexRelease(&cache->fd_lock);
         FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
     }
@@ -205,10 +207,11 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         cluster_offset = 0;
         bytesLeft -= bytesPerCluster;
     }
+    Vfs_FdFlush(cache->volume);
     Core_MutexRelease(&cache->fd_lock);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
-    Vfs_FdFlush(cache->volume);
+    FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
     return OBOS_STATUS_SUCCESS;
 }
 

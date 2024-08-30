@@ -215,14 +215,14 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         OBOS_ASSERT(vn->filesize);
         OBOS_ASSERT(vn->filesize > (page->region->fileoff + page->region->sz));
         // const size_t pgSize = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-        if ((page->region->fileoff+page->region->sz) > page->region->owner->sz)
-            VfsH_PageCacheResize(page->region->owner, vn, page->region->fileoff + page->region->sz);
+        // if ((page->region->fileoff+page->region->sz) > page->region->owner->sz)
+        //     VfsH_PageCacheResize(page->region->owner, vn, page->region->fileoff + page->region->sz);
         if (vn->filesize < (page->region->fileoff+page->region->sz))
         {
             handled = false;
             goto done;
         }
-        void* pagecache_region = page->region->owner->data + (page->region->fileoff+(addr - page->region->addr));
+        void* pagecache_region = VfsH_PageCacheGetEntry(page->region->owner, vn, page->region->fileoff+(addr - page->region->addr), OBOS_PAGE_SIZE);
         Core_MutexAcquire(&page->region->lock);
         what.addr = (uintptr_t)pagecache_region;
         struct page* pc_page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);

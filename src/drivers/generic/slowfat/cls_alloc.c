@@ -19,14 +19,16 @@
 #include "structs.h"
 #include "alloc.h"
 
-static bool isClusterFree(fat_cache* volume, uint32_t cluster)
+static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
 {
     bool res = false;
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, volume->blkSize, nullptr);
-    Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
-    Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
+    if (Vfs_FdTellOff(volume->volume) == (addr.lba*volume->blkSize))
+    {
+        Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
+        Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
+    }   
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -50,7 +52,6 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    FATAllocator->Free(FATAllocator, sector, volume->blkSize);
     return res;
 }
 static bool isLastCluster(fat_cache* volume, uint32_t cluster)
@@ -94,7 +95,11 @@ static void markAllocated(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    for (size_t i = 0; i < volume->bpb->nFATs; i++)
+    {
+        Vfs_FdSeek(volume->volume, (addr.lba+volume->fatSz*i)*volume->blkSize, SEEK_SET);
+        Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    }
     FATAllocator->Free(FATAllocator, sector, volume->blkSize);
 }
 static void markFree(fat_cache* volume, uint32_t cluster)
@@ -130,7 +135,11 @@ static void markFree(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    for (size_t i = 0; i < volume->bpb->nFATs; i++)
+    {
+        Vfs_FdSeek(volume->volume, (addr.lba+volume->fatSz*i)*volume->blkSize, SEEK_SET);
+        Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    }
     FATAllocator->Free(FATAllocator, sector, volume->blkSize);
 }
 static void markEnd(fat_cache* volume, uint32_t cluster)
@@ -169,7 +178,11 @@ static void markEnd(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    for (size_t i = 0; i < volume->bpb->nFATs; i++)
+    {
+        Vfs_FdSeek(volume->volume, (addr.lba+volume->fatSz*i)*volume->blkSize, SEEK_SET);
+        Vfs_FdWrite(volume->volume, sector, volume->blkSize, nullptr);
+    }
     FATAllocator->Free(FATAllocator, sector, volume->blkSize);
 }
 uint32_t AllocateClusters(fat_cache* volume, size_t nClusters)
@@ -256,9 +269,10 @@ void InitializeCacheFreelist(fat_cache* volume)
 {
     uint32_t cluster = 0;
     struct fat_freenode* curr = nullptr;
+    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, volume->blkSize, nullptr);
     for (; !isLastCluster(volume, cluster); cluster++)
     {
-        if (isClusterFree(volume, cluster))
+        if (isClusterFree(volume, cluster, sector))
         {
             if (!curr)
             {
@@ -293,4 +307,5 @@ void InitializeCacheFreelist(fat_cache* volume)
         volume->freelist.nNodes++;
         volume->freelist.freeClusterCount += curr->nClusters;
     }
+    FATAllocator->Free(FATAllocator, sector, volume->blkSize);
 }

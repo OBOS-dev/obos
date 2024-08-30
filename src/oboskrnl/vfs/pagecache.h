@@ -23,7 +23,6 @@ typedef struct pagecache
     // Take this lock when expanding the page cache.
     mutex lock;
     char* data;
-    size_t sz;
     // Take this lock when using dirty region list.
     mutex dirty_list_lock;
     dirty_pc_list dirty_regions;
@@ -65,6 +64,6 @@ OBOS_EXPORT void VfsH_PageCacheUnref(pagecache* pc);
 // Flushes the page cache.
 // vn is of type `vnode*`
 OBOS_EXPORT void VfsH_PageCacheFlush(pagecache* pc, void* vn);
-// Resizes the page cache.
+// Gets a page cache entry.
 // vn is of type `vnode*`
-OBOS_EXPORT void VfsH_PageCacheResize(pagecache* pc, void* vn, size_t newSize);
+OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn, size_t offset, size_t size);

@@ -972,7 +972,7 @@ if (st != UACPI_STATUS_OK)\
 	if (!isHypervisor)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	fd file = {};
-	const char* const filespec = "/mnt/FILE.TXT";
+	const char* const filespec = "/mnt/file.txt";
 	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
 	// for (size_t i = 0; i < 1048576; i++)
 	// 	Vfs_FdWrite(&file, "o", 1, nullptr);

@@ -222,7 +222,6 @@ bool probe(void* vn_)
         cache->blkSize = bpb->bytesPerSector;
     cache->CountofClusters = CountofClusters;
     cache->root = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(*cache->root), nullptr);
-    VfsH_PageCacheResize(&cache->volume->vn->pagecache, cache->volume->vn, cache->FirstDataSector*cache->blkSize);
     cache->root->data = (fat_dirent){}; // simply has nothing
     OBOS_InitString(&cache->root->path, "");
     OBOS_InitString(&cache->root->name, "");
