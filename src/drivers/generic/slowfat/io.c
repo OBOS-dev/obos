@@ -151,26 +151,7 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
                 Core_MutexRelease(&cache->fd_lock);
             }
         Core_MutexRelease(&cache->fat_lock);
-        Vfs_FdSeek(cache->volume, cache_entry->dirent_lba*cache->blkSize, SEEK_SET);
-        status = Vfs_FdRead(cache->volume, cluster_buf, cache->blkSize, nullptr);
-        if (obos_is_error(status))
-        {
-            FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-            Core_MutexRelease(&cache->fd_lock);
-            return status;
-        }
-        memcpy(cluster_buf+cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
-        // Vfs_FdSeek(cache->volume, -(int64_t)cache->blkSize, SEEK_CUR);
-        Vfs_FdSeek(cache->volume, cache_entry->dirent_lba*cache->blkSize, SEEK_SET);
-        status = Vfs_FdWrite(cache->volume, cluster_buf, cache->blkSize, nullptr);
-        if (obos_is_error(status))
-        {
-            FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-            Core_MutexRelease(&cache->fd_lock);
-            return status;
-        }
-        Core_MutexRelease(&cache->fd_lock);
-        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
+        WriteFatDirent(cache, cache_entry);
     }
     uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
     size_t current_offset = 0;
@@ -235,7 +216,12 @@ obos_status trunc_file(dev_desc desc, size_t blkCount)
     Core_MutexAcquire(&cache->fat_lock);
     TruncateClusters(cache, cluster, newSizeCls, szClusters);
     Core_MutexRelease(&cache->fat_lock);
-
+    WriteFatDirent(cache, cache_entry);
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry)
+{
+    const size_t bytesPerCluster = (cache->bpb->sectorsPerCluster*cache->blkSize);
     Core_MutexAcquire(&cache->fd_lock);
     Vfs_FdSeek(cache->volume, cache_entry->dirent_lba*cache->blkSize, SEEK_SET);
     uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);

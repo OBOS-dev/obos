@@ -56,10 +56,15 @@ obos_status get_linked_desc(dev_desc desc, dev_desc* found)
     OBOS_UNUSED(found);
     return OBOS_STATUS_INTERNAL_ERROR; // Impossible, as we don't know of such thing.
 }
-OBOS_WEAK obos_status move_desc_to(dev_desc desc, const char* where);
-OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
-OBOS_WEAK obos_status remove_file(dev_desc desc);
-OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
+obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+    if (!newperm.owner_write || !newperm.group_write)
+        cache_entry->data.attribs |= READ_ONLY;
+    return WriteFatDirent(cache_entry->owner, cache_entry);
+}
 obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
 {
     if (!desc || !perm)

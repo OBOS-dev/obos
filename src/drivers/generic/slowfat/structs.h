@@ -208,3 +208,4 @@ fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster);
 fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root);
 #define ClusterToSector(cache, n) ((((n) - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)
 extern allocator_info* FATAllocator;
+obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry);
