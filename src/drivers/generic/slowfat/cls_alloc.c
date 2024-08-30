@@ -24,7 +24,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
     bool res = false;
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    if (Vfs_FdTellOff(volume->volume) == (addr.lba*volume->blkSize))
+    if (Vfs_FdTellOff(volume->volume) != (addr.lba*volume->blkSize))
     {
         Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
         Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
@@ -248,6 +248,8 @@ void TruncateClusters(fat_cache* volume, uint32_t cluster, size_t newClusterCoun
     if (newClusterCount >= oldClusterCount)
         return;
     FreeClusters(volume, cluster+oldClusterCount, oldClusterCount-newClusterCount);
+    if (newClusterCount)
+        markEnd(volume, cluster+newClusterCount-1);
 }
 void FreeClusters(fat_cache* volume, uint32_t cluster, size_t nClusters)
 {
@@ -285,6 +287,8 @@ void InitializeCacheFreelist(fat_cache* volume)
         {
             if (!curr)
                 continue;
+            while (isLastCluster(volume, curr->cluster + curr->nClusters))
+                curr->nClusters--;
             if (!volume->freelist.head)
                 volume->freelist.head = curr;
             if (volume->freelist.tail)

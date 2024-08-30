@@ -124,6 +124,7 @@ typedef struct driver_ftable
     obos_status(*move_desc_to)(dev_desc desc, const char* where);
     obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
     obos_status(*remove_file)(dev_desc desc);
+    obos_status(*trunc_file)(dev_desc desc, size_t newsize);
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);

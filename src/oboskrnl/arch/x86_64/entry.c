@@ -980,10 +980,10 @@ if (st != UACPI_STATUS_OK)\
 	size_t filesize = 1048576;
 	char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
 	memset(buf, 'O', filesize);
-	Vfs_FdSeek(&file, 0, SEEK_SET);
+	Vfs_FdSeek(&file, 0, SEEK_END);
 	Vfs_FdWrite(&file, buf, filesize, nullptr);
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
-	// Vfs_FdSeek(&file, 0, SEEK_SET);
+	Vfs_FdSeek(&file, 0, SEEK_SET);
 	// buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
 	// Vfs_FdRead(&file, buf, filesize, nullptr);
 	// OBOS_Debug("%s:\n%s\n", filespec, buf);

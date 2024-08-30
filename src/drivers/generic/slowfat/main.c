@@ -52,6 +52,7 @@ OBOS_WEAK obos_status get_linked_desc(dev_desc desc, dev_desc* found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, const char* where);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
 OBOS_WEAK obos_status remove_file(dev_desc desc);
+OBOS_WEAK obos_status trunc_file(dev_desc desc, size_t newsize);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
@@ -78,6 +79,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .move_desc_to = move_desc_to,
         .mk_file = mk_file,
         .remove_file = remove_file,
+        .trunc_file = trunc_file,
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
         .get_file_type = get_file_type,

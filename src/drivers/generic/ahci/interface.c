@@ -87,7 +87,9 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     {
         // if (data->physRegionCount == 38)
         //     for (volatile bool b = true; b; );
-        found = RB_NEXT(page_tree, &context->pages, found);
+        OBOS_ASSERT(!found->reserved);
+        if (found->reserved)
+            continue;
         pg_size = found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         if (data->physRegionCount >= MAX_PRDT_COUNT)
         {
@@ -133,6 +135,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         }
         prev_phys = physical_page;
         bytesLeft -= bytesInPage;
+        found = RB_NEXT(page_tree, &context->pages, found);
     }
     if (!data->physRegionCount || reg_size > 0)
     {

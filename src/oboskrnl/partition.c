@@ -104,7 +104,7 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         string part_name;
         OBOS_InitStringLen(&part_name, OBOS_GetStringCPtr(&ent->name), OBOS_GetStringSize(&ent->name));
         char num[21] = {};
-        snprintf(num, 20, "%lu", i);
+        snprintf(num, 20, "%lu", i + 1);
         OBOS_AppendStringC(&part_name, num);
         part_vnode->flags |= VFLAGS_PARTITION;
         static const char* const part_formats[] = {

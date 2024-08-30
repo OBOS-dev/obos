@@ -312,6 +312,8 @@ obos_status Vfs_FdFlush(fd* desc)
 {
     if (!desc)
         return OBOS_STATUS_SUCCESS;
+    if (!(desc->flags & FD_FLAGS_OPEN))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (desc->flags & FD_FLAGS_UNCACHED)
         return OBOS_STATUS_INVALID_OPERATION;
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
@@ -323,6 +325,10 @@ obos_status Vfs_FdFlush(fd* desc)
 }
 obos_status Vfs_FdClose(fd* desc)
 {
+    if (!desc)
+        return OBOS_STATUS_SUCCESS;
+    if (!(desc->flags & FD_FLAGS_OPEN))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     Vfs_FdFlush(desc);
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
