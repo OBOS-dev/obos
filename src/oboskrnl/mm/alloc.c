@@ -104,6 +104,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
         return nullptr;
     }
+    if (flags & VMA_FLAGS_RESERVE)
+        file = nullptr;
     if (file && flags & VMA_FLAGS_NON_PAGED)
     {
         set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
@@ -176,7 +178,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     {
         what.addr = addr;
         page* found = RB_FIND(page_tree, &ctx->pages, &what);
-        if (found)
+        if (found && !found->reserved)
         {
             exists = true;
             break;
@@ -212,13 +214,21 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         reg->ctx = ctx;
         LIST_APPEND(mapped_region_list, &reg->owner->mapped_regions, reg);
     }
+    what = (page){};
     for (size_t i = 0; i < nNodes; i++)
     {
         uintptr_t phys = 0;
         bool isPresent = true;
-        page* node = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), &status);
-        nodes[i] = node;
-        node->addr = base + i*pgSize;
+        what.addr = base+i*pgSize;
+        bool isNodeOurs = true;
+        page* node = RB_FIND(page_tree, &ctx->pages, &what);
+        if (!node)
+            node = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), &status);
+        else
+            isNodeOurs = false;
+        if (isNodeOurs)
+            nodes[i] = node;
+        node->addr = what.addr;
         node->allocated = true;
         node->owner = ctx;
         node->prot.touched = false;
@@ -226,8 +236,9 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
         node->age = 0;
         node->region = reg;
+        node->reserved = flags & VMA_FLAGS_RESERVE;
         if (!file)
-            phys = Mm_AllocatePhysicalPages(pgSize/OBOS_PAGE_SIZE, pgSize/OBOS_PAGE_SIZE, &status);
+            phys = node->reserved ? 0 : Mm_AllocatePhysicalPages(pgSize/OBOS_PAGE_SIZE, pgSize/OBOS_PAGE_SIZE, &status);
         else
         {
             // If this is a private mapping...
@@ -267,7 +278,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
         else
         {
-            node->prot.present = isPresent;
+            node->prot.present = isPresent && !node->reserved;
             node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
             if (!(flags & VMA_FLAGS_PRIVATE) || !file)
             {
@@ -280,12 +291,15 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             node->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
             node->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
             node->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
-            status = MmS_SetPageMapping(ctx->pt, node, phys);
+            if (!(flags & VMA_FLAGS_RESERVE))
+                status = MmS_SetPageMapping(ctx->pt, node, phys);
             if (obos_is_error(status))
             {
                 // We need to clean up.
                 for (size_t j = 0; j < i; j++)
                 {
+                    if (!nodes[j])
+                        continue;
                     nodes[j]->prot.present = false;
                     MmS_SetPageMapping(ctx->pt, nodes[j], 0);
                     RB_REMOVE(page_tree, &ctx->pages, nodes[j]);
@@ -299,7 +313,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                 set_statusp(ustatus, status);
                 return nullptr;
             }
-            if (isPresent && !(prot & OBOS_PROTECTION_READ_ONLY) && !file)
+            if (node->prot.present && !(prot & OBOS_PROTECTION_READ_ONLY) && !file)
                 memzero((void*)node->addr, pgSize);
         }
         currFileOff += pgSize;
@@ -308,7 +322,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     }
     // Page out each page so we don't explode.
     // TODO: Error handling?
-    for (size_t i = 0; i < nNodes && !(flags & VMA_FLAGS_NON_PAGED); i++)
+    for (size_t i = 0; i < nNodes && !(flags & (VMA_FLAGS_NON_PAGED|VMA_FLAGS_RESERVE)); i++)
         Mm_SwapOut(nodes[i]);
     if (!(flags & VMA_FLAGS_NON_PAGED))
     {

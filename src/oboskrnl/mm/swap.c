@@ -22,6 +22,9 @@ obos_status Mm_SwapOut(page* page)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!page)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(!page->reserved);
+    if (page->reserved)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     OBOS_ASSERT(!page->workingSets);
     if (!page->pageable || page->workingSets > 0)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -75,6 +78,9 @@ obos_status Mm_SwapIn(page* page)
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!page)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(!page->reserved);
+    if (page->reserved)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!page->pageable || !page->pagedOut)
         return OBOS_STATUS_SUCCESS;

@@ -33,11 +33,12 @@ typedef struct page
         bool uc : 1;                        // If set, this page is uncacheable.
         bool ro : 1;                        // If set, this page was originally allocated as read-only. This is only used in CoW pages as of now.
     } prot;                                 // The protection of the page.
+    size_t workingSets : 16;                // The amount of working sets the page is in.
     bool pageable : 1;                      // If set, the page is pageable.
     bool pagedOut : 1;                      // If set, the page is paged out.
-    size_t workingSets : 16;                // The amount of working sets the page is in.
     bool isGuardPage : 1;                   // If set, the page is a guard page.
     bool allocated : 1;                     // If set, this object was allocated by Mm_Allocator.
+    bool reserved : 1;                      // If set, this object is reserved memory (i.e., not backed by anything).
     uint8_t age : 8;                        // The page's age
     uintptr_t addr : PTR_BITS;              // The page's address.
     uintptr_t swapId : PTR_BITS;            // The page's swap allocation id. Only valid if pagedOut == true.
