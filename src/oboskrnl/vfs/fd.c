@@ -36,7 +36,7 @@ static bool is_eof(vnode* vn, size_t off)
 {
     if (vn->vtype != VNODE_TYPE_REG)
         return false;
-    return off >= vn->filesize;
+    return off > vn->filesize;
 }
 obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags) 
 {
@@ -131,8 +131,6 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
-        desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
@@ -142,16 +140,21 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
     }
     else 
     {
-        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
-        OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
         if (!VfsH_LockMountpoint(point))
-            return OBOS_STATUS_ABORTED;
-        Core_MutexAcquire(&dirty->lock);
-        const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
-        if (desc->vn->pagecache.sz <= (desc->offset+base_offset))
+            return OBOS_STATUS_ABORTED;;
+        if (desc->vn->pagecache.sz <= desc->offset)
+        {
+            size_t oldsize = desc->vn->filesize;
+            if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
+                desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
-        memcpy(desc->vn->pagecache.data + desc->offset + base_offset, buf, nBytes);
+            desc->vn->filesize = oldsize;
+        }
+        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
+        OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
+        Core_MutexAcquire(&dirty->lock);
+        memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytes);
         VfsH_UnlockMountpoint(point);
         Core_MutexRelease(&dirty->lock);
 
@@ -159,7 +162,11 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
             *nWritten = nBytes;
     }
     if (obos_expect(obos_is_success(status), 1))
+    {
+        if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
+            desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
         Vfs_FdSeek(desc, nBytes, SEEK_CUR);
+    }
     return status;
 }
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
@@ -212,12 +219,12 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         if (dirty)
             Core_MutexAcquire(&dirty->lock);
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
-        const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
+        // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        if ((desc->offset+nBytes+base_offset) > desc->vn->pagecache.sz)
+        if ((desc->offset+nBytes) > desc->vn->pagecache.sz)
             VfsH_PageCacheResize(&desc->vn->pagecache, desc->vn, desc->offset + nBytes);
-        memcpy(buf, desc->vn->pagecache.data + desc->offset + base_offset, nBytes);
+        memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytes);
         if (dirty)
             Core_MutexRelease(&dirty->lock);
         VfsH_UnlockMountpoint(point);

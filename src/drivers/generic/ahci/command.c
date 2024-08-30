@@ -23,6 +23,7 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (data->physRegionCount > sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    StopCommandEngine(&HBA->ports[port->hbaPortIndex]);
     Core_SemaphoreAcquire(&port->lock);
     HBA->ports[port->hbaPortIndex].is = 0xffffffff;
     Core_MutexAcquire(&port->bitmask_lock);
@@ -31,6 +32,12 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     Core_MutexRelease(&port->bitmask_lock);
     obos_status status = OBOS_STATUS_SUCCESS;
     volatile HBA_CMD_HEADER* cmdHeader = ((HBA_CMD_HEADER*)port->clBase) + cmdSlot;
+    cmdHeader->b0 |= ((sizeof(FIS_REG_H2D) / sizeof(uint32_t)) & 0x1f) << 0;
+    if (data->direction == COMMAND_DIRECTION_READ)
+        cmdHeader->b0 &= ~BIT(6);   // Device to Host.
+    else
+        cmdHeader->b0 |= BIT(6);   // Host to Device.
+    // cmdHeader->b1 |= BIT(2);
 #if OBOS_ARCHITECTURE_BITS == 64
     volatile HBA_CMD_TBL* cmdTBL = 
     (HBA_CMD_TBL*)(uintptr_t)
@@ -46,46 +53,47 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
             ((cmdHeader->ctba - port->clBasePhys)) // The offset of the HBA_CMD_TBL
     );
 #endif
-    cmdHeader->b0 |= ((sizeof(FIS_REG_H2D) / sizeof(uint32_t)) & 0x1f) << 0;
-    if (data->direction == COMMAND_DIRECTION_READ)
-        cmdHeader->b0 &= ~BIT(6);   // Device to Host.
-    else
-        cmdHeader->b0 |= BIT(6);   // Host to Device.
-    // cmdHeader->b1 |= BIT(2);
-    cmdHeader->prdtl = data->physRegionCount;
+    memzero((void*)cmdTBL, sizeof(*cmdTBL));
     for (uint16_t i = 0; i < data->physRegionCount; i++)
     {
-#if OBOS_ARCHITECTURE_BITS == 64
+    #if OBOS_ARCHITECTURE_BITS == 64
         if (!(HBA->cap & BIT(31)))
             OBOS_ASSERT(!(data->phys_regions[i].phys >> 32));
-#endif
+    #endif
         memzero((void*)&cmdTBL->prdt_entry[i], sizeof(cmdTBL->prdt_entry[i]));
         AHCISetAddress(data->phys_regions[i].phys, cmdTBL->prdt_entry[i].dba);
-        cmdTBL->prdt_entry[i].dw4 = ((data->phys_regions[i].sz - 1) & 0x3fffff) << 0;
+        uint32_t dw4 = ((data->phys_regions[i].sz - 1) & 0x3fffff) << 0;
         // cmdTBL->prdt_entry[i].i = (i == (data->physRegionCount - 1));
-        cmdTBL->prdt_entry[i].dw4 &= ~BIT(31);
+        // cmdTBL->prdt_entry[i].dw4 &= ~BIT(31);
+        dw4 |= BIT(31);
+        cmdTBL->prdt_entry[i].dw4 = dw4;
     }
+    cmdHeader->prdtl = data->physRegionCount;
     FIS_REG_H2D* fis = (void*)cmdTBL->cfis;
     memzero(fis, sizeof(*fis));
     fis->fis_type = FIS_TYPE_REG_H2D;
+    fis->b1 |= BIT(7);
     fis->command = data->cmd;
-    fis->device = device;
-    fis->countl = count & 0xff;
-    fis->counth = count >> 8;
+
     fis->lba0 = (lba & 0xff);
     fis->lba1 = (lba >> 8) & 0xff;
     fis->lba2 = (lba >> 16) & 0xff;
+    fis->device = device;
+    
     fis->lba3 = (lba >> 24) & 0xff;
     fis->lba4 = (lba >> 32) & 0xff;
     fis->lba5 = (lba >> 40) & 0xff;
-    fis->b1 |= BIT(7);
+    
+    fis->countl = count & 0xff;
+    fis->counth = count >> 8;
     // Wait for the port.
     // 0x88: ATA_DEV_BUSY | ATA_DEV_DRQ
     while ((HBA->ports[port->hbaPortIndex].tfd & 0x88))
         OBOSS_SpinlockHint();
     // Issue the command
     data->internal.cmdSlot = cmdSlot;
-    HBA->ports[port->hbaPortIndex].sact |= (1 << cmdSlot);
+    // HBA->ports[port->hbaPortIndex].sact |= (1 << cmdSlot);
+    StartCommandEngine(&HBA->ports[port->hbaPortIndex]);
     HBA->ports[port->hbaPortIndex].ci |= (1 << cmdSlot);
     // Release the semaphore in the IRQ handler instead.
     // Core_SemaphoreRelease(&port->lock);

@@ -18,7 +18,7 @@ qemu-system-x86_64 \
 -serial tcp:0.0.0.0:1534,server,nowait \
 -smp cores=4,threads=1,sockets=1 \
 -M smm=off \
--d trace:*ahci* \
+-d trace:*ide* \
 -D qemu_log.txt
 # -nographic
 # -enable-kvm \

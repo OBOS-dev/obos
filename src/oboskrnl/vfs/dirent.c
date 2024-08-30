@@ -134,9 +134,9 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
         if (OBOS_CompareStringNC(&root->name, tok, tok_len))
         {
             // Match!
-            root = curr->d_children.head ? curr->d_children.head : root;
             dirent* what = 
                 on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+            root = curr->d_children.head;
             if (what)
                 return what;
             continue;

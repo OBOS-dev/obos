@@ -35,6 +35,7 @@ obos_status Core_MutexAcquire(mutex* mut)
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+    OBOS_ASSERT(mut->who != Core_GetCurrentThread());
     // Spin for a bit.
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     int spin = 100000;

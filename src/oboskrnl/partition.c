@@ -127,9 +127,9 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         partitions[i].ent = Drv_RegisterVNode(part_vnode, OBOS_GetStringCPtr(&part_name));
         partitions[i].partid = part_name;
         part_vnode->partitions = &partitions[i];
-        part_vnode->nPartitions = 1;
+        part_vnode->nPartitions = 1; 
         for (driver_node* node = Drv_LoadedFsDrivers.head; node; )
-        {
+        { 
             driver_header* hdr = &node->data->header;
             if (hdr->ftable.probe(part_vnode))
             {

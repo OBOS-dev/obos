@@ -1,5 +1,5 @@
 /*
-	oboskrnl/klog.h
+	oboskrnl/klog.c
 
 	Copyright (c) 2024 Omar Berrow
 */

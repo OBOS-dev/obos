@@ -7,6 +7,7 @@
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
+#include <partition.h>
 
 #include <utils/list.h>
 
@@ -51,8 +52,8 @@ pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 // This returns the dirty region created.
 pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size_t sz)
 {
-    OBOS_ASSERT(!(off >= pc->sz || (off+sz) >= pc->sz));
-    if (off >= pc->sz || (off+sz) >= pc->sz)
+    OBOS_ASSERT(!(off >= pc->sz || (off+sz) > pc->sz));
+    if (off >= pc->sz || (off+sz) > pc->sz)
         return nullptr; // impossible for this to happen in normal cases.
     pagecache_dirty_region* dirty = VfsH_PCDirtyRegionLookup(pc, off);
     if (dirty)
@@ -96,10 +97,11 @@ void VfsH_PageCacheFlush(pagecache* pc, void* vn_)
     Core_MutexAcquire(&pc->dirty_list_lock);
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     driver_id* driver = point->fs_driver->driver;
+    const size_t base_offset = vn->flags & VFLAGS_PARTITION ? vn->partitions[0].off : 0;
     for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
     {   
         pagecache_dirty_region* next = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
-        driver->header.ftable.write_sync(vn->desc, pc->data + curr->fileoff, curr->sz, curr->fileoff, nullptr);
+        driver->header.ftable.write_sync(vn->desc, pc->data + curr->fileoff, curr->sz, curr->fileoff+base_offset, nullptr);
         curr = next;
     }
     Core_MutexRelease(&pc->dirty_list_lock);
@@ -110,7 +112,14 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
     OBOS_ASSERT(newSize <= vn->filesize);
     if (newSize == pc->sz)
         return;
+    size_t blkSize = 0;
+    mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        driver = &vn->un.device->driver->header;
+    driver->ftable.get_blk_size(vn->desc, &blkSize);
     size_t filesize = newSize;
+    newSize = filesize;
     if (newSize % OBOS_PAGE_SIZE)
         newSize = newSize + (OBOS_PAGE_SIZE-(newSize%OBOS_PAGE_SIZE));
     Core_MutexAcquire(&pc->lock);
@@ -163,7 +172,8 @@ void VfsH_PageCacheResize(pagecache* pc, void* vn_, size_t newSize)
         const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
         if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
             driver = &vn->un.device->driver->header;
-        driver->ftable.read_sync(vn->desc, pc->data, filesize-oldSz, oldSz, nullptr);
+        const uint32_t base_offset = vn->flags & VFLAGS_PARTITION ? vn->partitions[0].off : 0;
+        driver->ftable.read_sync(vn->desc, pc->data+oldSz, (filesize-oldSz)/blkSize, (oldSz+base_offset)/blkSize, nullptr);
     }
     Core_MutexRelease(&pc->lock);
 }

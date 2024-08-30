@@ -942,7 +942,8 @@ if (st != UACPI_STATUS_OK)\
 				iter += namelen;
 				continue;
 			}
-			status = Drv_StartDriver(drv, nullptr);
+			thread* main = nullptr;
+			status = Drv_StartDriver(drv, &main);
 			if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
 			{
 				OBOS_Warning("Could not start driver %*s. Status: %d\n", namelen, iter, status);
@@ -954,6 +955,10 @@ if (st != UACPI_STATUS_OK)\
 				iter += namelen;
 				continue;
 			}
+			while ((main->flags & THREAD_FLAGS_DIED))
+				OBOSS_SpinlockHint();
+			if (!(--main->references) && main->free)
+				main->free(main);
 			if (namelen != len)
 				namelen++;
 			iter += namelen;
@@ -961,16 +966,29 @@ if (st != UACPI_STATUS_OK)\
 	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
+	uint32_t ecx = 0;
+	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	if (!isHypervisor)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	fd file = {};
-	const char* const filespec = "/mnt/file.txt";
-	Vfs_FdOpen(&file, filespec, 0);
+	const char* const filespec = "/mnt/FILE.TXT";
+	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
+	// for (size_t i = 0; i < 1048576; i++)
+	// 	Vfs_FdWrite(&file, "o", 1, nullptr);
 	Vfs_FdSeek(&file, 0, SEEK_END);
-	size_t filesize = Vfs_FdTellOff(&file);
-	Vfs_FdSeek(&file, 0, SEEK_SET);
+	size_t filesize = 1048576;
 	char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
-	Vfs_FdRead(&file, buf, filesize, nullptr);
-	OBOS_Debug("%s:\n%s\n", filespec, buf);
+	memset(buf, 'O', filesize);
+	Vfs_FdSeek(&file, 0, SEEK_SET);
+	Vfs_FdWrite(&file, buf, filesize, nullptr);
 	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
+	// Vfs_FdSeek(&file, 0, SEEK_SET);
+	// buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
+	// Vfs_FdRead(&file, buf, filesize, nullptr);
+	// OBOS_Debug("%s:\n%s\n", filespec, buf);
+	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
+	Vfs_FdClose(&file);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
