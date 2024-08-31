@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "uacpi_libc.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -23,6 +22,8 @@
 
 #include <utils/string.h>
 #include <utils/uuid.h>
+
+#include <uacpi_libc.h>
 
 void OBOS_PartProbeAllDrives(bool check_checksum)
 {

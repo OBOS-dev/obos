@@ -22,16 +22,13 @@
 
 #include <vfs/pagecache.h>
 
+#include <driver_interface/header.h>
+
 #include "structs.h"
 #include "alloc.h"
 
 #include <uacpi_libc.h>
 
-#define read_next_sector(buff, cache) do {\
-    size_t nRead = 0;\
-    Vfs_FdRead(cache->volume, buff, cache->blkSize, &nRead);\
-    OBOS_ASSERT(nRead == cache->blkSize);\
-} while(0)
 static char lfn_at(const lfn_dirent* lfn, size_t i)
 {
     char ret = 0;
@@ -51,12 +48,110 @@ static size_t lfn_strlen(const lfn_dirent* lfn)
     for (; lfn_at(lfn, ret) && ret < 13; ret++);
     return ret;
 }
-static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba)
+static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster);
+static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
 {
-    void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
-    uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
-    Vfs_FdSeek(cache->volume, lba*cache->blkSize, SEEK_SET);
-    read_next_sector(buff, cache);
+    OBOS_UNUSED(cluster);
+    if ((uint8_t)curr->filename_83[0] == 0xE5)
+        return;
+    if (curr->attribs & LFN)
+    {
+        lfn_dirent* lfn = (lfn_dirent*)curr;
+        // NOTE(oberrow): Do not check if there was already a chain before, just truncate the list.
+        if ((lfn->order & 0x40))
+        {
+            // Allocate all the memory we'll need for this LFN chain.
+            *lfn_entry_count = (lfn->order & ~0x40 /* last entry */);
+            *lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*(*lfn_entry_count), nullptr);
+        }
+        (*lfn_entries)[(lfn->order & ~0x40) - 1] = lfn;
+        return;
+    }
+    if (curr->filename_83[0] == 0x5)
+        curr->filename_83[0] = 0xE5;
+
+    if (memcmp_b(&curr->filename_83[0], '.', 2))
+        return;
+    if (curr->filename_83[0] == '.')
+        return;
+    if (lfn_entry_count)
+    {
+        for (size_t i = 0; i < (*lfn_entry_count); i++)
+        {
+            lfn_dirent* lfn = (*lfn_entries)[i];
+            if (!lfn)
+                continue;
+            size_t len = lfn_strlen(lfn);
+            char ch[2] = {};
+            for (size_t j = 0; j < len; j++)
+            {
+                ch[0] = lfn_at(lfn, j);
+                if (!ch[0])
+                    continue;
+                OBOS_AppendStringC(current_filename, ch);
+            }
+        }
+        FATAllocator->Free(FATAllocator, *lfn_entries, (*lfn_entry_count) * sizeof(lfn_dirent*));
+        *lfn_entry_count = 0;
+        *lfn_entries = nullptr;
+    }
+    else
+    {
+        char ch[2] = {};
+        size_t len = 0;
+        for (len = 0; len < 8 && curr->filename_83[len] != ' ' && curr->filename_83[len]; len++)
+            ;
+        for (size_t i = 0; i < len; i++)
+        {
+            ch[0] = curr->filename_83[i];
+            OBOS_AppendStringC(current_filename, ch);
+        }
+        for (len = 0; len < 3 && curr->filename_83[len+8] != ' ' && curr->filename_83[len+8]; len++)
+            ;
+        if (len != 0)
+        {
+            ch[0] = '.';
+            OBOS_AppendStringC(current_filename, ch);
+            for (size_t i = 0; i < len; i++)
+            {
+                ch[0] = curr->filename_83[i+8];
+                OBOS_AppendStringC(current_filename, ch);
+            }
+        }
+    }
+    fat_dirent_cache* dir_cache = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fat_dirent_cache), nullptr);
+    dir_cache->data = *curr;
+    dir_cache->name = *current_filename;
+    dir_cache->owner = cache;
+    dir_cache->dirent_fileoff = Vfs_FdTellOff(cache->volume);
+    if (cache->fatType != FAT32_VOLUME && cache->root == parent)
+        dir_cache->dirent_fileoff -= cache->blkSize;
+    else
+        dir_cache->dirent_fileoff -= (cache->blkSize*cache->bpb->sectorsPerCluster);
+    dir_cache->dirent_offset = ((uintptr_t)curr-(uintptr_t)buff);
+    OBOS_InitStringLen(&dir_cache->path, OBOS_GetStringCPtr(&parent->path), OBOS_GetStringSize(&parent->path));
+    if (OBOS_GetStringSize(&dir_cache->path))
+        OBOS_AppendStringC(&dir_cache->path, "/");
+    OBOS_AppendStringS(&dir_cache->path, &dir_cache->name);
+    *current_filename = (string){};
+    CacheAppendChild(parent, dir_cache);
+    if (curr->attribs & DIRECTORY)
+    {
+        uint32_t cluster = curr->first_cluster_low;
+        if (cache->fatType == FAT32_VOLUME)
+            cluster |= ((uint32_t)curr->first_cluster_high << 16);
+        dir_iterate(cache, dir_cache, cluster);
+    }
+}
+static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status stat, void* udata)
+{
+    if (stat == OBOS_STATUS_ABORTED)
+        return ITERATE_DECISION_STOP;
+    fat_cache* cache = (void*)((uintptr_t*)udata)[0];
+    fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
+    void* buff = (void*)((uintptr_t*)udata)[2];
+    Vfs_FdSeek(cache->volume, ClusterToSector(cache, current_cluster)*cache->blkSize, SEEK_SET);
+    Vfs_FdRead(cache->volume, buff, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
     fat_dirent* curr = buff;
     string current_filename = {};
     lfn_dirent **lfn_entries = nullptr;
@@ -64,103 +159,25 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t lba
     OBOS_InitString(&current_filename, "");
     while(curr->filename_83[0] != 0)
     {
-        if ((uint8_t)curr->filename_83[0] == 0xE5)
-            goto done;
-        if (curr->attribs & LFN)
-        {
-            lfn_dirent* lfn = (lfn_dirent*)curr;
-            // NOTE(oberrow): Do not check if there was already a chain before, just truncate the list.
-            if ((lfn->order & 0x40))
-            {
-                // Allocate all the memory we'll need for this LFN chain.
-                lfn_entry_count = (lfn->order & ~0x40 /* last entry */);
-                lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*lfn_entry_count, nullptr);
-            }
-            lfn_entries[(lfn->order & ~0x40) - 1] = lfn;
-            goto done;
-        }
-        if (curr->filename_83[0] == 0x5)
-            curr->filename_83[0] = 0xE5;
-        
-        if (memcmp_b(&curr->filename_83[0], '.', 2))
-            goto done;
-        if (curr->filename_83[0] == '.')
-            goto done;
-        if (lfn_entry_count)
-        {
-            for (size_t i = 0; i < lfn_entry_count; i++)
-            {
-                lfn_dirent* lfn = lfn_entries[i];
-                if (!lfn)
-                    continue;
-                size_t len = lfn_strlen(lfn);
-                char ch[2] = {};
-                for (size_t j = 0; j < len; j++)
-                {
-                    ch[0] = lfn_at(lfn, j);
-                    if (!ch[0])
-                        continue;
-                    OBOS_AppendStringC(&current_filename, ch);
-                }
-            }
-            FATAllocator->Free(FATAllocator, lfn_entries, lfn_entry_count * sizeof(lfn_dirent*));
-            lfn_entry_count = 0;
-            lfn_entries = nullptr;
-        }
-        else
-        {
-            char ch[2] = {};
-            size_t len = 0;
-            for (len = 0; len < 8 && curr->filename_83[len] != ' ' && curr->filename_83[len]; len++)
-                ;
-            for (size_t i = 0; i < len; i++)
-            {
-                ch[0] = curr->filename_83[i];
-                OBOS_AppendStringC(&current_filename, ch);
-            }
-            for (len = 0; len < 3 && curr->filename_83[len+8] != ' ' && curr->filename_83[len+8]; len++)
-                ;
-            if (len != 0)
-            {
-                ch[0] = '.';
-                OBOS_AppendStringC(&current_filename, ch);
-                for (size_t i = 0; i < len; i++)
-                {
-                    ch[0] = curr->filename_83[i+8];
-                    OBOS_AppendStringC(&current_filename, ch);
-                }
-            }
-        }
-        fat_dirent_cache* dir_cache = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fat_dirent_cache), nullptr);
-        dir_cache->data = *curr;
-        dir_cache->name = current_filename;
-        dir_cache->owner = cache;
-        dir_cache->dirent_lba = lba;
-        dir_cache->dirent_offset = ((uintptr_t)curr-(uintptr_t)buff);
-        OBOS_InitStringLen(&dir_cache->path, OBOS_GetStringCPtr(&parent->path), OBOS_GetStringSize(&parent->path));
-        if (OBOS_GetStringSize(&dir_cache->path))
-            OBOS_AppendStringC(&dir_cache->path, "/");
-        OBOS_AppendStringS(&dir_cache->path, &dir_cache->name);
-        current_filename = (string){};
-        CacheAppendChild(parent, dir_cache);
-        // OBOS_Debug("%s\n", OBOS_GetStringCPtr(&dir_cache->path));
-        if (curr->attribs & DIRECTORY)
-        {
-            uint32_t cluster = curr->first_cluster_low;
-            if (cache->fatType == FAT32_VOLUME)
-                cluster |= ((uint32_t)curr->first_cluster_high << 16);
-            dir_iterate(cache, dir_cache, ClusterToSector(cache, cluster));
-        }
-        done:
+        process_dirent(
+            cache, parent, current_cluster, buff,
+            curr, &lfn_entries, &lfn_entry_count, &current_filename);
         curr += 1;
         if ((uintptr_t)curr >= ((uintptr_t)buff + cache->blkSize))
-        {
-            // Fetch the next sector.
-            curr = buff;
-            read_next_sector(buff, cache);
-        }
+            return ITERATE_DECISION_CONTINUE;
     }
-    FATAllocator->Free(FATAllocator, buff, cache->blkSize);
+    return ITERATE_DECISION_STOP;
+}
+static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster)
+{
+    uintptr_t udata[3] = {
+        (uintptr_t)cache,
+        (uintptr_t)parent,
+        (uintptr_t)FATAllocator->Allocate(FATAllocator, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr)
+    };
+    uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
+    FollowClusterChain(cache, cluster, dir_iterate_impl, udata);
+    FATAllocator->Free(FATAllocator, (void*)udata[2], cache->blkSize);
     Vfs_FdSeek(cache->volume, oldOffset, SEEK_SET);
 }
 #undef read_next_sector
@@ -216,17 +233,53 @@ bool probe(void* vn_)
     else
         cache->fatType = FAT32_VOLUME;
     cache->bpb = bpb;
-    cache->root_sector = cache->fatType == FAT32_VOLUME ? ClusterToSector(cache, bpb->ebpb.fat32.rootCluster) : (FirstDataSector-RootDirSectors);
     cache->fatSz = fatSz;
     cache->blkSize = Vfs_FdGetBlkSz(volume);
     if (cache->blkSize == 1)
         cache->blkSize = bpb->bytesPerSector;
     cache->CountofClusters = CountofClusters;
+    cache->root_cluster = cache->fatType == FAT32_VOLUME ? bpb->ebpb.fat32.rootCluster : 0;
+    cache->root_sector = cache->fatType == FAT32_VOLUME ? 0 : FirstDataSector-RootDirSectors;
     cache->root = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(*cache->root), nullptr);
     cache->root->data = (fat_dirent){}; // simply has nothing
+    cache->root->dirent_fileoff = 
+        cache->fatType == FAT32_VOLUME ? 
+            ClusterToSector(cache, cache->root_cluster)*cache->blkSize : 
+            cache->root_sector*cache->blkSize;
+    cache->root->dirent_offset = 0;
     OBOS_InitString(&cache->root->path, "");
     OBOS_InitString(&cache->root->name, "");
-    dir_iterate(cache, cache->root, cache->root_sector);
+    if (cache->fatType == FAT32_VOLUME)
+        dir_iterate(cache, cache->root, cache->root_cluster);
+    else
+    {
+        void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
+        lfn_dirent** lfn_entries;
+        size_t lfn_entry_count = 0;
+        string current_filename = {};
+        Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
+        for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
+        {
+            fat_dirent* curr = buff;
+            Vfs_FdSeek(cache->volume, i*cache->blkSize, SEEK_SET);
+            Vfs_FdRead(cache->volume, buff, cache->blkSize, nullptr);
+            for (size_t j = 0; j < (cache->blkSize/sizeof(lfn_dirent)); j++, curr++)
+            {
+                if (curr->filename_83[0] == (char)0xe5)
+                    continue;
+                if (curr->filename_83[0] == (char)0)
+                {
+                    curr = nullptr;
+                    break;
+                }
+                process_dirent(
+                    cache, cache->root, 0, buff, curr, 
+                    &lfn_entries, &lfn_entry_count, &current_filename);
+            }
+            if (!curr)
+                break;
+        }
+    }
     InitializeCacheFreelist(cache);
     LIST_APPEND(fat_cache_list, &FATVolumes, cache);
     OBOS_Debug("FAT: CountofClusters: 0x%08x\n", CountofClusters);

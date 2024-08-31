@@ -16,6 +16,9 @@
 
 #include <allocators/base.h>
 
+#include <driver_interface/header.h>
+
+#include "error.h"
 #include "structs.h"
 #include "alloc.h"
 
@@ -312,5 +315,77 @@ void InitializeCacheFreelist(fat_cache* volume)
         volume->freelist.nNodes++;
         volume->freelist.freeClusterCount += curr->nClusters;
     }
+    FATAllocator->Free(FATAllocator, sector, volume->blkSize);
+}
+obos_status NextCluster(fat_cache* cache, uint32_t cluster, uint8_t* sec_buf, uint32_t* ret)
+{
+    uint32_t res = 0;
+    uint32_t last_clus_val = 0x0ffffff8;
+    fat_entry_addr addr = {};
+    GetFatEntryAddrForCluster(cache, cluster, &addr);
+    uint32_t offset = addr.offset;
+    switch (cache->fatType) {
+        case FAT32_VOLUME:
+        {
+            fat32_entry ent = {};
+            memcpy(&ent, sec_buf + offset, sizeof(ent));
+            res = ent.ent;
+            last_clus_val = 0x0ffffff8;
+            break;
+        }
+        case FAT16_VOLUME:
+        {
+            fat16_entry ent = {};
+            memcpy(&ent, sec_buf + offset, sizeof(ent));
+            res = ent.ent;
+            last_clus_val = 0xfff8;
+            break;
+        }
+        case FAT12_VOLUME:
+        {
+            fat12_entry ent = GetFat12Entry(*(uint16_t*)(sec_buf + offset), cluster);
+            res = ent.ent;
+            last_clus_val = 0xff8;
+            break;
+        }
+    }
+    *ret = res;
+    return res >= last_clus_val ? OBOS_STATUS_EOF : OBOS_STATUS_SUCCESS;
+}
+void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback, void* userdata)
+{
+    fat_entry_addr addr = {};
+    GetFatEntryAddrForCluster(volume, clus, &addr);
+    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, volume->blkSize, nullptr);
+    Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
+    Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
+    uint32_t curr = clus;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    do {
+        if (callback(clus, status, userdata) == ITERATE_DECISION_STOP)
+            break;
+        status = NextCluster(volume, curr, sector, &curr);
+        if (status == OBOS_STATUS_EOF)
+            break;
+        if (curr == 0)
+        {
+            OBOS_Error("FAT: Error following cluster chain: Unexpected free cluster. Aborting.\n");
+            callback(0, OBOS_STATUS_ABORTED, userdata);
+            break;
+        }
+        if (curr >= volume->CountofClusters)
+        {
+            OBOS_Error("FAT: Error following cluster chain: Cluster is over disk boundaries. Aborting.\n");
+            callback(0, OBOS_STATUS_ABORTED, userdata);
+            break;
+        }
+        uint64_t prev_lba = addr.lba;
+        GetFatEntryAddrForCluster(volume, clus, &addr);
+        if (addr.lba != prev_lba)
+        {
+            Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
+            Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
+        }
+    } while(status != OBOS_STATUS_EOF);
     FATAllocator->Free(FATAllocator, sector, volume->blkSize);
 }

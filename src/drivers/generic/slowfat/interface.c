@@ -63,7 +63,7 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
     if (!newperm.owner_write || !newperm.group_write)
         cache_entry->data.attribs |= READ_ONLY;
-    return WriteFatDirent(cache_entry->owner, cache_entry);
+    return WriteFatDirent(cache_entry->owner, cache_entry, true);
 }
 obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
 {

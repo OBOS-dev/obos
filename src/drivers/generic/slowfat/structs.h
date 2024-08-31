@@ -127,8 +127,8 @@ typedef struct fat_dirent_cache
     fat_dirent data;
     string name;
     string path;
-    // The dirent sector.
-    uint32_t dirent_lba;
+    // The offset in bytes of the cluster or sector this dirent is on.
+    uint64_t dirent_fileoff;
     // The offset into the dirent sector in which this dirent is at.
     uint32_t dirent_offset;
     struct fat_cache* owner;
@@ -172,7 +172,8 @@ typedef struct fat_cache {
     LIST_NODE(fat_cache_list, struct fat_cache) node;
     uint32_t FirstDataSector;
     uint32_t RootDirSectors;
-    uint32_t root_sector;
+    uint32_t root_cluster;
+    uint64_t root_sector;
     uint32_t CountofClusters;
     size_t blkSize;
     uint32_t fatSz;
@@ -206,6 +207,7 @@ void GetFatEntryAddrForCluster(fat_cache* cache, uint32_t cluster, fat_entry_add
 uint32_t GetClusterFromFatEntryAddr(fat_cache* cache, fat_entry_addr addr);
 fat12_entry GetFat12Entry(uint16_t val, uint32_t valCluster);
 fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root);
-#define ClusterToSector(cache, n) ((((n) - 2) * (cache)->bpb->sectorsPerCluster) + (cache)->FirstDataSector)
+#define ClusterToSector(cache, n) (((n) - 2) * (cache)->bpb->sectorsPerCluster + (cache)->FirstDataSector)
+#define SectorToCluster(cache, n) (((int64_t)(n)-(int64_t)(cache)->FirstDataSector+(int64_t)(cache)->bpb->sectorsPerCluster*2)/(int64_t)(cache)->bpb->sectorsPerCluster)
 extern allocator_info* FATAllocator;
-obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry);
+obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry, bool lock);

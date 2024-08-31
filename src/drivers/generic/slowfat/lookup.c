@@ -82,8 +82,6 @@ fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root)
                     on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
                 if (what)
                     return what;
-                // else
-                //     return nullptr;
                 curr = curr->fdc_children.head ? curr->fdc_children.head : curr;
                 break;
             }
