@@ -139,8 +139,6 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
                     OBOS_Log("Partition recognized by '%*s'\n", uacpi_strnlen(node->data->header.driverName, 32), node->data->header.driverName);
                 else
                     OBOS_Log("Partition recognized by a driver\n");
-                vdev fs_driver = {.driver=node->data,.data=nullptr,.refs=0};
-                Vfs_Mount("/mnt", part_vnode, &fs_driver, nullptr);
                 break;
             }
             node = node->next;

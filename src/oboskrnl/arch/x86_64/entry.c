@@ -966,33 +966,11 @@ if (st != UACPI_STATUS_OK)\
 	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
-	uint32_t ecx = 0;
-	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
-	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
-	if (!isHypervisor)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
-	fd file = {};
-	const char* const filespec = "/mnt/file.txt";
-	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
-	// for (size_t i = 0; i < 1048576; i++)
-	// 	Vfs_FdWrite(&file, "o", 1, nullptr);
-	// Vfs_FdSeek(&file, 0, SEEK_END);
-	// size_t filesize = 1048576;
-	// char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
-	// memset(buf, 'O', filesize);
-	// Vfs_FdSeek(&file, 0, SEEK_END);
-	// Vfs_FdWrite(&file, buf, filesize, nullptr);
-	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
-	// Vfs_FdSeek(&file, 0, SEEK_END);
-	// size_t filesize = Vfs_FdTellOff(&file);
-	// Vfs_FdSeek(&file, 0, SEEK_SET);
-	// char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
-	// Vfs_FdRead(&file, buf, filesize, nullptr);
-	// OBOS_Debug("%s:\n%s\n", filespec, buf);
-	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
-	Vfs_FdClose(&file);
-	dev_desc new_desc = 0;
-	file.vn->mount_point->fs_driver->driver->header.ftable.mk_file(&new_desc, UINTPTR_MAX, file.vn->mount_point->device, "file.txt.lol", FILE_TYPE_REGULAR_FILE);
+	// uint32_t ecx = 0;
+	// __cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	// bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	// if (!isHypervisor)
+	// 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
