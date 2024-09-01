@@ -16,19 +16,20 @@
 
 typedef struct obos_swap_free_region
 {
-    // MUST be < hdr.size
+    // In bytes from the beginning of the files.
     uint64_t next, prev;
+    // MUST be < hdr.size
     uint64_t size; // size including sizeof_this
     uint64_t sizeof_this;
     // The region starts right after this header.
     // If the device being used is a block device, then it will be on the next block.
 } OBOS_PACK obos_swap_free_region;
-typedef struct obos_swap_header 
+typedef struct obos_swap_header
 {
     // Must be from 128-sector size. 
     // If the device is not a block device, it must be 128
     uint64_t header_size; 
-    // Must be filesize - sizeof(obos_swap_header)
+    // Must be filesize - header_size
     uint64_t size; 
     struct {
         uint64_t head; // head in byte offset from the start of the vnode 
@@ -54,7 +55,7 @@ enum {
 #endif
 };
 enum {
-    // If set, the system didn't properly stop the swap device.
+    // If set, the system didn't properly stop the swap device (possibly due to a power failure/forced shutdown).
     // If that is the case, then the system must reinitailize the freelist.
     OBOS_SWAP_HEADER_DIRTY = 0b1,
 };

@@ -24,3 +24,5 @@ extern swap_dev* Mm_SwapProvider;
 
 obos_status Mm_SwapOut(page* page);
 obos_status Mm_SwapIn(page* page);
+
+obos_status Mm_ChangeSwapProvider(swap_dev* to);

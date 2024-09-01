@@ -62,7 +62,7 @@ typedef enum prot_flags
 	OBOS_PROTECTION_PLATFORM_END = 0x80000000,
 } prot_flags;
 
-extern allocator_info* Mm_Allocator;
+extern OBOS_EXPORT allocator_info* Mm_Allocator;
 
 OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.
