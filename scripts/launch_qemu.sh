@@ -6,6 +6,7 @@ qemu-system-x86_64 \
 -drive id=disk2,file=out/obos.iso,if=none,format=raw \
 -device ahci,id=ahci \
 -device ide-hd,drive=disk2,bus=ahci.0,bootindex=1 \
+-drive file=disk.img,format=raw \
 -m 1G \
 -gdb tcp:0.0.0.0:1234 -S \
 -boot d \

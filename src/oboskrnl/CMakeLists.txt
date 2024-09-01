@@ -13,7 +13,7 @@ list (APPEND oboskrnl_sources
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
-	"utils/uuid.c"
+	"utils/uuid.c" "mm/disk_swap.c"
 )
 
 add_executable(oboskrnl)

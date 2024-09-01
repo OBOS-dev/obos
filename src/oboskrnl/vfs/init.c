@@ -87,7 +87,7 @@ void Vfs_Initialize()
     if (root_uuid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
 }
-void Vfs_FinalizeInitialization()
+OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 {
     char* root_uuid = OBOS_GetOPTS("root-fs-uuid");
     char* root_partid = OBOS_GetOPTS("root-fs-partid");

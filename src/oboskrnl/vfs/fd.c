@@ -49,21 +49,28 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
 {
     if (!desc || !ent)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    return Vfs_FdOpenVnode(desc, ent->vnode, oflags);
+}
+OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags)
+{
+    if (!desc || !vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (desc->flags & FD_FLAGS_OPEN)
         return OBOS_STATUS_ALREADY_INITIALIZED;
-    OBOS_ASSERT(ent->vnode);
-    if (ent->vnode->vtype == VNODE_TYPE_DIR)
+    vnode* vnode = vn;
+    OBOS_ASSERT(vnode);
+    if (vnode->vtype == VNODE_TYPE_DIR)
         return OBOS_STATUS_NOT_A_FILE;
-    if (ent->vnode->vtype == VNODE_TYPE_CHR)
+    if (vnode->vtype == VNODE_TYPE_CHR)
         oflags |= FD_FLAGS_UNCACHED;
-    desc->vn = ent->vnode;
+    desc->vn = vnode;
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;
     desc->flags |= FD_FLAGS_WRITE;
     if (desc->vn->owner_uid == Core_GetCurrentThread()->proc->currentUID)
     {
         // We have owner perms.
-        vnode* const vn = desc->vn;
+        struct vnode* const vn = desc->vn;
         if (!vn->perm.owner_read)
             desc->flags &= FD_FLAGS_READ;
         if (!vn->perm.owner_write)
@@ -72,7 +79,7 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
     else if (desc->vn->group_uid == Core_GetCurrentThread()->proc->currentGID)
     {
         // We have group perms.
-        vnode* const vn = desc->vn;
+        struct vnode* const vn = desc->vn;
         if (!vn->perm.group_read)
             desc->flags &= FD_FLAGS_READ;
         if (!vn->perm.group_write)
@@ -81,7 +88,7 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
     else
     {
         // We have other perms.
-        vnode* const vn = desc->vn;
+        struct vnode* const vn = desc->vn;
         if (!vn->perm.other_read)
             desc->flags &= FD_FLAGS_READ;
         if (!vn->perm.other_write)

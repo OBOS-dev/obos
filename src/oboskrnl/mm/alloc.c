@@ -32,7 +32,7 @@ allocator_info* OBOS_NonPagedPoolAllocator;
 allocator_info* Mm_Allocator;
 
 #define set_statusp(status, to) (status) ? *(status) = (to) : (void)0
-void* MmH_FindAvaliableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status)
+void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status)
 {
     if (!ctx)
     {
@@ -157,11 +157,11 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         size += pgSize;
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
         VfsH_PageCacheGetEntry(&file->vn->pagecache, file->vn, file->offset, size);
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
     top:
     if (!base)
     {
-        base = (uintptr_t)MmH_FindAvaliableAddress(ctx, size, flags & ~VMA_FLAGS_GUARD_PAGE, &status);
+        base = (uintptr_t)MmH_FindAvailableAddress(ctx, size, flags & ~VMA_FLAGS_GUARD_PAGE, &status);
         if (obos_is_error(status))
         {
             set_statusp(ustatus, status);
@@ -400,7 +400,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     // We've possibly located a guard page that we need to free with the rest of the buffer.
     // Now we must unmap the pages and dereference them.
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
 
     offset = 0;
     curr = nullptr;
@@ -492,7 +492,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
 
     // Verify each pages' existence
 
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_MASKED-1, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
 
     uintptr_t offset = 0;
     page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 

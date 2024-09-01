@@ -4,6 +4,8 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/spinlock.h"
+#include "utils/tree.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -113,5 +115,34 @@ obos_status Mm_SwapIn(page* page)
     if (obos_is_error(status)) // Give up if this fails.
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not remap page 0x%p. Status: %d.\n", page->addr, status);
     page->pagedOut = false;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Mm_ChangeSwapProvider(swap_dev* to)
+{
+    if (!to)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!Mm_SwapProvider || to == Mm_SwapProvider)
+    {
+        Mm_SwapProvider = to;
+        return OBOS_STATUS_SUCCESS;
+    }
+    page* curr = nullptr;
+    // FIXME: Use each context instead of just the kernel context.
+    irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
+    uintptr_t inter = Mm_AllocatePhysicalPages(OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE, 1, nullptr);
+    RB_FOREACH(curr, page_tree, &Mm_KernelContext.pages)
+    {
+        if (!curr->pagedOut)
+            continue;
+        Mm_SwapProvider->swap_read(Mm_SwapProvider, curr->swapId, inter, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE, 0);
+        Mm_SwapProvider->swap_free(Mm_SwapProvider, curr->swapId, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
+        uintptr_t id = 0;
+        to->swap_resv(to, &id, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
+        curr->swapId = id;
+        to->swap_write(to, curr->swapId, inter, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE, 0);
+    }
+    Mm_SwapProvider = to;
+    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }

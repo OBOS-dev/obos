@@ -69,7 +69,10 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         found = RB_PREV(page_tree, &context->pages, found);
     *wasPageable = found->pageable;
     *wasUC = found->prot.uc;
-    obos_status status = Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)(base - base % OBOS_PAGE_SIZE), size, OBOS_PROTECTION_SAME_AS_BEFORE|OBOS_PROTECTION_CACHE_DISABLE, 0);
+    obos_status status = 
+        *wasPageable ?
+            Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)(base - base % OBOS_PAGE_SIZE), size, OBOS_PROTECTION_SAME_AS_BEFORE|OBOS_PROTECTION_CACHE_DISABLE, 0) :
+            OBOS_STATUS_SUCCESS;
     if (obos_is_error(status))
         return status;
     base &= ~1;
@@ -125,7 +128,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         {
             if (addr != base || ((int64_t)size) <= pg_size)
             {
-                data->phys_regions = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
                 struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
                 reg->phys = reg_base ? reg_base : physical_page;
                 reg->sz = reg_size ? reg_size : (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
@@ -137,9 +140,9 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         bytesLeft -= bytesInPage;
         found = RB_NEXT(page_tree, &context->pages, found);
     }
-    if (!data->physRegionCount || reg_size > 0)
+    if (!data->physRegionCount)
     {
-        data->phys_regions = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
         reg->phys = reg_base;
         reg->sz = reg_size;
@@ -149,7 +152,10 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
 static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data, bool wasPageable, bool wasUC)
 {
     OBOS_ASSERT(data);
-    obos_status status = Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)base, size, OBOS_PROTECTION_SAME_AS_BEFORE|(!wasUC ? OBOS_PROTECTION_CACHE_ENABLE : OBOS_PROTECTION_CACHE_DISABLE), wasPageable);
+    obos_status status =
+        wasPageable ?
+            Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)base, size, OBOS_PROTECTION_SAME_AS_BEFORE|(!wasUC ? OBOS_PROTECTION_CACHE_ENABLE : OBOS_PROTECTION_CACHE_DISABLE), true) :
+            OBOS_STATUS_SUCCESS;
     if (obos_is_error(status))
         return status;
     return OBOS_STATUS_SUCCESS;

@@ -215,12 +215,17 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
         .group_exec = false,
         .other_exec = false,
     };
-    if (!drv)
-        return nullptr;
-    vdev* dev = Vfs_Calloc(1, sizeof(vdev));
-    dev->desc = desc;
-    dev->driver = drv;
-    dev->refs++;
+    // It is legal to call this from the kernel
+    // if (!drv)
+    //     return nullptr;
+    vdev* dev = nullptr;
+    if (drv)
+    {
+        dev = Vfs_Calloc(1, sizeof(vdev));
+        dev->desc = desc;
+        dev->driver = drv;
+        dev->refs++;
+    }
     vnode *vn = Vfs_Calloc(1, sizeof(vnode));
     vn->desc = desc;
     vn->filesize = filesize;
