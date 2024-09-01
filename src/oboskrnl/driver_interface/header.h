@@ -122,13 +122,18 @@ typedef struct driver_ftable
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
     obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
     obos_status(*move_desc_to)(dev_desc desc, const char* where);
-    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
+    // vn is optional if parent is UINTPTR_MAX (root directory).
+    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type);
     obos_status(*remove_file)(dev_desc desc);
+    obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
     // If dir is UINTPTR_MAX, it refers to the root directory.
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+    // Can only be nullptr for the InitRD driver.
+    // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
+    bool(*probe)(void* vn);
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 } driver_ftable;

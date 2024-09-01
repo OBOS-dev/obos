@@ -43,5 +43,7 @@ void Vfs_Free(void* what)
         return;
     size_t szBlk = 0;
     Vfs_Allocator->QueryBlockSize(Vfs_Allocator, what, &szBlk);
+    if (szBlk == SIZE_MAX)
+        return;
     Vfs_Allocator->Free(Vfs_Allocator, what, szBlk);
 }

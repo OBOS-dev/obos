@@ -23,7 +23,6 @@ typedef struct pagecache
     // Take this lock when expanding the page cache.
     mutex lock;
     char* data;
-    size_t sz;
     // Take this lock when using dirty region list.
     mutex dirty_list_lock;
     dirty_pc_list dirty_regions;
@@ -50,21 +49,21 @@ typedef struct pagecache_mapped_region
     struct context* ctx;
     LIST_NODE(mapped_region_list, struct pagecache_mapped_region) node;
 } pagecache_mapped_region;
-pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off);
+OBOS_EXPORT pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off);
 // Note!
 // Does a lookup first, and if there is already a dirty region that can fit the contraints passed, it is used.
 // If one contains the offset, but is too small, it is expanded.
 // Otherwise, a new region is made.
 // This returns the dirty region created.
-pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size_t sz);
+OBOS_EXPORT pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size_t sz);
 // Adds a reference to the page cache
-void VfsH_PageCacheRef(pagecache* pc); 
+OBOS_EXPORT void VfsH_PageCacheRef(pagecache* pc); 
 // Removes a reference from the page cache.
 // If pc->ref reaches zero, the page cache is freed.
-void VfsH_PageCacheUnref(pagecache* pc);
+OBOS_EXPORT void VfsH_PageCacheUnref(pagecache* pc);
 // Flushes the page cache.
 // vn is of type `vnode*`
-void VfsH_PageCacheFlush(pagecache* pc, void* vn);
-// Resizes the page cache.
+OBOS_EXPORT void VfsH_PageCacheFlush(pagecache* pc, void* vn);
+// Gets a page cache entry.
 // vn is of type `vnode*`
-void VfsH_PageCacheResize(pagecache* pc, void* vn, size_t newSize);
+OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn, size_t offset, size_t size);

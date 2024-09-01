@@ -294,7 +294,7 @@ typedef volatile struct HBA_CMD_TBL
  
 	volatile uint8_t rsv[48];
  
-	volatile HBA_PRDT_ENTRY prdt_entry[256];
+	volatile HBA_PRDT_ENTRY prdt_entry[1024];
 } HBA_CMD_TBL;
 
 typedef enum drive_type

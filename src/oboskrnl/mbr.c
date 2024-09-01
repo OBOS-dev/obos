@@ -4,12 +4,13 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "allocators/base.h"
 #include <int.h>
 #include <error.h>
 #include <struct_packing.h>
 #include <partition.h>
 #include <mbr.h>
+
+#include <allocators/base.h>
 
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
@@ -60,6 +61,7 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
         }
         if (!partition_list)
             continue;
+        partition_list[i].vn = desc->vn;
         partition_list[i].off = curr->lba * blkSize;
         partition_list[i].size = curr->nSectors * blkSize;
         partition_list[i].drive = desc->vn;

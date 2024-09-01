@@ -77,7 +77,6 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "partition.h"
 
 #include <uacpi/kernel_api.h>
 #include <uacpi/utilities.h>
@@ -86,6 +85,8 @@
 
 #include <vfs/init.h>
 #include <vfs/mount.h>
+#include <vfs/fd.h>
+#include <vfs/limits.h>
 
 #include <locks/mutex.h>
 #include <locks/wait.h>
@@ -887,8 +888,111 @@ if (st != UACPI_STATUS_OK)\
 	Vfs_Initialize();
 	OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
 	Drv_PnpLoadDriversAt(Vfs_Root, true);
+	do {
+		char* modules_to_load = OBOS_GetOPTS("load-modules");
+		if (!modules_to_load)
+			break;
+		size_t len = strlen(modules_to_load);
+		char* iter = modules_to_load;
+		while(iter < (modules_to_load + len))
+		{
+			status = OBOS_STATUS_SUCCESS;
+			size_t namelen = strchr(modules_to_load, ',');
+			if (namelen != len)
+				namelen--;
+			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
+			char* path = memcpy(
+				OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, namelen+1, sizeof(char), nullptr),
+				iter,
+				namelen
+			);
+			fd file = {};
+			status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ_ONLY);
+			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, namelen+1);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			Vfs_FdSeek(&file, 0, SEEK_END);
+			size_t filesize = Vfs_FdTellOff(&file);
+			Vfs_FdSeek(&file, 0, SEEK_SET);
+			void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				Vfs_FdClose(&file);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			driver_id* drv = 
+				Drv_LoadDriver(buff, filesize, &status);
+			Mm_VirtualMemoryFree(&Mm_KernelContext, buff, filesize);
+			Vfs_FdClose(&file);
+			if (obos_is_error(status))
+			{
+				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			thread* main = nullptr;
+			status = Drv_StartDriver(drv, &main);
+			if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
+			{
+				OBOS_Warning("Could not start driver %*s. Status: %d\n", namelen, iter, status);
+				status = Drv_UnloadDriver(drv);
+				if (obos_is_error(status))
+					OBOS_Warning("Could not unload driver %*s. Status: %d\n", namelen, iter, status);
+				if (namelen != len)
+					namelen++;
+				iter += namelen;
+				continue;
+			}
+			while ((main->flags & THREAD_FLAGS_DIED))
+				OBOSS_SpinlockHint();
+			if (!(--main->references) && main->free)
+				main->free(main);
+			if (namelen != len)
+				namelen++;
+			iter += namelen;
+		}
+	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
+	uint32_t ecx = 0;
+	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	if (!isHypervisor)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
+	fd file = {};
+	const char* const filespec = "/mnt/file.txt";
+	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
+	// for (size_t i = 0; i < 1048576; i++)
+	// 	Vfs_FdWrite(&file, "o", 1, nullptr);
+	// Vfs_FdSeek(&file, 0, SEEK_END);
+	// size_t filesize = 1048576;
+	// char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
+	// memset(buf, 'O', filesize);
+	// Vfs_FdSeek(&file, 0, SEEK_END);
+	// Vfs_FdWrite(&file, buf, filesize, nullptr);
+	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
+	// Vfs_FdSeek(&file, 0, SEEK_END);
+	// size_t filesize = Vfs_FdTellOff(&file);
+	// Vfs_FdSeek(&file, 0, SEEK_SET);
+	// char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, filesize, nullptr);
+	// Vfs_FdRead(&file, buf, filesize, nullptr);
+	// OBOS_Debug("%s:\n%s\n", filespec, buf);
+	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
+	Vfs_FdClose(&file);
+	dev_desc new_desc = 0;
+	file.vn->mount_point->fs_driver->driver->header.ftable.mk_file(&new_desc, UINTPTR_MAX, file.vn->mount_point->device, "file.txt.lol", FILE_TYPE_REGULAR_FILE);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
@@ -925,10 +1029,12 @@ if (st != UACPI_STATUS_OK)\
 		asm("int3");
 	}
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged. and %ld KiB uncommitted.\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 
 		Mm_KernelContext.stat.paged/0x400,
-		Mm_KernelContext.stat.nonPaged/0x400);
+		Mm_KernelContext.stat.nonPaged/0x400,
+		Mm_KernelContext.stat.reserved/0x400
+	);
 	Core_ExitCurrentThread();
 }

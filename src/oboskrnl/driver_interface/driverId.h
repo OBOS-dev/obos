@@ -91,8 +91,11 @@ typedef struct driver_id
     driver_list dependencies;
     // The node in Drv_LoadedDrivers
     driver_node node;
+    // The node in Drv_LoadedFsDrivers
+    driver_node other_node;
     thread* main_thread;
 } driver_id;
 // To be filled out by the arch-specific code of the kernel before the driver interface is called.
 extern driver_list Drv_LoadedDrivers;
+extern driver_list Drv_LoadedFsDrivers;
 extern symbol_table OBOS_KernelSymbolTable;

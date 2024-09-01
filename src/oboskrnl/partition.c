@@ -23,6 +23,8 @@
 #include <utils/string.h>
 #include <utils/uuid.h>
 
+#include <uacpi_libc.h>
+
 void OBOS_PartProbeAllDrives(bool check_checksum)
 {
     // for (volatile bool b = true; b; )
@@ -95,15 +97,15 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
     for (size_t i = 0; i < nPartitions; i++)
     {
         partitions[i].fs_driver = nullptr;
-        mount* const point = ent->vnode->mount_point ? ent->vnode->mount_point : ent->vnode->un.mounted;
-        driver_id* driver = ent->vnode->vtype == VNODE_TYPE_REG ? point->fs_driver->driver : nullptr;
-        if (ent->vnode->vtype == VNODE_TYPE_CHR || ent->vnode->vtype == VNODE_TYPE_BLK)
-            driver = ent->vnode->un.device->driver;
-        vnode* part_vnode = Drv_AllocateVNode(driver, ent->vnode->desc, partitions[i].size, nullptr, ent->vnode->vtype);
+        // mount* const point = ent->vnode->mount_point ? ent->vnode->mount_point : ent->vnode->un.mounted;
+        // driver_id* driver = ent->vnode->vtype == VNODE_TYPE_REG ? point->fs_driver->driver : nullptr;
+        // if (ent->vnode->vtype == VNODE_TYPE_CHR || ent->vnode->vtype == VNODE_TYPE_BLK)
+        //     driver = ent->vnode->un.device->driver;
+        vnode* part_vnode = partitions[i].vn;
         string part_name;
         OBOS_InitStringLen(&part_name, OBOS_GetStringCPtr(&ent->name), OBOS_GetStringSize(&ent->name));
         char num[21] = {};
-        snprintf(num, 20, "%lu", i);
+        snprintf(num, 20, "%lu", i + 1);
         OBOS_AppendStringC(&part_name, num);
         part_vnode->flags |= VFLAGS_PARTITION;
         static const char* const part_formats[] = {
@@ -125,6 +127,27 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         }
         partitions[i].ent = Drv_RegisterVNode(part_vnode, OBOS_GetStringCPtr(&part_name));
         partitions[i].partid = part_name;
+        part_vnode->partitions = &partitions[i];
+        part_vnode->nPartitions = 1; 
+        for (driver_node* node = Drv_LoadedFsDrivers.head; node; )
+        { 
+            driver_header* hdr = &node->data->header;
+            if (hdr->ftable.probe(part_vnode))
+            {
+                partitions[i].fs_driver = node->data;
+                if (uacpi_strnlen(node->data->header.driverName, 32))
+                    OBOS_Log("Partition recognized by '%*s'\n", uacpi_strnlen(node->data->header.driverName, 32), node->data->header.driverName);
+                else
+                    OBOS_Log("Partition recognized by a driver\n");
+                vdev fs_driver = {.driver=node->data,.data=nullptr,.refs=0};
+                Vfs_Mount("/mnt", part_vnode, &fs_driver, nullptr);
+                break;
+            }
+            node = node->next;
+        }
     }
+    ent->vnode->partitions = partitions;
+    ent->vnode->nPartitions = nPartitions;
+    VfsH_UnlockMountpoint(ent->vnode->mount_point);
     return OBOS_STATUS_SUCCESS;
 }

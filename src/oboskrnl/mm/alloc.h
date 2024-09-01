@@ -24,6 +24,7 @@ typedef enum vma_flags
     VMA_FLAGS_NON_PAGED = BIT(5),
 	VMA_FLAGS_PRIVATE = BIT(6), // only applies when mapping a file.
 	VMA_FLAGS_PREFAULT = BIT(7), // only applies when mapping a file.
+	VMA_FLAGS_RESERVE = BIT(8), // Registers the pages, but does not back them by anything. If this is set, the VMA ignores the 'file' parameter.
     VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_NON_PAGED,
 } vma_flags;
 typedef enum prot_flags

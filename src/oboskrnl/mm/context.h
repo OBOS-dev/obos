@@ -62,6 +62,8 @@ typedef struct memstat
     size_t pageable;
     // The size of all non-pageable memory (memory that cannot be paged out).
     size_t nonPaged;
+    // The size of all uncommitted (reserved) memory. (memory allocated with VMA_FLAGS_RESERVE that has not yet been committed).
+    size_t reserved;
 } memstat;
 typedef struct context
 {

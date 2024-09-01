@@ -12,7 +12,7 @@
 
 #include <allocators/basic_allocator.h>
 
-#define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (((uintptr_t)(base) & ~0xfff) == ((((uintptr_t)(base) + (size)) & ~0xfff)))
+#define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (((uintptr_t)(base) & ~(OBOS_PAGE_SIZE-1)) == ((((uintptr_t)(base) + (size)) & ~(OBOS_PAGE_SIZE-1))))
 
 typedef enum
 {

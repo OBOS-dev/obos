@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "utils/list.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -22,6 +21,8 @@
 #include <external/fixedptc.h>
 
 #include <locks/spinlock.h>
+
+#include <utils/list.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>

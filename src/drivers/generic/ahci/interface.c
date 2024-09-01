@@ -81,10 +81,15 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     int64_t pg_size = 0;
     int64_t bytesLeft = size;
     int64_t bytesInPage = 0;
-    int64_t initialBytesInPage = 0;
+    // int64_t initialBytesInPage = 0;
+    bool trunc = false;
     for (uintptr_t addr = base; bytesLeft && (addr == base || (bytesInPage > 0)); addr += bytesInPage)
     {
-        found = RB_NEXT(page_tree, &context->pages, found);
+        // if (data->physRegionCount == 38)
+        //     for (volatile bool b = true; b; );
+        OBOS_ASSERT(!found->reserved);
+        if (found->reserved)
+            continue;
         pg_size = found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         if (data->physRegionCount >= MAX_PRDT_COUNT)
         {
@@ -97,13 +102,21 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
             bytesInPage = bytesLeft;
         else
             bytesInPage = pg_size - (addr % pg_size);
+        if (((addr + (bytesInPage - 1)) & ~(OBOS_PAGE_SIZE-1)) != (addr & ~(OBOS_PAGE_SIZE-1)))
+        {
+            trunc = true;
+            bytesInPage = pg_size - (addr % pg_size);
+        }
+        else
+            trunc = false;
         if (addr == base)
         {
-            initialBytesInPage = bytesInPage;
-            reg_base = physical_page;
+            // initialBytesInPage = bytesInPage;
+            reg_base = trunc ? 0 : physical_page;
         }
-        if (bytesLeft <= pg_size && ((int64_t)size) > pg_size)
-            bytesInPage -= initialBytesInPage;
+        // What does this even do?!?!?!?!??!?!
+        // if (bytesLeft <= pg_size && ((int64_t)size) > pg_size)
+        //     bytesInPage -= initialBytesInPage;
         if ((addr != base) && (prev_phys + pg_size) == physical_page && reg_size < (1024*1024*4 /* Hard limit imposed by AHCI */))
         {
             reg_size += (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
@@ -117,13 +130,14 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
                 reg->phys = reg_base ? reg_base : physical_page;
                 reg->sz = reg_size ? reg_size : (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
             }
-            reg_base = physical_page;
-            reg_size = (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
+            reg_base = !trunc ? physical_page : 0;
+            reg_size = !trunc ? (bytesLeft > bytesInPage ? bytesInPage : bytesLeft) : 0;
         }
         prev_phys = physical_page;
         bytesLeft -= bytesInPage;
+        found = RB_NEXT(page_tree, &context->pages, found);
     }
-    if (!data->physRegionCount)
+    if (!data->physRegionCount || reg_size > 0)
     {
         data->phys_regions = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
@@ -147,7 +161,30 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_INVALID_ARGUMENT;
     // FIXME: Allow for reads greater than 0x10000 sectors.
     if (blkCount > 0x10000)
-        blkCount = 0x10000;
+    {
+        size_t nSectorBlocks = blkCount / 0x10000;
+        size_t leftOver = blkCount % 0x10000;
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (nBlkRead)
+            *nBlkRead = 0;
+        for (size_t i = 0; i < nSectorBlocks; i++)
+        {
+            size_t read = 0;
+            if (obos_is_error(status = read_sync(desc, (void*)((uintptr_t)buf + i*0x10000), 0x10000, i*0x10000, &read)))
+                return status;
+            if (nBlkRead)
+                *nBlkRead += read;
+        }
+        if (leftOver)
+        {
+            size_t read = 0;
+            if (obos_is_error(status = read_sync(desc, (void*)((uintptr_t)buf + nSectorBlocks*0x10000), 0x10000, leftOver, &read)))
+                return status;
+            if (nBlkRead)
+                *nBlkRead += read;
+        }
+        return status;
+    }
     Port* port = (Port*)desc;
     if (!port->works)
     {
@@ -234,7 +271,8 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_SUCCESS;
     }
     obos_status status = OBOS_STATUS_SUCCESS;
-    struct command_data data = { .direction=COMMAND_DIRECTION_READ, .cmd=(port->supports48bitLBA ? ATA_WRITE_DMA_EXT : ATA_WRITE_DMA ) };
+    struct command_data data = { .direction=COMMAND_DIRECTION_WRITE, .cmd=(port->supports48bitLBA ? ATA_WRITE_DMA_EXT : ATA_WRITE_DMA ) };
+    data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     bool wasPageable = false;
     bool wasUC = false;
     status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, &wasPageable, &wasUC);

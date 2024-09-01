@@ -1,5 +1,5 @@
 /*
- * oboskrnl/vfs/alloc.c
+ * oboskrnl/vfs/async.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <partition.h>
 
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
@@ -99,6 +100,7 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
+    const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
         // If an asynchronous, uncached read is made, then first check if nBytes < sector size.
@@ -121,7 +123,7 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
             desc->vn->desc,
             buf,
             nBytes,
-            desc->offset,
+            desc->offset + base_offset,
             nullptr
         );
         Core_EventSet(evnt, true);
@@ -129,32 +131,32 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         VfsH_UnlockMountpoint(point);
         return status;
     }
-    else 
-    {
-        if ((desc->offset) > desc->vn->pagecache.sz)
-            goto irp;
-        size_t nBytesToRead = nBytes;
-        if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
-            nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
-        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
-        if (!VfsH_LockMountpoint(point))
-            return OBOS_STATUS_ABORTED;
-        memcpy(desc->vn->pagecache.data + desc->offset, buf, nBytesToRead);
-        VfsH_UnlockMountpoint(point);
-        if (!(nBytesToRead-nBytes))
-        {
-            desc->offset += nBytes;
-            return OBOS_STATUS_SUCCESS;
-        }
-        buf += nBytesToRead;
-        nBytes -= nBytesToRead;
-    }
+    // else 
+    // {
+    //     if ((desc->offset) > desc->vn->pagecache.sz)
+    //         goto irp;
+    //     size_t nBytesToRead = nBytes;
+    //     if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
+    //         nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
+    //     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    //     if (!VfsH_LockMountpoint(point))
+    //         return OBOS_STATUS_ABORTED;
+    //     memcpy(desc->vn->pagecache.data + desc->offset + base_offset, buf, nBytesToRead);
+    //     VfsH_UnlockMountpoint(point);
+    //     if (!(nBytesToRead-nBytes))
+    //     {
+    //         desc->offset += nBytes;
+    //         return OBOS_STATUS_SUCCESS;
+    //     }
+    //     buf += nBytesToRead;
+    //     nBytes -= nBytesToRead;
+    // }
     irp:
     (void)0;
     struct async_irp* irp = Vfs_Calloc(1, sizeof(struct async_irp));
     irp->e = evnt;
     irp->rw = true;
-    irp->fileoff = desc->offset;
+    irp->fileoff = desc->offset + base_offset;
     irp->cached = !(desc->flags & FD_FLAGS_UNCACHED);
     irp->requestSize = nBytes;
     irp->un.cbuf = buf;
@@ -188,6 +190,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
+    const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
         // If an asynchronous, uncached read is made, then first check if nBytes < sector size.
@@ -209,7 +212,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
             desc->vn->desc,
             buf,
             nBytes,
-            desc->offset,
+            desc->offset + base_offset,
             nullptr
         );
         Core_EventSet(evnt, true);
@@ -217,32 +220,32 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         VfsH_UnlockMountpoint(point);
         return status;
     }
-    else 
-    {
-        if ((desc->offset) > desc->vn->pagecache.sz)
-            goto irp;
-        size_t nBytesToRead = nBytes;
-        if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
-            nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
-        mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
-        if (!VfsH_LockMountpoint(point))
-            return OBOS_STATUS_ABORTED;
-        memcpy(buf, desc->vn->pagecache.data + desc->offset, nBytesToRead);
-        VfsH_UnlockMountpoint(point);
-        if (!(nBytesToRead-nBytes))
-        {
-            desc->offset += nBytes;
-            return OBOS_STATUS_SUCCESS;
-        }
-        buf += nBytesToRead;
-        nBytes -= nBytesToRead;
-    }
+    // else 
+    // {
+    //     if ((desc->offset) > desc->vn->pagecache.sz)
+    //         goto irp;
+    //     size_t nBytesToRead = nBytes;
+    //     if ((nBytesToRead + desc->offset) > desc->vn->pagecache.sz)
+    //         nBytesToRead -= ((nBytesToRead + desc->offset) - desc->vn->pagecache.sz);
+    //     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    //     if (!VfsH_LockMountpoint(point))
+    //         return OBOS_STATUS_ABORTED;
+    //     memcpy(buf, desc->vn->pagecache.data + desc->offset + base_offset, nBytesToRead);
+    //     VfsH_UnlockMountpoint(point);
+    //     if (!(nBytesToRead-nBytes))
+    //     {
+    //         desc->offset += nBytes;
+    //         return OBOS_STATUS_SUCCESS;
+    //     }
+    //     buf += nBytesToRead;
+    //     nBytes -= nBytesToRead;
+    // }
     irp:
     (void)0;
     struct async_irp* irp = Vfs_Calloc(1, sizeof(struct async_irp));
     irp->e = evnt;
     irp->rw = false;
-    irp->fileoff = desc->offset;
+    irp->fileoff = desc->offset + base_offset;
     irp->cached = !(desc->flags & FD_FLAGS_UNCACHED);
     irp->requestSize = nBytes;
     irp->un.buf = buf;
