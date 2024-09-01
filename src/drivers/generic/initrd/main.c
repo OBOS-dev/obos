@@ -77,9 +77,10 @@ OBOS_PAGEABLE_FUNCTION obos_status move_desc_to(dev_desc desc, const char* where
     OBOS_UNUSED(where);
     return OBOS_STATUS_READ_ONLY;
 }
-OBOS_PAGEABLE_FUNCTION obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type) {
+OBOS_PAGEABLE_FUNCTION obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type) {
     OBOS_UNUSED(newDesc);
     OBOS_UNUSED(parent);
+    OBOS_UNUSED(vn);
     OBOS_UNUSED(name);
     OBOS_UNUSED(type);
     return OBOS_STATUS_READ_ONLY;

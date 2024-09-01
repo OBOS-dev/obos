@@ -972,7 +972,7 @@ if (st != UACPI_STATUS_OK)\
 	if (!isHypervisor)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	fd file = {};
-	const char* const filespec = "/mnt/file.txt.lol";
+	const char* const filespec = "/mnt/file.txt";
 	Vfs_FdOpen(&file, filespec, FD_OFLAGS_UNCACHED);
 	// for (size_t i = 0; i < 1048576; i++)
 	// 	Vfs_FdWrite(&file, "o", 1, nullptr);
@@ -991,7 +991,8 @@ if (st != UACPI_STATUS_OK)\
 	// OBOS_Debug("%s:\n%s\n", filespec, buf);
 	// OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, filesize);
 	Vfs_FdClose(&file);
-	file.vn->mount_point->fs_driver->driver->header.ftable.move_desc_to(file.vn->desc, "a_long_name_that_wont_fit/subdirectory/file.txt.lol");
+	dev_desc new_desc = 0;
+	file.vn->mount_point->fs_driver->driver->header.ftable.mk_file(&new_desc, UINTPTR_MAX, file.vn->mount_point->device, "file.txt.lol", FILE_TYPE_REGULAR_FILE);
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);

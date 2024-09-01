@@ -22,7 +22,94 @@
 #include "alloc.h"
 #include "structs.h"
 
-OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
+bool valid_filename(const char* filename, bool isPath)
+{
+    for (size_t i = 0; filename[i]; i++)
+    {
+        switch (filename[i]) {
+            case '<':
+            case '>':
+            case ':':
+            case '\"':
+            case '\\':
+            case '|':
+            case '?':
+            case '*':
+                return false;
+            case '/':
+            {
+                if (!isPath)
+                    return false;
+                break;
+            }
+        }
+    }
+    return true;
+}
+static void ref_dirent(fat_dirent_cache* cache_entry);
+static void gen_short_name(const char* long_name, char* name, fat_dirent_cache* parent, fat_dirent_cache* dirent);
+obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const char* name, file_type type)
+{
+    if (!parent_desc || !newDesc || !name)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (type == FILE_TYPE_SYMBOLIC_LINK)
+        return OBOS_STATUS_INTERNAL_ERROR;
+    if (!valid_filename(name, false))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    fat_dirent_cache* parent = (fat_dirent_cache*)parent_desc;
+    if (parent_desc == UINTPTR_MAX)
+    {
+        if (!vn_)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        fat_cache* cache = nullptr;
+        for (cache = LIST_GET_HEAD(fat_cache_list, &FATVolumes); cache; )
+        {
+            if (cache->vn == vn_)
+                break;
+
+            cache = LIST_GET_NEXT(fat_cache_list, &FATVolumes, cache);
+        }
+        if (!cache)
+            return OBOS_STATUS_INVALID_OPERATION; // not a fat volume we have probed
+        parent = cache->root;
+    }
+    if (!(parent->data.attribs & DIRECTORY))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    for (fat_dirent_cache* curr = parent->fdc_children.head; curr; )
+    {
+        if (OBOS_CompareStringC(&curr->name, name))
+        {
+            printf("abort\n");
+            return OBOS_STATUS_ALREADY_INITIALIZED;
+        }
+        curr = curr->fdc_next_child;
+    }
+    fat_dirent_cache* new = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fat_dirent_cache), nullptr);
+    *newDesc = (dev_desc)new;
+    new->data.creation_date = (fat_date){};
+    new->data.last_mod_date = new->data.creation_date;
+    new->data.creation_time = (fat_time){};
+    new->data.last_mod_time = new->data.creation_time;
+    new->data.access_date = new->data.creation_date;
+    new->data.filesize = 0;
+    new->data.first_cluster_low = 0;
+    new->data.first_cluster_high = 0;
+    new->data.attribs |= (type == FILE_TYPE_DIRECTORY) ? DIRECTORY : 0;
+    gen_short_name(name, new->data.filename_83, parent, new);
+    new->owner = parent->owner;
+    OBOS_InitString(&new->name, name);
+    OBOS_InitStringLen(&new->path, OBOS_GetStringCPtr(&parent->path), OBOS_GetStringSize(&parent->path));
+    if (OBOS_GetStringSize(&new->path))
+        if (OBOS_GetStringCPtr(&new->path)[OBOS_GetStringSize(&new->path) - 1] != '/')
+            OBOS_AppendStringC(&new->path, "/");
+    OBOS_AppendStringS(&new->path, &new->name);
+    CacheAppendChild(parent, new);
+    Core_MutexAcquire(&new->owner->fd_lock);
+    ref_dirent(new);
+    Vfs_FdFlush(new->owner->volume);
+    Core_MutexRelease(&new->owner->fd_lock);
+    return OBOS_STATUS_SUCCESS;
+}
 static size_t strrfind(const char* str, char ch)
 {
     int64_t i = strlen(str);
@@ -66,7 +153,8 @@ static void gen_short_name(const char* long_name, char* name, fat_dirent_cache* 
     memset(name, 0, 11);
     if (strlen(long_name) <= 11)
     {
-        memcpy(name, long_name, 11);
+        // memcpy(name, long_name, 11);
+        gen_short_name_impl(long_name, name);
         return;
     }
     uint32_t n = 1;
@@ -425,6 +513,8 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
 obos_status move_desc_to(dev_desc desc, const char* where)
 {
     if (!desc || !where)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!valid_filename(where, true))
         return OBOS_STATUS_INVALID_ARGUMENT;
     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
     fat_cache* cache = cache_entry->owner;

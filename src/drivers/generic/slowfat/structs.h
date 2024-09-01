@@ -103,7 +103,7 @@ typedef struct fat_dirent
     fat_date access_date;
     uint16_t first_cluster_high; // only valid on FAT32
     fat_time last_mod_time;
-    fat_date last_mod_data;
+    fat_date last_mod_date;
     uint16_t first_cluster_low;
     uint32_t filesize;
 } OBOS_PACK fat_dirent;

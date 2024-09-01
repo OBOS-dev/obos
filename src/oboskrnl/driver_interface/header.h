@@ -122,7 +122,8 @@ typedef struct driver_ftable
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
     obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
     obos_status(*move_desc_to)(dev_desc desc, const char* where);
-    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, const char* name, file_type type);
+    // vn is optional if parent is UINTPTR_MAX (root directory).
+    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type);
     obos_status(*remove_file)(dev_desc desc);
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);

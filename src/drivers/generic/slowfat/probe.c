@@ -242,6 +242,8 @@ bool probe(void* vn_)
     cache->root_sector = cache->fatType == FAT32_VOLUME ? 0 : FirstDataSector-RootDirSectors;
     cache->root = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(*cache->root), nullptr);
     cache->root->data = (fat_dirent){}; // simply has nothing
+    cache->root->owner = cache;
+    cache->root->data.attribs |= DIRECTORY;
     cache->root->dirent_fileoff = 
         cache->fatType == FAT32_VOLUME ? 
             ClusterToSector(cache, cache->root_cluster)*cache->blkSize : 
