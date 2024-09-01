@@ -39,6 +39,7 @@ typedef struct fd
 } fd;
 OBOS_EXPORT obos_status       Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags);
 OBOS_EXPORT obos_status       Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags);
+OBOS_EXPORT obos_status       Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags);
 OBOS_EXPORT obos_status      Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten);
 OBOS_EXPORT obos_status       Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead);
 OBOS_EXPORT obos_status     Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt);

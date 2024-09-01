@@ -189,8 +189,11 @@ bool probe(void* vn_)
         return false;
     vnode* vn = (vnode*)vn_;
     fd *volume = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fd), nullptr);
-    *volume = (fd){ .vn=vn, .flags=FD_FLAGS_READ|FD_FLAGS_WRITE|FD_FLAGS_OPEN, .offset=0 };
-    LIST_APPEND(fd_list, &vn->opened, volume);
+    // *volume = (fd){ .vn=vn, .flags=FD_FLAGS_READ|FD_FLAGS_WRITE|FD_FLAGS_OPEN, .offset=0 };
+    // LIST_APPEND(fd_list, &vn->opened, volume);
+    Vfs_FdOpenVnode(volume, vn, 0);
+    if (!(volume->flags & FD_FLAGS_READ))
+        return false;
     size_t blkSize = Vfs_FdGetBlkSz(volume);
     if (blkSize != 1)
         OBOS_ASSERT(blkSize >= sizeof(bpb));
