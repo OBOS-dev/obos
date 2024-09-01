@@ -970,21 +970,9 @@ if (st != UACPI_STATUS_OK)\
 	OBOS_PartProbeAllDrives(true);
 	uint32_t ecx = 0;
 	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
-	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
-	if (!isHypervisor)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
-	dirent* sda2 = VfsH_DirentLookup("/dev/sda2");
-	// MmH_InitializeDiskSwap(sda2->vnode);
-	static swap_dev disk_swap = {};
-	MmH_InitializeDiskSwapDevice(&disk_swap, sda2->vnode);
-	Mm_ChangeSwapProvider(&disk_swap);
-	uint8_t* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 0x10000, nullptr);
-	memset(buf, 0x1d, 0x10000);
-	page what = {.addr=(uintptr_t)buf};
-	page* found = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-	Mm_SwapOut(found);
-	OBOS_ASSERT(memcmp_b(buf, 0x1d, 0x10000));
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, 0x10000);
+	// bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	// if (!isHypervisor)
+	// 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
