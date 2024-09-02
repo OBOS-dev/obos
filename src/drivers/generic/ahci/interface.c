@@ -99,7 +99,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
             unpopulate_physical_regions(base, size, data, *wasPageable, *wasUC);
             return OBOS_STATUS_INTERNAL_ERROR;
         }
-        OBOSS_GetPagePhysicalAddress((void*)addr, &physical_page);
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, nullptr, &physical_page);
         physical_page += addr % pg_size;
         if (bytesLeft < pg_size)
             bytesInPage = bytesLeft;

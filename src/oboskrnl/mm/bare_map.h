@@ -23,13 +23,6 @@ OBOS_WEAK obos_status OBOSS_MapPage_RW_XD(void* at, uintptr_t phys);
 /// <param name="at">The address of the page to unmap.</param>
 /// <returns>The status of the function.</returns>
 OBOS_WEAK obos_status OBOSS_UnmapPage(void* at);
-/// <summary>
-/// Queries the physical address of an address.
-/// </summary>
-/// <param name="at">The address to query.</param>
-/// <param name="oPhys">[out] The physical address.</param>
-/// <returns>The status of the function.</returns>
-OBOS_EXPORT obos_status OBOSS_GetPagePhysicalAddress(void* at, uintptr_t* oPhys);
 
 typedef struct basicmm_region
 {

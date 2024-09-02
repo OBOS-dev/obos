@@ -28,7 +28,7 @@ global xsave:function default
 global cli:function default
 global sti:function default
 global hlt:function default
-global MmS_GetCurrentPageTable
+global MmS_GetCurrentPageTable: function default
 
 section .text
 

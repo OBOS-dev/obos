@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -16,6 +15,7 @@
 #include <mm/swap.h>
 #include <mm/pmm.h>
 #include <mm/bare_map.h>
+#include <mm/alloc.h>
 
 #include <vfs/pagecache.h>
 #include <vfs/vnode.h>
@@ -74,13 +74,12 @@ static void handle_oom(context* ctx, size_t bytesNeeded, page* pg)
 }
 static obos_status copy_cow_page(context* ctx, page* page, struct page* other)
 {
-    void* addr = (void*)page->addr;
     if (other->next_copied_page != page && other->prev_copied_page != page)
     {
         // The other page already did the hard work.
         // We just need to update our page mappings.
         uintptr_t phys = 0;
-        OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
+        MmS_QueryPageInfo(page->owner->pt, page->addr, nullptr, &phys);
         other->prot.rw = true;
         MmS_SetPageMapping(ctx->pt, page, phys);
         return OBOS_STATUS_SUCCESS;
@@ -93,8 +92,8 @@ static obos_status copy_cow_page(context* ctx, page* page, struct page* other)
         return OBOS_STATUS_SUCCESS;
     }
     // The other page gets the page, while we get a new one.
-    uintptr_t phys = page->addr;
-    OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
+    uintptr_t phys = 0;
+    MmS_QueryPageInfo(ctx->pt, page->addr, nullptr, &phys);
     const size_t pgSize = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     obos_status status = OBOS_STATUS_SUCCESS;
     try_again:
@@ -239,9 +238,9 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             pc_page->prot.rw = pc_page->prot.ro;
             page->prot.present = true;
             pc_page->prot.present = true;
-            OBOSS_GetPagePhysicalAddress((void*)page->addr, &pagePhys);
+            MmS_QueryPageInfo(ctx->pt, page->addr, nullptr, &pagePhys);
             MmS_SetPageMapping(ctx->pt, page, pagePhys);
-            OBOSS_GetPagePhysicalAddress(pagecache_region, &pagePhys);
+            MmS_QueryPageInfo(ctx->pt, (uintptr_t)pagecache_region, nullptr, &pagePhys);
             MmS_SetPageMapping(Mm_KernelContext.pt, pc_page, pagePhys);
         }
         else 
@@ -249,7 +248,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             // We can just set this page's current physical address to that of the page cache.
             uintptr_t pagePhys = 0;
             page->prot.present = true;
-            OBOSS_GetPagePhysicalAddress(pagecache_region, &pagePhys);
+            MmS_QueryPageInfo(ctx->pt, (uintptr_t)pagecache_region, nullptr, &pagePhys);
             MmS_SetPageMapping(ctx->pt, page, pagePhys);
         }
         Core_MutexRelease(&page->region->lock);
@@ -267,12 +266,11 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         OBOS_ASSERT(vn->filesize > (page->region->fileoff + page->region->sz));
         LIST_APPEND(dirty_pc_list, &vn->pagecache.dirty_regions, dirty_reg);
         uintptr_t pagePhys = 0;
-        OBOSS_GetPagePhysicalAddress((void*)page->addr, &pagePhys);
+        MmS_QueryPageInfo(ctx->pt, page->addr, nullptr, &pagePhys);
         page->prot.rw = true;
         MmS_SetPageMapping(ctx->pt, page, pagePhys);
     }
     done:
-    // TODO: Signal the thread if handled == false.
     return !handled ? OBOS_STATUS_UNHANDLED : OBOS_STATUS_SUCCESS;
 }
 obos_status Mm_RunPRA(context* ctx)
@@ -305,7 +303,7 @@ obos_status Mm_RunPRA(context* ctx)
         OBOS_ASSERT(page);
         if (page->pagedOut)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Page 0x%p is in working set, and is paged out.\n", (void*)page->addr);
-        MmS_QueryPageInfo(ctx->pt, page->addr, page);
+        MmS_QueryPageInfo(ctx->pt, page->addr, page, nullptr);
         if (page->prot.touched)
             page->age |= 1;
         page->age <<= 1;

@@ -137,4 +137,8 @@ typedef enum
 	/// The operation was aborted.
 	/// </summary>
 	OBOS_STATUS_ABORTED,
+	/// <summary>
+	/// A page fault happened accessing the user memory..
+	/// </summary>
+	OBOS_STATUS_PAGE_FAULT,
 } obos_status;

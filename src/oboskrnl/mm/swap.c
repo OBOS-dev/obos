@@ -33,8 +33,7 @@ obos_status Mm_SwapOut(page* page)
     size_t nPages = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE : 1;
     uintptr_t id;
     uintptr_t phys = 0;
-    // TODO: Use a function that takes in a context.
-    obos_status status = OBOSS_GetPagePhysicalAddress((void*)page->addr, &phys);
+    obos_status status = MmS_QueryPageInfo(page->owner->pt, page->addr, nullptr, &phys);
     if (obos_is_error(status))
         return status;
     // Reserve swap space, then write the page to the reserved swap space.

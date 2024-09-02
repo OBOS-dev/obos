@@ -95,6 +95,8 @@ typedef struct thread
 
 	thread_node phys_mem_node;
 	size_t nBytesWaitingFor;
+
+	struct signal_header* signal_info;
 } thread;
 typedef struct thread_list
 {

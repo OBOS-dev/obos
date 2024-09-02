@@ -390,10 +390,12 @@ obos_status Arch_InitializeKernelPageTable()
 	Arch_KernelCR3 = newCR3;
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
+obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage, uintptr_t* phys)
 {
-	if (!pt || !ppage)
+	if (!pt)
 		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!ppage && !phys)
+		return OBOS_STATUS_SUCCESS;
 	page page;
 	memzero(&page, sizeof(page));
 	uintptr_t pml2Entry = Arch_GetPML2Entry(pt, addr);
@@ -401,7 +403,8 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 	page.prot.present = pml2Entry & BIT_TYPE(0, UL);
 	if (!page.prot.present)
 	{
-		ppage->prot = page.prot;
+		if (ppage)
+			ppage->prot = page.prot;
 		return OBOS_STATUS_SUCCESS;
 	}
 	page.prot.huge_page = pml2Entry & BIT_TYPE(7, UL) /* Huge page */;
@@ -435,8 +438,13 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 		pml2Entry = (uintptr_t)MmS_MapVirtFromPhys(pml2Entry);
 		((uintptr_t*)pml2Entry)[AddressToIndex(addr, 0)] &= ~(BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	}
-	ppage->addr = addr;
-	memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
+	if (ppage)
+	{
+		ppage->addr = addr;
+		memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
+	}
+	if (phys)
+		*phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	return OBOS_STATUS_SUCCESS;	
 }
 obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)

@@ -248,7 +248,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                 void* pagecache_base = file->vn->pagecache.data + currFileOff;
                 page what = { .addr=(uintptr_t)pagecache_base };
                 page* pc_page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-                OBOSS_GetPagePhysicalAddress(pagecache_base, &phys);
+                MmS_QueryPageInfo(Mm_KernelContext.pt, pc_page->addr, nullptr, &phys);
                 if (!(prot & OBOS_PROTECTION_READ_ONLY))
                 {
                     if (pc_page->next_copied_page)
@@ -265,7 +265,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             }
             else
             {
-                OBOSS_GetPagePhysicalAddress((void*)(file->vn->pagecache.data + currFileOff), &phys);
+                MmS_QueryPageInfo(ctx->pt, (uintptr_t)(file->vn->pagecache.data + currFileOff), nullptr, &phys);
                 if (!phys)
                     isPresent = false;
             }
@@ -439,7 +439,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         if (curr->prot.present)
         {
             uintptr_t phys = 0;
-            OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
+            MmS_QueryPageInfo(ctx->pt, curr->addr, nullptr, &phys);
             if (!curr->region && !curr->isPrivateMapping)
                 Mm_FreePhysicalPages(phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
         }
@@ -463,7 +463,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     struct page current = {};
     for (uintptr_t addr = base; addr < (base + size); addr += offset)
     {
-        MmS_QueryPageInfo(ctx->pt, addr, &current);
+        MmS_QueryPageInfo(ctx->pt, addr, &current, nullptr);
         if (current.prot.present)
         {
             current.prot.present = false;
@@ -571,8 +571,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         if (isPageable < 2)
             curr->pageable = isPageable;
         uintptr_t phys = 0;
-        // TODO: Use a function that takes in a context.
-        OBOSS_GetPagePhysicalAddress((void*)curr->addr, &phys);
+        MmS_QueryPageInfo(ctx->pt, curr->addr, nullptr, &phys);
         MmS_SetPageMapping(ctx->pt, curr, phys);
 
         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;

@@ -197,7 +197,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_InitializePageTables()
         uintptr_t phys = 0;
         for (uintptr_t addr = phdr->p_vaddr & ~0xfff; addr < ((phdr->p_vaddr & ~0xfff) + ((phdr->p_memsz + 0xfff) & ~0xfff)); addr += 4096)
         {
-            OBOSS_GetPagePhysicalAddress((void*)addr, &phys);
+            Arch_GetPagePTE(oldPt, addr, &phys);
+            phys = MASK_PTE(phys);
             Arch_MapPage(newPt, addr, phys, ptFlags);
             top = addr + 0x1000;
         }
@@ -208,7 +209,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_InitializePageTables()
     OBOSH_BasicMMAddRegion(&kernel_region, (void*)(uintptr_t)Arch_KernelAddressRequest.response->virtual_base, kernelSize);
     OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_MapToHHDM(0), Mm_PhysicalMemoryBoundaries);
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
+OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage, uintptr_t* phys)
 {
     if (!pt || !ppage)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -237,6 +238,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
         entry &= ~(PT_FLAGS_USED | PT_FLAGS_MODIFIED);
         Arch_MapPage(pt, addr, MASK_PTE(entry), entry & ~0xffffff00);
     }
+    if (phys)
+        *phys = MASK_PTE(entry);
     memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
     return OBOS_STATUS_SUCCESS;
 }

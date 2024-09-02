@@ -48,7 +48,7 @@ static void initialize()
                 VMA_FLAGS_NON_PAGED,
                 nullptr, nullptr);
         uintptr_t oldPhys = 0;
-        OBOSS_GetPagePhysicalAddress((void*)virt_base, &oldPhys);
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), virt_base, nullptr, &oldPhys);
         // Map as RW, Cache Disabled, and Supervisor
         Arch_MapPage(MmS_GetCurrentPageTable(), virt_base, Arch_PICBases[i].phys_base, (0b11|(0b11<<5)|(1<<7)));
         Mm_FreePhysicalPages(oldPhys, 1);

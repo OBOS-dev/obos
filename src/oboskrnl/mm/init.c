@@ -60,7 +60,7 @@ static bool count_pages(basicmm_region* region, void* udatablk)
         addr < limit;
         (udata->nNodes)++)
     {
-        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &pg);
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &pg, nullptr);
         if (pg.prot.huge_page)
             addr += OBOS_HUGE_PAGE_SIZE;
         else
@@ -81,7 +81,7 @@ static bool register_pages(basicmm_region* region, void* udatablk)
         OBOS_ASSERT(udata->i++ < udata->nNodes);
         page* volatile pg = &udata->buf[udata->i - 1];
         memzero(pg, sizeof(*pg));
-        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, (page*)pg);
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, (page*)pg, nullptr);
         pg->addr = addr;
         pg->pageable = !(MmH_IsAddressUnPageable(addr) ||
                        ((addr >= round_down(udata->buf)) && (addr < round_up(&udata->buf[udata->nNodes]))) ||

@@ -28,15 +28,16 @@ typedef uintptr_t page_table;
 /// </summary>
 /// <param name="pt">The page table.</param>
 /// <param name="addr">The base address the page to query.</param>
-/// <param name="info">[out] The page struct to put the info into. Mustn't be nullptr.</param>
+/// <param name="info">[out] The page struct to put the info into. Can be nullptr.</param>
+/// <param name="phys">[out] The physical address of the addr. Can be nullptr.</param>
 /// <returns>The status of the function.</returns>
-OBOS_WEAK obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* info);
+OBOS_EXPORT obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* info, uintptr_t* phys);
 /// <summary>
 /// Gets the current page table.
 /// <para/>NOTE: This always returns the kernel page table.
 /// </summary>
 /// <returns>The current page table.</returns>
-OBOS_WEAK page_table MmS_GetCurrentPageTable();
+OBOS_EXPORT page_table MmS_GetCurrentPageTable();
 /// <summary>
 /// Updates the page mapping at page->addr to the protection in page->prot.
 /// </summary>

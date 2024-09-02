@@ -78,6 +78,7 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
+#include "signal.h"
 #include "vfs/dirent.h"
 
 #include <uacpi/kernel_api.h>
@@ -113,8 +114,7 @@ extern void Arch_IdleTask();
 void Arch_CPUInitializeGDT(cpu_local* info, uintptr_t istStack, size_t istStackSize);
 void Arch_KernelMainBootstrap();
 static void ParseBootContext(struct ultra_boot_context* bcontext);
-void Arch_PageFaultHandler(interrupt_frame* frame);
-void Arch_DoubleFaultHandler(interrupt_frame* frame);
+void Arch_InstallExceptionHandlers();
 struct stack_frame
 {
 	struct stack_frame* down;
@@ -164,9 +164,8 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
-	Arch_RawRegisterInterrupt(0xe, (uintptr_t)Arch_PageFaultHandler);
-	Arch_RawRegisterInterrupt(0x8, (uintptr_t)Arch_DoubleFaultHandler);
 	Arch_InitializeIDT(true);
+	Arch_InstallExceptionHandlers();
 	OBOS_Debug("Enabling XD bit in IA32_EFER.\n");
 	{
 		uint32_t edx = 0;
@@ -277,126 +276,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the initial swap module in the boot context!\n\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
-uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
-OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
-{
-	sti();
-	uintptr_t virt = getCR2();
-	virt &= ~0xfff;
-	if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
-		virt &= ~0x1fffff;
-	if (Mm_IsInitialized())
-	{
-		CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
-		uint32_t mm_ec = 0;
-		if (frame->errorCode & BIT(0))
-			mm_ec |= PF_EC_PRESENT;
-		if (frame->errorCode & BIT(1))
-			mm_ec |= PF_EC_RW;
-		if (frame->errorCode & BIT(2))
-			mm_ec |= PF_EC_UM;
-		if (frame->errorCode & BIT(3))
-			mm_ec |= PF_EC_INV_PTE;
-		if (frame->errorCode & BIT(4))
-			mm_ec |= PF_EC_EXEC;
-		// TODO: Find out why CoreS_GetCPULocalPtr()->currentContext is nullptr in the first place
-		if (!CoreS_GetCPULocalPtr()->currentContext)
-		{
-			if (CoreS_GetCPULocalPtr()->currentThread->proc->pid != 1 && mm_ec & PF_EC_UM)
-				CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc->ctx;
-			else
-				CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
-		}
-		obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
-		switch (status)
-		{
-			case OBOS_STATUS_SUCCESS:
-				CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
-				OBOS_ASSERT(frame->rsp != 0);
-				return;
-			case OBOS_STATUS_UNHANDLED:
-				break;
-			default:
-			{
-				OBOS_Warning("Handling page fault with error code 0x%x on address %p failed with status %d.\n", mm_ec, getCR2(), status);
-				break;
-			}
-		}
-	}
-	page* volatile pg = nullptr;
-	OBOS_UNUSED(pg); 
-	if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
-	{
-		asm("sti");
-		irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
-		Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
-		Kdbg_CallDebugExceptionHandler(frame, true);
-		if (oldIrql != IRQL_INVALID)
-			Core_LowerIrqlNoThread(oldIrql);
-		asm("cli");
-	}
-	if (CoreS_GetCPULocalPtr()->currentContext)
-	{
-		page what;
-		what.addr = virt;
-		pg = RB_FIND(page_tree, &CoreS_GetCPULocalPtr()->currentContext->pages, &what);
-	}
-	asm("cli");
-	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
-		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
-		"Register dump:\n"
-		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
-		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
-		"\tRCX: 0x%016lx, RAX: 0x%016lx, RIP: 0x%016lx\n"
-		"\t R8: 0x%016lx,  R9: 0x%016lx, R10: 0x%016lx\n"
-		"\tR11: 0x%016lx, R12: 0x%016lx, R13: 0x%016lx\n"
-		"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
-		"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
-		"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
-		"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n",
-		(void*)frame->rip,
-		frame->cs == 0x8 ? "kernel" : "user",
-		(frame->errorCode & 2) ? "write" : ((frame->errorCode & 0x10) ? "execute" : "read"),
-		getCR2(),
-		frame->errorCode & 1 ? "present" : "unpresent",
-		frame->errorCode,
-		frame->rdi, frame->rsi, frame->rbp,
-		frame->rsp, frame->rbx, frame->rdx,
-		frame->rcx, frame->rax, frame->rip,
-		frame->r8, frame->r9, frame->r10,
-		frame->r11, frame->r12, frame->r13,
-		frame->r14, frame->r15, frame->rflags,
-		frame->ss, frame->ds, frame->cs,
-		getCR0(), getCR2(), frame->cr3,
-		getCR4(), Core_GetIrql(), getEFER()
-	);
-}
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
-{
-	static const char format[] = "Double fault!\n"
-		"Register dump:\n"
-		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
-		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
-		"\tRCX: 0x%016lx, RAX: 0x%016lx, RIP: 0x%016lx\n"
-		"\t R8: 0x%016lx,  R9: 0x%016lx, R10: 0x%016lx\n"
-		"\tR11: 0x%016lx, R12: 0x%016lx, R13: 0x%016lx\n"
-		"\tR14: 0x%016lx, R15: 0x%016lx, RFL: 0x%016lx\n"
-		"\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
-		"\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
-		"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n";
-	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
-		format,
-		frame->rdi, frame->rsi, frame->rbp,
-		frame->rsp, frame->rbx, frame->rdx,
-		frame->rcx, frame->rax, frame->rip,
-		frame->r8, frame->r9, frame->r10,
-		frame->r11, frame->r12, frame->r13,
-		frame->r14, frame->r15, frame->rflags,
-		frame->ss, frame->ds, frame->cs,
-		getCR0(), getCR2(), frame->cr3,
-		getCR4(), Core_GetIrql(), getEFER()
-	);
-}
 uint64_t random_number();
 uint8_t random_number8();
 __asm__(
@@ -689,7 +568,7 @@ void Arch_KernelMainBootstrap()
 				if (!curr || curr->addr != addr)
 					OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find page node at address 0x%p.\n", addr);
 				uintptr_t oldPhys = 0, phys = Arch_Framebuffer->physical_address + (addr-base);
-				OBOSS_GetPagePhysicalAddress((void*)curr->addr, &oldPhys);
+				MmS_QueryPageInfo(MmS_GetCurrentPageTable(),curr->addr, nullptr, &oldPhys);
 				// Present,Write,XD,Write-Combining (PAT: 0b110)
 				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
 				offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
@@ -999,8 +878,6 @@ if (st != UACPI_STATUS_OK)\
 	Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
 	Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
 	Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
-	Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
-	Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
 	Kdbg_CurrentConnection = &gdb_conn;
 	if (OBOS_GetOPTF("enable-kdbg") && Kdbg_CurrentConnection->pipe_interface->read_sync)
 	{
