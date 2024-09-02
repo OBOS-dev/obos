@@ -56,7 +56,10 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
 OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
 	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
+	{
+		OBOS_ASSERT(!"funny stuff");
 		return OBOS_STATUS_INVALID_IRQL;
+	}
 	atomic_flag_clear_explicit(&lock->val, memory_order_seq_cst);
 #ifdef OBOS_DEBUG
 	lock->owner = nullptr;

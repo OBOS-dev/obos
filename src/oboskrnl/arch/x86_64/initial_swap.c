@@ -27,20 +27,10 @@ typedef struct swap_page
 {
     size_t size;
     struct swap_page *next, *prev;
-    RB_ENTRY(swap_page) rb_node;
 } swap_page;
-typedef RB_HEAD(swap_page_tree, swap_page) swap_page_tree;
-inline static int cmp(swap_page* left, swap_page* right)
-{
-    if (left == right)
-        return 0;
-    return (intptr_t)left - (intptr_t)right;    
-}
-RB_GENERATE_STATIC(swap_page_tree, swap_page, rb_node, cmp);
 typedef struct swap_header
 {
     uint64_t magic;
-    swap_page_tree pages;
     struct 
     {
         swap_page *head, *tail;
@@ -88,13 +78,12 @@ static obos_status swap_resv(struct swap_device* dev, uintptr_t* id, size_t nPag
             hdr->freeList.tail = page->prev;
         hdr->freeList.nNodes--;
     }
-    RB_INSERT(swap_page_tree, &hdr->pages, buf);
     buf->size = allocSize;
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     *id = (uintptr_t)buf;
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPages)
+static obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPages, size_t offsetBytes)
 {
     OBOS_UNUSED(nPages);
     if (!dev || !nPages || !id) 
@@ -106,12 +95,10 @@ static obos_status swap_free(struct swap_device* dev, uintptr_t id, size_t nPage
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
-    if (!RB_FIND(swap_page_tree, &hdr->pages, page))
-    {
-        Core_SpinlockRelease(&hdr->lock, oldIrql);
+    if (page->size <= offsetBytes)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    }
-    RB_REMOVE(swap_page_tree, &hdr->pages, page);
+    id += offsetBytes;
+    page = (swap_page*)id;
     if (!hdr->freeList.head)
         hdr->freeList.head = page;
     if (hdr->freeList.tail)
@@ -134,11 +121,6 @@ static obos_status swap_write(struct swap_device* dev, uintptr_t id, uintptr_t p
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
-    if (!RB_FIND(swap_page_tree, &hdr->pages, page))
-    {
-        Core_SpinlockRelease(&hdr->lock, oldIrql);
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    }
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     if (!nPages)
         return OBOS_STATUS_SUCCESS;
@@ -164,11 +146,6 @@ static obos_status swap_read(struct swap_device* dev, uintptr_t id, uintptr_t ph
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_SpinlockAcquireExplicit(&hdr->lock, IRQL_DISPATCH, true);
     swap_page* page = (swap_page*)id;
-    if (!RB_FIND(swap_page_tree, &hdr->pages, page))
-    {
-        Core_SpinlockRelease(&hdr->lock, oldIrql);
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    }
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     if (!nPages)
         return OBOS_STATUS_SUCCESS;

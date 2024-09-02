@@ -27,7 +27,8 @@ typedef struct page
         bool present : 1;                   // If set, the page is present.
         bool rw : 1;                        // If set, the page can be written
         bool user : 1;                      // If set, the page can be accessed in user mode.
-        bool touched : 1;                   // If set, the page has been read or written.
+        bool accessed : 1;                  // If set, the page has been read.
+        bool dirty : 1;                     // If set, the page has been written.
         bool huge_page : 1;                 // If set, the page is a huge page.
         bool executable : 1;                // If set, the page can be executed.
         bool uc : 1;                        // If set, this page is uncacheable.
@@ -39,9 +40,13 @@ typedef struct page
     bool isGuardPage : 1;                   // If set, the page is a guard page.
     bool allocated : 1;                     // If set, this object was allocated by Mm_Allocator.
     bool reserved : 1;                      // If set, this object is reserved memory (i.e., not backed by anything).
+    bool onDirtyList : 1;                   // If set, this object is on the "Mm_DirtyPages" list.
+    bool onStandbyList : 1;                 // If set, this object is on the "Mm_DirtyPages" list.
     uint8_t age : 8;                        // The page's age
     uintptr_t addr : PTR_BITS;              // The page's address.
     uintptr_t swapId : PTR_BITS;            // The page's swap allocation id. Only valid if pagedOut == true.
+    size_t swap_off : PTR_BITS;             // The offset in the swap buffer. Only valid if pagedOut == true.
+    uintptr_t cached_phys : PTR_BITS;       // Not to be trusted except if (onStandbyList || onDirtyList || pagedOut)
     struct page* next_copied_page;          // If CoW is enabled on this page, this contains the pointer to the next page we're sharing data with.
     struct page* prev_copied_page;          // If CoW is enabled on this page, this contains the pointer to the previous page we're sharing data with.
 } page;

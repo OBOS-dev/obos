@@ -210,7 +210,7 @@ bool probe(void* vn_)
         memcmp((uint8_t*)bpb + 0x36, "FAT", 3) ^
         memcmp((uint8_t*)bpb + 0x52, "FAT", 3);
     if (bpb->totalSectors16 > 0 && bpb->totalSectors32 > 0)
-        ret = false; // fnuy buisness
+        ret = false; // fnuy business
     if (!ret)
     {
         FATAllocator->Free(FATAllocator, bpb, blkSize == 1 ? sizeof(struct bpb) : blkSize);

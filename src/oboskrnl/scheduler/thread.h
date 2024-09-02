@@ -49,7 +49,8 @@ typedef enum
 } thread_flags;
 typedef enum
 {
-	THREAD_STATUS_READY = 0,
+	THREAD_STATUS_INVALID = 0,
+	THREAD_STATUS_READY = 1,
 	THREAD_STATUS_RUNNING,
 	THREAD_STATUS_BLOCKED,
 } thread_status;
@@ -92,9 +93,6 @@ typedef struct thread
 	thread_node lock_node;
 	size_t nWaiting; // the count of objects the thread is waiting on.
 	size_t nSignaled; // the count of objects that have signaled the thread.
-
-	thread_node phys_mem_node;
-	size_t nBytesWaitingFor;
 
 	struct signal_header* signal_info;
 } thread;

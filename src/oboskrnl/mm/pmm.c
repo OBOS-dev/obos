@@ -16,6 +16,9 @@
 #include <sanitizers/asan.h>
 
 #include <mm/pmm.h>
+#include <mm/init.h>
+#include <mm/page.h>
+#include <mm/swap.h>
 
 struct freelist_node
 {
@@ -37,7 +40,6 @@ size_t Mm_TotalPhysicalPages;
 size_t Mm_TotalPhysicalPagesUsed;
 size_t Mm_UsablePhysicalPages;
 uintptr_t Mm_PhysicalMemoryBoundaries;
-thread_list Mm_ThreadsAwaitingPhysicalMemory;
 static spinlock lock;
 
 obos_status Mm_InitializePMM()
@@ -165,7 +167,7 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 	OBOS_ASSERT(phys < Mm_PhysicalMemoryBoundaries);
 	return phys;
 }
-OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
+OBOS_NO_KASAN static uintptr_t allocate_phys_or_fail(size_t nPages, size_t alignmentPages, obos_status *status)
 {
 	uintptr_t res = allocate(nPages, alignmentPages, status, &s_head, &s_tail);
 	if (res)
@@ -177,6 +179,42 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 #else
 	return 0;
 #endif
+}
+OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
+{
+	uintptr_t res = allocate_phys_or_fail(nPages, alignmentPages, status);
+	if (res)
+		return res;
+	if (!Mm_IsInitialized())
+		return 0; // oof.
+	if (nPages > (OBOS_HUGE_PAGE_SIZE / OBOS_PAGE_SIZE))
+	{
+		if (status)
+			*status = OBOS_STATUS_UNIMPLEMENTED;
+		return 0;
+	}
+	// take a standby page large enough.
+	start_again:
+	(void)0;
+	irql oldIrql = Mm_TakeSwapLock();
+	page_node* node = Mm_StandbyPageList.head;
+	while (nPages == 1 && node && node->data->prot.huge_page)
+		node = node->next;
+	page* pg = node ? node->data : nullptr;
+	if (pg)
+	{
+		// Remove from standby.
+		REMOVE_PAGE_NODE(Mm_StandbyPageList, &pg->ln_node);
+		res = pg->cached_phys;
+	}
+	else
+	{
+		// OOM!
+		Mm_ReleaseSwapLock(oldIrql);
+		Mm_WakePageWriter(true);
+		goto start_again;
+	} 
+	return res;
 }
 OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages32(size_t nPages, size_t alignmentPages, obos_status *status)
 {
@@ -231,19 +269,5 @@ OBOS_NO_KASAN obos_status Mm_FreePhysicalPages(uintptr_t addr, size_t nPages)
 	free(addr, nPages, &s_head, &s_tail);
 #endif
 	// OBOS_Debug("%s: Marking physical memory region at 0x%p-0x%p as free.\n", __func__, addr, addr+nPages*OBOS_PAGE_SIZE);
-	size_t nMemoryLeft = nPages * OBOS_PAGE_SIZE;
-	for (thread_node* node = Mm_ThreadsAwaitingPhysicalMemory.head; node; )
-	{
-		thread_node* next = node->next;
-		thread* const curr = node->data;
-		if (nMemoryLeft >= curr->nBytesWaitingFor)
-		{
-			nMemoryLeft -= curr->nBytesWaitingFor;
-			CoreH_ThreadListRemove(&Mm_ThreadsAwaitingPhysicalMemory, node);
-			CoreH_ThreadReadyNode(curr, curr->snode);
-		}
-
-		node = next;
-	}
 	return OBOS_STATUS_SUCCESS;
 }

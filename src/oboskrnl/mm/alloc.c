@@ -230,7 +230,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         node->addr = what.addr;
         node->allocated = true;
         node->owner = ctx;
-        node->prot.touched = false;
+        node->prot.accessed = false;
+        node->prot.dirty = false;
         node->pagedOut = false;
         node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
         node->age = 0;
@@ -429,6 +430,17 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 REMOVE_PAGE_NODE(ctx->workingSet.pages, &curr->ln_node);
                 ctx->workingSet.size -= curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
             }
+            else if (curr->onDirtyList)
+            {
+                REMOVE_PAGE_NODE(Mm_DirtyPageList, &curr->ln_node);
+                Mm_DirtyPagesBytes -= curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+                Mm_FreePhysicalPages(curr->cached_phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
+            }
+            else if (curr->onStandbyList)
+            {
+                REMOVE_PAGE_NODE(Mm_StandbyPageList, &curr->ln_node);
+                Mm_FreePhysicalPages(curr->cached_phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
+            }
             else 
                 REMOVE_PAGE_NODE(ctx->referenced, &curr->ln_node); // it's in the referenced list
         }
@@ -454,9 +466,9 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             curr->next_copied_page->prev_copied_page = curr->prev_copied_page;
         curr->next_copied_page = nullptr;
         curr->prev_copied_page = nullptr;
+        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         if (curr->allocated)
             Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
     ctx->stat.committedMemory -= size;
     Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -561,7 +573,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
                 curr->prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
 
         }
-        if (curr->pagedOut && !isPageable)
+        if ((curr->pagedOut||curr->onStandbyList||curr->onDirtyList) && !isPageable)
         {
             // Page in curr if:
             // The current page is paged out, and we need to change the pageable property from true to false.

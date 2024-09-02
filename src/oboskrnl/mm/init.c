@@ -158,6 +158,7 @@ void Mm_Initialize()
         }
     }
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
+    Mm_InitializePageWriter();
 }
 bool Mm_IsInitialized()
 {

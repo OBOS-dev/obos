@@ -15,7 +15,6 @@ extern size_t Mm_TotalPhysicalPages;
 extern size_t Mm_TotalPhysicalPagesUsed;
 extern size_t Mm_UsablePhysicalPages;
 extern uintptr_t Mm_PhysicalMemoryBoundaries;
-extern thread_list Mm_ThreadsAwaitingPhysicalMemory;
 
 /// <summary>
 /// Initializes the PMM.

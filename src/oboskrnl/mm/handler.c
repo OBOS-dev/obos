@@ -30,44 +30,48 @@
 
 static void handle_oom(context* ctx, size_t bytesNeeded, page* pg)
 {
-    page* chose = nullptr;
-    size_t szChose = 0;
-    bool lockAcquired = Core_SpinlockAcquired(&ctx->lock);
-    for (page_node* node = ctx->referenced.head; node; )
-    {
-        page* const curr = node->data;
-        if (pg == curr)
-        {
-            node = node->next;
-            continue;
-        }
-        size_t bytesUsed = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-        if (bytesUsed >= bytesNeeded && bytesUsed <= szChose)
-        {
-            chose = curr;
-            szChose = bytesUsed;
-        }
-        node = node->next;
-    }
-    try_again:
-    if (!chose)
-    {
-        // Block until there is enough memory to satisfy the OOM.
-        if (lockAcquired)
-            Core_SpinlockForcedRelease(&ctx->lock);
-        CoreH_ThreadListAppend(&Mm_ThreadsAwaitingPhysicalMemory, &Core_GetCurrentThread()->phys_mem_node);
-        CoreH_ThreadBlock(Core_GetCurrentThread(), true);
-        if (lockAcquired)
-            Core_SpinlockAcquire(&ctx->lock);
-        return;
-    }
-    // Swap out the page.
-    if (obos_is_error(Mm_SwapOut(chose)))
-    {
-        chose = nullptr;
-        goto try_again;
-    }
-    ctx->stat.paged += (chose->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    OBOS_UNUSED(ctx);
+    OBOS_UNUSED(bytesNeeded);
+    OBOS_UNUSED(pg);
+    Mm_WakePageWriter(true);
+    // page* chose = nullptr;
+    // size_t szChose = 0;
+    // bool lockAcquired = Core_SpinlockAcquired(&ctx->lock);
+    // for (page_node* node = ctx->referenced.head; node; )
+    // {
+    //     page* const curr = node->data;
+    //     if (pg == curr)
+    //     {
+    //         node = node->next;
+    //         continue;
+    //     }
+    //     size_t bytesUsed = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    //     if (bytesUsed >= bytesNeeded && bytesUsed <= szChose)
+    //     {
+    //         chose = curr;
+    //         szChose = bytesUsed;
+    //     }
+    //     node = node->next;
+    // }
+    // try_again:
+    // if (!chose)
+    // {
+    //     // Block until there is enough memory to satisfy the OOM.
+    //     if (lockAcquired)
+    //         Core_SpinlockForcedRelease(&ctx->lock);
+    //     CoreH_ThreadListAppend(&Mm_ThreadsAwaitingPhysicalMemory, &Core_GetCurrentThread()->phys_mem_node);
+    //     CoreH_ThreadBlock(Core_GetCurrentThread(), true);
+    //     if (lockAcquired)
+    //         Core_SpinlockAcquire(&ctx->lock);
+    //     return;
+    // }
+    // // Swap out the page.
+    // if (obos_is_error(Mm_SwapOut(chose)))
+    // {
+    //     chose = nullptr;
+    //     goto try_again;
+    // }
+    // ctx->stat.paged += (chose->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     // We've freed enough memory.
     // Return.
     return;
@@ -120,9 +124,9 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     if (!page)
         return OBOS_STATUS_UNHANDLED;
     bool handled = false;
-    bool pagedOut = page->pagedOut;
+    bool pagedOut = page->pagedOut||page->onDirtyList||page->onStandbyList;
     irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
-    if (pagedOut && !page->pagedOut)
+    if (pagedOut && !(page->pagedOut||page->onDirtyList||page->onStandbyList))
     {
         // The page was paged in by someone else...
         Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -147,7 +151,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_UNHANDLED; // TODO: Signal the thread.
     }
-    if (page->pagedOut && !(ec & PF_EC_PRESENT))
+    if ((page->pagedOut||page->onDirtyList||page->onStandbyList) && !(ec & PF_EC_PRESENT))
     {
         // If this assertion fails, something stupid has happened.
         OBOS_ASSERT(!page->workingSets);
@@ -168,7 +172,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Mm_KernelContext.stat.paged -= (page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         page->ln_node.data = page;
         page->age |= 1;
-        page->prot.touched = false;
+        page->prot.accessed = false;
+        page->prot.dirty = false;
         APPEND_PAGE_NODE(ctx->referenced, &page->ln_node);
         // TODO: Try to figure out a better number based off the count of pages in the context/working-set.
         const size_t threshold = (ctx->workingSet.capacity / 4) / OBOS_PAGE_SIZE;
@@ -304,7 +309,7 @@ obos_status Mm_RunPRA(context* ctx)
         if (page->pagedOut)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Page 0x%p is in working set, and is paged out.\n", (void*)page->addr);
         MmS_QueryPageInfo(ctx->pt, page->addr, page, nullptr);
-        if (page->prot.touched)
+        if (page->prot.dirty || page->prot.accessed)
             page->age |= 1;
         page->age <<= 1;
         if (page->age)
@@ -317,11 +322,7 @@ obos_status Mm_RunPRA(context* ctx)
         REMOVE_PAGE_NODE(ctx->workingSet.pages, node);
         node->next = node->prev = nullptr;
         if (!(--page->workingSets))
-        {
-            obos_status status = Mm_SwapOut(page);
-            if (obos_is_success(status))
-                ctx->stat.paged += (page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        }
+            Mm_SwapOut(page);
         workingSetDifference -= (page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         // Pop the last referenced page and put it into the working-set
         if ((ctx->workingSet.size + workingSetDifference) < ctx->workingSet.capacity && ctx->referenced.nNodes)

@@ -27,11 +27,13 @@ obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority)
     {
         CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
         event->signaled = false;
+        CoreH_ClearSignaledState(&event->hdr);
         Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
     }
     CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
     event->signaled = false;
+    CoreH_ClearSignaledState(&event->hdr);
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }

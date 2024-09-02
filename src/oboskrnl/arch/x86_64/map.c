@@ -423,7 +423,8 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage, uintpt
 	page.addr = addr;
 	page.prot.rw = entry & BIT_TYPE(1, UL);
 	page.prot.user = entry & BIT_TYPE(2, UL);
-	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
+	page.prot.accessed = entry & BIT_TYPE(5, UL);
+	page.prot.dirty = entry & BIT_TYPE(6, UL);
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
     // page.prot.uc = (entry & BIT_TYPE(4, UL));
 	if (page.prot.huge_page)

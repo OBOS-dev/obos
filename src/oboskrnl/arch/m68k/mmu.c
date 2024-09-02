@@ -227,10 +227,11 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
     page.prot.huge_page = false;
     page.prot.rw = !(entry & PT_FLAGS_READONLY);
     page.prot.executable = true;
-    page.prot.touched = (entry & PT_FLAGS_USED) || (entry & PT_FLAGS_MODIFIED);
+    page.prot.accessed = entry & PT_FLAGS_USED;
+    page.prot.dirty = entry & PT_FLAGS_MODIFIED;
     page.prot.user = !(entry & PT_FLAGS_SUPERVISOR);
     page.prot.uc = ((entry >> 5) & 0b11) == (PT_FLAGS_CACHE_DISABLE >> 5);
-    if (page.prot.touched)
+    if (page.prot.accessed || page.prot.dirty)
     {
         // Unset the bit(s).
         // NOTE(oberrow): I just realized I forgot to do this on x86-64

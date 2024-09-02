@@ -354,7 +354,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 if (curr->filename_83[0] == (char)0)
                 {
                     nFree = (cache->blkSize/sizeof(fat_dirent))-j;
-                    // fnuy buisness
+                    // fnuy business
                     nFree += (cache->RootDirSectors-(i-cache->root_sector))*(cache->blkSize/sizeof(fat_dirent));
                     fileoff = (i*cache->blkSize)+(j*sizeof(fat_dirent));
                     curr = nullptr;

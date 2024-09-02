@@ -162,7 +162,7 @@ obos_status swap_resv(struct swap_device* dev, uintptr_t *id, size_t nPages)
     unmap(accessSizePages, pages);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status swap_free(struct swap_device* dev, uintptr_t  id, size_t nPages)
+obos_status swap_free(struct swap_device* dev, uintptr_t  id, size_t nPages, size_t swapOff)
 {
     if (!dev || !id || !nPages)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -175,6 +175,7 @@ obos_status swap_free(struct swap_device* dev, uintptr_t  id, size_t nPages)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t nBytes = nPages*OBOS_PAGE_SIZE;
     size_t access_size = sizeof(obos_swap_free_region);
+    id += swapOff;
     if (access_size % metadata->blkSize)
         access_size += (metadata->blkSize-(access_size%metadata->blkSize));
     size_t accessSizePages = (access_size/OBOS_PAGE_SIZE)+(access_size%OBOS_PAGE_SIZE != 0);
