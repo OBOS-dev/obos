@@ -13,7 +13,7 @@ list (APPEND oboskrnl_sources
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
-	"utils/uuid.c" "mm/disk_swap.c"
+	"utils/uuid.c" "mm/disk_swap.c" "sanitizers/asan_memory.c"
 )
 
 add_executable(oboskrnl)
@@ -56,9 +56,7 @@ target_link_options(oboskrnl
 )
 
 target_compile_definitions(oboskrnl
-	PRIVATE FIXEDPT_BITS=${OBOS_ARCHITECTURE_BITS}
 	PRIVATE OBOS_KERNEL=1
-	PRIVATE "FIXEDPT_WBITS=(${OBOS_ARCHITECTURE_BITS}-8)"
 )
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

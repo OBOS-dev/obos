@@ -78,7 +78,6 @@
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "vfs/dirent.h"
 
 #include <uacpi/kernel_api.h>
 #include <uacpi/utilities.h>
@@ -94,6 +93,8 @@
 #include <locks/wait.h>
 #include <locks/semaphore.h>
 #include <locks/event.h>
+
+#include <sanitizers/asan.h>
 
 extern void Arch_InitBootGDT();
 
@@ -118,8 +119,33 @@ void Arch_DoubleFaultHandler(interrupt_frame* frame);
 struct stack_frame
 {
 	struct stack_frame* down;
-	void* rip;
-} volatile blahblahblah____;
+	uintptr_t rip;
+};
+stack_frame OBOSS_StackFrameNext(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+		return curr;
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->down, sizeof(*curr), false))
+		return nullptr;
+	return curr->down;
+}
+uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->rip, sizeof(*curr), false))
+		return 0;
+	return curr->rip;
+}
 OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
@@ -343,7 +369,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 	}
 	asm("cli");
 	OBOS_Panic(OBOS_PANIC_EXCEPTION, 
-		"Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
+		"Page fault at 0x%p in %s-mode while %s page at 0x%p, which is %s. Error code: %d\n"
 		"Register dump:\n"
 		"\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
 		"\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
@@ -356,7 +382,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
 		"\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n",
 		(void*)frame->rip,
 		frame->cs == 0x8 ? "kernel" : "user",
-		(frame->errorCode & 2) ? "write" : ((frame->errorCode & 0x10) ? "execute" : "read"),
+		(frame->errorCode & 2) ? "writing" : ((frame->errorCode & 0x10) ? "executing" : "reading"),
 		getCR2(),
 		frame->errorCode & 1 ? "present" : "unpresent",
 		frame->errorCode,
@@ -481,6 +507,7 @@ static void hpet_irq_move_callback(irq* i, irq_vector* from, irq_vector* to, voi
 	OBOS_ASSERT(timer);
 	uint32_t gsi = (timer->timerConfigAndCapabilities >> 9) & 0b11111;
 	Arch_IOAPICMapIRQToVector(gsi, to->id+0x20, false, TriggerModeLevelSensitive);
+	Arch_IOAPICMaskIRQ(gsi, false);
 }
 OBOS_NO_KASAN OBOS_NO_UBSAN void hpet_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
@@ -544,9 +571,21 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 static uint64_t cached_divisor = 0;
 timer_tick CoreS_GetTimerTick()
 {
+	if (obos_expect(!Arch_HPETAddress, false))
+		return 0;
 	if (!cached_divisor)
 		cached_divisor = Arch_HPETFrequency/CoreS_TimerFrequency;
 	return Arch_HPETAddress->mainCounterValue/cached_divisor;
+}
+timer_tick CoreS_GetNativeTimerTick()
+{
+	if (obos_expect(!Arch_HPETAddress, false))
+		return 0;
+	return Arch_HPETAddress->mainCounterValue;
+}
+timer_tick CoreS_GetNativeTimerFrequency()
+{
+	return Arch_HPETFrequency;
 }
 uint64_t CoreS_TimerTickToNS(timer_tick tp)
 {
@@ -608,9 +647,8 @@ void Arch_KernelMainBootstrap()
 			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
 	}
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
-	OBOS_KernelProcess = Core_ProcessAllocate(&status);
-	if (obos_is_error(status))
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
+	static process proc = {};
+	OBOS_KernelProcess = &proc;
 	OBOS_KernelProcess->pid = Core_NextPID++;
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &bsp_idleThread);
@@ -782,11 +820,9 @@ if (st != UACPI_STATUS_OK)\
 			case STT_FILE:
 				symbolType = SYMBOL_TYPE_FILE;
 				break;
-			case STT_OBJECT:
+			default:
 				symbolType = SYMBOL_TYPE_VARIABLE;
 				break;
-			default:
-				continue;
 		}
 		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = strtable + esymbol->st_name;
@@ -895,12 +931,13 @@ if (st != UACPI_STATUS_OK)\
 		if (!modules_to_load)
 			break;
 		size_t len = strlen(modules_to_load);
+		size_t left = len;
 		char* iter = modules_to_load;
 		while(iter < (modules_to_load + len))
 		{
 			status = OBOS_STATUS_SUCCESS;
-			size_t namelen = strchr(modules_to_load, ',');
-			if (namelen != len)
+			size_t namelen = strchr(iter, ',');
+			if (namelen != left)
 				namelen--;
 			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
 			char* path = memcpy(
@@ -964,17 +1001,27 @@ if (st != UACPI_STATUS_OK)\
 			if (namelen != len)
 				namelen++;
 			iter += namelen;
+			left -= namelen;
 		}
 	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
 	OBOS_PartProbeAllDrives(true);
-	uint32_t ecx = 0;
-	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	// uint32_t ecx = 0;
+	// __cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
 	// bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
 	// if (!isHypervisor)
 	// 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
+	driver_id* test_driver = nullptr;
+	driver_symbol* TestDriver_Fireworks_sym = DrvH_ResolveSymbol("TestDriver_Fireworks", &test_driver);
+	if (TestDriver_Fireworks_sym)
+	{
+		// void(*TestDriver_Fireworks)(uint32_t max_iterations, int spawn_min, int spawn_max, bool stress_test) = (void*)TestDriver_Fireworks_sym->address;
+		OBOS_Log("Running Test Driver fireworks test!\n");
+		test_driver->header.ftable.ioctl(4, 1, UINT32_MAX, 1, 4, false);
+		// TestDriver_Fireworks(UINT32_MAX, false);
+	}
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
 	static gdb_connection gdb_conn = {};
 	// Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);

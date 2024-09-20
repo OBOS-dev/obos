@@ -32,7 +32,7 @@ typedef struct thread_context_info thread_ctx;
 /// <param name="stackBase">The base address of the stack.</param>
 /// <param name="stackSize">The size of the stack.</param>
 /// <returns>The status code of the function.</returns>
-OBOS_WEAK obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
+OBOS_EXPORT obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
 /// <summary>
 /// Switches to a different thread's context.
 /// </summary>
@@ -93,6 +93,6 @@ OBOS_WEAK size_t CoreS_GetThreadStackSize(const thread_ctx* ctx);
 // Some helpers to free stacks allocated using the VMA and the basic MM.
 
 // userdata should be the context* used to allocate the stack.
-void CoreH_VMAStackFree(void* base, size_t sz, void* userdata);
+OBOS_EXPORT void CoreH_VMAStackFree(void* base, size_t sz, void* userdata);
 // userdata is unused.
 void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata);

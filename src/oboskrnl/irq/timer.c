@@ -54,13 +54,23 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
     if (!work->cpu || LIST_IS_NODE_UNLINKED(dpc_queue, &work->cpu->dpcs, work))
         CoreH_InitializeDPC(work, timer_dispatcher, Core_DefaultThreadAffinity);
 }
+static void notify_timer_dpc(dpc* dpc, void* userdata)
+{
+    OBOS_UNUSED(dpc);
+    uintptr_t *udata = userdata;
+    timer* timer = (void*)udata[0];
+    timer->handler(timer->userdata);
+}
 static void notify_timer(timer* timer)
 {
     // TODO: Use signals instead of calling the handler directly.
     timer->lastTimeTicked = CoreS_GetTimerTick();
     if (timer->mode == TIMER_MODE_DEADLINE)
         Core_CancelTimer(timer);
-    timer->handler(timer->userdata);
+    timer->handler_dpc.userdata = &timer->dpc_udata;
+    CoreH_InitializeDPC(&timer->handler_dpc, notify_timer_dpc, Core_DefaultThreadAffinity);
+    timer->dpc_udata = (uintptr_t)timer;
+    // timer->handler(timer->userdata);
 }
 static void timer_dispatcher(dpc* obj, void* userdata)
 {
@@ -88,6 +98,7 @@ static void timer_dispatcher(dpc* obj, void* userdata)
         }
         if (!expired)
             goto end;
+        OBOS_ASSERT(t->mode != TIMER_EXPIRED);
         notify_timer(t);
         end:
         (void)0;
@@ -127,6 +138,7 @@ obos_status Core_TimerObjectFree(timer* obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (obj->mode > TIMER_EXPIRED)
         return OBOS_STATUS_ACCESS_DENIED;
+    CoreH_FreeDPC(&obj->handler_dpc, false);
     return OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 }
 obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
@@ -187,18 +199,15 @@ obos_status Core_CancelTimer(timer* timer)
 }
 timer_tick CoreH_TimeFrameToTick(uint64_t us)
 {
-    // us/1000000*freqHz=timer ticks
+    // us/1000=timer ticks
 // #if OBOS_ARCH_USES_SOFT_FLOAT
-//     return ((double)us/1000000.0*(double)CoreS_TimerFrequency)+1;
+//     return ((double)us/1000.0*(double)CoreS_TimerFrequency)+1;
 // #else
     fixedptd tp = fixedpt_fromint(us); // us.0
-    fixedptd hz = fixedpt_fromint(CoreS_TimerFrequency); // CoreS_TimerFrequency.0
-    const fixedptd divisor = fixedpt_fromint(1000000); // 1000000.0
+    const fixedptd divisor = fixedpt_fromint(1000); // 1000.0
     OBOS_ASSERT(fixedpt_toint(tp) == (int64_t)us);
-    OBOS_ASSERT(fixedpt_toint(hz) == (int64_t)CoreS_TimerFrequency);
-    OBOS_ASSERT(fixedpt_toint(divisor) == 1000000);
+    OBOS_ASSERT(fixedpt_toint(divisor) == 1000);
     tp = fixedpt_xdiv(tp, divisor);
-    tp = fixedpt_xmul(tp, hz);
     return fixedpt_toint(tp)+1 /* add one to account for rounding issues. */;
 // #endif
 }

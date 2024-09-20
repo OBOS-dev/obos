@@ -28,3 +28,4 @@ OBOS_WEAK void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, siz
 
 // if the value set at *driver is nullptr, then the symbol is from the kernel
 driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver);
+driver_symbol* DrvH_ResolveSymbolReverse(uintptr_t addr, struct driver_id** driver);

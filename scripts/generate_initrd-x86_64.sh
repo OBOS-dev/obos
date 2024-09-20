@@ -1,9 +1,9 @@
 export old_pwd=$PWD
+cd $(git rev-parse --show-toplevel)
 if [[ ! -d tar ]]
 then
     mkdir tar
 fi
-cd $(git rev-parse --show-toplevel)
 cp out/uart tar
 cp out/ahci tar
 cp out/slowfat tar

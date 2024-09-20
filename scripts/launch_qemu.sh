@@ -16,9 +16,8 @@ qemu-system-x86_64 \
 -debugcon file:/dev/stdout \
 -monitor stdio \
 -serial tcp:0.0.0.0:1534,server,nowait \
--smp cores=4,threads=1,sockets=1 \
+-smp cores=$(nproc),threads=1,sockets=1 \
 -M smm=off \
--d trace:*ide* \
 -D qemu_log.txt
 # -nographic
 # -enable-kvm \

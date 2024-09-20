@@ -52,46 +52,6 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 		break;
 	}
 }
-static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
-{
-#ifdef __x86_64__
-	base &= ~0xfff;
-	size += (0x1000 - (size & 0xfff));
-	uintptr_t flags = 1;
-	if (rw)
-		flags |= 2;
-	for (uintptr_t addr = base; addr < (base + size); addr += 0x1000)
-	{
-		// First check if this is a huge page.
-		uintptr_t entry = Arch_GetPML2Entry(getCR3(), addr);
-		if (!(entry & flags))
-			return false;
-		if (entry & (1 << 7))
-			goto check;
-		entry = Arch_GetPML1Entry(getCR3(), addr);
-		check:
-		if (!(entry & flags))
-			return false;
-	}
-#elif defined(__m68k__)
-	obos_status Arch_GetPagePTE(page_table pt_root, uintptr_t virt, uint32_t* out);
-	uintptr_t flags = 0b11|(0b1 << 7);
-	if (!rw)
-		flags |= (0b1 << 2);
-	uintptr_t pt_root = 0;
-	asm("movec.l %%srp, %0" :"=r"(pt_root) :);
-	for (uintptr_t addr = base; addr < (base + size); addr += 0x1000)
-	{
-		uintptr_t entry = 0;
-		Arch_GetPagePTE(pt_root, addr, &entry);
-		if (!(entry & flags))
-			return false;
-	}
-#else
-#	error Unknown architecture!
-#endif
-	return true;
-}
 static OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, uintptr_t ip, bool rw, uint8_t poisonIndex, bool abort)
 {
 	OBOS_ASSERT(poisonIndex <= ASAN_POISON_MAX);
@@ -101,13 +61,13 @@ static OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, ui
 	bool isPoisoned = false;
 	bool shortCircuitedFirst = false, shortCircuitedSecond = false;
 	if (OBOS_CROSSES_PAGE_BOUNDARY(at - 16, 16))
-		if ((shortCircuitedFirst = !isAllocated(at - 16, 16, false)))
+		if ((shortCircuitedFirst = !KASAN_IsAllocated(at - 16, 16, false)))
 			goto short_circuit1;
 	isPoisoned = memcmp_b((void*)(at - 16), OBOS_ASANPoisonValues[poisonIndex], 16);
 	short_circuit1:
 	if (!isPoisoned)
 		if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 16))
-			if ((shortCircuitedSecond = !isAllocated(at + size, 16, false)))
+			if ((shortCircuitedSecond = !KASAN_IsAllocated(at + size, 16, false)))
 				goto short_circuit2;
 	isPoisoned = memcmp_b((void*)(at + size), OBOS_ASANPoisonValues[poisonIndex], 16);
 short_circuit2:
@@ -130,7 +90,7 @@ short_circuit2:
 }
 OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
-	/*if (!isAllocated(at, size, rw))
+	/*if (!KASAN_IsAllocated(at, size, rw))
 		asan_report(at, size, ip, rw, InvalidAccess, abort);*/
 #ifdef __x86_64__
 	// Make sure the pointer is valid.

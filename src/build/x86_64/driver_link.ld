@@ -59,6 +59,7 @@ SECTIONS
     .pageable.bss : {
         *(.pageable.bss)
     } :pageable_data
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
     /* RO Data */
     .pageable.rodata : {
         *(.pageable.rodata)
@@ -71,9 +72,11 @@ SECTIONS
         *(.comment)
     }
     
+    Drv_Top = .;
+    
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
     .dynamic : {
         *(.dynamic)
     } :data :dynamic
 
-    Drv_Top = .;
 }

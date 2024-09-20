@@ -29,3 +29,5 @@ enum
 	ASAN_POISON_MAX = ASAN_POISON_FREED,
 };
 extern const uint8_t OBOS_ASANPoisonValues[ASAN_POISON_MAX + 1];
+// Note: Still exists without KASAN.
+bool KASAN_IsAllocated(uintptr_t base, size_t size, bool rw);
