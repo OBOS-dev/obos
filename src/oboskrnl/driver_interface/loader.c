@@ -201,11 +201,9 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
 			case STT_FILE:
 				symbolType = SYMBOL_TYPE_FILE;
 				break;
-			case STT_OBJECT:
+			default:
 				symbolType = SYMBOL_TYPE_VARIABLE;
 				break;
-			default:
-				continue;
 		}
 		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = dynstrtab + esymbol->st_name;
@@ -342,7 +340,7 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     OBOS_ASSERT(strlen(name));
     // Search the kernel symbol table;
     driver_symbol what = { .name = name };
-    driver_symbol* sym = RB_FIND(symbol_table, &OBOS_KernelSymbolTable, &what );
+    driver_symbol* sym = RB_FIND(symbol_table, &OBOS_KernelSymbolTable, &what);
     if (sym)
     {
         *driver = nullptr; // the kernel
@@ -352,7 +350,7 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     {
         driver_id* drv = node->data;
         OBOS_ASSERT(drv);
-        sym = RB_FIND(symbol_table, &drv->symbols, &what );
+        sym = RB_FIND(symbol_table, &drv->symbols, &what);
         if (sym)
         {
             *driver = drv; // the current driver.
@@ -363,4 +361,32 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     }
     *driver = nullptr;
     return nullptr; // symbol unresolved.
+}
+driver_symbol* DrvH_ResolveSymbolReverse(uintptr_t addr, struct driver_id** driver)
+{
+    OBOS_ASSERT(driver);
+    if (addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+        goto unresolved;
+    *driver = nullptr;
+    driver_symbol* curr = nullptr;
+    RB_FOREACH(curr, symbol_table, &OBOS_KernelSymbolTable)
+    {
+        if (addr >= curr->address && addr < (curr->address+curr->size))
+            return curr;
+    }
+    for (driver_node* node = Drv_LoadedDrivers.head; node; )
+    {
+        driver_id* const drv = node->data;
+        node = node->next;
+        RB_FOREACH(curr, symbol_table, &drv->symbols)
+        {
+            if (addr >= curr->address && addr < (curr->address+curr->size))
+            {
+                *driver = drv;
+                return curr;
+            }
+        }
+    }
+    unresolved:
+    return nullptr;
 }

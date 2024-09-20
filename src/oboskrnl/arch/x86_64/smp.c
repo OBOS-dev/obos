@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/irql.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -19,6 +18,8 @@
 
 #include <arch/x86_64/sdt.h>
 #include <arch/x86_64/madt.h>
+
+#include <locks/spinlock.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
@@ -40,6 +41,7 @@
 #include <arch/x86_64/gdbstub/debug.h>
 
 #include <irq/irq.h>
+#include <irq/irql.h>
 
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
@@ -283,10 +285,12 @@ OBOS_NO_KASAN static void HaltInitializedCPUs()
 		Arch_LAPICSendIPI(lapic, vector);
 	}
 }
+static spinlock halt_cpu_lock;
 OBOS_NO_KASAN void OBOSS_HaltCPUs()
 {
 	if (Core_CpuCount == 1)
 		return;
+	Core_SpinlockAcquire(&halt_cpu_lock);
 	if (!Arch_SMPInitialized)
 	{
 		HaltInitializedCPUs();

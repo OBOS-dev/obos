@@ -27,6 +27,8 @@ void Core_Schedule();
 /// Yields the current thread. This will save the current thread context, then call Core_Schedule after raising the IRQL (if needed).
 /// </summary>
 OBOS_EXPORT void Core_Yield();
+void CoreH_PrintSchedulerProfilingInfo();
+void CoreH_ResetSchedulerProfilingInfo();
 
 extern OBOS_EXPORT size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;

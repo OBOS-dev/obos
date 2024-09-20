@@ -12,6 +12,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
+#include <scheduler/process.h>
 
 #include <allocators/base.h>
 
@@ -63,7 +64,8 @@ obos_status CoreH_ThreadReady(thread* thr)
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	thread_node* node = (thread_node*)OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), nullptr);
+	allocator_info* alloc = OBOS_NonPagedPoolAllocator ? OBOS_NonPagedPoolAllocator : OBOS_KernelAllocator;
+	thread_node* node = (thread_node*)alloc->ZeroAllocate(alloc, 1, sizeof(thread_node), nullptr);
 	node->free = free_node;
 	obos_status status = CoreH_ThreadReadyNode(thr, node);
 	if (status != OBOS_STATUS_SUCCESS)
@@ -224,6 +226,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 	// Block (unready) the current thread so it can no longer be run.
 	thread_node* node = currentThread->snode;
 	CoreH_ThreadBlock(currentThread, false);
+	if (currentThread->proc)
+		CoreH_ThreadListRemove(&currentThread->proc->threads, currentThread->pnode);
+	if (currentThread->pnode->free)
+		currentThread->pnode->free(currentThread->pnode);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);
 	if (node->free)
@@ -249,6 +255,9 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 
 void CoreH_VMAStackFree(void* base, size_t sz, void* userdata)
 {
+	OBOS_UNUSED(base);
+	OBOS_UNUSED(sz);
+	OBOS_UNUSED(userdata);
 	Mm_VirtualMemoryFree((context*)userdata, base, sz);
 }
 void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata)

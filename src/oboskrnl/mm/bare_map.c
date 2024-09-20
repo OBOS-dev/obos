@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
 #include <error.h>

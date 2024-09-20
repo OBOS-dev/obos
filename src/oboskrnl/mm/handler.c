@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -16,6 +15,7 @@
 #include <mm/swap.h>
 #include <mm/pmm.h>
 #include <mm/bare_map.h>
+#include <mm/alloc.h>
 
 #include <vfs/pagecache.h>
 #include <vfs/vnode.h>
@@ -121,14 +121,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     if (!page)
         return OBOS_STATUS_UNHANDLED;
     bool handled = false;
-    bool pagedOut = page->pagedOut;
     irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
-    if (pagedOut && !page->pagedOut)
-    {
-        // The page was paged in by someone else...
-        Core_SpinlockRelease(&ctx->lock, oldIrql);
-        return OBOS_STATUS_SUCCESS;
-    }
     bool requiresPageIn = false;
     OBOS_UNUSED(requiresPageIn);
     // To not waste time, check if the access is even allowed in the first place.

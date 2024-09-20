@@ -38,9 +38,21 @@ typedef struct cpu_local
 	bool initialized;
 	dpc_queue dpcs;
 	spinlock dpc_queue_lock;
+	struct {
+		// in native timer ticks
+		uint64_t work_balancer; 
+		uint64_t priority_booster;
+		uint64_t total; // between start of Core_Schedule and right before the scheduler does the ctx switch
+		uint64_t work_balancer_total; 
+		uint64_t priority_booster_total;
+		uint64_t total2; // always set to total2 + total
+		size_t work_balancer_iterations;
+		size_t priority_booster_iterations;
+		size_t total2_iterations;
+	} sched_profile_data;
 } cpu_local;
-extern cpu_local* Core_CpuInfo;
-extern size_t Core_CpuCount;
+extern DRV_EXPORT cpu_local* Core_CpuInfo;
+extern DRV_EXPORT size_t Core_CpuCount;
 
 #ifdef OBOS_KERNEL
 OBOS_WEAK cpu_local* CoreS_GetCPULocalPtr();

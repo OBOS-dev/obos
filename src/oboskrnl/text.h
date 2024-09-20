@@ -36,6 +36,7 @@ typedef struct
 		uint8_t bpp;
 	} fb;
 } text_renderer_state;
-extern text_renderer_state OBOS_TextRendererState;
+extern OBOS_EXPORT text_renderer_state OBOS_TextRendererState;
+void OBOS_FlushBuffers(text_renderer_state* state);
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch);
 obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row);

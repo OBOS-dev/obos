@@ -43,7 +43,7 @@ typedef enum
 /// Sets the current log level.
 /// </summary>
 /// <param name="level">The new log level.</param>
-void OBOS_SetLogLevel(log_level level);
+OBOS_EXPORT void OBOS_SetLogLevel(log_level level);
 /// <summary>
 /// Gets the current log level.
 /// </summary>
@@ -84,6 +84,15 @@ OBOS_NORETURN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* forma
 /// Halts all other CPUs.
 /// </summary>
 OBOS_WEAK void OBOSS_HaltCPUs();
+
+typedef struct stack_frame *stack_frame;
+
+// if nullptr, use caller's stack frame.
+// Returns nullptr if curr is the last frame.
+OBOS_WEAK stack_frame OBOSS_StackFrameNext(stack_frame curr);
+// if nullptr, use caller's stack frame.
+// Returns zero if curr is the last frame.
+OBOS_WEAK uintptr_t OBOSS_StackFrameGetPC(stack_frame curr);
 
 // printf-Style functions.
 OBOS_EXPORT size_t printf(const char* format, ...);

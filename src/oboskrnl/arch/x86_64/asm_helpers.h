@@ -24,6 +24,8 @@ uintptr_t getEFER();
 
 uintptr_t getDR6();
 
+uint64_t rdtsc();
+
 void __cpuid__(uint64_t initialEax, uint64_t initialEcx, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx);
 
 uint64_t rdmsr(uint32_t msr);

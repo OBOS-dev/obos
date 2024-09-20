@@ -5,8 +5,8 @@
 */
 
 #include <int.h>
+#include <memmanip.h>
 #include <klog.h>
-#include <stdarg.h>
 #include <text.h>
 
 #include <locks/spinlock.h>
@@ -16,12 +16,22 @@
 
 #include <scheduler/process.h>
 
+#include <driver_interface/driverId.h>
+#include <driver_interface/loader.h>
+
 #include <irq/irql.h>
 
+#include <uacpi_libc.h>
+
+#include <stdarg.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #define STB_SPRINTF_NOFLOAT 1
 #define STB_SPRINTF_IMPLEMENTATION 1
 #define STB_SPRINTF_MIN 8
 #include <external/stb_sprintf.h>
+#pragma GCC diagnostic pop
 
 #ifdef __x86_64__
 #	include <arch/x86_64/asm_helpers.h>
@@ -132,7 +142,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
         "    )\\())  (   (             (  )\\             )        (\r\n"
         "   ((_)\\  ))\\  )(    (      ))\\((_)  `  )   ( /(   (    )\\   (\r\n"
         "  (_ ((_)/((_)(()\\   )\\ )  /((_)_    /(/(   )(_))  )\\ )((_)  )\\\r\n"
-        "  | |/ /(_))   ((_) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n"
+        "  | |/ /(_))   ((_p) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n"
         "  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n"
         "  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n"
         "                                    |_|\r\n";
@@ -146,11 +156,83 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
-	printf("Kernel Panic on CPU %d in thread %d, owned by process %d. Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
+	char cpu_vendor[13] = {0};
+	memset(cpu_vendor, 0, 13);
+	__cpuid__(0, 0, nullptr, (uint32_t*)&cpu_vendor[0],(uint32_t*)&cpu_vendor[8], (uint32_t*)&cpu_vendor[4]);
+	uint32_t ecx = 0;
+	__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+	bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+	char brand_string[49];
+	memset(brand_string, 0, sizeof(brand_string));
+	__cpuid__(0x80000002, 0, (uint32_t*)&brand_string[0], (uint32_t*)&brand_string[4], (uint32_t*)&brand_string[8], (uint32_t*)&brand_string[12]);
+	__cpuid__(0x80000003, 0, (uint32_t*)&brand_string[16], (uint32_t*)&brand_string[20], (uint32_t*)&brand_string[24], (uint32_t*)&brand_string[28]);
+	__cpuid__(0x80000004, 0, (uint32_t*)&brand_string[32], (uint32_t*)&brand_string[36], (uint32_t*)&brand_string[40], (uint32_t*)&brand_string[44]);
+	printf("Kernel Panic in OBOS %s built on %s.\nCrash is on CPU %d in thread %d, owned by process %d. Reason: %s.\n", GIT_SHA1, __DATE__ " at " __TIME__, getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
+	printf("Currently running on a %s. We are currently %srunning on a hypervisor\n", brand_string, isHypervisor ? "" : "not ");
+	printf("Information on the crash is below:\n");
 	va_list list;
 	va_start(list, format);
 	vprintf(format, list);
 	va_end(list);
+	if (OBOSS_StackFrameNext && OBOSS_StackFrameGetPC)
+	{
+		printf("\n\tAddress");
+#if UINTPTR_MAX == UINT64_MAX
+		// We want 9+8 bytes of padding
+		printf("                 ");
+#elif UINTPTR_MAX == UINT32_MAX
+		// We want 1+8 bytes of padding
+		printf("         ");
+#endif
+		printf("Symbol\n");
+		stack_frame curr = OBOSS_StackFrameNext(nullptr);
+		while (curr)
+		{
+			// Resolve the symbol from the address.
+			uintptr_t pc = OBOSS_StackFrameGetPC(curr);
+			driver_id* drv = nullptr;
+			driver_symbol* sym = DrvH_ResolveSymbolReverse(pc, &drv);
+			printf("%p        ", (void*)pc);
+			if (sym)
+			{
+				if (drv)
+					printf("%*s!%s+%x", uacpi_strnlen(drv->header.driverName, 64), drv->header.driverName, sym->name, pc-sym->address);
+				else 
+					printf("oboskrnl!%s+%x", sym->name, pc-sym->address);
+			}
+			else
+				printf("%s", pc == 0 ? "End" : "Unresolved/External");
+			printf("\n");
+			curr = OBOSS_StackFrameNext(curr);
+		}
+	}
+	// unsafe to do unfortunately
+	// todo: make safer
+// 	printf("\n\tAddress");
+// #if UINTPTR_MAX == UINT64_MAX
+// 	// We want 8+9 bytes of padding
+// 	printf("                  ");
+// #elif UINTPTR_MAX == UINT32_MAX
+// 	// We want 8+2 bytes of padding
+// 	printf("          ");
+// #endif
+// 	printf("Main TID");
+// 	// We want 4+1 bytes of padding
+// 	printf("     ");
+// 	printf("Driver Name\n");
+// 	for (driver_node *node = Drv_LoadedDrivers.head; node; )
+// 	{
+// 		if (!node->data)
+// 			goto next;
+// 		printf("\t%p     ", node->data->base);
+// 		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : -1);
+// 		if (uacpi_strnlen(node->data->header.driverName, 64))
+// 			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
+// 		else
+// 		 	printf("Unknown\n");
+// 		next:
+// 		node = node->next;
+// 	}
 	while (1)
 		asm volatile("");
 }

@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 
@@ -63,6 +62,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 		return status;
 	node->free = free_node;
 	node->data = thread;
+	thread->pnode = node;
 	CoreH_ThreadListAppend(&proc->threads, node);
 	thread->proc = proc;
 	return OBOS_STATUS_SUCCESS;

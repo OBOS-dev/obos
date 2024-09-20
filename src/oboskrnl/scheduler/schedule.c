@@ -4,16 +4,18 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "scheduler/thread_context_info.h"
 #include <int.h>
+#include <memmanip.h>
 #include <klog.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
 
 #include <irq/irql.h>
+#include <irq/timer.h>
 
 #include <locks/spinlock.h>
 
@@ -49,8 +51,12 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
 static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
-	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
+	if (++list->noStarvationQuantum >= Core_ThreadPriorityToQuantum[priority])
+	{
+		list->noStarvationQuantum = 0;
 		return false;
+	}
+	timer_tick start = CoreS_GetNativeTimerTick();
 	// The last (list->nNodes / 4) threads in a priority list will be starving usually because they are at the end of the list, and the scheduler starts looking from the front.
 	for (thread_node* thrN = list->list.tail; thrN && i < (list->list.nNodes / 4); )
 	{
@@ -77,12 +83,18 @@ static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priori
 		thrN->data->priority++;
 		thrN = next;
 	}
+	timer_tick end = CoreS_GetNativeTimerTick();
+	CoreS_GetCPULocalPtr()->sched_profile_data.priority_booster = end-start;
+	CoreS_GetCPULocalPtr()->sched_profile_data.priority_booster_iterations++;
+	CoreS_GetCPULocalPtr()->sched_profile_data.priority_booster_total += CoreS_GetCPULocalPtr()->sched_profile_data.priority_booster;
 	return true;
 }
 static void WorkStealing(thread_priority_list* list, thread_priority priority)
 {
 	OBOS_ASSERT(priority <= THREAD_PRIORITY_MAX_VALUE);
 	OBOS_ASSERT(list);
+	return;
+	timer_tick start = CoreS_GetNativeTimerTick();
 	// Compare the current list's node count to that of other cores, and if it is less than the node count of one quarter of cores, then steal some work from some of the cores.
 	size_t nCoresWithMoreNodes = 0;
 	for (size_t i = 0; i < Core_CpuCount; i++)
@@ -95,6 +107,8 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 	}
 	if (nCoresWithMoreNodes < (Core_CpuCount / 4))
 		return; // The work count for this priority list is fine.
+	if (!nCoresWithMoreNodes)
+		return; // The load is balanced!
 	// Try to steal some work...
 	// NOTE: There could be some race conditions with this.
 	// TODO: Fix.
@@ -137,6 +151,10 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 			Core_SpinlockRelease(&cpu->schedulerLock, IRQL_DISPATCH);
 		}
 	}
+	timer_tick end = CoreS_GetNativeTimerTick();
+	CoreS_GetCPULocalPtr()->sched_profile_data.work_balancer = end-start;
+	CoreS_GetCPULocalPtr()->sched_profile_data.work_balancer_iterations++;
+	CoreS_GetCPULocalPtr()->sched_profile_data.work_balancer_total += CoreS_GetCPULocalPtr()->sched_profile_data.work_balancer;
 }
 #endif
 
@@ -151,6 +169,11 @@ void Core_Schedule()
 		goto schedule;
 	getCurrentThread->lastRunTick = getSchedulerTicks;
 schedule:
+	// thread* oldCurThread = getCurrentThread;
+	// getCurrentThread = nullptr;
+	// (void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
+	// Thread starvation prevention and work stealing.
+	// The amount of priority lists with a finished (starvation) quantum.
 	if (getCurrentThread)
 	{
 		getCurrentThread->quantum = 0;
@@ -163,83 +186,95 @@ schedule:
 			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), getCurrentThread->snode);
 		}
 	}
-	// thread* oldCurThread = getCurrentThread;
-	// getCurrentThread = nullptr;
-	// (void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
-	// (void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
-	// Thread starvation prevention and work stealing.
-	// The amount of priority lists with a finished (starvation) quantum.
+	timer_tick start = CoreS_GetNativeTimerTick();
 #ifndef OBOS_UP
 	if (Core_CpuCount > 1)
 	{
-		size_t nPriorityListsFQuantum = 0;
+		// size_t nPriorityListsFQuantum = 0;
 		for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
 		{
 			thread_priority_list* list = priorityList(priority);
+			// if (priority < THREAD_PRIORITY_MAX_VALUE)
+			// 	nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
 			if (priority < THREAD_PRIORITY_MAX_VALUE)
-				nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
+				ThreadStarvationPrevention(list, priority);
 			WorkStealing(list, priority);
 		}
-		if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
-		{
-			for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
-			{
-				thread_priority_list* list = priorityList(priority);
-				list->noStarvationQuantum = 0;
-			}
-		}
+		// if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
+		// {
+		// 	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
+		// 	{
+		// 		thread_priority_list* list = priorityList(priority);
+		// 		list->noStarvationQuantum = 0;
+		// 	}
+		// }
 	}
 #endif
 	thread* chosenThread = nullptr;
-	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
-		CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];
-	if (++CoreS_GetCPULocalPtr()->currentPriorityList->quantum >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
+	bool needs_new = false;
+	(void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
+	top:
+	if (!getCurrentThread || needs_new)
 	{
-		CoreS_GetCPULocalPtr()->currentPriorityList->quantum = 0;
-		thread_priority nextPriority = CoreS_GetCPULocalPtr()->currentPriorityList->priority - 1;
-		if (nextPriority < 0)
-			nextPriority = THREAD_PRIORITY_MAX_VALUE;
-		CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(nextPriority);
-		
-	}
-	thread_priority_list* list = CoreS_GetCPULocalPtr()->currentPriorityList;
-	find_list:
-	OBOS_ASSERT(list);
-	while (!list->list.head)
-	{
-		thread_priority nextPriority = list->priority - 1;
-		if (nextPriority < 0)
+		if (!CoreS_GetCPULocalPtr()->currentPriorityList)
+			CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];
+		if (++CoreS_GetCPULocalPtr()->currentPriorityList->quantum >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
 		{
-			list = nullptr;
-			chosenThread = CoreS_GetCPULocalPtr()->idleThread;
-			if (!chosenThread)
-				OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
-			break;
+			CoreS_GetCPULocalPtr()->currentPriorityList->quantum = 0;
+			thread_priority nextPriority = CoreS_GetCPULocalPtr()->currentPriorityList->priority - 1;
+			if (nextPriority < 0)
+				nextPriority = THREAD_PRIORITY_MAX_VALUE;
+			CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(nextPriority);
+			
 		}
-		OBOS_ASSERT(nextPriority <= THREAD_PRIORITY_MAX_VALUE);
-		list = priorityList(nextPriority);
-	}
-	if (!list)
-		goto switch_thread;
-	thread_node* node = list->list.head;
-	while (node && node->data->status == THREAD_STATUS_RUNNING)
-		node = node->next;
-	if (!node)
-	{
-		thread_priority nextPriority = list->priority - 1;
-		if (nextPriority < 0)
+		thread_priority_list* list = CoreS_GetCPULocalPtr()->currentPriorityList;
+		find_list:
+		OBOS_ASSERT(list);
+		while (!list->list.head)
 		{
-			list = nullptr;
-			chosenThread = CoreS_GetCPULocalPtr()->idleThread;
-			if (!chosenThread)
-				OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
+			thread_priority nextPriority = list->priority - 1;
+			if (nextPriority < 0)
+			{
+				list = nullptr;
+				chosenThread = CoreS_GetCPULocalPtr()->idleThread;
+				if (!chosenThread)
+					OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
+				break;
+			}
+			OBOS_ASSERT(nextPriority <= THREAD_PRIORITY_MAX_VALUE);
+			list = priorityList(nextPriority);
+		}
+		if (!list)
 			goto switch_thread;
+		thread_node* node = list->list.head;
+		while (node && node->data->status == THREAD_STATUS_RUNNING)
+			node = node->next;
+		if (!node)
+		{
+			thread_priority nextPriority = list->priority - 1;
+			if (nextPriority < 0)
+			{
+				list = nullptr;
+				chosenThread = CoreS_GetCPULocalPtr()->idleThread;
+				if (!chosenThread)
+					OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
+				goto switch_thread;
+			}
+			list = priorityList(nextPriority);
+			goto find_list;
 		}
-		list = priorityList(nextPriority);
-		goto find_list;
-	}
 
-	chosenThread = node->data;
+		chosenThread = node->data;
+	}
+	else
+	{
+		chosenThread = getCurrentThread->snode->next ? getCurrentThread->snode->next->data : nullptr;
+		if (!chosenThread)
+		{
+			needs_new = true;
+			goto top;
+		}
+	}
 switch_thread:
 	OBOS_ASSERT(chosenThread);
 	// if (chosenThread == getCurrentThread)
@@ -253,10 +288,14 @@ switch_thread:
 	if (getCurrentThread && threadCanRunThread(getCurrentThread))
 		getCurrentThread->status = THREAD_STATUS_READY;
 	// Core_SpinlockRelease(&Core_SchedulerLock, IRQL_DISPATCH);
-	// Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
+	Core_SpinlockRelease(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH);
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
+	timer_tick end = CoreS_GetNativeTimerTick();
+	CoreS_GetCPULocalPtr()->sched_profile_data.total = end-start;
+	CoreS_GetCPULocalPtr()->sched_profile_data.total2_iterations++;
+	CoreS_GetCPULocalPtr()->sched_profile_data.total2 += CoreS_GetCPULocalPtr()->sched_profile_data.total;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;
@@ -295,4 +334,38 @@ void Core_Yield()
 		OBOS_ASSERT(!(oldIrql & ~0xf));
 		Core_LowerIrql(oldIrql);
 	}
+}
+void CoreH_ResetSchedulerProfilingInfo()
+{
+	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+	for (size_t i = 0; i < Core_CpuCount; i++)
+	{
+		cpu_local* const curr = Core_CpuInfo + i;
+		(void)Core_SpinlockAcquire(&curr->schedulerLock);
+		memzero(&curr->sched_profile_data, sizeof(curr->sched_profile_data));
+		(void)Core_SpinlockRelease(&curr->schedulerLock, IRQL_DISPATCH);
+	}
+	Core_LowerIrql(oldIrql);
+}
+void CoreH_PrintSchedulerProfilingInfo()
+{
+	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+	// Lock all the CPU schedulers
+	for (size_t i = 0; i < Core_CpuCount; i++)
+		(void)Core_SpinlockAcquire(&Core_CpuInfo[i].schedulerLock);
+	printf("\n|-------------------------------------------------------------|\n");
+	printf("| Scheduler profile data                                      |\n");
+	printf("| CPU       TOTAL           PRIORITY_BOOST   WORK_BALANCER    |\n");
+	for (size_t i = 0; i < Core_CpuCount; i++)
+	{
+		cpu_local* const curr = Core_CpuInfo + i;
+		uint64_t total_average = curr->sched_profile_data.total2_iterations ? curr->sched_profile_data.total2/curr->sched_profile_data.total2_iterations : 0;
+		uint64_t priority_booster_average = curr->sched_profile_data.priority_booster_iterations ? curr->sched_profile_data.priority_booster_total/curr->sched_profile_data.priority_booster_iterations : 0;
+		uint64_t work_balancer_average = curr->sched_profile_data.work_balancer_iterations ? curr->sched_profile_data.work_balancer_total/curr->sched_profile_data.work_balancer_iterations : 0;
+		printf("| %08x %016x %016x %016x |\n", curr->id, total_average, priority_booster_average, work_balancer_average);
+	}
+	printf("|-------------------------------------------------------------|\n\n");
+	for (size_t i = 0; i < Core_CpuCount; i++)
+		(void)Core_SpinlockRelease(&Core_CpuInfo[i].schedulerLock, IRQL_DISPATCH);
+	Core_LowerIrql(oldIrql);
 }

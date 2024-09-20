@@ -135,6 +135,7 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+    irql oldIrql = Core_SpinlockAcquire(&obj->lock);
     for (thread_node* curr = obj->waiting.head; curr; )
     {
         thread_node* next = curr->next;
@@ -151,11 +152,14 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
             break;
         curr = next;
     }
+    Core_SpinlockRelease(&obj->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;   
 }
 void CoreH_ClearSignaledState(struct waitable_header* obj)
 {
     if (!obj || !obj->use_signaled)
         return;
+    irql oldIrql = Core_SpinlockAcquire(&obj->lock);
     obj->signaled = false;
+    Core_SpinlockRelease(&obj->lock, oldIrql);
 }
