@@ -108,7 +108,7 @@ static void append_irq_to_vector(irq_vector* This, irq* what)
 {
 	OBOS_ASSERT(This);
 	OBOS_ASSERT(what);
-	irq_node* node = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(irq_node), nullptr);
+	irq_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq_node), nullptr);
 	OBOS_ASSERT(node);
 	node->data = what;
 	if (!This->irqObjects.head)
