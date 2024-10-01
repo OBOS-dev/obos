@@ -22,6 +22,10 @@
 #include "structs.h"
 #include "alloc.h"
 
+static OBOS_NO_UBSAN fat12_entry readFat12Entry(uint8_t* sector, uint32_t cluster, fat_entry_addr addr)
+{
+    return GetFat12Entry(*(uint16_t*)(sector + addr.offset), cluster);
+}
 static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
 {
     bool res = false;
@@ -30,7 +34,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
     if (Vfs_FdTellOff(volume->volume) != (addr.lba*volume->blkSize))
     {
         Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
-        Vfs_FdRead(volume->volume, sector, volume->blkSize, nullptr);
+        Vfs_FdRead(volume->volume, sector, volume->blkSize * ((volume->fatType == FAT12_VOLUME) + 1), nullptr);
     }   
     Vfs_FdSeek(volume->volume, addr.lba*volume->blkSize, SEEK_SET);
     switch (volume->fatType)
@@ -51,7 +55,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster, uint8_t* sector)
         }
         case FAT12_VOLUME:
         {
-            fat12_entry ent = GetFat12Entry(*(uint16_t*)(sector + addr.offset), cluster);
+            fat12_entry ent = readFat12Entry(sector, cluster, addr);
             res = !ent.ent;
             break;
         }
@@ -275,7 +279,7 @@ void InitializeCacheFreelist(fat_cache* volume)
 {
     uint32_t cluster = 0;
     struct fat_freenode* curr = nullptr;
-    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, volume->blkSize, nullptr);
+    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, volume->blkSize * ((volume->fatType == FAT12_VOLUME) + 1), nullptr);
     for (; !isLastCluster(volume, cluster); cluster++)
     {
         if (isClusterFree(volume, cluster, sector))

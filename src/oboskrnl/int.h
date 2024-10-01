@@ -46,8 +46,9 @@ typedef uint32_t uid, gid;
 #define ROOT_GID 0
 
 #if !defined(__cplusplus) && !defined(true) && !defined(false)
-#	define true (1)
-#	define false (0)
+// #	define true (1)
+// #	define false (0)
+enum {false=0,true=1};
 typedef _Bool bool;
 #endif
 #ifndef __cplusplus
@@ -80,13 +81,12 @@ typedef _Bool bool;
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
 #	define OBOS_NODISCARD __attribute__ ((warn_unused_result))
-#	define OBOS_NODISCARD_REASON(why) 
-#elif _MSC_VER
-#	define OBOS_NO_KASAN
-#	define OBOS_NO_UBSAN
+#	define OBOS_NODISCARD_REASON(why)  __attribute__ ((warn_unused_result))
 #else
 #	define OBOS_NO_KASAN
 #	define OBOS_NO_UBSAN
+#	define OBOS_NODISCARD
+#	define OBOS_NODISCARD_REASON(why)
 #endif
 #if __STDC_VERSION__ < 202311L && __STDC_VERSION__ >= 201112L
 #	define OBOS_STATIC_ASSERT(expr, msg) _Static_assert(expr, msg)

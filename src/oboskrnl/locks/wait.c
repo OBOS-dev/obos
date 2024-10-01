@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <error.h>
+#include <memmanip.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
@@ -39,6 +40,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     // We're waiting on one object.
     curr->nSignaled = 0;
     curr->nWaiting = 1;
+    memzero(&curr->lock_node, sizeof(curr->lock_node));
     curr->lock_node.data = curr;
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
     if (obos_is_error(status))

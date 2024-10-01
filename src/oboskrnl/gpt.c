@@ -107,17 +107,11 @@ obos_status OBOS_IdentifyGPTPartitions(fd *desc, partition *partition_list, size
     const size_t nSectorsForPartitionTable = hdr.part_entry_count / nPartitionEntriesPerSector + (hdr.part_entry_count % nPartitionEntriesPerSector != 0);
     const uint64_t partitionTableLBA = hdr.part_table_lba;
     Mm_VirtualMemoryFree(&Mm_KernelContext, buf, blkSize);
-    // FIXME: On qemu, multi-sector reads through AHCI always return zeroes, regardless of the actual data at said sector.
-    // Multi-sectors work on VBOX and two tested devices.
     buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, blkSize * nSectorsForPartitionTable, 
-                                        0, 0,
+                                        0, VMA_FLAGS_NON_PAGED,
                                         nullptr, &status);
     Vfs_FdSeek(desc, partitionTableLBA*blkSize, SEEK_SET);
-    size_t i = 0;
-    for (; i < nSectorsForPartitionTable; i += 4)
-        Vfs_FdRead(desc, buf+i*blkSize, blkSize*4, nullptr);
-    if (i > nSectorsForPartitionTable)
-        Vfs_FdRead(desc, buf+i*blkSize, blkSize*(i-nSectorsForPartitionTable), nullptr);
+    Vfs_FdRead(desc, buf, blkSize*nSectorsForPartitionTable, nullptr);
     if (!allow_checksum_fail)
     {
         uint32_t entriesCRC32 = crc32_bytes(buf, blkSize * nSectorsForPartitionTable);

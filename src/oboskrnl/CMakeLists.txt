@@ -14,6 +14,7 @@ list (APPEND oboskrnl_sources
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
+	"mm/aging.c" "mm/initial_swap.c"
 )
 
 add_executable(oboskrnl)
@@ -30,7 +31,6 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
 )

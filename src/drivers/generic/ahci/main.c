@@ -138,24 +138,27 @@ uacpi_ns_iteration_decision pci_bus_match(void *user, uacpi_namespace_node *node
     *pNode = node;
     return UACPI_NS_ITERATION_DECISION_BREAK;
 }
-void* map_registers(uintptr_t phys, size_t size, bool uc)
+static void* map_registers(uintptr_t phys, size_t size, bool uc)
 {
+    size_t phys_page_offset = (phys % OBOS_PAGE_SIZE);
+    phys -= phys_page_offset;
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
+    size += phys_page_offset;
     void* virt = Mm_VirtualMemoryAlloc(
         &Mm_KernelContext, 
         nullptr, size,
         uc ? OBOS_PROTECTION_CACHE_DISABLE : 0, VMA_FLAGS_NON_PAGED,
         nullptr, 
         nullptr);
-    page what = {.addr=(uintptr_t)virt};
     for (uintptr_t offset = 0; offset < size; offset += OBOS_PAGE_SIZE)
     {
-        what.addr = (uintptr_t)virt + offset;
-        page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        page->prot.uc = uc;
-        MmS_SetPageMapping(Mm_KernelContext.pt, page, phys + offset);
+        page_info page = {.virt=offset+(uintptr_t)virt};
+        MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
+        page.prot.uc = uc;
+        page.phys = phys+offset;
+        MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
-    return virt;
+    return virt+phys_page_offset;
 }
 uintptr_t HBAAllocate(size_t size, size_t alignment)
 {

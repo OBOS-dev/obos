@@ -43,7 +43,7 @@ typedef enum
 /// Sets the current log level.
 /// </summary>
 /// <param name="level">The new log level.</param>
-void OBOS_SetLogLevel(log_level level);
+OBOS_EXPORT void OBOS_SetLogLevel(log_level level);
 /// <summary>
 /// Gets the current log level.
 /// </summary>
@@ -85,8 +85,14 @@ OBOS_NORETURN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* forma
 /// </summary>
 OBOS_WEAK void OBOSS_HaltCPUs();
 
+void OBOS_AddLogSource(void(*out_callback)(char ch, void* userdata), void* userdata);
+
 // printf-Style functions.
 OBOS_EXPORT size_t printf(const char* format, ...);
 OBOS_EXPORT size_t vprintf(const char* format, va_list list);
 OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...);
 OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list);
+OBOS_EXPORT size_t puts(const char *s);
+
+// 'userdata' shall be the text renderer state.
+void OBOS_ConsoleOutputCallback(char ch, void* userdata);

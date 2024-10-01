@@ -49,7 +49,7 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
 static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
 	size_t i = 0;
-	if (++list->noStarvationQuantum < Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
+	if (++list->noStarvationQuantum >= Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
 		return false;
 	// The last (list->nNodes / 4) threads in a priority list will be starving usually because they are at the end of the list, and the scheduler starts looking from the front.
 	for (thread_node* thrN = list->list.tail; thrN && i < (list->list.nNodes / 4); )
@@ -81,6 +81,11 @@ static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priori
 }
 static void WorkStealing(thread_priority_list* list, thread_priority priority)
 {
+	// Just do nothing, the thread ready function does this for us.
+	OBOS_UNUSED(list);
+	OBOS_UNUSED(priority);
+	return;
+#if 0
 	OBOS_ASSERT(priority <= THREAD_PRIORITY_MAX_VALUE);
 	OBOS_ASSERT(list);
 	// Compare the current list's node count to that of other cores, and if it is less than the node count of one quarter of cores, then steal some work from some of the cores.
@@ -137,7 +142,9 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 			Core_SpinlockRelease(&cpu->schedulerLock, IRQL_DISPATCH);
 		}
 	}
+#endif
 }
+
 #endif
 
 //static spinlock s_lock;

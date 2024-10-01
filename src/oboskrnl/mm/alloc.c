@@ -50,21 +50,23 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
         ctx->owner->pid == 1 ?
         OBOS_KERNEL_ADDRESS_SPACE_LIMIT :
         OBOS_USER_ADDRESS_SPACE_LIMIT;
+#if OBOS_ARCHITECTURE_BITS != 32
     if (flags & VMA_FLAGS_32BIT)
     {
         base = 0x1000;
         limit = 0xfffff000;
     }
-	page* currentNode = nullptr;
-    page what = {.addr=base};
-	page* lastNode = RB_FIND(page_tree, &ctx->pages, &what);
+#endif
+	page_range* currentNode = nullptr;
+    page_range what = {.virt=base};
+	page_range* lastNode = RB_FIND(page_tree, &ctx->pages, &what);
 	uintptr_t lastAddress = base;
 	uintptr_t found = 0;
 	for (currentNode = RB_MIN(page_tree, &ctx->pages); 
         currentNode; 
         currentNode = RB_NEXT(page_tree, &ctx->pages, currentNode))
     {
-		uintptr_t currentNodeAddr = currentNode->addr;
+		uintptr_t currentNodeAddr = currentNode->virt;
 		if (currentNodeAddr < base)
 		    continue;
         if (currentNodeAddr >= limit)
@@ -73,17 +75,17 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 		{
             if (!lastNode)
                 continue;
-            found = lastAddress + (lastNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            found = lastAddress;
             break;
 		}
-		lastAddress = currentNodeAddr + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+		lastAddress = currentNodeAddr + currentNode->size;
         lastNode = currentNode;
 	}
     if (!found)
 	{
-		page* currentNode = lastNode;
+		page_range* currentNode = lastNode;
 		if (currentNode)
-			found = (currentNode->addr - (currentNode->addr % OBOS_PAGE_SIZE)) + (currentNode->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+			found = (currentNode->virt + currentNode->size);
 		else
 			found = base;
 	}
@@ -93,8 +95,10 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 			*status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
 		return nullptr;
 	}
+    // OBOS_Debug("%s %p\n", __func__, found);
     return (void*)found;
 }
+page* Mm_AnonPage = nullptr;
 void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -127,6 +131,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     }
     if (OBOS_HUGE_PAGE_SIZE == OBOS_PAGE_SIZE)
         flags &= ~VMA_FLAGS_HUGE_PAGE;
+    if (flags & VMA_FLAGS_32BITPHYS)
+        file = nullptr;
     size_t filesize = 0;
     if (file)
     {
@@ -137,7 +143,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
         if (file->vn->filesize < size)
             size = file->vn->filesize; // Truncated.
-        if ((file->offset+size >= file->vn->filesize))
+        if ((file->offset+size > file->vn->filesize))
             size = (file->offset+size) - file->vn->filesize;
         filesize = size;
         if (size % pgSize)
@@ -156,7 +162,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size += pgSize;
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
-        VfsH_PageCacheGetEntry(&file->vn->pagecache, file->vn, file->offset, size);
+        VfsH_PageCacheGetEntry(&file->vn->pagecache, file->vn, file->offset, size, nullptr);
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
     top:
     if (!base)
@@ -171,19 +177,21 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     }
     // We shouldn't reallocate the page(s).
     // Check if they exist so we don't do that by accident.
-    page what = {};
-    bool exists = false;
-    for (uintptr_t addr = base; addr < base + size; addr += pgSize)
-    {
-        what.addr = addr;
-        page* found = RB_FIND(page_tree, &ctx->pages, &what);
-        if (found && !found->reserved)
-        {
-            exists = true;
-            break;
-        }
-    }
-    if (exists)
+    // page what = {};
+    // bool exists = false;
+    // for (uintptr_t addr = base; addr < base + size; addr += pgSize)
+    // {
+    //     what.addr = addr;
+    //     page* found = RB_FIND(page_tree, &ctx->pages, &what);
+    //     if (found && !found->reserved)
+    //     {
+    //         exists = true;
+    //         break;
+    //     }
+    // }
+    page_range what = {.virt=base,.size=size};
+    page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
+    if (rng && !rng->reserved)
     {
         if (flags & VMA_FLAGS_HINT)
         {
@@ -198,14 +206,14 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
     }
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
-    size_t nNodes = size / pgSize + (size % pgSize ? 1 : 0);
-    page** nodes = Mm_Allocator->ZeroAllocate(Mm_Allocator, nNodes, sizeof(page*), &status);
     off_t currFileOff = file ? file->offset : 0;
-    size_t currSize = filesize;
     pagecache_mapped_region* reg = file ?
         Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(pagecache_mapped_region), nullptr) : nullptr;
+    page_range* pc_range = nullptr;
     if (file)
     {
+        page_range what = {.virt=(uintptr_t)file->vn->pagecache.data};
+        pc_range = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
         reg->fileoff = file->offset;
         reg->sz = filesize;
         reg->addr = base;
@@ -213,118 +221,112 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         reg->ctx = ctx;
         LIST_APPEND(mapped_region_list, &reg->owner->mapped_regions, reg);
     }
-    what = (page){};
-    for (size_t i = 0; i < nNodes; i++)
+    bool present = false;
+    volatile bool isNew = true;
+    if (!rng)
     {
-        uintptr_t phys = 0;
-        bool isPresent = true;
-        what.addr = base+i*pgSize;
-        bool isNodeOurs = true;
-        page* node = RB_FIND(page_tree, &ctx->pages, &what);
-        if (!node)
-            node = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), &status);
-        else
-            isNodeOurs = false;
-        if (isNodeOurs)
-            nodes[i] = node;
-        node->addr = what.addr;
-        node->allocated = true;
-        node->owner = ctx;
-        node->prot.accessed = false;
-        node->prot.dirty = false;
-        node->pagedOut = false;
-        node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
-        node->age = 0;
-        node->region = reg;
-        if (node->reserved && !(flags & VMA_FLAGS_RESERVE))
-            ctx->stat.reserved -= (node->prot.huge_page) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-        node->reserved = flags & VMA_FLAGS_RESERVE;
-        if (!file)
-            phys = node->reserved ? 0 : Mm_AllocatePhysicalPages(pgSize/OBOS_PAGE_SIZE, pgSize/OBOS_PAGE_SIZE, &status);
-        else
+        rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+        present = rng->prot.present = !(flags & VMA_FLAGS_RESERVE);
+        rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
+        if (!(flags & VMA_FLAGS_PRIVATE) || !file)
         {
-            // If this is a private mapping...
-            if (flags & VMA_FLAGS_PRIVATE)
+            rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+            rng->pageable = !(flags & VMA_FLAGS_NON_PAGED);
+        }
+        if (!(flags & VMA_FLAGS_PRIVATE) && file)
+            rng->prot.rw = false; // force it off so that we can mark dirty pages.
+        rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+        rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+        rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+        rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
+        rng->mapped_here = reg;
+        rng->size = size;
+        rng->virt = base;
+        // note for future me: the '~' is intentionally there
+        rng->pageable = ~flags & VMA_FLAGS_NON_PAGED;
+        rng->reserved = (flags & VMA_FLAGS_RESERVE);
+        // this can be implied by doing '!rng->cow && rng->mapped_here'
+        // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
+        rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
+        rng->ctx = ctx;
+    }
+    else 
+    {
+        isNew = false;
+        // OBOS_UNUSED(isNew);
+        rng->size_committed += size;
+        if (rng->size_committed >= rng->size)
+            rng->reserved = false;
+        present = true;
+    }
+    page* phys = 0;
+    if (!file && !(flags & VMA_FLAGS_NON_PAGED) && !(flags & VMA_FLAGS_RESERVE))
+    {
+        OBOS_ASSERT(Mm_AnonPage);
+        // Use anon physical page.
+        phys = Mm_AnonPage;
+    }
+    for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
+    {
+        bool isPresent = !(rng->hasGuardPage && (base==addr)) && present;
+        bool cow = false;
+        // for (volatile bool b = (addr==0xffffff00003d3000); b; )
+        //     ;
+        if (isPresent)
+        {
+            if (!file && (flags & VMA_FLAGS_NON_PAGED))
+                phys = MmH_PgAllocatePhysical(flags & VMA_FLAGS_32BITPHYS, flags & VMA_FLAGS_HUGE_PAGE);
+            else if (file)
             {
-                void* pagecache_base = file->vn->pagecache.data + currFileOff;
-                page what = { .addr=(uintptr_t)pagecache_base };
-                page* pc_page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-                MmS_QueryPageInfo(Mm_KernelContext.pt, pc_page->addr, nullptr, &phys);
-                if (!(prot & OBOS_PROTECTION_READ_ONLY))
+                // File page.
+                page_info info = {};
+                MmS_QueryPageInfo(ctx->pt, (uintptr_t)reg->owner->data+currFileOff, &info, nullptr);
+                if (flags & VMA_FLAGS_PRIVATE)
                 {
-                    if (pc_page->next_copied_page)
-                        pc_page->next_copied_page->prev_copied_page = node;
-                    node->next_copied_page = pc_page->next_copied_page;
-                    node->prev_copied_page = pc_page;
-                    pc_page->next_copied_page = node;
-                    pc_page->prot.rw = false;
-                    pc_page->prot.present = true;
-                    MmS_SetPageMapping(Mm_KernelContext.pt, pc_page, phys);
+                    // Private.
+                    // Moooo (CoW)
+                    cow = true;
                 }
-                node->prot.rw = false;
-                node->prot.present = true;
+                isPresent = info.prot.present;
+                page what = {.phys=info.phys};
+                phys = isPresent ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+                if (phys)
+                    MmH_RefPage(phys);
+                rng->cow = cow;
+                if (cow)
+                {
+                    rng->un.cow_type = COW_SYMMETRIC;
+                    pc_range->cow = true;
+                    pc_range->un.cow_type = COW_SYMMETRIC;
+                    info.prot.rw = false;
+                    MmS_SetPageMapping(ctx->pt, &info, info.phys, false);
+                }
             }
             else
             {
-                MmS_QueryPageInfo(ctx->pt, (uintptr_t)(file->vn->pagecache.data + currFileOff), nullptr, &phys);
-                if (!phys)
-                    isPresent = false;
+                rng->un.cow_type = COW_ASYMMETRIC;
+                rng->cow = true;
+                MmH_RefPage(Mm_AnonPage);
             }
         }
-        if (flags & VMA_FLAGS_GUARD_PAGE && i == 0)
-        {
-            node->prot.present = false;
-            node->isGuardPage = true;
-            node->pageable = false;
-        }
-        else
-        {
-            node->prot.present = isPresent && !node->reserved;
-            node->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
-            if (!(flags & VMA_FLAGS_PRIVATE) || !file)
-            {
-                node->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
-                node->pageable = !(flags & VMA_FLAGS_NON_PAGED);
-            }
-            if (!(flags & VMA_FLAGS_PRIVATE) && file)
-                node->prot.rw = false; // force it off so that we can mark dirty pages.
-            node->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-            node->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-            node->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
-            node->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
-            if (!(flags & VMA_FLAGS_RESERVE))
-                status = MmS_SetPageMapping(ctx->pt, node, phys);
-            if (obos_is_error(status))
-            {
-                // We need to clean up.
-                for (size_t j = 0; j < i; j++)
-                {
-                    if (!nodes[j])
-                        continue;
-                    nodes[j]->prot.present = false;
-                    MmS_SetPageMapping(ctx->pt, nodes[j], 0);
-                    RB_REMOVE(page_tree, &ctx->pages, nodes[j]);
-                    Mm_Allocator->Free(Mm_Allocator, nodes[j], sizeof(page));
-                }
-                if (reg)
-                    Mm_Allocator->Free(Mm_Allocator, reg, sizeof(*reg));
-                Core_SpinlockRelease(&ctx->lock, oldIrql);
-                Mm_Allocator->Free(Mm_Allocator, node, sizeof(page));
-                Mm_Allocator->Free(Mm_Allocator, nodes, nNodes*sizeof(page*));
-                set_statusp(ustatus, status);
-                return nullptr;
-            }
-            if (node->prot.present && !(prot & OBOS_PROTECTION_READ_ONLY) && !file)
-                memzero((void*)node->addr, pgSize);
-        }
+        // Append the virtual page to phys on demand as apposed to now to save memory.
+        // An example of where it'd be added is on swap out, as the virtual_pages list is not needed until then.
+        page_info curr = {};
+        curr.range = rng;
+        curr.virt = addr;
+        curr.phys = phys ? phys->phys : 0;
+        curr.prot = rng->prot;
+        curr.prot.rw = cow ? false : rng->prot.rw;
+        curr.prot.present = isPresent;
+        if (rng->cow && rng->un.cow_type == COW_ASYMMETRIC)
+        curr.prot.present = false;
+        OBOS_ASSERT(phys != 0 || !isPresent);
+        MmS_SetPageMapping(ctx->pt, &curr, curr.phys, false);
+        // if (rng->pageable && !rng->reserved && isPresent && !file)
+        //     Mm_SwapOut(&curr);
         currFileOff += pgSize;
-        currSize -= pgSize;
-        RB_INSERT(page_tree, &ctx->pages, node);
     }
-    // Page out each page so we don't explode.
-    // TODO: Error handling?
-    for (size_t i = 0; i < nNodes && !(flags & (VMA_FLAGS_NON_PAGED|VMA_FLAGS_RESERVE)); i++)
-        Mm_SwapOut(nodes[i]);
     if (!(flags & VMA_FLAGS_RESERVE))
     {
         if (!(flags & VMA_FLAGS_NON_PAGED))
@@ -335,11 +337,13 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         else
             ctx->stat.nonPaged += size;
         ctx->stat.committedMemory += size;
+        if (!isNew)
+            ctx->stat.reserved -= size;
     }
-    else {
+    else
         ctx->stat.reserved += size;
-    }
-    Mm_Allocator->Free(Mm_Allocator, nodes, nNodes*sizeof(page*));
+    OBOS_ASSERT(rng->size);
+    RB_INSERT(page_tree, &ctx->pages, rng);
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     if (flags & VMA_FLAGS_GUARD_PAGE)
         base += pgSize;
@@ -347,143 +351,145 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
 }
 obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 {
+    // OBOS_Debug("%s %p\n", __func__, base_);
     uintptr_t base = (uintptr_t)base_;
-    if (base % OBOS_PAGE_SIZE)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    // if (base % OBOS_PAGE_SIZE)
+    //     return OBOS_STATUS_INVALID_ARGUMENT;
+    base -= (base%OBOS_PAGE_SIZE);
     if (!ctx || !base || !size)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
-    // We need to:
-    // - Possibly change the base if there is a guard page.
-    // - Unmap the pages
-    // - Remove the pages from any VMM data structures (working set, page tree, referenced list)
+    /* We need to:
+        - Unmap the pages
+        - Remove the pages from any VMM data structures (working set, page tree, referenced list)
+    */
     
     // Verify the pages' existence.
-    
-    page what;
-    memzero(&what, sizeof(what));
-    what.addr = base;
-
-    uintptr_t offset = 0;
-    page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 
-    if (!baseNode)
+    page_range what = {.virt=base,.size=size};
+    page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
+    if (!rng)
         return OBOS_STATUS_NOT_FOUND;
-    page* curr = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
-    {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
-            curr = RB_NEXT(page_tree, &ctx->pages, curr);
-        if (!curr || curr->addr != addr)
-            return OBOS_STATUS_NOT_FOUND;
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-    uintptr_t guardPageBase = base;
-    what.addr = guardPageBase;
-    page* guardPage = RB_FIND(page_tree, &ctx->pages, &what);
-    if (guardPage->prot.huge_page)
-        guardPageBase -= OBOS_HUGE_PAGE_SIZE;
-    else
-        guardPageBase -= OBOS_PAGE_SIZE;
-
-    what.addr = guardPageBase;
-    guardPage = RB_FIND(page_tree, &ctx->pages, &what);
-    if (guardPage && guardPage->isGuardPage)
-    {
-        baseNode = guardPage;
-        base = guardPageBase;
-        size += guardPage->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-
-    // We've possibly located a guard page that we need to free with the rest of the buffer.
-    // Now we must unmap the pages and dereference them.
-
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
-
-    offset = 0;
-    curr = nullptr;
-    page* next = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    if (rng->hasGuardPage)
     {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
+        const size_t pgSize = (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        base -= pgSize;
+        if (size == (rng->size - pgSize))
+            size += pgSize;
+    }
+    bool full = true;
+    page_protection new_prot = rng->prot;
+    new_prot.present = false;
+    if (rng->virt != base || rng->size != size)
+    {
+        // OBOS_Debug("untested code path\n");
+        full = false;
+        // Split.
+        // If rng->virt == base, or rng->size == size
+        // Split at rng->virt+size (size: rng->size-size) and remove the other range
+        // If rng->size != size, and rng->virt != base
+        // Split at base (size: ((base-rng->virt)+rng->size-size)-rng->virt)
+        if (rng->virt != base && rng->size != size)
+        {
+            if ((base + size) >= (rng->virt+rng->size))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            // We need two ranges, one for the range behind base, and another for the range after.
+            page_range* before = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* after = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            memcpy(before, rng, sizeof(*before));
+            memcpy(after, rng, sizeof(*before));
+            before->size = base-before->virt;
+            after->virt = before->virt+before->size+size;
+            after->size = (after->virt-before->virt);
+            after->hasGuardPage = false;
+            memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
+            memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
+            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+            {
+                working_set_node* next = curr->next;
+                if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
+                {
+                    curr->data->free = true; // mark for deletion.
+                    curr = next;
+                    continue;
+                }
+                if (curr->data->info.virt < before->virt)
+                {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
+                    curr->data->info.range = before;
+                }
+                if (curr->data->info.virt >= after->virt)
+                {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
+                    curr->data->info.range = after;
+                }
+                curr = next;
+            }
+            RB_REMOVE(page_tree, &ctx->pages, rng);
+            RB_INSERT(page_tree, &ctx->pages, before);
+            RB_INSERT(page_tree, &ctx->pages, after);
+        }
+        else if (rng->virt == base || rng->size == size)
+        {
+            rng->size = (rng->size-size);
+            rng->virt += size;
+            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+            {
+                working_set_node* next = curr->next;
+                if (curr->data->info.virt < rng->virt)
+                {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                    curr->data->free = true;
+                }
+                curr = next;
+            }
+        }
+    }
+    OBOS_ASSERT(rng->size);
+    
+    page_info pg = {};
+    pg.prot = new_prot;
+    pg.range = nullptr;
+    for (uintptr_t addr = base; addr < (base+size); addr += new_prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)
+    {
+        pg.virt = addr;
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+        info.range = rng;
+        if (info.prot.present && !rng->mapped_here)
+            Mm_FreePhysicalPages(info.phys, (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
+        if (!info.prot.present && !rng->mapped_here && rng->pageable)
+        {
+            if (obos_is_success(Mm_SwapIn(&info, nullptr)))
+                ctx->stat.paged -= (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        }
+        // for(volatile bool b = (addr == 0xffffff0000039000); b; );
+        MmS_SetPageMapping(ctx->pt, &pg, 0, true);
+    }
+    if (rng->reserved)
+        ctx->stat.reserved -= size;
+    else
+        ctx->stat.committedMemory -= size;
+    if (rng->pageable)
+        ctx->stat.pageable -= size;
+    else
+        ctx->stat.nonPaged -= size;
+    if (full)
+    {
+        for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+        {
+            working_set_node* next = curr->next;
+            REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+            curr->data->free = true;
             curr = next;
-        next = RB_NEXT(page_tree, &ctx->pages, curr);
-        if (!curr || curr->addr != addr)
-        {
-            Core_SpinlockRelease(&ctx->lock, oldIrql);
-            return OBOS_STATUS_NOT_FOUND;
         }
-
-        RB_REMOVE(page_tree, &ctx->pages, curr);
-        if (curr->region && !LIST_IS_NODE_UNLINKED(mapped_region_list, &curr->region->owner->mapped_regions, curr->region))
-            LIST_REMOVE(mapped_region_list, &curr->region->owner->mapped_regions, curr->region);
-        if (curr->ln_node.next || curr->ln_node.prev || &curr->ln_node == ctx->referenced.head || &curr->ln_node == ctx->workingSet.pages.head)
-        {
-            if (curr->workingSets > 0)
-            {
-                REMOVE_PAGE_NODE(ctx->workingSet.pages, &curr->ln_node);
-                ctx->workingSet.size -= curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-            }
-            else if (curr->onDirtyList)
-            {
-                REMOVE_PAGE_NODE(Mm_DirtyPageList, &curr->ln_node);
-                Mm_DirtyPagesBytes -= curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-                Mm_FreePhysicalPages(curr->cached_phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
-            }
-            else if (curr->onStandbyList)
-            {
-                REMOVE_PAGE_NODE(Mm_StandbyPageList, &curr->ln_node);
-                Mm_FreePhysicalPages(curr->cached_phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
-            }
-            else 
-                REMOVE_PAGE_NODE(ctx->referenced, &curr->ln_node); // it's in the referenced list
-        }
-        if (curr->pageable)
-            ctx->stat.pageable -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        else
-            ctx->stat.nonPaged -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        if (curr->prot.present)
-        {
-            uintptr_t phys = 0;
-            MmS_QueryPageInfo(ctx->pt, curr->addr, nullptr, &phys);
-            if (!curr->region && !curr->isPrivateMapping)
-                Mm_FreePhysicalPages(phys, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
-        }
-        else 
-        {
-            if (curr->pageable)
-                ctx->stat.paged -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        }
-        if (curr->prev_copied_page)
-            curr->prev_copied_page->next_copied_page = curr->next_copied_page;
-        if (curr->next_copied_page)
-            curr->next_copied_page->prev_copied_page = curr->prev_copied_page;
-        curr->next_copied_page = nullptr;
-        curr->prev_copied_page = nullptr;
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-        if (curr->allocated)
-            Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+        RB_REMOVE(page_tree, &ctx->pages, rng);
+        Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
     }
-    ctx->stat.committedMemory -= size;
     Core_SpinlockRelease(&ctx->lock, oldIrql);
-    struct page current = {};
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
-    {
-        MmS_QueryPageInfo(ctx->pt, addr, &current, nullptr);
-        if (current.prot.present)
-        {
-            current.prot.present = false;
-            MmS_SetPageMapping(ctx->pt, &current, 0); // Unmap the page.
-        }
-        offset = current.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot_flags prot, int isPageable)
@@ -497,99 +503,146 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     if (prot == OBOS_PROTECTION_SAME_AS_BEFORE && isPageable > 1)
         return OBOS_STATUS_SUCCESS;
-
-    page what;
-    memzero(&what, sizeof(what));
-    what.addr = base;
-
-    // Verify each pages' existence
-
-    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
-
-    uintptr_t offset = 0;
-    page* baseNode = RB_FIND(page_tree, &ctx->pages, &what); 
-    if (!baseNode)
-    {
-        Core_SpinlockRelease(&ctx->lock, oldIrql);
+    // Verify the pages' existence.
+    page_range what = {.virt=base,.size=size};
+    page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
+    if (!rng)
         return OBOS_STATUS_NOT_FOUND;
-    }
-    page* curr = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
+    page_protection new_prot = rng->prot;
+    if (~prot & OBOS_PROTECTION_SAME_AS_BEFORE)
     {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
-            curr = RB_NEXT(page_tree, &ctx->pages, curr);
-        if (!curr || curr->addr != addr)
-        {
-            Core_SpinlockRelease(&ctx->lock, oldIrql);
-            return OBOS_STATUS_NOT_FOUND;
-        }
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        new_prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+        new_prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+        new_prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        new_prot.rw = !new_prot.ro;
+        new_prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
     }
-
-
-    offset = 0;
-    curr = nullptr;
-    page* next = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
+    else
     {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
-            curr = next;
-        next = RB_NEXT(page_tree, &ctx->pages, curr);
-        if (!curr || curr->addr != addr)
+        if (prot & OBOS_PROTECTION_EXECUTABLE)
+            new_prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+        if (prot & OBOS_PROTECTION_USER_PAGE)
+            new_prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+        if (prot & OBOS_PROTECTION_READ_ONLY)
+            new_prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+        if (prot & OBOS_PROTECTION_CACHE_DISABLE)
+            new_prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+        if (prot & OBOS_PROTECTION_CACHE_ENABLE)
+            new_prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
+    }
+    bool pageable = isPageable > 1 ? rng->pageable : (bool)isPageable;
+    if (rng->virt != base || rng->size != size)
+    {
+        // Split.
+        // If rng->virt == base, or rng->size == size
+        // Split at rng->virt+size (size: rng->size-size) and remove the other range
+        // If rng->size != size, and rng->virt != base
+        // Split at base (size: ((base-rng->virt)+rng->size-size)-rng->virt)
+        if (rng->virt != base && rng->size != size)
         {
-            Core_SpinlockRelease(&ctx->lock, oldIrql);
-            return OBOS_STATUS_NOT_FOUND;
-        }
-        if (!(prot & OBOS_PROTECTION_SAME_AS_BEFORE))
-        {
-            curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-            curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
-            curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-            curr->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
-            curr->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
-            if (!(prot & OBOS_PROTECTION_CACHE_DISABLE))
-                curr->prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
-        }
-        else
-        {
-            if (prot & OBOS_PROTECTION_EXECUTABLE)
-                curr->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-            if (!(prot & OBOS_PROTECTION_USER_PAGE))
-                curr->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-            if (!(prot & OBOS_PROTECTION_READ_ONLY))
+            // OBOS_Debug("untested code path 1\n");
+            if ((base + size) >= (rng->virt+rng->size))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            // We need two ranges, one for the range behind base, and another for the range after.
+            page_range* before = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* after = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            memcpy(new, rng, sizeof(*rng));
+            memcpy(before, rng, sizeof(*rng));
+            memcpy(after, rng, sizeof(*rng));
+            before->size = base-before->virt;
+            after->virt = before->virt+before->size+size;
+            after->size = rng->size-(after->virt-rng->virt);
+            memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
+            memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
+            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
             {
-                curr->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);\
-                curr->prot.ro = false;
+                working_set_node* next = curr->next;
+                if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
+                {
+                    curr->data->free = true; // mark for deletion.
+                    curr = next;
+                    continue;
+                }
+                if (curr->data->info.virt < before->virt)
+                {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
+                    curr->data->info.range = before;
+                }
+                if (curr->data->info.virt >= after->virt)
+                {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
+                    curr->data->info.range = after;
+                }
+                curr = next;
             }
-            if (prot & OBOS_PROTECTION_CACHE_DISABLE)
-                curr->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
-            if ((prot & OBOS_PROTECTION_CACHE_ENABLE) && !(prot & OBOS_PROTECTION_CACHE_DISABLE))
-                curr->prot.uc = !(prot & OBOS_PROTECTION_CACHE_ENABLE);
-
+            new->prot = new_prot;
+            new->pageable = pageable;
+            new->virt = base;
+            new->size = size;
+            // printf(
+            //     ""
+            //     "0x%p-0x%p\n"
+            //     "0x%p-0x%p\n"
+            //     "0x%p-0x%p\n"
+            //     "0x%p-0x%p\n",
+            //     before->virt, before->virt+before->size,
+            //     new->virt, new->virt+new->size,
+            //     after->virt, after->virt+after->size,
+            //     rng->virt, rng->virt+rng->size
+            // );
+            RB_REMOVE(page_tree, &ctx->pages, rng);
+            RB_INSERT(page_tree, &ctx->pages, before);
+            RB_INSERT(page_tree, &ctx->pages, after);
+            RB_INSERT(page_tree, &ctx->pages, new);
+            rng = new;
         }
-        if ((curr->pagedOut||curr->onStandbyList||curr->onDirtyList) && !isPageable)
+        else if (rng->virt == base || rng->size == size)
         {
-            // Page in curr if:
-            // The current page is paged out, and we need to change the pageable property from true to false.
-            Mm_SwapIn(curr);
-            Mm_KernelContext.stat.paged -= (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            // OBOS_Debug("untested code path 2\n");
+            // printf(
+            //     ""
+            //     "0x%p-0x%p\n",
+            //     rng->virt, rng->virt+rng->size
+            // );
+            page_range* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            memcpy(new, rng, sizeof(*rng));
+            new->size = size;
+            rng->size = (rng->size-size);
+            if (base > rng->virt)
+                rng->virt = base;
+            else
+                rng->virt += size;
+            // printf(
+            //     ""
+            //     "0x%p-0x%p\n"
+            //     "0x%p-0x%p\n",
+            //     rng->virt, rng->virt+rng->size,
+            //     new->virt, new->virt+new->size
+            // );
+            rng->prot = new_prot;
+            rng->pageable = pageable;
+            RB_INSERT(page_tree, &ctx->pages, new);
         }
-        if (isPageable < 2)
-            curr->pageable = isPageable;
-        uintptr_t phys = 0;
-        MmS_QueryPageInfo(ctx->pt, curr->addr, nullptr, &phys);
-        MmS_SetPageMapping(ctx->pt, curr, phys);
-
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
-
+    OBOS_ASSERT(rng->size);
+    page_info pg = {};
+    pg.prot = new_prot;
+    pg.range = nullptr;
+    for (uintptr_t addr = base; addr < (base+size); addr += new_prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)
+    {
+        pg.virt = addr;
+        // printf("0x%p %08x\n", pg.virt, prot);
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+        // if (info.prot.present)
+        //     Mm_FreePhysicalPages(info.phys, (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
+        pg.prot.present = info.prot.present;
+        MmS_SetPageMapping(ctx->pt, &pg, info.phys, false);
+    }
     Core_SpinlockRelease(&ctx->lock, oldIrql);
-
     return OBOS_STATUS_SUCCESS;
 }

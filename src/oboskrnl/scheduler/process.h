@@ -22,7 +22,7 @@ typedef struct process
 } process;
 extern uint64_t Core_NextPID;
 // The first thread in this process must be the kernel main thread.
-extern process* OBOS_KernelProcess;
+extern OBOS_EXPORT process* OBOS_KernelProcess;
 /// <summary>
 /// Allocates a process object.
 /// </summary>
@@ -42,7 +42,7 @@ obos_status Core_ProcessStart(process* proc, thread* mainThread);
 /// <param name="proc">The process.</param>
 /// <param name="thread">The thread.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_ProcessAppendThread(process* proc, thread* thread);
+OBOS_EXPORT obos_status Core_ProcessAppendThread(process* proc, thread* thread);
 /// <summary>
 /// Terminates a process.
 /// </summary>

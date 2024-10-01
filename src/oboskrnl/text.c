@@ -15,7 +15,7 @@
 text_renderer_state OBOS_TextRendererState;
 
 // colour is rgbx.
-static void PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
+void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 {
 	switch (fbFmt)
 	{
@@ -57,14 +57,14 @@ static void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, u
 	{
 		uint32_t realY = y + cy - 12;
 		uint8_t* framebuffer = (uint8_t*)fb + realY * state->fb.pitch;
-		PlotPixel((glyph[cy] & mask[0]) ? fc : bc, framebuffer + ((x + 0) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[1]) ? fc : bc, framebuffer + ((x + 1) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[2]) ? fc : bc, framebuffer + ((x + 2) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[3]) ? fc : bc, framebuffer + ((x + 3) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[4]) ? fc : bc, framebuffer + ((x + 4) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[5]) ? fc : bc, framebuffer + ((x + 5) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[6]) ? fc : bc, framebuffer + ((x + 6) * bytesPerPixel), state->fb.format);
-		PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[0]) ? fc : bc, framebuffer + ((x + 0) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[1]) ? fc : bc, framebuffer + ((x + 1) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[2]) ? fc : bc, framebuffer + ((x + 2) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[3]) ? fc : bc, framebuffer + ((x + 3) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[4]) ? fc : bc, framebuffer + ((x + 4) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[5]) ? fc : bc, framebuffer + ((x + 5) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[6]) ? fc : bc, framebuffer + ((x + 6) * bytesPerPixel), state->fb.format);
+		OBOS_PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
 	}
 }
 static void flush_buffers(text_renderer_state* state)
@@ -99,7 +99,14 @@ static void newlineHandler(text_renderer_state* state)
 		void* fb = state->fb.backbuffer_base ? state->fb.backbuffer_base : state->fb.base;
 		memset(fb, 0, (size_t)state->fb.pitch / 4 * 16);
 		memcpy(fb, (uint8_t*)fb + (state->fb.pitch * 16), (size_t)state->fb.pitch * ((size_t)state->fb.height - 16));
-		memset((uint8_t*)fb + (size_t)state->fb.pitch * ((size_t)state->fb.height - 16), 0, (size_t)state->fb.pitch * 16);
+		if (OBOS_TEXT_BACKGROUND == 0)
+			memset((uint8_t*)fb + (size_t)state->fb.pitch * ((size_t)state->fb.height - 16), 0, (size_t)state->fb.pitch * 16);
+		else {
+			uint32_t y = state->fb.height - 16;
+			for (size_t i = 0; i < 16; i++, y++)
+				for (uint32_t x = 0; x < state->fb.width; x++)
+					OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)fb)[y*state->fb.pitch+x*state->fb.bpp/8], state->fb.format);
+		}
 		state->row--;
 		if (state->fb.modified_line_bitmap)
 		{
@@ -127,12 +134,12 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 	case '\b':
 		if (!state->column)
 			break;
-		putch(state, ' ', --state->column, state->row, 0xcccccccc, 0);
+		putch(state, ' ', --state->column, state->row, 0xffffffff, OBOS_TEXT_BACKGROUND);
 		break;
 	default:
 		if (state->column >= (state->fb.width/8))
 			newlineHandler(state);
-		putch(state, ch, state->column++, state->row, 0xcccccccc, 0);
+		putch(state, ch, state->column++, state->row, 0xffffffff, OBOS_TEXT_BACKGROUND);
 		break;
 	}
 	if (state->fb.backbuffer_base)
@@ -161,7 +168,7 @@ obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t 
 	case '\b':
 		break;
 	default:
-		putch(state, ch, column, row, 0xcccccccc, 0);
+		putch(state, ch, column, row, 0xffffffff, OBOS_TEXT_BACKGROUND);
 		break;
 	}
 	if (state->fb.backbuffer_base)

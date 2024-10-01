@@ -33,6 +33,7 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 const uint8_t OBOS_ASANPoisonValues[] = {
 	0xDE,
 	0xAA,
+	0x1A,
 };
 OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
 {
@@ -47,6 +48,9 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 		break;
 	case ASAN_UseAfterFree:
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Use of memory block after free).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		break;
+	case ASAN_UninitMemory:
+		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory.).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	default:
 		break;
@@ -141,6 +145,8 @@ OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, b
 		asan_shadow_space_access(at, size, ip, rw, ASAN_POISON_ALLOCATED, abort);
 	if (memcmp_b((void*)at, OBOS_ASANPoisonValues[ASAN_POISON_FREED], size))
 		asan_shadow_space_access(at, size, ip, rw, ASAN_POISON_FREED, abort);
+	if (memcmp_b((void*)at, OBOS_ASANPoisonValues[ASAN_POISON_ANON_PAGE_UNINITED], size))
+		asan_shadow_space_access(at, size, ip, rw, ASAN_POISON_ANON_PAGE_UNINITED, abort);
 }
 
 #if __INTELLISENSE__

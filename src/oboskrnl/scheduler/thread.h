@@ -82,6 +82,7 @@ typedef struct thread
 	uint64_t lastRunTick;
 	struct cpu_local* masterCPU /* the cpu that contain this thread's priority list. */;
 	struct thread_node* snode;
+	struct thread_node* pnode;
 	struct process* proc;
 	
 	thread_ctx context;

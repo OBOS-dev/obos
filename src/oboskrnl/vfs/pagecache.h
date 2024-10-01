@@ -12,6 +12,8 @@
 
 #include <locks/mutex.h>
 
+#include <mm/handler.h>
+
 #include <stdatomic.h>
 
 typedef LIST_HEAD(dirty_pc_list, struct pagecache_dirty_region) dirty_pc_list;
@@ -23,6 +25,7 @@ typedef struct pagecache
     // Take this lock when expanding the page cache.
     mutex lock;
     char* data;
+    struct page_range* cached_data_range; 
     // Take this lock when using dirty region list.
     mutex dirty_list_lock;
     dirty_pc_list dirty_regions;
@@ -66,4 +69,4 @@ OBOS_EXPORT void VfsH_PageCacheUnref(pagecache* pc);
 OBOS_EXPORT void VfsH_PageCacheFlush(pagecache* pc, void* vn);
 // Gets a page cache entry.
 // vn is of type `vnode*`
-OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn, size_t offset, size_t size);
+OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn, size_t offset, size_t size, fault_type* type);

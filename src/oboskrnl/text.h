@@ -16,6 +16,8 @@
 #define OBOS_FB_FORMAT_RGBX8888 3
 #define OBOS_FB_FORMAT_XRGB8888 4
 
+#define OBOS_TEXT_BACKGROUND 0x1b1c1b00
+
 #define get_line_bitmap_size(height) (height/512+((height%512 == 0) ? 0 : 1))
 typedef struct
 {
@@ -36,6 +38,9 @@ typedef struct
 		uint8_t bpp;
 	} fb;
 } text_renderer_state;
-extern text_renderer_state OBOS_TextRendererState;
+extern OBOS_EXPORT text_renderer_state OBOS_TextRendererState;
+// Plots a pixel at fb. fbFmt is of OBOS_FB_FORMAT_*
+// Colour is RGBX
+void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt);
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch);
 obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row);

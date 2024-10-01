@@ -105,5 +105,5 @@ typedef struct thread_context_info ucontext_t;
 void OBOS_SyncPendingSignal(interrupt_frame* frame);
 void OBOS_RunSignal(int sigval, interrupt_frame* frame);
 
-void OBOSS_SigReturn(interrupt_frame* frame);
-void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame);
+OBOS_WEAK void OBOSS_SigReturn(interrupt_frame* frame);
+OBOS_WEAK void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame);

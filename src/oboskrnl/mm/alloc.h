@@ -25,7 +25,9 @@ typedef enum vma_flags
 	VMA_FLAGS_PRIVATE = BIT(6), // only applies when mapping a file.
 	VMA_FLAGS_PREFAULT = BIT(7), // only applies when mapping a file.
 	VMA_FLAGS_RESERVE = BIT(8), // Registers the pages, but does not back them by anything. If this is set, the VMA ignores the 'file' parameter.
-    VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_NON_PAGED,
+	VMA_FLAGS_32BITPHYS = BIT(8), // 32-bit physical addresses should be allocated. Best to use with VMA_FLAGS_NON_PAGED. Ignored if file != nullptr.
+    VMA_FLAGS_OVERWRITE = BIT(9), // Overwrite the page mappings. TODO:
+	VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE,
 } vma_flags;
 typedef enum prot_flags
 {
@@ -63,6 +65,10 @@ typedef enum prot_flags
 } prot_flags;
 
 extern OBOS_EXPORT allocator_info* Mm_Allocator;
+
+// flags: PHYS_PAGE_HUGE_PAGE
+// phys32: true
+extern OBOS_EXPORT page* Mm_AnonPage;
 
 OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.

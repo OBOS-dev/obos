@@ -68,6 +68,7 @@ void OBOS_ParseCMDLine()
             "                     is used as root.\n"
             "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
             "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
+            "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
             "--help: Displays this help message.\n";
         printf("%s", help_message);
     }

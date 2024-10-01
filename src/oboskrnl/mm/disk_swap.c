@@ -39,213 +39,213 @@ struct metadata
     size_t blkSize;
 };
 
-static void* map(uintptr_t phys, size_t nPages, page** pages)
-{
-    void* virt = MmH_FindAvailableAddress(&Mm_KernelContext, nPages*OBOS_PAGE_SIZE, 0, nullptr);
-    page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, nPages, sizeof(page), nullptr);
-    for (size_t i = 0; i < nPages; i++)
-    {
-        buf[i].owner = &Mm_KernelContext;
-        buf[i].pageable = false;
-        buf[i].prot.present = true;
-        buf[i].prot.rw = true;
-        buf[i].prot.huge_page = false;
-        buf[i].prot.ro = false;
-        buf[i].prot.uc = false;
-        buf[i].prot.user = false;
-        buf[i].addr = (uintptr_t)virt + i*OBOS_PAGE_SIZE;
-        MmS_SetPageMapping(Mm_KernelContext.pt, &buf[i], phys+i*OBOS_PAGE_SIZE);
-        RB_INSERT(page_tree, &Mm_KernelContext.pages, &buf[i]);
-    }
-    *pages = buf;
-    return virt;
-}
-static void unmap(size_t nPages, page* pages)
-{
-    for (size_t i = 0; i < nPages; i++)
-    {
-        pages[i].prot.present = false;
-        MmS_SetPageMapping(Mm_KernelContext.pt, &pages[i], 0);
-        RB_REMOVE(page_tree, &Mm_KernelContext.pages, &pages[i]);
-    }
-    Mm_Allocator->Free(Mm_Allocator, pages, sizeof(page)*nPages);
-}
-obos_status swap_resv(struct swap_device* dev, uintptr_t *id, size_t nPages)
-{
-    if (!dev || !id || !nPages)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    struct metadata* metadata = dev->metadata;
-    if (!metadata)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    size_t nBytes = nPages*OBOS_PAGE_SIZE;
-    if (metadata->hdr.freelist.freeBytes < nBytes)
-        return OBOS_STATUS_NOT_ENOUGH_MEMORY;
-    size_t access_size = sizeof(obos_swap_free_region);
-    if (access_size % metadata->blkSize)
-        access_size += (metadata->blkSize-(access_size%metadata->blkSize));
-    size_t accessSizePages = (access_size/OBOS_PAGE_SIZE)+(access_size%OBOS_PAGE_SIZE != 0);
-    // uint8_t* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, access_size, nullptr);
-    page* pages = nullptr;
-    uint8_t* buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &pages);
-    size_t free_off = metadata->hdr.freelist.head;
-    const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
-    uintptr_t offset = (free_off+base_offset) / metadata->blkSize;
-    metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-    obos_swap_free_region* curr = (void*)buf;
-    off_t addend = 0;
-    while (curr->size < nBytes && free_off)
-    {
-        offset = (free_off+base_offset) / metadata->blkSize;
-        metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-        free_off = curr->next;
-        if ((curr->size + sizeof(*curr)) >= nBytes)
-        {
-            nBytes -= sizeof(*curr);
-            addend -= sizeof(*curr);
-            break;
-        }
-    }
-    if (!free_off)
-    {
-        unmap(accessSizePages, pages);
-        return OBOS_STATUS_NOT_ENOUGH_MEMORY;
-    }
-    curr->size -= nBytes;
-    curr->size -= curr->size%metadata->blkSize;
-    if (!curr->size)
-    {
-        // Unlink the node.
-        page* other_pages = nullptr;
-        uint8_t* other_buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &other_pages);
-        uint64_t next = curr->next;
-        uint64_t prev = curr->prev;
-        curr->next = 0;
-        curr->prev = 0;
-        curr->size = 0;
-        curr->sizeof_this = 0;
-        if (next)
-        {
-            metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
-            obos_swap_free_region* next_reg = (void*)other_buf;
-            next_reg->prev = prev;
-            metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
-        }
-        if (prev)
-        {
-            metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
-            obos_swap_free_region* next_reg = (void*)other_buf;
-            next_reg->next = next;
-            metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
-        }
-        bool flush_hdr = true;
-        if (metadata->hdr.freelist.head == offset)
-        {
-            metadata->hdr.freelist.head = next;
-            flush_hdr = true;
-        }
-        if (metadata->hdr.freelist.tail == offset)
-        {
-            metadata->hdr.freelist.tail = prev;
-            flush_hdr = true;
-        }
-        if (flush_hdr)
-        {
-            memcpy(other_buf, &metadata->hdr, metadata->blkSize);
-            metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, 0, nullptr);
-        }
-        unmap(accessSizePages, other_pages);
-    }
-    *id = (free_off+curr->size+addend);
-    metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-    unmap(accessSizePages, pages);
-    return OBOS_STATUS_SUCCESS;
-}
-obos_status swap_free(struct swap_device* dev, uintptr_t  id, size_t nPages, size_t swapOff)
-{
-    if (!dev || !id || !nPages)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!dev || !id || !nPages)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    struct metadata* metadata = dev->metadata;
-    if (!metadata)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    size_t nBytes = nPages*OBOS_PAGE_SIZE;
-    size_t access_size = sizeof(obos_swap_free_region);
-    id += swapOff;
-    if (access_size % metadata->blkSize)
-        access_size += (metadata->blkSize-(access_size%metadata->blkSize));
-    size_t accessSizePages = (access_size/OBOS_PAGE_SIZE)+(access_size%OBOS_PAGE_SIZE != 0);
-    page* pages = nullptr;
-    const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
-    uint8_t* buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &pages);
-    obos_swap_free_region free = {};
-    free.sizeof_this = sizeof(obos_swap_free_region);
-    if (free.sizeof_this % metadata->blkSize)
-        free.sizeof_this += (metadata->blkSize-(free.sizeof_this%metadata->blkSize));
-    free.size = nBytes-(metadata->blkSize != 1 ? 0 : sizeof(obos_swap_free_region));
-    if (!metadata->hdr.freelist.head)
-        metadata->hdr.freelist.head = id;
-    if (metadata->hdr.freelist.tail)
-    {
-        uintptr_t offset = (metadata->hdr.freelist.tail+base_offset) / metadata->blkSize;
-        metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-        obos_swap_free_region* curr = (void*)buf;
-        curr->next = id;
-        metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-    }
-    free.prev = metadata->hdr.freelist.tail;
-    memzero(buf, access_size);
-    metadata->hdr.freelist.tail = id;
-    memcpy(&free, buf, sizeof(free));
-    uintptr_t offset = (id+base_offset) / metadata->blkSize;
-    metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-    memzero(buf, sizeof(free));
-    memcpy(&metadata->hdr, buf, sizeof(free));
-    metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
-    unmap(accessSizePages, pages);
-    return OBOS_STATUS_SUCCESS;
-}
-obos_status swap_write(struct swap_device* dev, uintptr_t  id, uintptr_t phys, size_t nPages, size_t offsetBytes)
-{
-    if (!dev || !id || !nPages)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    struct metadata* metadata = dev->metadata;
-    if (!metadata)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
-    size_t offset = (base_offset+id+offsetBytes)/metadata->blkSize;
-    page* pages = nullptr;
-    void* virt = map(phys, nPages, &pages);
-    obos_status status = metadata->driver->header.ftable.write_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
-    unmap(nPages, pages);
-    return status;
-}
-obos_status swap_read(struct swap_device* dev, uintptr_t  id, uintptr_t phys, size_t nPages, size_t offsetBytes)
-{
-    if (!dev || !id || !nPages)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    struct metadata* metadata = dev->metadata;
-    if (!metadata)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
-    size_t offset = (base_offset+id+offsetBytes);
-    if (offset % metadata->blkSize)
-        offset += (metadata->blkSize-(offset%metadata->blkSize));
-    offset /= metadata->blkSize;
-    page* pages = nullptr;
-    void* virt = map(phys, nPages, &pages);
-    obos_status status = metadata->driver->header.ftable.read_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
-    unmap(nPages, pages);
-    return status;
-}
+// static void* map(uintptr_t phys, size_t nPages, page** pages)
+// {
+//     void* virt = MmH_FindAvailableAddress(&Mm_KernelContext, nPages*OBOS_PAGE_SIZE, 0, nullptr);
+//     page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, nPages, sizeof(page), nullptr);
+//     for (size_t i = 0; i < nPages; i++)
+//     {
+//         buf[i].owner = &Mm_KernelContext;
+//         buf[i].pageable = false;
+//         buf[i].prot.present = true;
+//         buf[i].prot.rw = true;
+//         buf[i].prot.huge_page = false;
+//         buf[i].prot.ro = false;
+//         buf[i].prot.uc = false;
+//         buf[i].prot.user = false;
+//         buf[i].addr = (uintptr_t)virt + i*OBOS_PAGE_SIZE;
+//         MmS_SetPageMapping(Mm_KernelContext.pt, &buf[i], phys+i*OBOS_PAGE_SIZE);
+//         RB_INSERT(page_tree, &Mm_KernelContext.pages, &buf[i]);
+//     }
+//     *pages = buf;
+//     return virt;
+// }
+// static void unmap(size_t nPages, page* pages)
+// {
+//     for (size_t i = 0; i < nPages; i++)
+//     {
+//         pages[i].prot.present = false;
+//         MmS_SetPageMapping(Mm_KernelContext.pt, &pages[i], 0);
+//         RB_REMOVE(page_tree, &Mm_KernelContext.pages, &pages[i]);
+//     }
+//     Mm_Allocator->Free(Mm_Allocator, pages, sizeof(page)*nPages);
+// }
+// obos_status swap_resv(struct swap_device* dev, uintptr_t *id, size_t nPages)
+// {
+//     if (!dev || !id || !nPages)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     struct metadata* metadata = dev->metadata;
+//     if (!metadata)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     size_t nBytes = nPages*OBOS_PAGE_SIZE;
+//     if (metadata->hdr.freelist.freeBytes < nBytes)
+//         return OBOS_STATUS_NOT_ENOUGH_MEMORY;
+//     size_t access_size = sizeof(obos_swap_free_region);
+//     if (access_size % metadata->blkSize)
+//         access_size += (metadata->blkSize-(access_size%metadata->blkSize));
+//     size_t accessSizePages = (access_size/OBOS_PAGE_SIZE)+(access_size%OBOS_PAGE_SIZE != 0);
+//     // uint8_t* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, access_size, nullptr);
+//     page* pages = nullptr;
+//     uint8_t* buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &pages);
+//     size_t free_off = metadata->hdr.freelist.head;
+//     const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
+//     uintptr_t offset = (free_off+base_offset) / metadata->blkSize;
+//     metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     obos_swap_free_region* curr = (void*)buf;
+//     off_t addend = 0;
+//     while (curr->size < nBytes && free_off)
+//     {
+//         offset = (free_off+base_offset) / metadata->blkSize;
+//         metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//         free_off = curr->next;
+//         if ((curr->size + sizeof(*curr)) >= nBytes)
+//         {
+//             nBytes -= sizeof(*curr);
+//             addend -= sizeof(*curr);
+//             break;
+//         }
+//     }
+//     if (!free_off)
+//     {
+//         unmap(accessSizePages, pages);
+//         return OBOS_STATUS_NOT_ENOUGH_MEMORY;
+//     }
+//     curr->size -= nBytes;
+//     curr->size -= curr->size%metadata->blkSize;
+//     if (!curr->size)
+//     {
+//         // Unlink the node.
+//         page* other_pages = nullptr;
+//         uint8_t* other_buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &other_pages);
+//         uint64_t next = curr->next;
+//         uint64_t prev = curr->prev;
+//         curr->next = 0;
+//         curr->prev = 0;
+//         curr->size = 0;
+//         curr->sizeof_this = 0;
+//         if (next)
+//         {
+//             metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
+//             obos_swap_free_region* next_reg = (void*)other_buf;
+//             next_reg->prev = prev;
+//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
+//         }
+//         if (prev)
+//         {
+//             metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
+//             obos_swap_free_region* next_reg = (void*)other_buf;
+//             next_reg->next = next;
+//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
+//         }
+//         bool flush_hdr = true;
+//         if (metadata->hdr.freelist.head == offset)
+//         {
+//             metadata->hdr.freelist.head = next;
+//             flush_hdr = true;
+//         }
+//         if (metadata->hdr.freelist.tail == offset)
+//         {
+//             metadata->hdr.freelist.tail = prev;
+//             flush_hdr = true;
+//         }
+//         if (flush_hdr)
+//         {
+//             memcpy(other_buf, &metadata->hdr, metadata->blkSize);
+//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, 0, nullptr);
+//         }
+//         unmap(accessSizePages, other_pages);
+//     }
+//     *id = (free_off+curr->size+addend);
+//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     unmap(accessSizePages, pages);
+//     return OBOS_STATUS_SUCCESS;
+// }
+// obos_status swap_free(struct swap_device* dev, uintptr_t  id, size_t nPages, size_t swapOff)
+// {
+//     if (!dev || !id || !nPages)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (!dev || !id || !nPages)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     struct metadata* metadata = dev->metadata;
+//     if (!metadata)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     size_t nBytes = nPages*OBOS_PAGE_SIZE;
+//     size_t access_size = sizeof(obos_swap_free_region);
+//     id += swapOff;
+//     if (access_size % metadata->blkSize)
+//         access_size += (metadata->blkSize-(access_size%metadata->blkSize));
+//     size_t accessSizePages = (access_size/OBOS_PAGE_SIZE)+(access_size%OBOS_PAGE_SIZE != 0);
+//     page* pages = nullptr;
+//     const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
+//     uint8_t* buf = map(Mm_AllocatePhysicalPages(accessSizePages, 1, nullptr), accessSizePages, &pages);
+//     obos_swap_free_region free = {};
+//     free.sizeof_this = sizeof(obos_swap_free_region);
+//     if (free.sizeof_this % metadata->blkSize)
+//         free.sizeof_this += (metadata->blkSize-(free.sizeof_this%metadata->blkSize));
+//     free.size = nBytes-(metadata->blkSize != 1 ? 0 : sizeof(obos_swap_free_region));
+//     if (!metadata->hdr.freelist.head)
+//         metadata->hdr.freelist.head = id;
+//     if (metadata->hdr.freelist.tail)
+//     {
+//         uintptr_t offset = (metadata->hdr.freelist.tail+base_offset) / metadata->blkSize;
+//         metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//         obos_swap_free_region* curr = (void*)buf;
+//         curr->next = id;
+//         metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     }
+//     free.prev = metadata->hdr.freelist.tail;
+//     memzero(buf, access_size);
+//     metadata->hdr.freelist.tail = id;
+//     memcpy(&free, buf, sizeof(free));
+//     uintptr_t offset = (id+base_offset) / metadata->blkSize;
+//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     memzero(buf, sizeof(free));
+//     memcpy(&metadata->hdr, buf, sizeof(free));
+//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     unmap(accessSizePages, pages);
+//     return OBOS_STATUS_SUCCESS;
+// }
+// obos_status swap_write(struct swap_device* dev, uintptr_t  id, uintptr_t phys, size_t nPages, size_t offsetBytes)
+// {
+//     if (!dev || !id || !nPages)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     struct metadata* metadata = dev->metadata;
+//     if (!metadata)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
+//     size_t offset = (base_offset+id+offsetBytes)/metadata->blkSize;
+//     page* pages = nullptr;
+//     void* virt = map(phys, nPages, &pages);
+//     obos_status status = metadata->driver->header.ftable.write_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
+//     unmap(nPages, pages);
+//     return status;
+// }
+// obos_status swap_read(struct swap_device* dev, uintptr_t  id, uintptr_t phys, size_t nPages, size_t offsetBytes)
+// {
+//     if (!dev || !id || !nPages)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     struct metadata* metadata = dev->metadata;
+//     if (!metadata)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (metadata->hdr.magic != OBOS_SWAP_HEADER_MAGIC)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
+//     size_t offset = (base_offset+id+offsetBytes);
+//     if (offset % metadata->blkSize)
+//         offset += (metadata->blkSize-(offset%metadata->blkSize));
+//     offset /= metadata->blkSize;
+//     page* pages = nullptr;
+//     void* virt = map(phys, nPages, &pages);
+//     obos_status status = metadata->driver->header.ftable.read_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
+//     unmap(nPages, pages);
+//     return status;
+// }
 OBOS_WEAK obos_status deinit_dev(struct swap_device* dev);
 obos_status MmH_InitializeDiskSwapDevice(swap_dev *dev, void* vnode)
 {
@@ -327,10 +327,10 @@ obos_status MmH_InitializeDiskSwapDevice(swap_dev *dev, void* vnode)
         driver = file.vn->un.device->driver;
     metadata->driver = driver;
     dev->metadata = metadata;
-    dev->swap_resv = swap_resv;
-    dev->swap_free = swap_free;
-    dev->swap_write = swap_write;
-    dev->swap_read = swap_read;
+    // dev->swap_resv = swap_resv;
+    // dev->swap_free = swap_free;
+    // dev->swap_write = swap_write;
+    // dev->swap_read = swap_read;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status MmH_InitializeDiskSwap(void* vn_)

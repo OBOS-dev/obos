@@ -57,6 +57,7 @@
 #include <mm/alloc.h>
 #include <mm/pmm.h>
 #include <mm/disk_swap.h>
+#include <mm/initial_swap.h>
 
 #include <scheduler/process.h>
 #include <scheduler/thread_context_info.h>
@@ -72,14 +73,14 @@
 #include <uacpi/sleep.h>
 #include <uacpi/event.h>
 
+#if 0
 #include "gdbstub/connection.h"
 #include "gdbstub/packet_dispatcher.h"
 #include "gdbstub/debug.h"
 #include "gdbstub/general_query.h"
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
-#include "signal.h"
-#include "vfs/dirent.h"
+#endif
 
 #include <uacpi/kernel_api.h>
 #include <uacpi/utilities.h>
@@ -120,6 +121,11 @@ struct stack_frame
 	struct stack_frame* down;
 	void* rip;
 } volatile blahblahblah____;
+static void e9_out_cb(char ch, void* userdata)
+{
+	OBOS_UNUSED(userdata);
+	outb(0xe9, ch);
+}
 OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
@@ -127,6 +133,13 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	ParseBootContext(bcontext);
 	Arch_BootContext = bcontext;
 	asm("sti");
+	{
+		uint32_t ecx = 0;
+		__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
+		bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
+		if (isHypervisor)
+			OBOS_AddLogSource(e9_out_cb, nullptr);
+	}
 	if (!Arch_Framebuffer)
 		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
 	else
@@ -137,12 +150,16 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
 		OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
 		OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+		for (size_t y = 0; y < Arch_Framebuffer->height; y++)
+			for (size_t x = 0; x < Arch_Framebuffer->width; x++)
+				OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
+	// OBOS_AddLogSource(OBOS_ConsoleOutputCallback, &OBOS_TextRendererState);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
@@ -209,10 +226,8 @@ volatile struct ultra_memory_map_attribute* Arch_MemoryMap;
 volatile struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 volatile struct ultra_kernel_info_attribute* Arch_KernelInfo;
 volatile struct ultra_module_info_attribute* Arch_KernelBinary;
-volatile struct ultra_module_info_attribute* Arch_InitialSwapBuffer;
 volatile struct ultra_module_info_attribute* Arch_InitRDDriver;
 volatile struct ultra_framebuffer* Arch_Framebuffer;
-extern obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN struct ultra_module_info_attribute* FindBootModule(volatile struct ultra_boot_context* bcontext, const char* name, size_t nameLen)
 {
 	if (!nameLen)
@@ -251,8 +266,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 			struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
 			if (strcmp(module->name, "__KERNEL__"))
 				Arch_KernelBinary = module;
-			else if (strcmp(module->name, "INITIAL_SWAP_BUFFER"))
-				Arch_InitialSwapBuffer = module;
 			break;
 		}
 		case ULTRA_ATTRIBUTE_INVALID:
@@ -272,8 +285,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
 	if (!Arch_KernelBinary)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
-	if (!Arch_InitialSwapBuffer)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the initial swap module in the boot context!\n\n");
 }
 extern obos_status Arch_InitializeKernelPageTable();
 uint64_t random_number();
@@ -360,6 +371,7 @@ static void hpet_irq_move_callback(irq* i, irq_vector* from, irq_vector* to, voi
 	OBOS_ASSERT(timer);
 	uint32_t gsi = (timer->timerConfigAndCapabilities >> 9) & 0b11111;
 	Arch_IOAPICMapIRQToVector(gsi, to->id+0x20, false, TriggerModeLevelSensitive);
+	Arch_IOAPICMaskIRQ(gsi, false);
 }
 OBOS_NO_KASAN OBOS_NO_UBSAN void hpet_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
@@ -427,6 +439,16 @@ timer_tick CoreS_GetTimerTick()
 		cached_divisor = Arch_HPETFrequency/CoreS_TimerFrequency;
 	return Arch_HPETAddress->mainCounterValue/cached_divisor;
 }
+OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick()
+{
+	if (obos_expect(!Arch_HPETAddress, false))
+		return 0;
+	return Arch_HPETAddress->mainCounterValue;
+}
+OBOS_EXPORT timer_tick CoreS_GetNativeTimerFrequency()
+{
+	return Arch_HPETFrequency;
+}
 uint64_t CoreS_TimerTickToNS(timer_tick tp)
 {
 	// 1/freq*1000000000*tp
@@ -437,7 +459,6 @@ uint64_t CoreS_TimerTickToNS(timer_tick tp)
     ns = fixedpt_xmul(ns, fixedpt_fromint(tp));
 	return fixedpt_toint(ns);	
 }
-process* OBOS_KernelProcess;
 extern bool Arch_MakeIdleTaskSleep;
 static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 {
@@ -536,7 +557,8 @@ void Arch_KernelMainBootstrap()
 	if (obos_is_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
 	OBOS_Debug("%s: Initializing VMM.\n", __func__);
-	Arch_InitializeInitialSwapDevice(&swap, (void*)Arch_InitialSwapBuffer->address, Arch_InitialSwapBuffer->size);
+	Mm_InitializeInitialSwapDevice(&swap, OBOS_GetOPTD("initial-swap-size"));
+	// We can reclaim the memory used.
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
 	if (Arch_Framebuffer->physical_address)
@@ -549,29 +571,16 @@ void Arch_KernelMainBootstrap()
 		{
 			// We got memory for the framebuffer.
 			// Now modify the physical pages
-			page what;
-			memzero(&what, sizeof(what));
-			what.addr = base;
-
 			uintptr_t offset = 0;
-			page* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
-			OBOS_ASSERT(baseNode);
-			page* curr = nullptr;
 			extern obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 			for (uintptr_t addr = base; addr < (base + size); addr += offset)
 			{
-				what.addr = addr;
-				if (addr == base)
-					curr = baseNode;
-				else
-					curr = RB_NEXT(page_tree, &ctx->pages, curr);
-				if (!curr || curr->addr != addr)
-					OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find page node at address 0x%p.\n", addr);
 				uintptr_t oldPhys = 0, phys = Arch_Framebuffer->physical_address + (addr-base);
-				MmS_QueryPageInfo(MmS_GetCurrentPageTable(),curr->addr, nullptr, &oldPhys);
+				page_info info = {};
+				MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &info, &oldPhys);
 				// Present,Write,XD,Write-Combining (PAT: 0b110)
 				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
-				offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+				offset = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
 				Mm_FreePhysicalPages(oldPhys, offset/OBOS_PAGE_SIZE);
 			}
 		}
@@ -581,6 +590,9 @@ void Arch_KernelMainBootstrap()
 			0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
 			nullptr, nullptr);
 		memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
+		for (size_t y = 0; y < Arch_Framebuffer->height; y++)
+			for (size_t x = 0; x < Arch_Framebuffer->width; x++)
+				OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
 		OBOS_TextRendererState.fb.base = base_;
 		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
 			OBOS_KernelAllocator,
@@ -767,6 +779,18 @@ if (st != UACPI_STATUS_OK)\
 	}
 	OBOS_Debug("%s: Initializing VFS.\n", __func__);
 	Vfs_Initialize();
+	// fd file1 = {}, file2 = {};
+	// Vfs_FdOpen(&file1, "/test.txt", 0);
+	// Vfs_FdOpen(&file2, "/test2.txt", 0);
+	// char* mem1 = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, file1.vn->filesize, 0, VMA_FLAGS_PRIVATE, &file1, nullptr);
+	// char* mem2 = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, file2.vn->filesize, 0, VMA_FLAGS_PRIVATE, &file2, nullptr);
+	// mem2[0] = mem1[0];
+	// mem1[0x1000] = mem2[0x1000];
+	// OBOS_Debug("%s\n", mem2[0] == mem1[0] ? "true" : "false");
+	// OBOS_Debug("%s\n", mem1[0x1000] == mem2[0x1000] ? "true" : "false");
+	// Mm_VirtualMemoryFree(&Mm_KernelContext, mem1, file1.vn->filesize);
+	// Mm_VirtualMemoryFree(&Mm_KernelContext, mem2, file2.vn->filesize);
+	// while(1);
 	OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
 	Drv_PnpLoadDriversAt(Vfs_Root, true);
 	do {
@@ -774,12 +798,13 @@ if (st != UACPI_STATUS_OK)\
 		if (!modules_to_load)
 			break;
 		size_t len = strlen(modules_to_load);
+		size_t left = len;
 		char* iter = modules_to_load;
 		while(iter < (modules_to_load + len))
 		{
 			status = OBOS_STATUS_SUCCESS;
-			size_t namelen = strchr(modules_to_load, ',');
-			if (namelen != len)
+			size_t namelen = strchr(iter, ',');
+			if (namelen != left)
 				namelen--;
 			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
 			char* path = memcpy(
@@ -843,6 +868,7 @@ if (st != UACPI_STATUS_OK)\
 			if (namelen != len)
 				namelen++;
 			iter += namelen;
+			left -= namelen;
 		}
 	} while(0);
 	OBOS_Log("%s: Probing partitions.\n", __func__);
@@ -855,43 +881,46 @@ if (st != UACPI_STATUS_OK)\
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 	// OBOS_Debug("%s: Loading init program...\n", __func__);
-	static gdb_connection gdb_conn = {};
-	// Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
-	Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
-	Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
-	Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
-	Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
-	Kdbg_AddPacketHandler("qSupported", Kdbg_GDB_qSupported, nullptr);
-	Kdbg_AddPacketHandler("?", Kdbg_GDB_query_halt, nullptr);
-	Kdbg_AddPacketHandler("g", Kdbg_GDB_g, nullptr);
-	Kdbg_AddPacketHandler("G", Kdbg_GDB_G, nullptr);
-	Kdbg_AddPacketHandler("k", Kdbg_GDB_k, nullptr);
-	Kdbg_AddPacketHandler("vKill", Kdbg_GDB_k, nullptr);
-	Kdbg_AddPacketHandler("H", Kdbg_GDB_H, nullptr);
-	Kdbg_AddPacketHandler("T", Kdbg_GDB_T, nullptr);
-	Kdbg_AddPacketHandler("qRcmd", Kdbg_GDB_qRcmd, nullptr);
-	Kdbg_AddPacketHandler("m", Kdbg_GDB_m, nullptr);
-	Kdbg_AddPacketHandler("M", Kdbg_GDB_M, nullptr);
-	Kdbg_AddPacketHandler("c", Kdbg_GDB_c, nullptr);
-	Kdbg_AddPacketHandler("C", Kdbg_GDB_C, nullptr);
-	Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
-	Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
-	Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
-	Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
-	Kdbg_CurrentConnection = &gdb_conn;
-	if (OBOS_GetOPTF("enable-kdbg") && Kdbg_CurrentConnection->pipe_interface->read_sync)
-	{
-		OBOS_Debug("%s: Enabling KDBG.\n", __func__);
-		Kdbg_CurrentConnection->connection_active = true;
-		asm("int3");
-	}
+	// static gdb_connection gdb_conn = {};
+	// // Kdbg_ConnectionInitialize(&gdb_conn, &drv1->header.ftable, connection);
+	// Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
+	// Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	// Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+	// Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
+	// Kdbg_AddPacketHandler("qSupported", Kdbg_GDB_qSupported, nullptr);
+	// Kdbg_AddPacketHandler("?", Kdbg_GDB_query_halt, nullptr);
+	// Kdbg_AddPacketHandler("g", Kdbg_GDB_g, nullptr);
+	// Kdbg_AddPacketHandler("G", Kdbg_GDB_G, nullptr);
+	// Kdbg_AddPacketHandler("k", Kdbg_GDB_k, nullptr);
+	// Kdbg_AddPacketHandler("vKill", Kdbg_GDB_k, nullptr);
+	// Kdbg_AddPacketHandler("H", Kdbg_GDB_H, nullptr);
+	// Kdbg_AddPacketHandler("T", Kdbg_GDB_T, nullptr);
+	// Kdbg_AddPacketHandler("qRcmd", Kdbg_GDB_qRcmd, nullptr);
+	// Kdbg_AddPacketHandler("m", Kdbg_GDB_m, nullptr);
+	// Kdbg_AddPacketHandler("M", Kdbg_GDB_M, nullptr);
+	// Kdbg_AddPacketHandler("c", Kdbg_GDB_c, nullptr);
+	// Kdbg_AddPacketHandler("C", Kdbg_GDB_C, nullptr);
+	// Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
+	// Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
+	// Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
+	// Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
+	// Kdbg_CurrentConnection = &gdb_conn;
+	// if (OBOS_GetOPTF("enable-kdbg") && Kdbg_CurrentConnection->pipe_interface->read_sync)
+	// {
+	// 	OBOS_Debug("%s: Enabling KDBG.\n", __func__);
+	// 	Kdbg_CurrentConnection->connection_active = true;
+	// 	asm("int3");
+	// }
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged. and %ld KiB uncommitted.\n", 
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged, and %ld KiB uncommitted. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 
 		Mm_KernelContext.stat.paged/0x400,
 		Mm_KernelContext.stat.nonPaged/0x400,
-		Mm_KernelContext.stat.reserved/0x400
-	);
+		Mm_KernelContext.stat.reserved/0x400,
+		Mm_KernelContext.stat.pageFaultCount,
+		Mm_KernelContext.stat.hardPageFaultCount,
+		Mm_KernelContext.stat.softPageFaultCount
+    );
 	Core_ExitCurrentThread();
 }

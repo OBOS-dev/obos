@@ -74,8 +74,8 @@ execute_process(COMMAND
 add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_compile_definitions (OBOS_ARCHITECTURE_ENDIANNESS="${OBOS_ARCHITECTURE_ENDIANNESS}")
 
+list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
 if (DEFINED OBOS_ENABLE_UBSAN)
-	list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
 	)
@@ -84,8 +84,8 @@ else()
 	set(OBOS_ENABLE_UBSAN "0")
 endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
+list (APPEND oboskrnl_sources "sanitizers/asan.c")
 if (DEFINED OBOS_ENABLE_KASAN)
-	list (APPEND oboskrnl_sources "sanitizers/asan.c")
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
 	)
@@ -103,12 +103,23 @@ add_compile_definitions(
 	$<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 )
 
+if (NOT DEFINED OBOS_PAGE_REPLACEMENT_ALGORITHM)
+	set(OBOS_PAGE_REPLACEMENT_ALGORITHM "Aging")
+endif()
+string(TOUPPER "${OBOS_PAGE_REPLACEMENT_ALGORITHM}" OBOS_PAGE_REPLACEMENT_ALGORITHM)
+set(OBOS_PAGE_REPLACEMENT_ALGORITHM_DEFINE "OBOS_PAGE_REPLACEMENT_")
+string(APPEND OBOS_PAGE_REPLACEMENT_ALGORITHM_DEFINE "${OBOS_PAGE_REPLACEMENT_ALGORITHM}")
+add_compile_definitions(${OBOS_PAGE_REPLACEMENT_ALGORITHM_DEFINE}=1)
+string(APPEND OBOS_PAGE_REPLACEMENT_ALGORITHM "\"")
+string(PREPEND OBOS_PAGE_REPLACEMENT_ALGORITHM "\"")
+add_compile_definitions(OBOS_PAGE_REPLACEMENT_ALGORITHM=${OBOS_PAGE_REPLACEMENT_ALGORITHM})
+
 set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true
 					PROPERTY C_EXTENSIONS On)
 
 if (DEFINED OBOS_ENABLE_WERROR AND NOT DEFINED OBOS_ENABLE_FANALYZER)
-	add_compile_options("-Werror")
+	add_compile_options("-Werror" $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function> $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-parameter>)
 endif()
 if (DEFINED OBOS_ENABLE_FANALYZER)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fanalyzer>)

@@ -439,10 +439,11 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             continue;
         }
         driver_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header), nullptr);
-        Drv_LoadDriverHeader(buf, filesize, hdr);
+        status = Drv_LoadDriverHeader(buf, filesize, hdr);
         if (obos_is_error(status))
         {
-            OBOS_Warning("Could not load driver header. Status: %d.\n", status);
+            if (status != OBOS_STATUS_INVALID_FILE)
+                OBOS_Warning("Could not load driver header. Status: %d.\n", status);
             Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
             Vfs_FdClose(file);
             Vfs_Free(file);

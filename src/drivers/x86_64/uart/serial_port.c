@@ -147,7 +147,7 @@ static void dpc_handler(dpc* obj, void* userdata)
     {
         // OBOS_Debug("GDB requested break.\n");
         should_break = false;
-        Kdbg_Break();
+        // Kdbg_Break();
     }
 }
 void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql_)
@@ -165,8 +165,8 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     {
         char ch = inb(port->port_base+IO_BUFFER);
         append_to_buffer_char(&port->in_buffer, ch);
-        if (ch == '\x03')
-            should_break = Kdbg_CurrentConnection->connection_active;
+        // if (ch == '\x03')
+        //     should_break = Kdbg_CurrentConnection->connection_active;
     }
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
 }

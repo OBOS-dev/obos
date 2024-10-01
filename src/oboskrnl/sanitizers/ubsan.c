@@ -57,8 +57,8 @@ static void ubsan_abort(const struct ubsan_source_location* location,
 	if ( !location || !location->filename )
 		location = &unknown_location;
 #if defined(__x86_64__)
-	if (Kdbg_CurrentConnection)
-		asm("int3");
+	// if (Kdbg_CurrentConnection)
+		// asm("int3");
 #endif
 	OBOS_Panic(OBOS_PANIC_UBSAN_VIOLATION, "UBSan Violation %s in file %s at line %u:%u\n", violation, location->filename, location->line, location->column);
 }

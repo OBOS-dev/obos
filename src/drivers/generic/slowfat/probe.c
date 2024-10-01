@@ -74,7 +74,7 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
         return;
     if (curr->filename_83[0] == '.')
         return;
-    if (lfn_entry_count)
+    if (*lfn_entry_count)
     {
         for (size_t i = 0; i < (*lfn_entry_count); i++)
         {
@@ -259,7 +259,7 @@ bool probe(void* vn_)
     else
     {
         void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
-        lfn_dirent** lfn_entries;
+        lfn_dirent** lfn_entries = nullptr;
         size_t lfn_entry_count = 0;
         string current_filename = {};
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
@@ -291,6 +291,7 @@ bool probe(void* vn_)
     OBOS_Debug("FAT: blkSize: 0x%08x\n", blkSize);
     OBOS_Debug("FAT: fatSz: 0x%08x\n", fatSz);
     OBOS_Debug("FAT: nFats: 0x%08x\n", cache->bpb->nFATs);
+    OBOS_Debug("FAT: FAT Type: %s\n", (cache->fatType == FAT32_VOLUME) ? "FAT32" : ((cache->fatType == FAT16_VOLUME)) ? "FAT16" : "FAT12");
     return true;
 }
 LIST_GENERATE(fat_cache_list, struct fat_cache, node);

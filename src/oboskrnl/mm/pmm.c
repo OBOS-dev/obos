@@ -17,6 +17,7 @@
 
 #include <mm/pmm.h>
 #include <mm/init.h>
+#include <mm/alloc.h>
 #include <mm/page.h>
 #include <mm/swap.h>
 
@@ -197,15 +198,29 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 	start_again:
 	(void)0;
 	irql oldIrql = Mm_TakeSwapLock();
-	page_node* node = Mm_StandbyPageList.head;
-	while (nPages == 1 && node && node->data->prot.huge_page)
-		node = node->next;
-	page* pg = node ? node->data : nullptr;
-	if (pg)
+	page* node = LIST_GET_HEAD(phys_page_list, &Mm_StandbyPageList);
+	while (node)
+	{
+		if (nPages == 1)
+			break;
+		if (node->flags & PHYS_PAGE_HUGE_PAGE && nPages != 1)
+			break;
+		node = LIST_GET_NEXT(phys_page_list, &Mm_StandbyPageList, node);
+	}
+	if (node)
 	{
 		// Remove from standby.
-		REMOVE_PAGE_NODE(Mm_StandbyPageList, &pg->ln_node);
-		res = pg->cached_phys;
+		LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
+		res = node->phys;
+		// We need to update page mappings.
+		for (page_node *curr = node->virt_pages.head; curr; )
+		{
+			curr->data->prot.is_swap_phys = true;
+			curr->data->phys = node->swap_id;
+			curr = curr->next;
+		}
+		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, node);
+        Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
 	}
 	else
 	{
@@ -214,6 +229,7 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		Mm_WakePageWriter(true);
 		goto start_again;
 	} 
+	Mm_ReleaseSwapLock(oldIrql);
 	return res;
 }
 OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages32(size_t nPages, size_t alignmentPages, obos_status *status)

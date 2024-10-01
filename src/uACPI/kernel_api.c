@@ -253,18 +253,16 @@ void* uacpi_kernel_alloc(uacpi_size size)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
     /*else
         OBOS_Debug("Allocated %lu bytes at 0x%p\n", size, ret);*/
-    return ret;
+    return memzero(ret, size);
 }
 void* uacpi_kernel_calloc(uacpi_size count, uacpi_size size)
 {
-    return memzero(uacpi_kernel_alloc(count * size), count * size);
+    return uacpi_kernel_alloc(count * size);
 }
 void uacpi_kernel_free(void* mem)
 {
     if (!mem)
         return;
-    if (mem == (void*)0xffff8000feed50f0)
-        asm volatile("nop");
     // logger::debug("Attempt free of 0x%p\n", mem);
     // if (!s_uACPIAllocatorInitialized)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 

@@ -142,7 +142,8 @@ void Arch_APEntry(cpu_local* info)
 	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
 	wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
 	Arch_InitializeIDT(false);
-	(void)Core_RaiseIrql(0xf);
+	irql oldIrql = Core_RaiseIrql(0xf);
+	OBOS_UNUSED(oldIrql);
 	// Setup the idle thread.
 	thread_ctx ctx;
 	memzero(&ctx, sizeof(ctx));
@@ -253,15 +254,15 @@ OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 	}
 	if (Arch_InvlpgIPI(frame))
 		return;
-	if (Kdbg_Paused)
-	{
-		asm("sti");
-		// TODO: Fix 
-		Arch_LAPICSendEOI();
-		Kdbg_CallDebugExceptionHandler(frame, false);
-		asm("cli");
-		return;
-	}
+	// if (Kdbg_Paused)
+	// {
+	// 	asm("sti");
+	// 	// TODO: Fix 
+	// 	Arch_LAPICSendEOI();
+	// 	Kdbg_CallDebugExceptionHandler(frame, false);
+	// 	asm("cli");
+	// 	return;
+	// }
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
 OBOS_NO_KASAN static void HaltInitializedCPUs()

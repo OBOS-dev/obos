@@ -19,6 +19,27 @@ SECTIONS
     . = 0xffffffff80000000;
     KERNEL_BASE = .;
 
+    MmS_MMPageableRangeStart = .;
+    /* Functions */
+    .pageable.text : {
+        *(.pageable.text)
+    } :pageable_text
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    /* RW Data. */
+    .pageable.data : {
+        *(.pageable.data)
+    } :pageable_data
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    .pageable.bss : {
+        *(.pageable.bss)
+    } :pageable_data
+    /* RO Data */
+    .pageable.rodata : {
+        *(.pageable.rodata)
+    } :pageable_rodata
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    MmS_MMPageableRangeEnd = .;
+
     .text : {
         *(.text .text.*)
     } :text
@@ -42,27 +63,6 @@ SECTIONS
     } :data
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
-
-    MmS_MMPageableRangeStart = .;
-    /* Functions */
-    .pageable.text : {
-        *(.pageable.text)
-    } :pageable_text
-    . = ALIGN(CONSTANT(MAXPAGESIZE));
-    /* RW Data. */
-    .pageable.data : {
-        *(.pageable.data)
-    } :pageable_data
-    . = ALIGN(CONSTANT(MAXPAGESIZE));
-    .pageable.bss : {
-        *(.pageable.bss)
-    } :pageable_data
-    /* RO Data */
-    .pageable.rodata : {
-        *(.pageable.rodata)
-    } :pageable_rodata
-    . = ALIGN(CONSTANT(MAXPAGESIZE));
-    MmS_MMPageableRangeEnd = .;
 
     /DISCARD/ : {
         *(.eh_frame)

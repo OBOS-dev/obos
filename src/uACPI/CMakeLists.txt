@@ -16,6 +16,7 @@ target_compile_options(uacpi
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-g0>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=default> # uACPI should have all its symbols exported
 )
 

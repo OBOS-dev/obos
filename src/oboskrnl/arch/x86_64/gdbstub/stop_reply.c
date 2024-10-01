@@ -268,140 +268,141 @@ obos_status Kdbg_GDB_D(gdb_connection* con, const char* arguments, size_t argume
     return Kdbg_ConnectionSendPacket(con, "OK");
 }
 // Read Memory
-OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
-{
-    NO_USERDATA;
-    NO_CTX;
-    size_t addrLen = strchr(arguments, ',')-1;
-    if (addrLen > 16)
-        return Kdbg_ConnectionSendPacket(con, "E.Invalid address");
-    uintptr_t base = KdbgH_hex2bin(arguments, addrLen)&~0xfff;
-    uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
-    uintptr_t top = 0;
-    if ((argumentsLen-addrLen-1) > 16)
-        return Kdbg_ConnectionSendPacket(con, "E.Invalid size");
-    size_t memoryLen = KdbgH_hex2bin(arguments+addrLen+1, argumentsLen-addrLen-1);
-    size_t size = (KdbgH_hex2bin(arguments+addrLen+1, argumentsLen-addrLen-1) + 0xfff) & ~0xfff;
-    irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
-    uintptr_t offset = 0;
-    bool retried = false;
-    retry:
-    page what = { .addr=base };
-    page* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
-    if (!baseNode)
-    {
-        if (!retried)
-        {
-            base &= ~0x1fffff;
-            retried = true;
-            goto retry;
-        }
-        if (base < OBOS_KERNEL_ADDRESS_SPACE_BASE && base >= 0xffff800000000000)
-            top = base+size;
-        else
-            top = base;
-        goto done;
-    }
-    page* curr = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
-    {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
-            curr = RB_NEXT(page_tree, &Mm_KernelContext.pages, curr);
-        if (!curr || curr->addr != addr)
-        {
-            top = addr;
-            goto done;
-        }
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-    top = base+size;
-    done:
-    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
-    // Fun fact!
-    // This buffer takes more bytes than the actual memory takes!
-    char* response = Kdbg_Calloc(size*2+1, sizeof(char));
-    size_t i = 0;
-    size_t nRead = 0;
-    static const char hexmask[16] = "0123456789abcdef";
-    for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++)
-    {
-        uint8_t byte = *(uint8_t*)addr;
-        response[i+1] = hexmask[byte&0xf];
-        response[i] = hexmask[byte>>4];
-    }
-    obos_status status = Kdbg_ConnectionSendPacket(con, response);
-    Kdbg_Free(response);
-    return status;
-}
-// Write Memory
-obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
-{
-    NO_USERDATA;
-    NO_CTX;
-    OBOS_UNUSED(argumentsLen);
-    size_t addrLen = strchr(arguments, ',')-1;
-    if (addrLen > 16)
-        return Kdbg_ConnectionSendPacket(con, "E.Invalid address.");
-    uintptr_t base = KdbgH_hex2bin(arguments, addrLen)&~0xfff;
-    uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
-    uintptr_t top = 0;
-    size_t argv2_len = strchr(arguments+addrLen+1, ':')-1;
-    if (argv2_len > 16)
-        return Kdbg_ConnectionSendPacket(con, "E.Invalid size.");
-    size_t memoryLen = KdbgH_hex2bin(arguments+addrLen+1, argv2_len);
-    size_t size = (KdbgH_hex2bin(arguments+addrLen+1, argv2_len) + 0xfff) & ~0xfff;
-    irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
-    uintptr_t offset = 0;
-    bool retried = false;
-    retry:
-    page what = { .addr=base };
-    page* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
-    if (!baseNode)
-    {
-        if (!retried)
-        {
-            base &= ~0x1fffff;
-            retried = true;
-            goto retry;
-        }
-        if (base < OBOS_KERNEL_ADDRESS_SPACE_BASE)
-        {
-            top = base+size;
-            goto done;
-        }
-        Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
-        return Kdbg_ConnectionSendPacket(con, "E.Page fault");
-    }
-    page* curr = nullptr;
-    for (uintptr_t addr = base; addr < (base + size); addr += offset)
-    {
-        what.addr = addr;
-        if (addr == base)
-            curr = baseNode;
-        else
-            curr = RB_NEXT(page_tree, &Mm_KernelContext.pages, curr);
-        if (!curr || curr->addr != addr || !curr->prot.rw)
-            return Kdbg_ConnectionSendPacket(con, "E.Page fault");
-        offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-    top = base+size;
-    done:
-    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
-    size_t i = 0;
-    size_t nRead = 0;
-    // static const char hexmask[16] = "0123456789abcdef";
-    const char* iter = arguments+strchr(arguments, ':');
-    for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++, iter += 2)
-    {
-        uint8_t* byte = (uint8_t*)addr;
-        *byte = KdbgH_hex2bin(iter, 2);
-    }
-    obos_status status = Kdbg_ConnectionSendPacket(con, "OK");
-    return status;
-}
+// OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
+// {
+//     NO_USERDATA;
+//     NO_CTX;
+//     size_t addrLen = strchr(arguments, ',')-1;
+//     if (addrLen > 16)
+//         return Kdbg_ConnectionSendPacket(con, "E.Invalid address");
+//     uintptr_t base = KdbgH_hex2bin(arguments, addrLen)&~0xfff;
+//     uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
+//     uintptr_t top = 0;
+//     if ((argumentsLen-addrLen-1) > 16)
+//         return Kdbg_ConnectionSendPacket(con, "E.Invalid size");
+//     size_t memoryLen = KdbgH_hex2bin(arguments+addrLen+1, argumentsLen-addrLen-1);
+//     size_t size = (KdbgH_hex2bin(arguments+addrLen+1, argumentsLen-addrLen-1) + 0xfff) & ~0xfff;
+//     irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
+//     uintptr_t offset = 0;
+//     bool retried = false;
+//     retry:
+//     (void)0;
+//     page_range what = { .virt=base };
+//     page_range* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
+//     if (!baseNode)
+//     {
+//         if (!retried)
+//         {
+//             base &= ~0x1fffff;
+//             retried = true;
+//             goto retry;
+//         }
+//         if (base < OBOS_KERNEL_ADDRESS_SPACE_BASE && base >= 0xffff800000000000)
+//             top = base+size;
+//         else
+//             top = base;
+//         goto done;
+//     }
+//     page_range* curr = nullptr;
+//     for (uintptr_t addr = base; addr < (base + size); addr += offset)
+//     {
+//         what.addr = addr;
+//         if (addr == base)
+//             curr = baseNode;
+//         else
+//             curr = RB_NEXT(page_tree, &Mm_KernelContext.pages, curr);
+//         if (!curr || curr->addr != addr)
+//         {
+//             top = addr;
+//             goto done;
+//         }
+//         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+//     }
+//     top = base+size;
+//     done:
+//     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
+//     // Fun fact!
+//     // This buffer takes more bytes than the actual memory takes!
+//     char* response = Kdbg_Calloc(size*2+1, sizeof(char));
+//     size_t i = 0;
+//     size_t nRead = 0;
+//     static const char hexmask[16] = "0123456789abcdef";
+//     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++)
+//     {
+//         uint8_t byte = *(uint8_t*)addr;
+//         response[i+1] = hexmask[byte&0xf];
+//         response[i] = hexmask[byte>>4];
+//     }
+//     obos_status status = Kdbg_ConnectionSendPacket(con, response);
+//     Kdbg_Free(response);
+//     return status;
+// }
+// // Write Memory
+// obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
+// {
+//     NO_USERDATA;
+//     NO_CTX;
+//     OBOS_UNUSED(argumentsLen);
+//     size_t addrLen = strchr(arguments, ',')-1;
+//     if (addrLen > 16)
+//         return Kdbg_ConnectionSendPacket(con, "E.Invalid address.");
+//     uintptr_t base = KdbgH_hex2bin(arguments, addrLen)&~0xfff;
+//     uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
+//     uintptr_t top = 0;
+//     size_t argv2_len = strchr(arguments+addrLen+1, ':')-1;
+//     if (argv2_len > 16)
+//         return Kdbg_ConnectionSendPacket(con, "E.Invalid size.");
+//     size_t memoryLen = KdbgH_hex2bin(arguments+addrLen+1, argv2_len);
+//     size_t size = (KdbgH_hex2bin(arguments+addrLen+1, argv2_len) + 0xfff) & ~0xfff;
+//     irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
+//     uintptr_t offset = 0;
+//     bool retried = false;
+//     retry:
+//     page what = { .addr=base };
+//     page* baseNode = RB_FIND(page_tree, &Mm_KernelContext.pages, &what); 
+//     if (!baseNode)
+//     {
+//         if (!retried)
+//         {
+//             base &= ~0x1fffff;
+//             retried = true;
+//             goto retry;
+//         }
+//         if (base < OBOS_KERNEL_ADDRESS_SPACE_BASE)
+//         {
+//             top = base+size;
+//             goto done;
+//         }
+//         Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
+//         return Kdbg_ConnectionSendPacket(con, "E.Page fault");
+//     }
+//     page* curr = nullptr;
+//     for (uintptr_t addr = base; addr < (base + size); addr += offset)
+//     {
+//         what.addr = addr;
+//         if (addr == base)
+//             curr = baseNode;
+//         else
+//             curr = RB_NEXT(page_tree, &Mm_KernelContext.pages, curr);
+//         if (!curr || curr->addr != addr || !curr->prot.rw)
+//             return Kdbg_ConnectionSendPacket(con, "E.Page fault");
+//         offset = curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+//     }
+//     top = base+size;
+//     done:
+//     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
+//     size_t i = 0;
+//     size_t nRead = 0;
+//     // static const char hexmask[16] = "0123456789abcdef";
+//     const char* iter = arguments+strchr(arguments, ':');
+//     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++, iter += 2)
+//     {
+//         uint8_t* byte = (uint8_t*)addr;
+//         *byte = KdbgH_hex2bin(iter, 2);
+//     }
+//     obos_status status = Kdbg_ConnectionSendPacket(con, "OK");
+//     return status;
+// }
 // Step
 obos_status Kdbg_GDB_c(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {

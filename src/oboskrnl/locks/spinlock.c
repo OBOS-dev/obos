@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -38,10 +39,13 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 #ifdef OBOS_DEBUG
 	if (lock->owner == Core_GetCurrentThread() && lock->owner)
 		OBOS_Warning("Recursive lock taken!\n");
+	// if (++lock->nCPUsWaiting == Core_CpuCount && Core_CpuCount != 1)
+	// 	OBOS_Warning("Deadlocked! Thread with spinlock has a tid of %ld.\n", lock->owner ? lock->owner->tid : UINT64_MAX);
 #endif
 	irql newIrql = minIrql == IRQL_INVALID ? IRQL_INVALID : Core_GetIrql() < minIrql ? irqlNthrVariant ? Core_RaiseIrqlNoThread(minIrql) : Core_RaiseIrql(minIrql) : IRQL_INVALID;
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_seq_cst))
 		spinlock_hint();
+	// lock->nCPUsWaiting--;
 	lock->irqlNThrVariant = irqlNthrVariant;
 #ifdef OBOS_DEBUG
 	lock->owner = Core_GetCurrentThread();

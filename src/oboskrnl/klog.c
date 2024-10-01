@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <stdarg.h>
+#include <memmanip.h>
 #include <text.h>
 
 #include <locks/spinlock.h>
@@ -67,7 +68,7 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	}
 	if (s_logLevel > minimumLevel)
 		return;
-	uint8_t oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
@@ -143,7 +144,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);
 	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
-	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
 	printf("\n%s\n", ascii_art);
 	printf("Kernel Panic on CPU %d in thread %d, owned by process %d. Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
@@ -155,22 +156,29 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 		asm volatile("");
 }
 
-
+#define CALLBACK_COUNT (8)
+struct output_cb
+{
+	void(*cb)(char ch, void* userdata);
+	void* userdata;
+};
+static struct output_cb outputCallbacks[CALLBACK_COUNT];
+static size_t nOutputCallbacks;
 static char* outputCallback(const char* buf, void* a, int len)
 {
 	OBOS_UNUSED(a);
 	for (size_t i = 0; i < (size_t)len; i++)
 	{
-		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
-#ifdef __x86_64__
-		outb(0xE9, buf[i]);
-#elif defined(__m68k__)
-	extern uintptr_t Arch_TTYBase;
-	if (Arch_TTYBase)
-	    ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
-#endif
+// 		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
+		for (size_t j = 0; j < nOutputCallbacks; j++)
+			outputCallbacks[j].cb(buf[i], outputCallbacks[j].userdata);
 	}
 	return (char*)buf;
+}
+void OBOS_AddLogSource(void(*out_callback)(char ch, void* userdata), void* userdata)
+{
+	if (nOutputCallbacks++ < CALLBACK_COUNT)
+		outputCallbacks[nOutputCallbacks - 1] = (struct output_cb){ .cb=out_callback, .userdata=userdata};
 }
 OBOS_EXPORT size_t printf(const char* format, ...)
 {
@@ -188,7 +196,7 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 		s_printfLock = Core_SpinlockCreate();
 	}
 	char ch[8];
-	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
 	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
@@ -204,4 +212,18 @@ OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
 	return stbsp_vsnprintf(buf, bufSize, format, list);
+}
+OBOS_EXPORT size_t puts(const char *s)
+{
+	size_t len = strlen(s);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
+	outputCallback(s, nullptr, len);
+	Core_SpinlockRelease(&s_printfLock, oldIrql);
+	return len;
+}
+
+void OBOS_ConsoleOutputCallback(char ch, void* userdata)
+{
+	if (userdata)
+		OBOS_WriteCharacter((text_renderer_state*)userdata, ch);
 }

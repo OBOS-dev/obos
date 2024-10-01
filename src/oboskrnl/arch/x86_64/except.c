@@ -24,7 +24,7 @@
 #include "gdbstub/debug.h"
 
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
-OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
     sti();
     uintptr_t virt = getCR2();
@@ -78,24 +78,16 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
         OBOS_RunSignal(SIGSEGV, frame); // Ensure SIGSEGV runs.
         return;
     }
-    page* volatile pg = nullptr;
-    OBOS_UNUSED(pg); 
-    if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
-    {
-        asm("sti");
-        irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
-        Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
-        Kdbg_CallDebugExceptionHandler(frame, true);
-        if (oldIrql != IRQL_INVALID)
-            Core_LowerIrqlNoThread(oldIrql);
-        asm("cli");
-    }
-    if (CoreS_GetCPULocalPtr()->currentContext)
-    {
-        page what;
-        what.addr = virt;
-        pg = RB_FIND(page_tree, &CoreS_GetCPULocalPtr()->currentContext->pages, &what);
-    }
+    // if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+    // {
+    //     asm("sti");
+    //     irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
+    //     Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
+    //     Kdbg_CallDebugExceptionHandler(frame, true);
+    //     if (oldIrql != IRQL_INVALID)
+    //         Core_LowerIrqlNoThread(oldIrql);
+    //     asm("cli");
+    // }
     asm("cli");
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
         "Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
@@ -126,7 +118,7 @@ OBOS_NO_UBSAN void Arch_PageFaultHandler(interrupt_frame* frame)
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
 {
     static const char format[] = "Double fault!\n"
         "Register dump:\n"
@@ -152,7 +144,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -186,7 +178,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -220,7 +212,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(interrupt_frame* fr
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -254,22 +246,22 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* frame)
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_DbgExceptHandler(interrupt_frame* frame)
+OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DbgExceptHandler(interrupt_frame* frame)
 {
-    if (Kdbg_CurrentConnection->pipe_interface && Kdbg_CurrentConnection->pipe_interface->read_sync)
-    {
-        switch (frame->intNumber) {
-            case 1:
-                Kdbg_int1_handler(frame);
-                break;
-            case 3:
-                Kdbg_int3_handler(frame);
-                break;
-            default:
-                OBOS_UNREACHABLE; 
-        }
-        return;
-    }
+    // if (Kdbg_CurrentConnection->pipe_interface && Kdbg_CurrentConnection->pipe_interface->read_sync)
+    // {
+    //     switch (frame->intNumber) {
+    //         case 1:
+    //             Kdbg_int1_handler(frame);
+    //             break;
+    //         case 3:
+    //             Kdbg_int3_handler(frame);
+    //             break;
+    //         default:
+    //             OBOS_UNREACHABLE; 
+    //     }
+    //     return;
+    // }
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGTRAP\n", Core_GetCurrentThread()->tid);

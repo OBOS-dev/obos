@@ -17,7 +17,12 @@ typedef struct {
 	bool locked;
 	bool irqlNThrVariant; // Value of irqlNthrVariant
 #ifdef OBOS_DEBUG
-	struct thread* owner; // for debugging purposes only
+	// for debugging purposes only
+	struct thread* owner;
+	// size_t nCPUsWaiting; // If == Core_CpuCount, you have a deadlock on your hands.
+#else
+	uintptr_t resv1;
+	size_t resv2;
 #endif
 } spinlock;
 

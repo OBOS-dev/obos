@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 
@@ -13,6 +12,7 @@
 
 #include <allocators/base.h>
 
+process* OBOS_KernelProcess;
 uint64_t Core_NextPID = 1;
 static OBOS_PAGEABLE_FUNCTION void free_node(thread_node* n)
 {
@@ -65,6 +65,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 	node->data = thread;
 	CoreH_ThreadListAppend(&proc->threads, node);
 	thread->proc = proc;
+	thread->pnode = node;
 	return OBOS_STATUS_SUCCESS;
 }
 OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessTerminate(process* proc, bool forced)

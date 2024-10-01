@@ -11,6 +11,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
+#include <scheduler/process.h>
 #include <scheduler/thread.h>
 
 #include <allocators/base.h>
@@ -224,6 +225,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 	// Block (unready) the current thread so it can no longer be run.
 	thread_node* node = currentThread->snode;
 	CoreH_ThreadBlock(currentThread, false);
+	if (currentThread->proc)
+		CoreH_ThreadListRemove(&currentThread->proc->threads, currentThread->pnode);
+	if (currentThread->pnode->free)
+		currentThread->pnode->free(currentThread->pnode);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);
 	if (node->free)
@@ -242,9 +247,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 }
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	(void)Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
+	OBOS_UNUSED(oldIrql);
 }
 
 void CoreH_VMAStackFree(void* base, size_t sz, void* userdata)

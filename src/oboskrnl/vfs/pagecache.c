@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <memmanip.h>
 #include <klog.h>
 #include <partition.h>
@@ -22,6 +23,7 @@
 #include <mm/context.h>
 #include <mm/bare_map.h>
 #include <mm/pmm.h>
+#include <mm/handler.h>
 
 #include <driver_interface/header.h>
 
@@ -140,45 +142,42 @@ void VfsH_PageCacheFlush(pagecache* pc, void* vn_)
     }
     Core_MutexRelease(&pc->dirty_list_lock);
 }
-void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn_, size_t offset, size_t size)
+void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn_, size_t offset, size_t size, fault_type* type)
 {
     vnode* vn = (vnode*)vn_;
     if (!pc->data)
         pc->data = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, vn->filesize, 0, VMA_FLAGS_RESERVE|VMA_FLAGS_NON_PAGED, nullptr, nullptr);
+    if (type)
+        *type = SOFT_FAULT;
     // Formulate a list of each unmapped (and therefore, empty) page cache region that we need.
-    uintptr_t* emptyPages = nullptr;
-    size_t nEmptyPages = 0;
     uintptr_t base = (uintptr_t)pc->data + offset;
     base -= base % OBOS_PAGE_SIZE;
     uintptr_t top = base + size;
     // top += OBOS_PAGE_SIZE-(top%OBOS_PAGE_SIZE);
-    page what = {};
-    for (uintptr_t addr = base; addr < top; addr += OBOS_PAGE_SIZE)
-    {
-        what.addr = addr;
-        page* curr = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        OBOS_ASSERT(curr);
-        if (curr->reserved)
-        {
-            emptyPages = Vfs_Realloc(emptyPages, ++nEmptyPages * sizeof(*emptyPages));
-            emptyPages[nEmptyPages-1] = addr;
-        }
-    }
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
         driver = &vn->un.device->driver->header;
     size_t blkSize = 0;
     driver->ftable.get_blk_size(vn->desc, &blkSize);
     const size_t base_offset = vn->flags & VFLAGS_PARTITION ? vn->partitions[0].off : 0;
-    for (size_t i = 0; i < nEmptyPages; i++)
+    for (uintptr_t addr = base; addr < top; addr += OBOS_PAGE_SIZE)
     {
-        Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)emptyPages[i], OBOS_PAGE_SIZE, 0, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
-        const uintptr_t offset = ((emptyPages[i]-(uintptr_t)pc->data)+base_offset) / blkSize;
-        obos_status status = driver->ftable.read_sync(vn->desc, (void*)emptyPages[i], OBOS_PAGE_SIZE/blkSize, offset, nullptr);
-        if (obos_expect(obos_is_error(status) == true, 0))
-            return nullptr;
+        obos_status status = OBOS_STATUS_SUCCESS;
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)addr, OBOS_PAGE_SIZE, 0, 0, nullptr, &status);
+        // for (volatile bool b = (addr==0xffffff0000462000); b; )
+        //     OBOSS_SpinlockHint();
+        if (obos_is_success(status))
+        {
+            const uintptr_t current_offset = ((addr-(uintptr_t)pc->data)+base_offset) / blkSize;
+            status = driver->ftable.read_sync(vn->desc, (void*)addr, OBOS_PAGE_SIZE/blkSize, current_offset, nullptr);
+            if (obos_expect(obos_is_error(status) == true, 0))
+                return nullptr;
+            if (type)
+                *type = HARD_FAULT;
+        }
+        if (status != OBOS_STATUS_IN_USE)
+            OBOS_ASSERT(!obos_is_error(status) && "could not commit memory");
     }
-    Vfs_Free(emptyPages);
     return (void*)((uintptr_t)pc->data + offset);
 }

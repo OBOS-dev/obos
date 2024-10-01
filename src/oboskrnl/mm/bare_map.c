@@ -255,7 +255,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMAddRegion(basicmm_region*
 OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
 {
 	// callback(&bump_region, udata);
-	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
+	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
 	for (basicmm_region* cur = s_regionList.head; cur; )
 	{
 		if (cur->mmioRange)
@@ -263,11 +263,11 @@ OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_
 		
 		if (!callback(cur, udata))
 		{
-			Core_SpinlockRelease(&s_regionListLock, oldIrql);
+			// Core_SpinlockRelease(&s_regionListLock, oldIrql);
 			return;
 		}
 		next:
 		cur = cur->next;
 	}
-	Core_SpinlockRelease(&s_regionListLock, oldIrql);
+	// Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }

@@ -1,5 +1,5 @@
 /*
- * oboskrnl/allocators/basic_allocator.h
+ * oboskrnl/allocators/basic_allocator.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
@@ -113,6 +113,7 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	basicalloc_region* blk = (basicalloc_region*)allocateBlock(This, size, &blockSource, status);
 	if (!blk)
 		return nullptr;
+	memzero(blk, sizeof(*blk));
 	blk->magic = PAGEBLOCK_MAGIC;
 	blk->size = initialSize+sizeof(basicalloc_region);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);
@@ -291,6 +292,7 @@ tryAgain:
 		freeNode = nullptr;
 		goto tryAgain;
 	}
+	memzero(freeNode, sizeof(*freeNode));
 	freeNode->next = freeNode->prev = nullptr;
 	freeNode->magic = MEMBLOCK_MAGIC;
 	freeNode->_containingRegion = from;
