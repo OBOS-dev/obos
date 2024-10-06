@@ -87,6 +87,7 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge);
 void MmH_RefPage(page* buf);
 void MmH_DerefPage(page* buf);
 extern phys_page_tree Mm_PhysicalPages;
+extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
 typedef struct page_range
 {
     uintptr_t virt;

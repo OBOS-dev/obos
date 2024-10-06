@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/timer.h"
 #include "scheduler/thread.h"
 #include <int.h>
 #include <klog.h>
@@ -77,7 +78,7 @@ static uint64_t pnp_acpi_driver_hash(const void *item, uint64_t seed0, uint64_t 
 
 static void *malloc(size_t sz)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
 }
 static void *realloc(void* oldblk, size_t sz)
 {
@@ -498,30 +499,30 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
                 continue;
             }
         }
-    }
-    if (wait)
-    {
-        bool done = true;
-        while (1)
+        if (wait)
         {
-            done = true;
-            size_t i = 0;
-            void* item = nullptr;
-            while (hashmap_iter(drivers, &i, &item))
+            bool done = true;
+            while (1)
             {
-                if (!item)
-                    continue; // fnuy
-                struct driver_file* file = item;
-                if (!file->main)
-                    continue;
-                if (!(file->main->flags & THREAD_FLAGS_DIED))
+                done = true;
+                size_t i = 0;
+                void* item = nullptr;
+                while (hashmap_iter(drivers, &i, &item))
                 {
-                    done = false;
-                    break;
+                    if (!item)
+                        continue; // fnuy
+                    struct driver_file* file = item;
+                    if (!file->main)
+                        continue;
+                    if (!(file->main->flags & THREAD_FLAGS_DIED))
+                    {
+                        done = false;
+                        break;
+                    }
                 }
+                if (done)
+                    break;
             }
-            if (done)
-                break;
         }
     }
     for (driver_header_node* node = what.head; node; )

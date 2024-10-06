@@ -68,7 +68,7 @@ char pop_from_buffer(buffer* buf)
     {
         buf->nAllocated -= (buf->nAllocated - buf->szBuf);
         OBOS_ASSERT(buf->nAllocated == buf->szBuf);
-        char* newbuf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, buf->nAllocated*sizeof(*buf->buf), nullptr);
+        char* newbuf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, buf->nAllocated, sizeof(*buf->buf), nullptr);
         memcpy(newbuf, buf->buf + buf->offset, buf->szBuf);
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf->buf, buf->nAllocated + 4);
         buf->buf = newbuf;

@@ -118,9 +118,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
     {
         // Not swapped out.
         Core_SpinlockRelease(&swap_lock, oldIrql);
-        if (type)
-            *type = SOFT_FAULT;
-        return OBOS_STATUS_SUCCESS; 
+        return OBOS_STATUS_NOT_FOUND; 
     }
     down:
     OBOS_UNUSED(0);

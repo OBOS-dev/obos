@@ -20,7 +20,7 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
 {
     if (!desc || (!partition_list && !nPartitions))
         return OBOS_STATUS_INVALID_ARGUMENT;
-    mbr_t *mbr = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(mbr_t), nullptr);
+    mbr_t *mbr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mbr_t), nullptr);
     size_t nRead = 0;
     size_t filesize = desc->vn->filesize;
     if (filesize < sizeof(mbr_t))

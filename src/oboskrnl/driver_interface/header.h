@@ -56,6 +56,14 @@ typedef enum driver_header_flags
     /// Set if PnP should use the device id in the pciId field of the header.
     /// </summary>
     DRIVER_HEADER_PCI_HAS_DEVICE_ID = 0x80,
+    /// <summary>
+    /// Set if the timeout field is valid.
+    /// </summary>
+    DRIVER_HEADER_HAS_TIMEOUT = 0x100,
+    /// <summary>
+    /// Set if timeouts should be ignored.
+    /// </summary>
+    DRIVER_HEADER_DISALLOW_TIMEOUT = 0x100,
 } driver_header_flags;
 typedef enum iterate_decision
 {

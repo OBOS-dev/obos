@@ -13,6 +13,7 @@
 
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
+#include <driver_interface/driverId.h>
 
 #include <mm/context.h>
 #include <mm/alloc.h>
@@ -183,14 +184,11 @@ const char* const DeviceNames[32] = {
     "sd3", "sd4", "sd5", "sd6",
 };
 // https://forum.osdev.org/viewtopic.php?t=40969
-void OBOS_DriverEntry(driver_id* this)
+driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     DrvS_EnumeratePCI(find_pci_node, nullptr);
     if (!FoundPCINode)
-    {
-        OBOS_Error("%*s: Could not find PCI Node. Aborting...\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
-        Core_ExitCurrentThread();
-    }
+        return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find PCI Device."};
     uintptr_t bar = PCINode.bars.indiv32.bar5;
     // for (volatile bool b = true; b; )
     //     ;
@@ -210,16 +208,16 @@ void OBOS_DriverEntry(driver_id* this)
     // OBOS_Log("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", uacpi_strnlen(drv_hdr.driverName, 64), IRQL_AHCI, status);
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize IRQ object."};
     OBOS_Debug("Enabling IRQs...\n");
     status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize HBA Irq. Status: %d.\n", status);
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize HBA Irq."};
     HbaIrq.irqChecker = ahci_irq_checker;
     HbaIrq.handler = ahci_irq_handler;
     status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not unmask HBA Irq."};
     OBOS_Debug("Enabled IRQs.\n");
     HBA->ghc |= BIT(31);
     while (!(HBA->ghc & BIT(31)))
@@ -303,8 +301,11 @@ void OBOS_DriverEntry(driver_id* this)
         if ((hPort->ssts & 0xf) != 0x3)
             continue;
         hPort->serr = 0xffffffff;
-        while (hPort->tfd & 0x80 && hPort->tfd & 0x8)
+        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
+        while (hPort->tfd & 0x80 && hPort->tfd & 0x8 && deadline < CoreS_GetTimerTick())
             OBOSS_SpinlockHint();
+        if ((hPort->tfd & 0x88) != 0x88)
+            continue;
         OBOS_Debug("Done port init for port %d.\n", port);
         StartCommandEngine(hPort);
         curr->works = true;
@@ -396,7 +397,7 @@ void OBOS_DriverEntry(driver_id* this)
         Drv_RegisterVNode(port->vn, port->dev_name);
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
-    Core_ExitCurrentThread();
+    return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }
 
 // hexdump clone lol

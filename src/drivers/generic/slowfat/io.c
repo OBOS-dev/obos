@@ -93,7 +93,7 @@ obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffs
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
     if (blkOffset)
         cluster += blkOffset/bytesPerCluster;
-    uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
+    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     size_t current_offset = 0;
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
@@ -151,7 +151,7 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         cache_entry->data.filesize += blkCount;
         uint32_t newSizeCls = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
         Core_MutexAcquire(&cache->fat_lock);
-        uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
+        uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
         if (expandClusters)
             if (!ExtendClusters(cache, cluster, newSizeCls, szClusters))
             {
@@ -193,7 +193,7 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         Core_MutexRelease(&cache->fat_lock);
         WriteFatDirent(cache, cache_entry, true);
     }
-    uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
+    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     size_t current_offset = 0;
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
@@ -270,7 +270,7 @@ obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry, bool
     if (lock)
         Core_MutexAcquire(&cache->fd_lock);
     Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
-    uint8_t* cluster_buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
+    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     obos_status status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
     if (obos_is_error(status))
     {

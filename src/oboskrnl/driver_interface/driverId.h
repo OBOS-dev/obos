@@ -99,3 +99,14 @@ typedef struct driver_id
 extern driver_list Drv_LoadedDrivers;
 extern driver_list Drv_LoadedFsDrivers;
 extern symbol_table OBOS_KernelSymbolTable;
+
+typedef struct driver_init_status
+{
+    obos_status status;
+    // An additional message to print describing the failure. can be nullptr
+    const char* context;
+    // If true, the driver will be unloaded. Ignored if obos_is_success(status) == true.
+    bool fatal;
+} driver_init_status;
+// id->main must be the current thread, otherwise this function silently fails.
+OBOS_EXPORT void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status);

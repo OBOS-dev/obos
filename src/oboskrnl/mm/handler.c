@@ -162,8 +162,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
             // Steal the page.
             info->prot.rw = true;
             info->prot.ro = false;
-            MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
-            return true;
+            goto done;
         }
         page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
         if (~ec & PF_EC_PRESENT)
@@ -174,6 +173,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
         MmH_DerefPage(pg);
         pg = new;
     }
+    done:
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
     ref_page(ctx, info);
     return true;
@@ -248,6 +248,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             goto done;
         }
+        ctx->stat.paged -= (curr.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
         ref_page(ctx, &curr);
         handled = true;

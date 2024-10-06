@@ -307,7 +307,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             {
                 rng->un.cow_type = COW_ASYMMETRIC;
                 rng->cow = true;
-                MmH_RefPage(Mm_AnonPage);
+                MmH_RefPage(phys);
             }
         }
         // Append the virtual page to phys on demand as apposed to now to save memory.
@@ -329,16 +329,16 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     }
     if (!(flags & VMA_FLAGS_RESERVE))
     {
+        if (flags & VMA_FLAGS_GUARD_PAGE)
+            size -= pgSize;
         if (!(flags & VMA_FLAGS_NON_PAGED))
-        {
-            ctx->stat.paged += size;
             ctx->stat.pageable += size;
-        }
         else
             ctx->stat.nonPaged += size;
-        ctx->stat.committedMemory += size;
         if (!isNew)
             ctx->stat.reserved -= size;
+        else
+            ctx->stat.committedMemory += size;
     }
     else
         ctx->stat.reserved += size;
@@ -347,6 +347,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     if (flags & VMA_FLAGS_GUARD_PAGE)
         base += pgSize;
+    // printf("mapped %d bytes at %p\n", size, base);
     return (void*)base;
 }
 obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
@@ -370,13 +371,18 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
         return OBOS_STATUS_NOT_FOUND;
+    // printf("freeing %d at %p. called from %p\n", size, base, __builtin_return_address(0));
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
+    bool sizeHasGuardPage = false;
     if (rng->hasGuardPage)
     {
         const size_t pgSize = (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         base -= pgSize;
         if (size == (rng->size - pgSize))
+        {
             size += pgSize;
+            sizeHasGuardPage = true;
+        }
     }
     bool full = true;
     page_protection new_prot = rng->prot;
@@ -405,37 +411,43 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             after->hasGuardPage = false;
             memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
             memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
+            // printf("split %p-%p into %p-%p and %p-%p\n", base, size+base, before->virt, before->virt+before->size, after->virt, after->virt+after->size);
             for (working_set_node* curr = rng->working_set_nodes.head; curr; )
             {
                 working_set_node* next = curr->next;
                 if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
                 {
                     curr->data->free = true; // mark for deletion.
+                    Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
                     curr = next;
                     continue;
                 }
                 if (curr->data->info.virt < before->virt)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
                     curr->data->info.range = before;
+                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
                 }
                 if (curr->data->info.virt >= after->virt)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
                     curr->data->info.range = after;
+                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
                 }
                 curr = next;
             }
             RB_REMOVE(page_tree, &ctx->pages, rng);
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
+            rng->ctx = nullptr;
+            Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
+            rng = nullptr;
         }
         else if (rng->virt == base || rng->size == size)
         {
             rng->size = (rng->size-size);
             rng->virt += size;
+            // printf("split %p-%p into %p-%p\n", base, size+base, rng->virt, rng->virt+rng->size);
             for (working_set_node* curr = rng->working_set_nodes.head; curr; )
             {
                 working_set_node* next = curr->next;
@@ -443,6 +455,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                     curr->data->free = true;
+                    Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
                 }
                 curr = next;
             }
@@ -459,24 +472,35 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
         info.range = rng;
-        if (info.prot.present && !rng->mapped_here)
-            Mm_FreePhysicalPages(info.phys, (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
         if (!info.prot.present && !rng->mapped_here && rng->pageable)
         {
             if (obos_is_success(Mm_SwapIn(&info, nullptr)))
                 ctx->stat.paged -= (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         }
+        if (!info.prot.is_swap_phys && info.phys)
+        {
+            page what = {.phys=info.phys};
+            page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            // printf("derefing physical page %p representing %p\n", pg->phys, addr);
+            MmH_DerefPage(pg);
+        }
         // for(volatile bool b = (addr == 0xffffff0000039000); b; );
+        // printf("unmapping %p\n", addr);
         MmS_SetPageMapping(ctx->pt, &pg, 0, true);
     }
-    if (rng->reserved)
-        ctx->stat.reserved -= size;
-    else
-        ctx->stat.committedMemory -= size;
-    if (rng->pageable)
-        ctx->stat.pageable -= size;
-    else
-        ctx->stat.nonPaged -= size;
+    if (rng)
+    {
+        if (sizeHasGuardPage)
+            size -= (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        if (rng->reserved)
+            ctx->stat.reserved -= size;
+        else
+            ctx->stat.committedMemory -= size;
+        if (rng->pageable)
+            ctx->stat.pageable -= size;
+        else
+            ctx->stat.nonPaged -= size;
+    }
     if (full)
     {
         for (working_set_node* curr = rng->working_set_nodes.head; curr; )
@@ -484,6 +508,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             working_set_node* next = curr->next;
             REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
             curr->data->free = true;
+            Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
             curr = next;
         }
         RB_REMOVE(page_tree, &ctx->pages, rng);
@@ -544,7 +569,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             // OBOS_Debug("untested code path 1\n");
             if ((base + size) >= (rng->virt+rng->size))
                 return OBOS_STATUS_INVALID_ARGUMENT;
-            // We need two ranges, one for the range behind base, and another for the range after.
+            // We need three ranges, one for the range behind base, another for the range after, and another for the new protection flags.
             page_range* before = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             page_range* after = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             page_range* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
@@ -556,12 +581,16 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             after->size = rng->size-(after->virt-rng->virt);
             memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
             memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
+            new->prot = new_prot;
+            new->pageable = pageable;
             for (working_set_node* curr = rng->working_set_nodes.head; curr; )
             {
                 working_set_node* next = curr->next;
                 if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
                 {
-                    curr->data->free = true; // mark for deletion.
+                    curr->data->info.range = new;
+                    if (!pageable)
+                        curr->data->free = true;
                     curr = next;
                     continue;
                 }
@@ -598,6 +627,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
             RB_INSERT(page_tree, &ctx->pages, new);
+            Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
             rng = new;
         }
         else if (rng->virt == base || rng->size == size)
@@ -623,12 +653,27 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             //     rng->virt, rng->virt+rng->size,
             //     new->virt, new->virt+new->size
             // );
-            rng->prot = new_prot;
-            rng->pageable = pageable;
+            new->prot = new_prot;
+            new->pageable = pageable;
             RB_INSERT(page_tree, &ctx->pages, new);
+            size_t szUpdated = 0;
+            for (working_set_node* curr = rng->working_set_nodes.head; curr && szUpdated < size; )
+            {
+                working_set_node* next = curr->next;
+                if (curr->data->info.virt >= new->virt && curr->data->info.virt < rng->virt)
+                {
+                    szUpdated += (curr->data->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+                    curr->data->info.range = new;
+                    if (!pageable)
+                        curr->data->free = true;
+                }
+                curr = next;
+            }
+            rng = new;
         }
     }
-    OBOS_ASSERT(rng->size);
+    if (rng)
+        OBOS_ASSERT(rng->size);
     page_info pg = {};
     pg.prot = new_prot;
     pg.range = nullptr;
@@ -638,8 +683,6 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         // printf("0x%p %08x\n", pg.virt, prot);
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
-        // if (info.prot.present)
-        //     Mm_FreePhysicalPages(info.phys, (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
         pg.prot.present = info.prot.present;
         MmS_SetPageMapping(ctx->pt, &pg, info.phys, false);
     }

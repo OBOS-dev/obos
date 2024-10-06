@@ -78,7 +78,7 @@ typedef _Bool bool;
 #define OBOS_NORETURN [[noreturn]]
 #define OBOS_UNUSED(x) (void)(x)
 #ifdef __GNUC__
-#	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
+#	define OBOS_NO_KASAN 
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
 #	define OBOS_NODISCARD __attribute__ ((warn_unused_result))
 #	define OBOS_NODISCARD_REASON(why)  __attribute__ ((warn_unused_result))

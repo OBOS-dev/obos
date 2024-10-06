@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "elf/elf64.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -17,6 +18,9 @@
 
 #define round_down_to_page(addr) ((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
 // #define OBOS_CROSSES_PAGE_BOUNDARY(base, size) (round_down_to_page(base) == round_down_to_page((uintptr_t)(base) + (size)))
+
+#undef OBOS_NO_KASAN
+#define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 
 #ifdef __x86_64__
 #include <arch/x86_64/asm_helpers.h>
@@ -52,9 +56,20 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 	case ASAN_UninitMemory:
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory.).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
+	case ASAN_AllocatorMismatch:
+		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p trying to free/reallocate %d bytes at %p. (Hint: Mismatched Allocators)\n", (void*)ip, sz, (void*)addr);
+		break;
 	default:
+		// NOTE(oberrow): I forgot to put this, and it caused me two days worth of debugging an allocator mismatch.
+		OBOS_ASSERT(!"Unknown violation type.");
 		break;
 	}
+}
+void OBOS_ASANReport(uintptr_t ip, uintptr_t addr, size_t sz, asan_violation_type type, bool rw)
+{
+	if (!ip)
+		ip = (uintptr_t)__builtin_return_address(0);
+	asan_report(addr, sz, ip, rw, type, true);
 }
 static OBOS_NO_KASAN bool isAllocated(uintptr_t base, size_t size, bool rw)
 {

@@ -114,6 +114,11 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 	if (!blk)
 		return nullptr;
 	memzero(blk, sizeof(*blk));
+	if (This == (void*)Mm_Allocator)
+		OBOS_ASSERT(blockSource!=BLOCK_SOURCE_VMA);
+#if OBOS_KASAN_ENABLED
+	blk->This = This;
+#endif
 	blk->magic = PAGEBLOCK_MAGIC;
 	blk->size = initialSize+sizeof(basicalloc_region);
 	basicalloc_node* n = (basicalloc_node*)(blk + 1);
@@ -133,7 +138,9 @@ static OBOS_NO_KASAN basicalloc_region* allocateNewRegion(basic_allocator* This,
 		This->regionHead = blk;
 	blk->prev = This->regionTail;
 	This->regionTail = blk;
+	// printf("linked %p\nblk->prev %p\nblk->next %p\nThis %p\n", blk, blk->prev, blk->next, This);
 	This->nRegions++;
+	This->totalMemoryAllocated += blk->size;
 	return blk;
 }
 static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* block)
@@ -147,7 +154,15 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 	if (This->regionTail == block)
 		This->regionTail = block->prev;
 	This->nRegions--;
+	if (block->prev)
+		OBOS_ASSERT(block->prev->next != block);
+	if (block->next)
+		OBOS_ASSERT(block->next->prev != block);
+	OBOS_ASSERT(This->regionHead != block);
+	OBOS_ASSERT(This->regionTail != block);
 	OBOS_ASSERT(block->blockSource != BLOCK_SOURCE_INVALID);
+	This->totalMemoryAllocated -= block->size;
+	// printf("alloc: freeing blk %p\nThis: %p\nblk->This %p\n", block, This, block->This);
 	switch (block->blockSource) 
 	{
 		case BLOCK_SOURCE_BASICMM:
@@ -374,6 +389,10 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	basicalloc_region* r = (basicalloc_region*)n->_containingRegion;
 	if (!r)
 		return OBOS_STATUS_INTERNAL_ERROR;
+// #if OBOS_KASAN_ENABLED
+	if ((allocator_info*)r->This != This_)
+		OBOS_ASANReport((uintptr_t)__builtin_return_address(0), (uintptr_t)base, nBytes, ASAN_AllocatorMismatch, false);
+// #endif
 	makeSafeLock(lock, (basic_allocator*)This_);
 	if (n->prev)
 		n->prev->next = n->next;
@@ -398,11 +417,11 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	r->free.tail = n;
 	r->free.nNodes++;
 	r->nFreeBytes += n->size;
-	/*if (!r->biggestFreeNode)
+	if (!r->biggestFreeNode && r->free.nNodes)
 	{
 		Unlock(&lock);
 		return OBOS_STATUS_INTERNAL_ERROR;
-	}*/
+	}
 	if (!r->biggestFreeNode || n->size > r->biggestFreeNode->size)
 		r->biggestFreeNode = n;
 #if OBOS_KASAN_ENABLED

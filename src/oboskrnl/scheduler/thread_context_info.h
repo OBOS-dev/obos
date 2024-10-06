@@ -93,6 +93,6 @@ OBOS_WEAK size_t CoreS_GetThreadStackSize(const thread_ctx* ctx);
 // Some helpers to free stacks allocated using the VMA and the basic MM.
 
 // userdata should be the context* used to allocate the stack.
-void CoreH_VMAStackFree(void* base, size_t sz, void* userdata);
+OBOS_EXPORT void CoreH_VMAStackFree(void* base, size_t sz, void* userdata);
 // userdata is unused.
 void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata);

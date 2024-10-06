@@ -4,6 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/dpc.h"
+#include "irq/irql.h"
+#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -258,6 +261,12 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
         OBOS_Debug("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     return driver;
 }
+typedef driver_init_status(*driver_entry)(driver_id* id);
+static void driver_trampoline(driver_id* id)
+{
+    driver_init_status status = ((driver_entry)id->entryAddr)(id);
+    Drv_ExitDriver(id, &status);
+}
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
 {
     if (mainThread)
@@ -279,7 +288,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         stackSize = 0x20000;
     void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, stackSize, 0, VMA_FLAGS_KERNEL_STACK, nullptr, &status);
     status = CoreS_SetupThreadContext(&ctx, 
-        driver->entryAddr,
+        (uintptr_t)driver_trampoline,
         (uintptr_t)driver,
         false,
         stack,
@@ -363,4 +372,42 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     }
     *driver = nullptr;
     return nullptr; // symbol unresolved.
+}
+
+static void unload_driver_dpc(dpc* unused, void* userdata)
+{
+    Drv_UnloadDriver(userdata);
+    CoreH_FreeDPC(unused);
+}
+void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status)
+{
+    if (!id || !status)
+        return;
+    if (id->main_thread != Core_GetCurrentThread())
+        return;
+    if (obos_is_error(status->status))
+    {
+        if (OBOS_GetLogLevel() <= LOG_LEVEL_WARNING)
+        {
+            OBOS_Warning("Initialization of driver %d (%s) failed with status %d.\n", 
+                id->id, 
+                uacpi_strnlen(id->header.driverName, 64) ? id->header.driverName : "Unknown",
+                status->status
+            );
+            if (status->context)
+                printf("Note: %s\n", status->context);
+            if (status->fatal)
+                printf("Note: Fatal error. Unloading the driver.\n");
+        }
+    }
+    if (!status->fatal || obos_is_success(status->status))
+        Core_ExitCurrentThread();
+    dpc* dpc = CoreH_AllocateDPC(nullptr);
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    OBOS_ASSERT(dpc);
+    dpc->userdata = id;
+    CoreH_InitializeDPC(dpc, unload_driver_dpc, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id) /* make sure this runs on this CPU. */);
+    Core_ExitCurrentThread();
+    OBOS_UNREACHABLE;
+    OBOS_UNUSED(oldIrql);
 }

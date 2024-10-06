@@ -62,6 +62,12 @@ obos_status Mm_AgingPRA(context* ctx)
         working_set_node* const node_save = node;
         working_set_entry* const ent = node->data;
         node = node->next;
+        if (ent->free)
+        {
+            MmH_RemovePageFromWorkingset(ctx, node_save);
+            Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
+            continue;
+        }
         if (ent->info.accessed || ent->info.dirty)
         {
             ent->info.accessed = false;
@@ -82,8 +88,14 @@ obos_status Mm_AgingPRA(context* ctx)
         working_set_entry* const ent = curr->data;
         working_set_node* const node = curr;
         curr = node->next;
-        ent->age <<= 1;
         REMOVE_WORKINGSET_PAGE_NODE(ctx->referenced, node);
+        if (ent->free)
+        {
+            Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
+            Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
+            continue;
+        }
+        ent->age <<= 1;
         node->next = nullptr;
         node->prev = nullptr;
         if (ctx->workingSet.size < ctx->workingSet.capacity)

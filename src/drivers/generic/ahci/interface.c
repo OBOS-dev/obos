@@ -49,6 +49,15 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
 static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data);
 #pragma GCC push_options
 #pragma GCC optimize ("-O0")
+static OBOS_NO_KASAN void page_in(uintptr_t base, size_t sz)
+{
+    uintptr_t curr_base = base;
+    for (size_t i = 0; i < sz; i += OBOS_PAGE_SIZE)
+    {
+        volatile char prev = ((char*)curr_base)[i];
+        ((volatile char*)curr_base)[i] = prev;
+    }
+}
 static obos_status populate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
 {
     // obos_status status = 
@@ -57,12 +66,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     //         OBOS_STATUS_SUCCESS;
     // if (obos_is_error(status))
     //     return status;
-    uintptr_t curr_base = base & ~0xfff;
-    for (size_t i = 0; i < size; i += OBOS_PAGE_SIZE)
-    {
-        volatile char prev = ((char*)curr_base)[i];
-        ((volatile char*)curr_base)[i] = prev;
-    }
+    page_in(base, size);
     base &= ~1;
     const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
     uintptr_t reg_base = 0;

@@ -35,7 +35,7 @@ static int cmp(const void *a, const void *b, void *udata)
 }
 void* malloc(size_t sz)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
 }
 void* realloc(void* buf, size_t sz)
 {

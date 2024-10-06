@@ -15,8 +15,9 @@ struct name\
     size_t nNodes;\
 }
 
-#define LIST_NODE(name, type) \
-struct name##_list_node \
+#define LIST_NODE(name, type) LIST_NODE_INTERNAL(name, type, )
+#define LIST_NODE_INTERNAL(name, type, attrib) \
+attrib struct name##_list_node \
 {\
     type *next, *prev;\
 }
@@ -97,7 +98,7 @@ name##_LIST_PREPEND(list, x)
 #define LIST_REMOVE(name, list, x)\
 name##_LIST_REMOVE(list, x)
 #define LIST_GET_NODE_COUNT(name, list)\
-((list).nNodes)
+((list)->nNodes)
 #define LIST_GET_NEXT(name, list, node)\
 name##_LIST_GET_NEXT(list, node)
 #define LIST_GET_PREV(name, list, node)\

@@ -173,7 +173,7 @@ static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t clu
     uintptr_t udata[3] = {
         (uintptr_t)cache,
         (uintptr_t)parent,
-        (uintptr_t)FATAllocator->Allocate(FATAllocator, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr)
+        (uintptr_t)FATAllocator->ZeroAllocate(FATAllocator, cache->bpb->sectorsPerCluster, cache->blkSize, nullptr)
     };
     uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
     FollowClusterChain(cache, cluster, dir_iterate_impl, udata);
@@ -258,7 +258,7 @@ bool probe(void* vn_)
         dir_iterate(cache, cache->root, cache->root_cluster);
     else
     {
-        void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
+        void* buff = FATAllocator->ZeroAllocate(FATAllocator, 1, cache->blkSize, nullptr);
         lfn_dirent** lfn_entries = nullptr;
         size_t lfn_entry_count = 0;
         string current_filename = {};

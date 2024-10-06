@@ -246,6 +246,7 @@ OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct free
 		return OBOS_STATUS_SUCCESS; // nothing freed, no-op.
 	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
 	struct freelist_node* node = MAP_TO_HHDM(addr, struct freelist_node);
+	memzero(node, sizeof(*node));
 	node->nPages = nPages;
 	if ((*tail))
 		MAP_TO_HHDM((*tail), struct freelist_node)->next = (struct freelist_node*)UNMAP_FROM_HHDM(node);

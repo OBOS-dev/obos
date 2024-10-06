@@ -49,13 +49,19 @@ typedef struct basicalloc_region
 	OBOS_ALIGNAS(0x10) int blockSource; // See 'enum blockSource'
 
 	OBOS_ALIGNAS(0x10) struct basicalloc_region *next, *prev;
+
+#ifdef OBOS_KASAN_ENABLED
+	OBOS_ALIGNAS(0x10) struct basic_allocator* This;
+#else
+	OBOS_ALIGNAS(0x10) void* resv;
+#endif
 } basicalloc_region;
 typedef struct basic_allocator
 {
 	allocator_info header;
 	basicalloc_region *regionHead, *regionTail;
 	size_t nRegions;
-	size_t totalPagesAllocated;
+	size_t totalMemoryAllocated;
 	spinlock lock;
 } basic_allocator;
 

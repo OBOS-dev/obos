@@ -88,6 +88,7 @@
 #include <uacpi_libc.h>
 
 #include <vfs/init.h>
+#include <vfs/alloc.h>
 #include <vfs/mount.h>
 #include <vfs/fd.h>
 #include <vfs/limits.h>
@@ -307,8 +308,8 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 	if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
 	{
 		Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
-		Arch_LAPICAddress->divideConfig = 0b1101;
 		Arch_LAPICAddress->initialCount = Arch_FindCounter(Core_SchedulerTimerFrequency);
+		Arch_LAPICAddress->divideConfig = 0xB;
 		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 		nCPUsWithInitializedTimer++;
@@ -469,6 +470,22 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
 	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
 	return UACPI_INTERRUPT_HANDLED;
 }
+static void test_allocator(allocator_info* alloc)
+{
+	void* to_free = nullptr;
+	while (true)
+	{
+		size_t sz = random_number() % 4096 + 256;
+		char* ret = alloc->ZeroAllocate(alloc, sz, 1, nullptr);
+		ret[0] = random_number8();
+		ret[sz-1] = random_number8();
+		if (random_number() % 2)
+		{
+			alloc->Free(alloc, to_free, 0);
+			to_free = ret;
+		}
+	}
+}
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -553,6 +570,7 @@ void Arch_KernelMainBootstrap()
 	Arch_LAPICSendIPI(target, vector);
 	while (nCPUsWithInitializedTimer != Core_CpuCount)
 		pause();
+	OBOS_Debug("%s: Scheduler timer is running at %d hz.\n", __func__, Core_SchedulerTimerFrequency);
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
 	if (obos_is_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
@@ -600,6 +618,8 @@ void Arch_KernelMainBootstrap()
 			sizeof(uint32_t),
 			nullptr
 		);
+		Mm_KernelContext.stat.committedMemory -= size*2;
+		Mm_KernelContext.stat.nonPaged -= size*2;
 	}
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
@@ -638,6 +658,20 @@ if (st != UACPI_STATUS_OK)\
 
 	// TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
 	// Arch_IOAPICMaskIRQ(9, false);
+
+	// allocator_info* alloc = OBOS_KernelAllocator;
+	// for (size_t i = 0; i < (Core_CpuCount-1); i++)
+	// {
+	// 	thread* thr = CoreH_ThreadAllocate(nullptr);
+	// 	thread_ctx ctx = {};
+	// 	void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+	// 	CoreS_SetupThreadContext(&ctx, (uintptr_t)test_allocator, (uintptr_t)alloc, false, stack, 0x10000);
+	// 	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+	// 	thr->stackFree = CoreH_VMAStackFree;
+	// 	thr->stackFreeUserdata = &Mm_KernelContext;
+	// 	CoreH_ThreadReady(thr);
+	// }
+	// test_allocator(alloc);
 
 	OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
@@ -912,15 +946,20 @@ if (st != UACPI_STATUS_OK)\
 	// 	asm("int3");
 	// }
 	OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged, and %ld KiB uncommitted. Page faulted %ld times (%ld hard, %ld soft).\n", 
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 
 		Mm_KernelContext.stat.paged/0x400,
 		Mm_KernelContext.stat.nonPaged/0x400,
 		Mm_KernelContext.stat.reserved/0x400,
+		Mm_PhysicalMemoryUsage/0x400,
 		Mm_KernelContext.stat.pageFaultCount,
 		Mm_KernelContext.stat.hardPageFaultCount,
 		Mm_KernelContext.stat.softPageFaultCount
     );
+	// OBOS_Log("Mm_Allocator: %d KiB in-use\n", ((basic_allocator*)Mm_Allocator)->totalMemoryAllocated/1024);
+	// OBOS_Log("OBOS_KernelAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_KernelAllocator)->totalMemoryAllocated/1024);
+	// OBOS_Log("OBOS_NonPagedPoolAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_NonPagedPoolAllocator)->totalMemoryAllocated/1024);
+	// OBOS_Log("Vfs_Allocator: %d KiB in-use\n", ((basic_allocator*)Vfs_Allocator)->totalMemoryAllocated/1024);
 	Core_ExitCurrentThread();
 }

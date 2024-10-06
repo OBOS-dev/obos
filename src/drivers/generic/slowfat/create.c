@@ -196,7 +196,7 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
 {
     fat_cache* cache = cache_entry->owner;
     int64_t clusterSize = cache->blkSize*cache->bpb->sectorsPerCluster;
-    uint8_t* sector = FATAllocator->Allocate(FATAllocator, clusterSize, nullptr);
+    uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, clusterSize, nullptr);
     off_t sector_offset = cache_entry->dirent_offset;
     Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
     Vfs_FdRead(cache->volume, sector, clusterSize, nullptr);
@@ -343,7 +343,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
     {
         // We need to iterate over each sector in the root directory.
         blkSize = cache->blkSize;
-        void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
+        void* buff = FATAllocator->ZeroAllocate(FATAllocator, 1, cache->blkSize, nullptr);
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
@@ -377,7 +377,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
     {
         // We need to iterate over each cluster in the directory.
         blkSize = bytesPerCluster;
-        void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
+        void* buff = FATAllocator->ZeroAllocate(FATAllocator, 1, cache->blkSize, nullptr);
         uintptr_t udata[] = {
             (uintptr_t)cache,
             (uintptr_t)cache_entry,
@@ -393,7 +393,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         FollowClusterChain(cache, first_cluster, find_free_entry, udata);
         FATAllocator->Free(FATAllocator, buff, cache->blkSize);
     }
-    void *buf = FATAllocator->Allocate(FATAllocator, bytesPerCluster, nullptr);
+    void *buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     if (nFree < nEntries)
     {
         // We need MOREEEEEEEEEEEE clusters
@@ -468,7 +468,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 uint32_t next = 0;
                 fat_entry_addr addr = {};
                 GetFatEntryAddrForCluster(cache, entry_cluster, &addr);
-                uint8_t* sector = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
+                uint8_t* sector = FATAllocator->ZeroAllocate(FATAllocator, 1, cache->blkSize, nullptr);
                 Vfs_FdSeek(cache->volume, addr.lba*cache->blkSize, SEEK_SET);
                 Vfs_FdRead(cache->volume, sector, cache->blkSize, nullptr);
                 obos_status status = NextCluster(cache, entry_cluster, sector, &next);

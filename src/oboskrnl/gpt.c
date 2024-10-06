@@ -35,7 +35,7 @@ obos_status OBOS_IdentifyGPTPartitions(fd *desc, partition *partition_list, size
     size_t filesize = desc->vn->filesize;
     if (filesize < sizeof(mbr_t))
         return OBOS_STATUS_EOF;
-    mbr_t *protective_mbr = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(mbr_t), nullptr);
+    mbr_t *protective_mbr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mbr_t), nullptr);
     obos_status status =
         Vfs_FdRead(desc, protective_mbr, sizeof(*protective_mbr), &nRead);
     if (obos_is_error(status))

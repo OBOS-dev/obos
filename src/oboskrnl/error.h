@@ -138,7 +138,11 @@ typedef enum
 	/// </summary>
 	OBOS_STATUS_ABORTED,
 	/// <summary>
-	/// A page fault happened accessing the user memory..
+	/// A page fault happened accessing user memory passed in a syscall or anywhere similar.
 	/// </summary>
 	OBOS_STATUS_PAGE_FAULT,
+	/// <summary>
+	/// A driver timed out.
+	/// </summary>
+	OBOS_STATUS_TIMED_OUT,
 } obos_status;

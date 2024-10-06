@@ -77,7 +77,7 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
     else
     {
         size_t sz = snprintf(nullptr, 0, "COM%d", port->com_port);
-        char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz+1, nullptr);
+        char* buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz+1, nullptr);
         buf[sz] = 0;
         snprintf(buf, sz+1, "COM%d", port->com_port);
         port->user_name = buf;
@@ -264,7 +264,7 @@ obos_status ioctl(size_t nParameters, uint64_t request, ...)
     return status;
 }
 
-OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
+OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
     // Find the keyboard driver.
@@ -308,5 +308,5 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
         OBOS_Debug("%*s: Registering serial port at %s%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }
-    Core_ExitCurrentThread();
+        return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

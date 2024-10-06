@@ -4,8 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "utils/tree.h"
 #include <int.h>
+
+#include <vfs/alloc.h>
 
 #include <allocators/base.h>
 #include <allocators/basic_allocator.h>
@@ -20,7 +21,7 @@ void* Vfs_Malloc(size_t cnt)
         OBOSH_ConstructBasicAllocator(&alloc);
         Vfs_Allocator = (allocator_info*)&alloc;
     }
-    return Vfs_Allocator->Allocate(Vfs_Allocator, cnt, nullptr);
+    return Vfs_Allocator->ZeroAllocate(Vfs_Allocator, 1, cnt, nullptr);
 }
 void* Vfs_Calloc(size_t nObjs, size_t szObj)
 {
