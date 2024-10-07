@@ -69,80 +69,50 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     page_in(base, size);
     base &= ~1;
     const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
-    uintptr_t reg_base = 0;
-    uintptr_t physical_page = 0;
-    uintptr_t prev_phys = 0;
-    int64_t reg_size = 0;
-    int64_t pg_size = 0;
-    int64_t bytesLeft = size;
-    int64_t bytesInPage = 0;
-    // int64_t initialBytesInPage = 0;
-    bool trunc = false;
-    // printf("preparing %d bytes at %p\n", size, base);
-    for (uintptr_t addr = base; bytesLeft && (addr == base || (bytesInPage > 0)); addr += bytesInPage)
+/*
+    data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+    struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
+*/
+    long bytesLeft = size;
+    size_t pgSize = 0;
+    uintptr_t lastPhys = 0;
+    struct ahci_phys_region curr = {};
+    bool wroteback = false;
+    for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
     {
-        // if (data->physRegionCount == 38)
-        //     for (volatile bool b = true; b; );
-        // OBOS_ASSERT(!found->reserved);
-        // if (found->reserved)
-        //     continue;
-        page_info curr_page_info = {};
-        MmS_QueryPageInfo(Mm_KernelContext.pt, addr, &curr_page_info, &physical_page);
-        pg_size = curr_page_info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         if (data->physRegionCount >= MAX_PRDT_COUNT)
-        {
-            unpopulate_physical_regions(base, size, data);
             return OBOS_STATUS_INTERNAL_ERROR;
-        }
-        physical_page += addr % pg_size;
-        if (bytesLeft < pg_size)
-            bytesInPage = bytesLeft;
-        else
-            bytesInPage = pg_size - (addr % pg_size);
-        if (((addr + (bytesInPage - 1)) & ~(OBOS_PAGE_SIZE-1)) != (addr & ~(OBOS_PAGE_SIZE-1)))
+        page_info info = {};
+        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &info, nullptr);
+        if ((lastPhys + pgSize) != info.phys)
         {
-            trunc = true;
-            bytesInPage = pg_size - (addr % pg_size);
-        }
-        else
-            trunc = false;
-        if (addr == base)
-        {
-            // initialBytesInPage = bytesInPage;
-            reg_base = trunc ? 0 : physical_page;
-        }
-
-        // What does this even do?!?!?!?!??!?!
-        // if (bytesLeft <= pg_size && ((int64_t)size) > pg_size)
-        //     bytesInPage -= initialBytesInPage;
-        if ((addr != base) && (prev_phys + pg_size) == physical_page && reg_size < (1024*1024*4 /* Hard limit imposed by AHCI */))
-        {
-            reg_size += (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
-        }
-        else
-        {
-            if (addr != base || ((int64_t)size) <= pg_size)
+            if (addr != base)
             {
                 data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
                 struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-                reg->phys = reg_base ? reg_base : physical_page;
-                reg->sz = reg_size ? reg_size : (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
-                // printf("%p %d\n", reg->phys, reg->sz);
+                *reg = curr;
+                wroteback = true;
             }
-            reg_base = !trunc ? physical_page : 0;
-            reg_size = !trunc ? (bytesLeft > bytesInPage ? bytesInPage : bytesLeft) : 0;
+            pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            curr.phys = info.phys + (addr % pgSize);
+            curr.sz = 0;
         }
-        prev_phys = physical_page;
-        bytesLeft -= bytesInPage;
-        // found = RB_NEXT(page_tree, &context->pages, found);
+        pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        size_t addend = (bytesLeft > (long)pgSize ? pgSize : (size_t)bytesLeft);
+        curr.sz += addend;
+        if (curr.sz > (pgSize-(addr % pgSize)))
+        {
+            curr.sz -= addend;
+            curr.sz += pgSize-(addr % pgSize);
+        }
+        lastPhys = info.phys;
+        wroteback = false;
     }
-    if (!data->physRegionCount || (reg_size % OBOS_PAGE_SIZE))
+    if (!wroteback && curr.phys)
     {
         data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-        reg->phys = reg_base;
-        reg->sz = reg_size;
-        // printf("%p %d\n", reg->phys, reg->sz);
+        *reg = curr;
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -216,6 +186,8 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
     if (obos_is_error(status))
         return status;
+    // for (size_t i = 0; i < data.physRegionCount; i++)
+    //     printf("%d: 0x%p 0x%08x\n", i, data.phys_regions[i].phys, data.phys_regions[i].sz);
     for (uint8_t try = 0; try < 5; try++)
     {
         HBA->ghc |= BIT(1);

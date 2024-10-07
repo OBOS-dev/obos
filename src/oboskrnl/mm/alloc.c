@@ -205,6 +205,25 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             return nullptr;
         }
     }
+    if (rng && rng->reserved)
+    {
+        // Check if the page(s) were already committed, and if so, fail.
+        page_info temp = {};
+        for (uintptr_t addr = base; addr < (base+size); addr += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
+        {
+            MmS_QueryPageInfo(ctx->pt, addr, &temp, nullptr);
+            page what = {.phys=temp.phys};
+            page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            if (pg)
+            {
+                set_statusp(ustatus, OBOS_STATUS_IN_USE);
+                Core_SpinlockRelease(&ctx->lock, oldIrql);
+                return nullptr;
+            }
+            // Uncommitted
+            continue;
+        }
+    }
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
     off_t currFileOff = file ? file->offset : 0;
     pagecache_mapped_region* reg = file ?
@@ -320,7 +339,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         curr.prot.rw = cow ? false : rng->prot.rw;
         curr.prot.present = isPresent;
         if (rng->cow && rng->un.cow_type == COW_ASYMMETRIC)
-        curr.prot.present = false;
+            curr.prot.present = false;
         OBOS_ASSERT(phys != 0 || !isPresent);
         MmS_SetPageMapping(ctx->pt, &curr, curr.phys, false);
         // if (rng->pageable && !rng->reserved && isPresent && !file)

@@ -295,16 +295,16 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         if (HBA->cap & BIT(27) /* CapSSS */)
             hPort->cmd |= BIT(1);
         timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
-        while ((hPort->ssts & 0xf) != 0x3 && deadline < CoreS_GetTimerTick())
+        while ((hPort->ssts & 0xf) != 0x3 && CoreS_GetTimerTick() < deadline)
             OBOSS_SpinlockHint();
         curr->hbaPortIndex = port;
         if ((hPort->ssts & 0xf) != 0x3)
             continue;
         hPort->serr = 0xffffffff;
-        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
-        while (hPort->tfd & 0x80 && hPort->tfd & 0x8 && deadline < CoreS_GetTimerTick())
+        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(10000);
+        while (hPort->tfd & 0x80 && hPort->tfd & 0x8 && CoreS_GetTimerTick() < deadline)
             OBOSS_SpinlockHint();
-        if ((hPort->tfd & 0x88) != 0x88)
+        if ((hPort->tfd & 0x88) != 0)
             continue;
         OBOS_Debug("Done port init for port %d.\n", port);
         StartCommandEngine(hPort);
@@ -314,9 +314,9 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     for (uint8_t i = 0; i < PortCount; i++)
     {
         Port* port = Ports + i;
-        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         if (!port->works)
             continue;
+        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         HBA->ports[port->hbaPortIndex].is = 0xffffffff;
         HBA->ports[port->hbaPortIndex].ie = 0xffffffff;
         HBA->ports[port->hbaPortIndex].serr = 0xffffffff;

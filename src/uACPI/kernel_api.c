@@ -287,6 +287,9 @@ void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_
     const char* prefix = "UNKNOWN";
     switch (level)
     {
+    case UACPI_LOG_DEBUG:
+        prefix = "DEBUG";
+        break;
     case UACPI_LOG_TRACE:
         prefix = "TRACE";
         break;
@@ -302,8 +305,10 @@ void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_
     default:
         break;
     }
-    printf("uACPI, %s: ", prefix);
+    OBOS_SetColor(OBOS_LogLevelToColor[level-1]);
+    printf("[uACPI][%s]: ", prefix);
     vprintf(format, list);
+    OBOS_ResetColor();
 }
 uint64_t CoreS_TimerTickToNS(timer_tick tp);
 uacpi_u64 uacpi_kernel_get_ticks(void)

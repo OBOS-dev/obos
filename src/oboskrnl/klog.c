@@ -59,6 +59,15 @@ OBOS_EXPORT log_level OBOS_GetLogLevel()
 }
 static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
 static spinlock s_printfLock; bool s_printfLockInitialized = false;
+color OBOS_LogLevelToColor[LOG_LEVEL_NONE] = {
+	COLOR_LIGHT_BLUE,
+	COLOR_LIGHT_GREEN,
+	COLOR_YELLOW,
+	COLOR_RED,
+};
+#define CALLBACK_COUNT (8)
+static log_backend outputCallbacks[CALLBACK_COUNT];
+static size_t nOutputCallbacks;
 static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
@@ -69,9 +78,23 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	if (s_logLevel > minimumLevel)
 		return;
 	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+	OBOS_SetColor(OBOS_LogLevelToColor[minimumLevel]);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
+	OBOS_ResetColor();
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
+}
+void OBOS_SetColor(color c)
+{
+	for (size_t i = 0; i < nOutputCallbacks; i++)
+		if (outputCallbacks[i].set_color)
+			outputCallbacks[i].set_color(c, outputCallbacks[i].userdata);
+}
+void OBOS_ResetColor()
+{
+	for (size_t i = 0; i < nOutputCallbacks; i++)
+		if (outputCallbacks[i].reset_color)
+			outputCallbacks[i].reset_color(outputCallbacks[i].userdata);
 }
 OBOS_EXPORT void OBOS_Debug(const char* format, ...)
 {
@@ -156,29 +179,17 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 		asm volatile("");
 }
 
-#define CALLBACK_COUNT (8)
-struct output_cb
-{
-	void(*cb)(char ch, void* userdata);
-	void* userdata;
-};
-static struct output_cb outputCallbacks[CALLBACK_COUNT];
-static size_t nOutputCallbacks;
 static char* outputCallback(const char* buf, void* a, int len)
 {
 	OBOS_UNUSED(a);
-	for (size_t i = 0; i < (size_t)len; i++)
-	{
-// 		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
-		for (size_t j = 0; j < nOutputCallbacks; j++)
-			outputCallbacks[j].cb(buf[i], outputCallbacks[j].userdata);
-	}
+	for (size_t j = 0; j < nOutputCallbacks; j++)
+		outputCallbacks[j].write(buf, len, outputCallbacks[j].userdata);
 	return (char*)buf;
 }
-void OBOS_AddLogSource(void(*out_callback)(char ch, void* userdata), void* userdata)
+void OBOS_AddLogSource(const log_backend* backend)
 {
 	if (nOutputCallbacks++ < CALLBACK_COUNT)
-		outputCallbacks[nOutputCallbacks - 1] = (struct output_cb){ .cb=out_callback, .userdata=userdata};
+		outputCallbacks[nOutputCallbacks - 1] = *backend;
 }
 OBOS_EXPORT size_t printf(const char* format, ...)
 {
@@ -222,8 +233,15 @@ OBOS_EXPORT size_t puts(const char *s)
 	return len;
 }
 
-void OBOS_ConsoleOutputCallback(char ch, void* userdata)
+static void output(const char *str, size_t sz, void* userdata)
 {
 	if (userdata)
-		OBOS_WriteCharacter((text_renderer_state*)userdata, ch);
+		for (size_t i = 0; i < sz; i++)
+			OBOS_WriteCharacter((text_renderer_state*)userdata, str[i]);
 }
+log_backend OBOS_ConsoleOutputCallback = {
+	.write=output,
+	.set_color=nullptr,
+	.reset_color=nullptr,
+	.userdata=&OBOS_TextRendererState
+};

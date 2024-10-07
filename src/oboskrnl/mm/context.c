@@ -119,7 +119,7 @@ void MmH_DerefPage(page* buf)
 {
 	if (!--buf->refcount)
 	{
-		Mm_FreePhysicalPages(buf->phys, (buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+		Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));

@@ -24,6 +24,7 @@
 
 #include <driver_interface/header.h>
 
+#include "locks/mutex.h"
 #include "structs.h"
 #include "alloc.h"
 
@@ -49,7 +50,7 @@ static size_t lfn_strlen(const lfn_dirent* lfn)
     return ret;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster);
-static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
+static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, const void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
 {
     OBOS_UNUSED(cluster);
     if ((uint8_t)curr->filename_83[0] == 0xE5)
@@ -149,9 +150,10 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
         return ITERATE_DECISION_STOP;
     fat_cache* cache = (void*)((uintptr_t*)udata)[0];
     fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
-    void* buff = (void*)((uintptr_t*)udata)[2];
-    Vfs_FdSeek(cache->volume, ClusterToSector(cache, current_cluster)*cache->blkSize, SEEK_SET);
-    Vfs_FdRead(cache->volume, buff, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
+    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, cache->volume->vn, ClusterToSector(cache, current_cluster)*cache->blkSize, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
+    pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize);
+    if (dr)
+        Core_MutexAcquire(&dr->lock);
     fat_dirent* curr = buff;
     string current_filename = {};
     lfn_dirent **lfn_entries = nullptr;
@@ -164,21 +166,23 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
             curr, &lfn_entries, &lfn_entry_count, &current_filename);
         curr += 1;
         if ((uintptr_t)curr >= ((uintptr_t)buff + cache->blkSize))
+        {
+            if (dr)
+                Core_MutexRelease(&dr->lock);
             return ITERATE_DECISION_CONTINUE;
+        }
     }
+    if (dr)
+        Core_MutexRelease(&dr->lock);
     return ITERATE_DECISION_STOP;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster)
 {
-    uintptr_t udata[3] = {
+    uintptr_t udata[2] = {
         (uintptr_t)cache,
         (uintptr_t)parent,
-        (uintptr_t)FATAllocator->ZeroAllocate(FATAllocator, cache->bpb->sectorsPerCluster, cache->blkSize, nullptr)
     };
-    uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
     FollowClusterChain(cache, cluster, dir_iterate_impl, udata);
-    FATAllocator->Free(FATAllocator, (void*)udata[2], cache->blkSize);
-    Vfs_FdSeek(cache->volume, oldOffset, SEEK_SET);
 }
 #undef read_next_sector
 
@@ -258,16 +262,17 @@ bool probe(void* vn_)
         dir_iterate(cache, cache->root, cache->root_cluster);
     else
     {
-        void* buff = FATAllocator->ZeroAllocate(FATAllocator, 1, cache->blkSize, nullptr);
         lfn_dirent** lfn_entries = nullptr;
         size_t lfn_entry_count = 0;
         string current_filename = {};
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
+            void* buff = VfsH_PageCacheGetEntry(&((vnode*)volume->vn)->pagecache, volume->vn, i*cache->blkSize, cache->blkSize, nullptr);
+            pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize);
+            if (dr)
+                Core_MutexAcquire(&dr->lock);
             fat_dirent* curr = buff;
-            Vfs_FdSeek(cache->volume, i*cache->blkSize, SEEK_SET);
-            Vfs_FdRead(cache->volume, buff, cache->blkSize, nullptr);
             for (size_t j = 0; j < (cache->blkSize/sizeof(lfn_dirent)); j++, curr++)
             {
                 if (curr->filename_83[0] == (char)0xe5)
@@ -281,6 +286,8 @@ bool probe(void* vn_)
                     cache, cache->root, 0, buff, curr, 
                     &lfn_entries, &lfn_entry_count, &current_filename);
             }
+            if (dr)
+                Core_MutexRelease(&dr->lock);
             if (!curr)
                 break;
         }

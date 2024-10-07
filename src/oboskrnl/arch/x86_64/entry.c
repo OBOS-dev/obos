@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/page.h"
 #include <int.h>
 #include <error.h>
 #include <cmdline.h>
@@ -122,10 +123,37 @@ struct stack_frame
 	struct stack_frame* down;
 	void* rip;
 } volatile blahblahblah____;
-static void e9_out_cb(char ch, void* userdata)
+static void e9_out(const char *str, size_t sz, void* userdata)
 {
 	OBOS_UNUSED(userdata);
-	outb(0xe9, ch);
+	for (size_t i = 0; i < sz; i++)
+		outb(0xe9, str[i]);
+}
+static void e9_set_color(color c, void* unused)
+{
+	static const char* color_to_ansi[] = {
+		"\x1b[30m",
+		"\x1b[34m",
+		"\x1b[32m",
+		"\x1b[36m",
+		"\x1b[31m",
+		"\x1b[35m",
+		"\x1b[38;5;52m",
+		"\x1b[38;5;7m",
+		"\x1b[38;5;8m",
+		"\x1b[38;5;75m",
+		"\x1b[38;5;10m",
+		"\x1b[38;5;14m",
+		"\x1b[38;5;9m",
+		"\x1b[38;5;13m",
+		"\x1b[38;5;11m",
+		"\x1b[38;5;15m",
+	};
+	e9_out(color_to_ansi[c], strlen(color_to_ansi[c]), unused);
+}
+static void e9_reset_color(void* unused)
+{
+	e9_out("\x1b[0m", 4, unused);
 }
 OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
@@ -139,7 +167,10 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
 		bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
 		if (isHypervisor)
-			OBOS_AddLogSource(e9_out_cb, nullptr);
+		{
+			log_backend e9_out_cb = {.write=e9_out,.set_color=e9_set_color,.reset_color=e9_reset_color};
+			OBOS_AddLogSource(&e9_out_cb);
+		}
 	}
 	if (!Arch_Framebuffer)
 		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
@@ -160,7 +191,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
-	// OBOS_AddLogSource(OBOS_ConsoleOutputCallback, &OBOS_TextRendererState);
+	// OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
@@ -599,7 +630,9 @@ void Arch_KernelMainBootstrap()
 				// Present,Write,XD,Write-Combining (PAT: 0b110)
 				Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL));
 				offset = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-				Mm_FreePhysicalPages(oldPhys, offset/OBOS_PAGE_SIZE);
+				page what = {.phys=oldPhys};
+				page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+				MmH_DerefPage(pg);
 			}
 		}
 		OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(

@@ -366,7 +366,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 	if (newSize < objSize)
 	{
 		basicalloc_node* n = ((basicalloc_node*)base - 1);
-		// memzero((char*)base + objSize, newSize-objSize);
+		memzero((char*)base + objSize, objSize-newSize);
 		n->size = newSize;
 		return base;
 	}
@@ -389,10 +389,10 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	basicalloc_region* r = (basicalloc_region*)n->_containingRegion;
 	if (!r)
 		return OBOS_STATUS_INTERNAL_ERROR;
-// #if OBOS_KASAN_ENABLED
+#if OBOS_KASAN_ENABLED
 	if ((allocator_info*)r->This != This_)
 		OBOS_ASANReport((uintptr_t)__builtin_return_address(0), (uintptr_t)base, nBytes, ASAN_AllocatorMismatch, false);
-// #endif
+#endif
 	makeSafeLock(lock, (basic_allocator*)This_);
 	if (n->prev)
 		n->prev->next = n->next;

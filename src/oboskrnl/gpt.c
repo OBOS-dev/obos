@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/pmm.h"
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -16,6 +15,7 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+#include <mm/pmm.h>
 
 #include <allocators/base.h>
 

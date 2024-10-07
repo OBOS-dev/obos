@@ -46,7 +46,7 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     // If this fails, something stupid has happened.
     OBOS_ASSERT(target);
     dpc->cpu = target;
-    irql oldIrql = Core_SpinlockAcquire(&target->dpc_queue_lock);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&target->dpc_queue_lock, IRQL_MASKED, false);
     LIST_PREPEND(dpc_queue, &target->dpcs, dpc);
     Core_SpinlockRelease(&target->dpc_queue_lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
