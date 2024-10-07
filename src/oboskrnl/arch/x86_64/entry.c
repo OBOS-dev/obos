@@ -660,16 +660,7 @@ void Arch_KernelMainBootstrap()
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\
 	OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "uACPI Failed in %s! Status code: %d, error message: %s\n", #in, st, uacpi_status_to_string(st));
-	uintptr_t rsdp = 0;
-#ifdef __x86_64__
-	rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
-#endif
-	uacpi_init_params params = {
-		rsdp,
-		UACPI_LOG_INFO,
-		0
-	};
-	uacpi_status st = uacpi_initialize(&params);
+	uacpi_status st = uacpi_initialize(0);
 	verify_status(st, uacpi_initialize);
 
 	st = uacpi_namespace_load();

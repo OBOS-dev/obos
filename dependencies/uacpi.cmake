@@ -7,6 +7,7 @@ if (OBOS_REFRESH_DEPENDENCIES)
 
 	FetchContent_Declare(uACPI
 		GIT_REPOSITORY https://github.com/UltraOS/uACPI.git
+		GIT_TAG 9036f48cc29c4c4f75661f093311dcb69414d1fa
 		SOURCE_DIR ${CMAKE_SOURCE_DIR}/dependencies/uACPI
 	)
 	FetchContent_MakeAvailable(uACPI)
