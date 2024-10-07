@@ -43,6 +43,7 @@
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/ioapic.h>
+#include <arch/x86_64/boot_info.h>
 #endif
 
 #if OBOS_ARCHITECTURE_HAS_ACPI
@@ -285,27 +286,33 @@ void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_list list)
 {
     const char* prefix = "UNKNOWN";
+    color c = 0;
     switch (level)
     {
     case UACPI_LOG_DEBUG:
         prefix = "DEBUG";
+        c = OBOS_LogLevelToColor[LOG_LEVEL_DEBUG];
         break;
     case UACPI_LOG_TRACE:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_DEBUG];
         prefix = "TRACE";
         break;
     case UACPI_LOG_INFO:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_LOG];
         prefix = "INFO";
         break;
     case UACPI_LOG_WARN:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_WARNING];
         prefix = "WARN";
         break;
     case UACPI_LOG_ERROR:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_ERROR];
         prefix = "ERROR";
         break;
     default:
         break;
     }
-    OBOS_SetColor(OBOS_LogLevelToColor[level-1]);
+    OBOS_SetColor(c);
     printf("[uACPI][%s]: ", prefix);
     vprintf(format, list);
     OBOS_ResetColor();
@@ -339,12 +346,12 @@ void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 {
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(spinlock));
 }
-uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle hnd)
+uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
     spinlock* lock = (spinlock*)hnd;
     return Core_SpinlockAcquire(lock);
 }
-void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
+void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
@@ -480,6 +487,15 @@ void uacpi_kernel_sleep(uacpi_u64 msec)
     uint64_t deadline = CoreS_TimerTickToNS(CoreS_GetTimerTick()) + ns;
     while (CoreS_TimerTickToNS(CoreS_GetTimerTick()) < deadline)
         Core_Yield();
+}
+uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr* out)
+{
+    uintptr_t rsdp = 0;
+#ifdef __x86_64__
+    rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
+#endif
+    *out = rsdp;
+    return UACPI_STATUS_OK;
 }
 
 void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql oldIrql)
