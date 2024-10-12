@@ -4,12 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "driver_interface/header.h"
-#include "driver_interface/loader.h"
-#include "mm/alloc.h"
-#include "mm/context.h"
-#include "scheduler/thread.h"
-
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -22,12 +16,20 @@
 #include <vfs/alloc.h>
 #include <vfs/vnode.h>
 #include <vfs/fd.h>
+#include <vfs/pipe.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
 
 #include <utils/string.h>
 
 #include <allocators/base.h>
 
 #include <driver_interface/driverId.h>
+#include <driver_interface/header.h>
+#include <driver_interface/loader.h>
+
+#include <scheduler/thread.h>
 
 #include <uacpi_libc.h>
 
@@ -86,6 +88,7 @@ void Vfs_Initialize()
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+    Vfs_InitializePipeInterface();
 }
 OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 {

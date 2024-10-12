@@ -33,9 +33,16 @@ LIST_GENERATE(dirty_pc_list, struct pagecache_dirty_region, node);
 LIST_GENERATE(mapped_region_list, struct pagecache_mapped_region, node);
 pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 {
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        off += vn->partitions[0].off;
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     Core_MutexAcquire(&pc->dirty_list_lock);
     for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
-    {   
+    {
         if (off >= curr->fileoff && off < (curr->fileoff + curr->sz))
         {
             Core_MutexRelease(&pc->dirty_list_lock);
@@ -50,6 +57,13 @@ pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 // looks for a region that's contiguous with the offset passed.
 static pagecache_dirty_region* find_contiguous_region(pagecache* pc, size_t off)
 {
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        off += vn->partitions[0].off;
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     Core_MutexAcquire(&pc->dirty_list_lock);
     for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
     {   
@@ -71,6 +85,13 @@ static pagecache_dirty_region* find_contiguous_region(pagecache* pc, size_t off)
 // This returns the dirty region created.
 pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size_t sz)
 {
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        off += vn->partitions[0].off;
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     // OBOS_ASSERT(!(off >= pc->sz || (off+sz) > pc->sz));
     // if (off >= pc->sz || (off+sz) > pc->sz)
     //     return nullptr; // impossible for this to happen in normal cases.
@@ -106,10 +127,22 @@ pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size
 }
 void VfsH_PageCacheRef(pagecache* pc)
 {
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     pc->refcnt++;
 }
 void VfsH_PageCacheUnref(pagecache* pc)
 {
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     pc->refcnt--;
     if (!pc->refcnt)
     {
@@ -117,10 +150,15 @@ void VfsH_PageCacheUnref(pagecache* pc)
         pc->data = nullptr;
     }
 }
-void VfsH_PageCacheFlush(pagecache* pc, void* vn_)
+void VfsH_PageCacheFlush(pagecache* pc)
 {
-    vnode* vn = (vnode*)vn_;
+    vnode* vn = (vnode*)pc->owner;
     OBOS_ASSERT(vn);
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
     OBOS_ASSERT(&vn->pagecache == pc);
     Core_MutexAcquire(&pc->dirty_list_lock);
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
@@ -142,9 +180,19 @@ void VfsH_PageCacheFlush(pagecache* pc, void* vn_)
     }
     Core_MutexRelease(&pc->dirty_list_lock);
 }
-void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn_, size_t offset, size_t size, fault_type* type)
+void *VfsH_PageCacheGetEntry(pagecache* pc, size_t offset, size_t size, fault_type* type)
 {
-    vnode* vn = (vnode*)vn_;
+    vnode* vn = (vnode*)pc->owner;
+    if (vn->flags & VFLAGS_PARTITION)
+    {
+        offset += vn->partitions[0].off;
+        vn = vn->partitions[0].drive;
+        pc = &vn->pagecache;
+    }
+    if (offset > vn->filesize)
+        return nullptr; // bruh
+    if ((offset + size) > vn->filesize)
+        size = vn->filesize - offset;
     if (!pc->data)
         pc->data = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, vn->filesize, 0, VMA_FLAGS_RESERVE|VMA_FLAGS_NON_PAGED, nullptr, nullptr);
     if (type)
@@ -163,21 +211,20 @@ void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn_, size_t offset, size_t siz
     const size_t base_offset = vn->flags & VFLAGS_PARTITION ? vn->partitions[0].off : 0;
     for (uintptr_t addr = base; addr < top; addr += OBOS_PAGE_SIZE)
     {
-        obos_status status = OBOS_STATUS_SUCCESS;
-        Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)addr, OBOS_PAGE_SIZE, 0, 0, nullptr, &status);
-        // for (volatile bool b = (addr==0xffffff0000462000); b; )
-        //     OBOSS_SpinlockHint();
-        if (obos_is_success(status))
+        bool needs_read = false;
+        page_info info = {};
+        MmS_QueryPageInfo(Mm_KernelContext.pt, addr, &info, nullptr);
+        needs_read = !info.prot.present; // If the page is not-present, it needs to be read.
+        if (needs_read)
         {
+            Mm_VirtualMemoryAlloc(&Mm_KernelContext, (void*)addr, OBOS_PAGE_SIZE, 0, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
             const uintptr_t current_offset = ((addr-(uintptr_t)pc->data)+base_offset) / blkSize;
-            status = driver->ftable.read_sync(vn->desc, (void*)addr, OBOS_PAGE_SIZE/blkSize, current_offset, nullptr);
+            obos_status status = driver->ftable.read_sync(vn->desc, (void*)addr, OBOS_PAGE_SIZE/blkSize, current_offset, nullptr);
             if (obos_expect(obos_is_error(status) == true, 0))
                 return nullptr;
             if (type)
                 *type = HARD_FAULT;
         }
-        if (status != OBOS_STATUS_IN_USE)
-            OBOS_ASSERT(!obos_is_error(status) && "could not commit memory");
     }
     return (void*)((uintptr_t)pc->data + offset);
 }

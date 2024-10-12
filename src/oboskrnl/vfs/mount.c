@@ -77,6 +77,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     }
     vn->mount_point = mountpoint;
     vn->desc = desc;
+    vn->pagecache.owner = vn;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
     VfsH_PageCacheRef(&vn->pagecache);
     if (t)
@@ -316,7 +317,7 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
 {
     OBOS_UNUSED(unused);
     OBOS_UNUSED(userdata);
-    VfsH_PageCacheFlush(&ent->vnode->pagecache, ent->vnode);
+    VfsH_PageCacheFlush(&ent->vnode->pagecache);
     deref_vnode(ent->vnode);
     OBOS_FreeString(&ent->name);
     Vfs_Free(ent);

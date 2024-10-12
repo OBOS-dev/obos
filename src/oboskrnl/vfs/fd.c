@@ -34,8 +34,6 @@
 
 static bool is_eof(vnode* vn, size_t off)
 {
-    if (vn->vtype != VNODE_TYPE_REG)
-        return false;
     return off > vn->filesize;
 }
 obos_status Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags) 
@@ -57,6 +55,8 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (desc->flags & FD_FLAGS_OPEN)
         return OBOS_STATUS_ALREADY_INITIALIZED;
+    if ((~oflags & FD_OFLAGS_WRITE) && (~oflags & FD_OFLAGS_READ))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* vnode = vn;
     OBOS_ASSERT(vnode);
     if (vnode->vtype == VNODE_TYPE_DIR)
@@ -94,7 +94,9 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         if (!vn->perm.other_write)
             desc->flags &= FD_FLAGS_READ;
     }
-    if (oflags & FD_OFLAGS_READ_ONLY)
+    if (~oflags & FD_OFLAGS_READ)
+        desc->flags &= ~FD_FLAGS_READ;
+    if (~oflags & FD_OFLAGS_WRITE)
         desc->flags &= ~FD_FLAGS_WRITE;
     if (oflags & FD_OFLAGS_UNCACHED)
         desc->flags |= FD_FLAGS_UNCACHED;
@@ -153,7 +155,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
         OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
         Core_MutexAcquire(&dirty->lock);
-        memcpy(VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->vn, desc->offset, nBytes, nullptr), buf, nBytes);
+        memcpy(VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr), buf, nBytes);
         VfsH_UnlockMountpoint(point);
         Core_MutexRelease(&dirty->lock);
 
@@ -203,7 +205,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
+    if (nBytes > (desc->vn->filesize - desc->offset))
         nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
@@ -221,7 +223,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        memcpy(buf, VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->vn, desc->offset, nBytes, nullptr), nBytes);
+        memcpy(buf, VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr), nBytes);
         if (dirty)
             Core_MutexRelease(&dirty->lock);
         VfsH_UnlockMountpoint(point);
@@ -239,6 +241,8 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
+    if (desc->vn->vtype == VNODE_TYPE_FIFO)
+        return OBOS_STATUS_INVALID_OPERATION;
     size_t finalOff = 0;
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
@@ -273,7 +277,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
 }
 uoff_t Vfs_FdTellOff(const fd* desc)
 {
-    if (desc)
+    if (desc && desc->vn->vtype != VNODE_TYPE_FIFO)
         return desc->offset;
     return (uoff_t)(-1);
 }
@@ -326,7 +330,7 @@ obos_status Vfs_FdFlush(fd* desc)
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
-    VfsH_PageCacheFlush(&desc->vn->pagecache, desc->vn);
+    VfsH_PageCacheFlush(&desc->vn->pagecache);
     VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;
 }

@@ -150,7 +150,7 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
         return ITERATE_DECISION_STOP;
     fat_cache* cache = (void*)((uintptr_t*)udata)[0];
     fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
-    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, cache->volume->vn, ClusterToSector(cache, current_cluster)*cache->blkSize, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
+    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize);
     if (dr)
         Core_MutexAcquire(&dr->lock);
@@ -195,7 +195,7 @@ bool probe(void* vn_)
     fd *volume = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fd), nullptr);
     // *volume = (fd){ .vn=vn, .flags=FD_FLAGS_READ|FD_FLAGS_WRITE|FD_FLAGS_OPEN, .offset=0 };
     // LIST_APPEND(fd_list, &vn->opened, volume);
-    Vfs_FdOpenVnode(volume, vn, 0);
+    Vfs_FdOpenVnode(volume, vn, FD_OFLAGS_READ|FD_OFLAGS_WRITE);
     if (!(volume->flags & FD_FLAGS_READ))
         return false;
     size_t blkSize = Vfs_FdGetBlkSz(volume);
@@ -268,7 +268,7 @@ bool probe(void* vn_)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            void* buff = VfsH_PageCacheGetEntry(&((vnode*)volume->vn)->pagecache, volume->vn, i*cache->blkSize, cache->blkSize, nullptr);
+            void* buff = VfsH_PageCacheGetEntry(&((vnode*)volume->vn)->pagecache, i*cache->blkSize, cache->blkSize, nullptr);
             pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize);
             if (dr)
                 Core_MutexAcquire(&dr->lock);

@@ -31,6 +31,7 @@ typedef struct pagecache
     dirty_pc_list dirty_regions;
     atomic_size_t refcnt;
     mapped_region_list mapped_regions;
+    struct vnode* owner;
 } pagecache;
 typedef struct pagecache_dirty_region
 {
@@ -65,8 +66,6 @@ OBOS_EXPORT void VfsH_PageCacheRef(pagecache* pc);
 // If pc->ref reaches zero, the page cache is freed.
 OBOS_EXPORT void VfsH_PageCacheUnref(pagecache* pc);
 // Flushes the page cache.
-// vn is of type `vnode*`
-OBOS_EXPORT void VfsH_PageCacheFlush(pagecache* pc, void* vn);
+OBOS_EXPORT void VfsH_PageCacheFlush(pagecache* pc);
 // Gets a page cache entry.
-// vn is of type `vnode*`
-OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, void* vn, size_t offset, size_t size, fault_type* type);
+OBOS_EXPORT void *VfsH_PageCacheGetEntry(pagecache* pc, size_t offset, size_t size, fault_type* type);

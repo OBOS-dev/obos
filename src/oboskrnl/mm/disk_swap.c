@@ -251,7 +251,7 @@ obos_status MmH_InitializeDiskSwapDevice(swap_dev *dev, void* vnode)
 {
     fd file = {};
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (obos_is_error(status = Vfs_FdOpenVnode(&file, vnode, FD_OFLAGS_UNCACHED)))
+    if (obos_is_error(status = Vfs_FdOpenVnode(&file, vnode, FD_OFLAGS_UNCACHED|FD_OFLAGS_READ|FD_OFLAGS_WRITE)))
         return status;
     const size_t blkSize = Vfs_FdGetBlkSz(&file);
     if (blkSize > OBOS_PAGE_SIZE)
@@ -341,7 +341,7 @@ obos_status MmH_InitializeDiskSwap(void* vn_)
         return OBOS_STATUS_INVALID_ARGUMENT;
     fd file = {};
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (obos_is_error(status = Vfs_FdOpenVnode(&file, vn, FD_OFLAGS_UNCACHED)))
+    if (obos_is_error(status = Vfs_FdOpenVnode(&file, vn, FD_OFLAGS_UNCACHED|FD_OFLAGS_READ|FD_OFLAGS_WRITE)))
         return status;
     const size_t blkSize = Vfs_FdGetBlkSz(&file);
     obos_swap_header hdr = {

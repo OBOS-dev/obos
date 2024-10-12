@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/timer.h"
-#include "scheduler/thread.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -34,6 +32,8 @@
 #include <uacpi/uacpi.h>
 #include <uacpi/namespace.h>
 #include <uacpi/utilities.h>
+
+#include <scheduler/thread.h>
 
 typedef struct pnp_device
 {
@@ -418,7 +418,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     for (dirent* ent = directory->d_children.head; ent; )
     {
         fd* file = Vfs_Calloc(1, sizeof(fd));
-        obos_status status = Vfs_FdOpenDirent(file, ent, FD_OFLAGS_READ_ONLY);
+        obos_status status = Vfs_FdOpenDirent(file, ent, FD_OFLAGS_READ);
         if (obos_is_error(status))
         {
             if (status != OBOS_STATUS_NOT_A_FILE)

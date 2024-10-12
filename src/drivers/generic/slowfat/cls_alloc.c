@@ -33,7 +33,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster)
     bool res = false;
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    const uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize * ((volume->fatType == FAT12_VOLUME) + 1), nullptr);
+    const uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize * ((volume->fatType == FAT12_VOLUME) + 1), nullptr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize);
     if (dr)
         Core_MutexAcquire(&dr->lock);
@@ -75,7 +75,7 @@ static void markAllocated(fat_cache* volume, uint32_t cluster)
     GetFatEntryAddrForCluster(volume, cluster, &addr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionCreate(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize);
     Core_MutexAcquire(&dr->lock);
-    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize, nullptr);
+    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize, nullptr);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -109,7 +109,7 @@ static void markAllocated(fat_cache* volume, uint32_t cluster)
     // Start at the 2nd FAT.
     for (size_t i = 1; i < volume->bpb->nFATs; i++)
     {
-        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
+        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
         dr = VfsH_PCDirtyRegionCreate(nullptr, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize);
         Core_MutexAcquire(&dr->lock);
         memcpy(curr, sector, volume->blkSize);
@@ -122,7 +122,7 @@ static void markFree(fat_cache* volume, uint32_t cluster)
     GetFatEntryAddrForCluster(volume, cluster, &addr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionCreate(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize);
     Core_MutexAcquire(&dr->lock);
-    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize, nullptr);
+    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize, nullptr);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -153,7 +153,7 @@ static void markFree(fat_cache* volume, uint32_t cluster)
     // Start at the 2nd FAT.
     for (size_t i = 1; i < volume->bpb->nFATs; i++)
     {
-        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
+        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
         dr = VfsH_PCDirtyRegionCreate(nullptr, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize);
         Core_MutexAcquire(&dr->lock);
         memcpy(curr, sector, volume->blkSize);
@@ -166,7 +166,7 @@ static void markEnd(fat_cache* volume, uint32_t cluster)
     GetFatEntryAddrForCluster(volume, cluster, &addr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionCreate(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize);
     Core_MutexAcquire(&dr->lock);
-    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize, nullptr);
+    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize, nullptr);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -200,7 +200,7 @@ static void markEnd(fat_cache* volume, uint32_t cluster)
     // Start at the 2nd FAT.
     for (size_t i = 1; i < volume->bpb->nFATs; i++)
     {
-        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
+        uint8_t* curr = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize, nullptr);
         dr = VfsH_PCDirtyRegionCreate(nullptr, (addr.lba+volume->fatSz*i)*volume->blkSize, volume->blkSize);
         Core_MutexAcquire(&dr->lock);
         memcpy(curr, sector, volume->blkSize);
@@ -372,7 +372,7 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
 {
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, clus, &addr);
-    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize, nullptr);
+    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize, nullptr);
     pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize);
     if (dr)
         Core_MutexAcquire(&dr->lock);
@@ -402,7 +402,7 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
         {
             if (dr)
                 Core_MutexRelease(&dr->lock);
-            sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, volume->volume->vn, addr.lba*volume->blkSize, volume->blkSize, nullptr);
+            sector = VfsH_PageCacheGetEntry(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize, volume->blkSize, nullptr);
             dr = VfsH_PCDirtyRegionLookup(&((vnode*)volume->volume->vn)->pagecache, addr.lba*volume->blkSize);
             if (dr)
                 Core_MutexAcquire(&dr->lock);

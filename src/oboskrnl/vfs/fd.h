@@ -27,8 +27,9 @@ enum
 };
 enum
 {
-    FD_OFLAGS_READ_ONLY = 1,
-    FD_OFLAGS_UNCACHED = 2,
+    FD_OFLAGS_READ = 1,
+    FD_OFLAGS_WRITE = 2,
+    FD_OFLAGS_UNCACHED = 4,
 };
 typedef struct fd
 {
@@ -38,8 +39,8 @@ typedef struct fd
     LIST_NODE(fd_list, struct fd) node;
 } fd;
 OBOS_EXPORT obos_status       Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags);
-OBOS_EXPORT obos_status       Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags);
-OBOS_EXPORT obos_status       Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags);
+OBOS_EXPORT obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags);
+OBOS_EXPORT obos_status  Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags);
 OBOS_EXPORT obos_status      Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten);
 OBOS_EXPORT obos_status       Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead);
 OBOS_EXPORT obos_status     Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt);

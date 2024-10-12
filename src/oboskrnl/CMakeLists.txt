@@ -14,7 +14,7 @@ list (APPEND oboskrnl_sources
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
-	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c"
+	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
 )
 
 add_executable(oboskrnl)

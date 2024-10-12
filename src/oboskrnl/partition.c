@@ -48,7 +48,7 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
     partition *partitions = nullptr;
     size_t nPartitions = 0;
     fd drv = {};
-    obos_status status = Vfs_FdOpenDirent(&drv, ent, FD_OFLAGS_UNCACHED);
+    obos_status status = Vfs_FdOpenDirent(&drv, ent, FD_OFLAGS_UNCACHED|FD_OFLAGS_READ|FD_OFLAGS_WRITE);
     if (obos_is_error(status))
         return status;
     status = OBOS_IdentifyGPTPartitions(&drv, nullptr, &nPartitions, !check_checksum);
@@ -96,6 +96,10 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
     done:
     for (size_t i = 0; i < nPartitions; i++)
     {
+        if (partitions[i].off > ent->vnode->filesize)
+            continue;
+        if ((partitions[i].off + partitions[i].size) > ent->vnode->filesize)
+            partitions[i].size = ent->vnode->filesize-partitions[i].off;
         partitions[i].fs_driver = nullptr;
         // mount* const point = ent->vnode->mount_point ? ent->vnode->mount_point : ent->vnode->un.mounted;
         // driver_id* driver = ent->vnode->vtype == VNODE_TYPE_REG ? point->fs_driver->driver : nullptr;
@@ -131,6 +135,7 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         }
         partitions[i].ent = Drv_RegisterVNode(part_vnode, OBOS_GetStringCPtr(&part_name));
         partitions[i].partid = part_name;
+        partitions[i].drive = ent->vnode;
         part_vnode->partitions = &partitions[i];
         part_vnode->nPartitions = 1; 
         for (driver_node* node = Drv_LoadedFsDrivers.head; node; )

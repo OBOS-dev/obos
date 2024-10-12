@@ -20,13 +20,22 @@ obos_status Core_PushlockAcquire(pushlock* lock, bool reader /* false: writer, t
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (reader)
     {
+        if (lock->currWriter)
+        {
+            lock->nWaitingReaders++;
+            while(lock->currWriter);
+            lock->nWaitingReaders--;
+        }
         lock->nReaders++;
         return OBOS_STATUS_SUCCESS;
     }
     // Hopefully this is right.
     // maybe a possible race condition.
+    try_again:
     Core_WaitOnObject(&lock->hdr);
     CoreH_ClearSignaledState(&lock->hdr);
+    if (lock->nWaitingReaders)
+        goto try_again;
     lock->currWriter = Core_GetCurrentThread();
     return OBOS_STATUS_SUCCESS;
 }
@@ -50,7 +59,8 @@ obos_status Core_PushlockRelease(pushlock* lock, bool reader)
             return OBOS_STATUS_ABORTED; // bruh
         return OBOS_STATUS_SUCCESS;
     }
-    return CoreH_SignalWaitingThreads(&lock->hdr, false, true);
+    lock->currWriter = nullptr;
+    return lock->nWaitingReaders ? OBOS_STATUS_SUCCESS : CoreH_SignalWaitingThreads(&lock->hdr, false, true);
 }
 size_t Core_PushlockGetReaderCount(pushlock* lock)
 {

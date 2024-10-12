@@ -16,7 +16,8 @@
 typedef struct pushlock
 {
     struct waitable_header hdr; // for writers
-    _Atomic(size_t) nReaders; // if > 0, wait on hdr, when it gets to zero, signal hdr.
+    _Atomic(size_t) nReaders; // if > 0, wait on hdr (if writer), when it gets to zero, signal hdr.
+    _Atomic(size_t) nWaitingReaders;
     thread* currWriter; // if == nullptr, no one is writing
 } pushlock;
 

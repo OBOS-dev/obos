@@ -172,8 +172,10 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
             *nBlkRead = 0;
         return OBOS_STATUS_SUCCESS;
     }
+    if (blkOffset > port->nSectors)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if ((blkOffset + blkCount) > port->nSectors)
-        blkCount = (blkOffset + blkCount) - port->nSectors;
+        blkCount = blkOffset - port->nSectors;
     if (!blkCount)
     {
         if (nBlkRead)

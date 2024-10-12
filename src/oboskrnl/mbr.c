@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <klog.h>
 #include <struct_packing.h>
 #include <partition.h>
 #include <mbr.h>
@@ -57,7 +58,8 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
             OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
             if (nPartitions)
                 *nPartitions = 0;
-            return OBOS_STATUS_INVALID_ARGUMENT;
+            printf("bruh\n");
+            return OBOS_STATUS_INVALID_FILE;
         }
         if (!partition_list)
             continue;

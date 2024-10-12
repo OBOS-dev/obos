@@ -37,7 +37,7 @@ static void mark_file_region_dirty(page_range* rng, uintptr_t addr, uint32_t ec)
     OBOS_UNUSED(ec);
     context* const ctx = rng->ctx;
     uintptr_t fileoff = addr-rng->virt + rng->mapped_here->fileoff;
-    vnode* vn = (vnode*)((uintptr_t)rng->mapped_here->owner - offsetof(vnode, pagecache));
+    vnode* vn = (vnode*)rng->mapped_here->owner->owner;
     size_t sz = OBOS_PAGE_SIZE;
     if (rng->mapped_here->fileoff+fileoff+sz > vn->filesize)
         sz = (rng->mapped_here->fileoff+fileoff+sz) % OBOS_PAGE_SIZE;
@@ -57,11 +57,11 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
 {
     context* const ctx = rng->ctx;
     const uintptr_t fileoff = addr-rng->virt + rng->mapped_here->fileoff;
-    vnode* vn = (vnode*)((uintptr_t)rng->mapped_here->owner - offsetof(vnode, pagecache));
+    vnode* vn = (vnode*)rng->mapped_here->owner->owner;
     size_t sz = OBOS_PAGE_SIZE;
     if (fileoff+sz > vn->filesize)
         sz = (vn->filesize-fileoff);
-    void* pc_base = VfsH_PageCacheGetEntry(rng->mapped_here->owner, vn, fileoff, sz, type);
+    void* pc_base = VfsH_PageCacheGetEntry(rng->mapped_here->owner, fileoff, sz, type);
     uintptr_t phys = 0;
     MmS_QueryPageInfo(ctx->pt, (uintptr_t)pc_base, nullptr, &phys);
     page_info curr = {};

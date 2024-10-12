@@ -162,7 +162,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size += pgSize;
     if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
-        VfsH_PageCacheGetEntry(&file->vn->pagecache, file->vn, file->offset, size, nullptr);
+        OBOS_ASSERT(VfsH_PageCacheGetEntry(&file->vn->pagecache, file->offset, size, nullptr));
     irql oldIrql = Core_SpinlockAcquireExplicit(&ctx->lock, IRQL_DISPATCH, true);
     top:
     if (!base)
@@ -295,7 +295,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         if (isPresent)
         {
             if (!file && (flags & VMA_FLAGS_NON_PAGED))
-                phys = MmH_PgAllocatePhysical(flags & VMA_FLAGS_32BITPHYS, flags & VMA_FLAGS_HUGE_PAGE);
+                phys = MmH_PgAllocatePhysical(rng->phys32, rng->prot.huge_page);
             else if (file)
             {
                 // File page.

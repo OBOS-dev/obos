@@ -145,4 +145,14 @@ typedef enum
 	/// A driver timed out.
 	/// </summary>
 	OBOS_STATUS_TIMED_OUT,
+	/// <summary>
+	/// The pipe has no more readers.<para/>
+	/// Only returned if SIGPIPE is ignored by a process.
+	/// </summary>
+	OBOS_STATUS_PIPE_CLOSED,
+	/// <summary>
+	/// Returned if the write request could not be completed, as there is simply not enough space in the device<para/>
+	/// For example, this can happen if the size of a write to a pipe is greater than the pipe's size.'
+	/// </summary>
+	OBOS_STATUS_NO_SPACE,
 } obos_status;
