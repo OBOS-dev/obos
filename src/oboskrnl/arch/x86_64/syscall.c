@@ -16,19 +16,6 @@
 #define IA32_CSTAR 0xC0000083
 #define IA32_FSTAR 0xC0000084
 
-void test_syscall(const char* user_buf)
-{
-    char buf[0x100];
-    for (size_t i = 0; buf[i] && i < 0x100; i++)
-        memcpy_usr_to_k(buf+i, user_buf+i, 1);
-    OBOS_Debug("hai\n");
-    OBOS_Debug("usermode says '%s'\n", buf);
-}
-uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
-    (uintptr_t)test_syscall
-};
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
-
 extern void Arch_SyscallTrapHandler();
 void OBOSS_InitializeSyscallInterface()
 {

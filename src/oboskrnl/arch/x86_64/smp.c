@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/irql.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -40,6 +39,7 @@
 #include <arch/x86_64/gdbstub/debug.h>
 
 #include <irq/irq.h>
+#include <irq/irql.h>
 
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;

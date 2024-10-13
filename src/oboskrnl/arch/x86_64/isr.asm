@@ -133,23 +133,28 @@ int_handler_common:
 	mov rax, cr3
 	push rax
 
+; If we are not using the kernel's CR3
 	mov rax, [Arch_KernelCR3]
 	mov rdx, cr3
 	cmp rdx, rax
 	je .no_switch_cr3
 
-	; Switch to the kernel cr3
+; Then switch to the kernel cr3
 	mov cr3, rax
 .no_switch_cr3:
 
+; If we were interrupted in user code
 	test qword [rsp+0xB8], 0x3 ; User code
-	je .no_swapgs1
+	jz .no_swapgs1
+; Then swapgs
 	swapgs
 .no_swapgs1:
 	mov rax, [rsp+0xA0]
 	cmp rax, 255
 	ja .finished
 	mov rax, [Arch_IRQHandlers+rax*8]
+
+	push 0 ; old context
 
 	test rax,rax
 	jz .finished
@@ -158,6 +163,8 @@ int_handler_common:
 	call rax
 
 .finished:
+
+	add rsp, 8
 
 	pop rax
 	cmp rax, [Arch_KernelCR3]

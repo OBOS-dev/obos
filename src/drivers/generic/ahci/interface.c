@@ -83,7 +83,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         if (data->physRegionCount >= MAX_PRDT_COUNT)
             return OBOS_STATUS_INTERNAL_ERROR;
         page_info info = {};
-        MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &info, nullptr);
+        MmS_QueryPageInfo(CoreS_GetCPULocalPtr()->currentContext->pt, addr, &info, nullptr);
         if ((lastPhys + pgSize) != info.phys)
         {
             if (addr != base)

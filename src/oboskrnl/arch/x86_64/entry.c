@@ -1000,6 +1000,7 @@ if (st != UACPI_STATUS_OK)\
 	thr->signal_info = OBOSH_AllocateSignalHeader();
 	// thr->signal_info->signals[SIGSEGV].un.handler = mem+0x11;
 	CoreH_ThreadReady(thr);
+	OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 

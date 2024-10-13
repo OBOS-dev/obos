@@ -6,9 +6,15 @@
 
 #include <int.h>
 #include <error.h>
+#include <signal.h>
 #include <struct_packing.h>
 
 #include <irq/irq.h>
+
+#include <mm/context.h>
+#include <mm/init.h>
+
+#include <scheduler/cpu_local.h>
 
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/lapic.h>
@@ -109,5 +115,21 @@ void CoreS_SendEOI(interrupt_frame* unused)
 	OBOS_UNUSED(unused);
 	Arch_LAPICSendEOI();
 }
-bool CoreS_EnterIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); sti(); return true; }
-void CoreS_ExitIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); cli(); }
+bool CoreS_EnterIRQHandler(interrupt_frame* frame)
+{
+	sti();
+	if (CoreS_GetCPULocalPtr() && Mm_IsInitialized() && ~frame->cs & 0x3 /* kernel mode */)
+	{
+		frame->savedCtx = (uintptr_t)CoreS_GetCPULocalPtr()->currentContext;
+		CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
+	}
+	return true;
+}
+void CoreS_ExitIRQHandler(interrupt_frame* frame)
+{
+	if (~frame->cs & 0x3)
+		CoreS_GetCPULocalPtr()->currentContext = (context*)frame->savedCtx;
+	else
+		OBOS_SyncPendingSignal(frame);
+	cli();
+}

@@ -29,5 +29,11 @@ typedef uint64_t syscall_ret_t;
 #endif
 
 // Note: entry can return a max of syscall_ret_t, and can take a max of 6 arguments.
-void OBOS_RegisterSyscall(uint32_t num, uintptr_t entry);
+inline static void OBOS_RegisterSyscall(uint32_t num, uintptr_t entry)
+{
+    if (IS_ARCH_SYSCALL(num))
+        OBOS_ArchSyscallTable[num-ARCH_SYSCALL_BEGIN] = entry;
+    else
+        OBOS_ArchSyscallTable[num-SYSCALL_BEGIN] = entry;
+}
 void OBOSS_InitializeSyscallInterface();

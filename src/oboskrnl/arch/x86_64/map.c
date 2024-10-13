@@ -4,9 +4,8 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/page.h"
-#include "syscall.h"
 #include <int.h>
+#include <syscall.h>
 #include <klog.h>
 #include <memmanip.h>
 #include <error.h>
@@ -32,8 +31,12 @@
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
 
+#include <mm/page.h>
+
 #include <irq/irq.h>
 #include <irq/irql.h>
+
+// Abandon all hope, ye who enter here.
 
 static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
 
@@ -501,122 +504,50 @@ page_table cached_root = {};
 extern char Arch_StartISRHandlersText;
 extern char Arch_EndISRHandlersText;
 extern char CoreS_SwitchToThreadContextEnd;
+static void map_range(uintptr_t cached_root, uintptr_t base, uintptr_t top, uintptr_t flags)
+{
+	base &= ~0xfff;
+	top += 0xfff;
+	top &= ~0xfff;
+	for (uintptr_t addr = base; addr < top; addr += 0x1000)
+	{
+		uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+		Arch_MapPage(cached_root, (void*)addr, phys, flags, false);
+	}
+}
 page_table MmS_AllocatePageTable()
 {
 	page_table root = Mm_AllocatePhysicalPages(1, 1, nullptr);
 	if (!cached_root)
 	{
-		// Map from Arch_StartISRHandlersText -> Arch_EndISRHandlersText, and also Arch_KernelCR3
 		cached_root = Mm_AllocatePhysicalPages(1, 1, nullptr);
 		memzero(Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
-		uintptr_t base = (uintptr_t)&Arch_StartISRHandlersText;
-		uintptr_t top = (uintptr_t)&Arch_EndISRHandlersText;
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1 /* exec, present */, false);
-		}
-		base = (uintptr_t)&Arch_KernelCR3;
-		top =  (uintptr_t)(&Arch_KernelCR3 + 1);
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL) /* XD, present */, false);
-		}
-		base = (uintptr_t)&CoreS_SwitchToThreadContext;
-		top =  (uintptr_t)&CoreS_SwitchToThreadContextEnd;
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1 /* exec, present */, false);
-		}
+		// Map the ISR handlers.
+		map_range(cached_root, (uintptr_t)&Arch_StartISRHandlersText, (uintptr_t)&Arch_EndISRHandlersText, BIT(0));
+		// Map Arch_KernelCR3
+		map_range(cached_root, (uintptr_t)&Arch_KernelCR3, (uintptr_t)(&Arch_KernelCR3 + 1), BIT(0) | BIT_TYPE(63, UL));
+		// Map CoreS_SwitchToThreadContext
+		map_range(cached_root, (uintptr_t)&CoreS_SwitchToThreadContext, (uintptr_t)&CoreS_SwitchToThreadContextEnd, BIT(0));
+		// Map kernel stacks.
 		for (size_t i = 0; i < Core_CpuCount; i++)
 		{
 			cpu_local* const cpu = Core_CpuInfo + i;
-			base = (uintptr_t)cpu->arch_specific.ist_stack;
-			top =  (uintptr_t)base + 0x20000;
-			base &= ~0xfff;
-			top += 0xfff;
-			top &= ~0xfff;
-			for (uintptr_t addr = base; addr < top; addr += 0x1000)
-			{
-				uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-				Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present, writeable */, false);
-			}
-			base = (uintptr_t)&cpu->arch_specific;
-			top = (uintptr_t)(&cpu->arch_specific + 1);
-			base &= ~0xfff;
-			top += 0xfff;
-			top &= ~0xfff;
-			for (uintptr_t addr = base; addr < top; addr += 0x1000)
-			{
-				uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-				Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present, writeable */, false);
-			}
+			map_range(cached_root, (uintptr_t)cpu->arch_specific.ist_stack, (uintptr_t)cpu->arch_specific.ist_stack + 0x20000, 1|BIT_TYPE(63, UL)|2);
 		}
+		// Map cpu local structs.
+		map_range(cached_root, (uintptr_t)Core_CpuInfo, (uintptr_t)(Core_CpuInfo + Core_CpuCount), 1|BIT_TYPE(63, UL)|2);
+		// Map IDT
 		extern char g_idtEntries;
-		base = (uintptr_t)&g_idtEntries;
-		top = (uintptr_t)&g_idtEntries + 0x1000;
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL) /* XD, present */, false);
-		}
+		map_range(cached_root, (uintptr_t)&g_idtEntries, ((uintptr_t)&g_idtEntries) + 0x1000, 1|BIT_TYPE(63, UL)|2);
 		extern uintptr_t Arch_IRQHandlers[256];
-		base = (uintptr_t)&Arch_IRQHandlers;
-		top = ((uintptr_t)&Arch_IRQHandlers) + sizeof(Arch_IRQHandlers);
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present */, false);
-		}
+		map_range(cached_root, (uintptr_t)&Arch_IRQHandlers, ((uintptr_t)&Arch_IRQHandlers) + sizeof(Arch_IRQHandlers), 1|BIT_TYPE(63, UL)|2);
+		// Map syscall trap handler.
 		extern char Arch_SyscallTrapHandlerEnd;
 		extern char Arch_SyscallTrapHandler;
-		base = (uintptr_t)&Arch_SyscallTrapHandler;
-		top = (uintptr_t)&Arch_SyscallTrapHandlerEnd;
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1 /* exec, present */, false);
-		}
-		base = (uintptr_t)&OBOS_SyscallTable;
-		top = ((uintptr_t)&OBOS_SyscallTable) + sizeof(OBOS_SyscallTable);
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present */, false);
-		}
-		base = (uintptr_t)&OBOS_ArchSyscallTable;
-		top = ((uintptr_t)&OBOS_ArchSyscallTable) + sizeof(OBOS_ArchSyscallTable);
-		base &= ~0xfff;
-		top += 0xfff;
-		top &= ~0xfff;
-		for (uintptr_t addr = base; addr < top; addr += 0x1000)
-		{
-			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
-			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present */, false);
-		}
+		map_range(cached_root, (uintptr_t)&Arch_SyscallTrapHandler, (uintptr_t)&Arch_SyscallTrapHandlerEnd, 1|2);
+		// Map syscall tables.
+		map_range(cached_root, (uintptr_t)&OBOS_SyscallTable, ((uintptr_t)&OBOS_SyscallTable) + sizeof(OBOS_SyscallTable), 1|BIT_TYPE(63, UL)|2);
+		map_range(cached_root, (uintptr_t)&OBOS_ArchSyscallTable, ((uintptr_t)&OBOS_ArchSyscallTable) + sizeof(OBOS_ArchSyscallTable), 1|BIT_TYPE(63, UL)|2);
 	}
 	memcpy(Arch_MapToHHDM(root), Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
 	return root;
