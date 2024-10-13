@@ -1023,8 +1023,6 @@ asm (
 	".global test_program;"
 "\
 test_program:;\
-	mov eax, 4;\
-	syscall;\
 	mov rcx, 10;\
 	loop_beg:;\
 		push rcx;\

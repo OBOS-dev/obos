@@ -33,10 +33,6 @@ void Sys_Shutdown()
     while(1)
         asm volatile("");
 }
-void Sys_Nop()
-{
-    return;
-}
 #else
 #endif
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
@@ -44,7 +40,6 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_Yield,
     (uintptr_t)Sys_Reboot,
     (uintptr_t)Sys_Shutdown,
-    (uintptr_t)Sys_Nop, // does literally nothing, only exists for testing purposes.
 };
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
-
+uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
+};
