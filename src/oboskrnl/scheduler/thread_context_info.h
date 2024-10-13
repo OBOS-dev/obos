@@ -11,6 +11,8 @@
 
 #include <irq/irql.h>
 
+#include <mm/page_table.h>
+
 /// <summary>
 /// This structure is architecture dependant, but should save at least the following:
 /// Thread GPR context.
@@ -33,6 +35,9 @@ typedef struct thread_context_info thread_ctx;
 /// <param name="stackSize">The size of the stack.</param>
 /// <returns>The status code of the function.</returns>
 OBOS_WEAK obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
+// pretty self-explanatory.
+// on x86_64, this sets the context's cr3
+void CoreS_SetThreadPageTable(thread_ctx* ctx, page_table pt);
 /// <summary>
 /// Switches to a different thread's context.
 /// </summary>

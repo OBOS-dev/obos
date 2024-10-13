@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <memmanip.h>
 #include <signal.h>
@@ -15,6 +16,8 @@
 #include <locks/event.h>
 
 #include <mm/context.h>
+
+#include <allocators/base.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
@@ -63,6 +66,42 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     frame->rsp -= sizeof(sig->trampoline_base);
     memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
     uintptr_t ucontext_loc = frame->rsp;
+    if (!sig->un.handler)
+    {
+        switch (OBOS_SignalDefaultActions[sigval]) {
+            case SIGNAL_DEFAULT_TERMINATE_PROC:
+                break;
+            case SIGNAL_DEFAULT_IGNORE:
+                return;
+            case SIGNAL_DEFAULT_STOP:
+                CoreH_ThreadBlock(Core_GetCurrentThread(), true);
+                return;
+            case SIGNAL_DEFAULT_CONTINUE:
+                OBOS_ASSERT("continue signal handled in wrong place\n");
+                break;
+            default:
+                OBOS_ASSERT(!"unknown signal default action");
+        }
+        // bruh
+        siginfo_t siginfo = {};
+        siginfo.sender = sig->sender;
+        siginfo.sigcode = sig->sigcode;
+        siginfo.status = sig->status;
+        siginfo.udata.integer = sig->udata;
+        siginfo.signum = sigval;
+        frame->rdi = sigval;
+        frame->rsi = (uintptr_t)OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(siginfo), nullptr);
+        memcpy((void*)frame->rsi, &siginfo, sizeof(siginfo));
+        frame->rdx = (uintptr_t)OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(ctx), nullptr);
+        memcpy((void*)frame->rdx, &ctx, sizeof(ctx));
+        frame->rip = (uintptr_t)OBOS_DefaultSignalHandler;
+        frame->cs = 0x8;
+        frame->ss = 0x10;
+        frame->ds = 0x10;
+        frame->cr3 = MmS_GetCurrentPageTable();
+        frame->rsp = (uintptr_t)CoreS_GetCPULocalPtr()->arch_specific.ist_stack + 0x20000;
+        return;
+    }
     if (sig->flags & SA_SIGINFO)
     {
         siginfo_t siginfo = {};
@@ -78,11 +117,13 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         frame->rdx = ucontext_loc;
         frame->rip = (uintptr_t)sig->un.sa_sigaction;
     }
-    else 
+    else
     {
         frame->rdi = sigval;
         frame->rip = (uintptr_t)sig->un.handler;
     }
     // When the irq handler returns it will be in the user signal handler.
-    // TODO: Test.
+    // NOTTODO: Test.
+    // NOTE(oberrow): HOW DID THIS WORK FIRST TRY!!!!
+    // LESGOOOOOOOOOOOOOOOOOOoooo
 }

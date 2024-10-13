@@ -5,12 +5,18 @@
 */
 
 // Something close enough to POSIX Signals
+// Abandon all hope, ye who enter here.
 
 #include <int.h>
 #include <error.h>
+#include <klog.h>
 #include <signal.h>
 
 #include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+
+#include <allocators/base.h>
 
 #include <irq/irq.h>
 
@@ -20,9 +26,17 @@
 
 #include <utils/list.h>
 
+signal_header* OBOSH_AllocateSignalHeader()
+{
+    signal_header* hdr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(signal_header), nullptr);
+    hdr->lock = MUTEX_INITIALIZE();
+    hdr->event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    return hdr;
+}
+
 obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
-    if (!as || !thr || !(sigval >= 0 && sigval <= SIGRTMAX))
+    if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (thr->signal_info->pending & BIT(sigval))
         return OBOS_STATUS_SUCCESS;
@@ -39,7 +53,7 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 }
 obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
 {
-    if (!(signum >= 0 && signum <= SIGRTMAX))
+    if (!(signum >= 0 && signum <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (oldact)
         *oldact = Core_GetCurrentThread()->signal_info->signals[signum];
@@ -135,4 +149,39 @@ void OBOS_SyncPendingSignal(interrupt_frame* frame)
     Core_GetCurrentThread()->signal_info->pending &= ~BIT(sigval);
     OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
+}
+
+#define T SIGNAL_DEFAULT_TERMINATE_PROC,
+#define A SIGNAL_DEFAULT_TERMINATE_PROC,
+#define I SIGNAL_DEFAULT_IGNORE,
+#define C SIGNAL_DEFAULT_CONTINUE,
+#define S SIGNAL_DEFAULT_STOP,
+enum signal_default_action OBOS_SignalDefaultActions[SIGMAX] = {
+    T T T A A
+    A A A T T
+    A T T T T
+    A I C S S
+    S S I A A
+    T A
+};
+void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown)
+{
+    OBOS_UNUSED(signum);
+    OBOS_UNUSED(info);
+    OBOS_UNUSED(unknown);
+    switch (OBOS_SignalDefaultActions[signum]) {
+        case SIGNAL_DEFAULT_TERMINATE_PROC:
+            OBOS_Debug("Exitting thread %ld of process %ld after receiving signal %d\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, signum);
+            break;
+        case SIGNAL_DEFAULT_IGNORE:
+        case SIGNAL_DEFAULT_STOP:
+        case SIGNAL_DEFAULT_CONTINUE:
+            OBOS_ASSERT(!"signal handled in the wrong place\n");
+            break;
+        default:
+            OBOS_ASSERT(!"unknown signal default action");
+    }
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, info, sizeof(*info));
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, unknown, sizeof(ucontext_t));
+    Core_ExitCurrentThread();
 }

@@ -7,6 +7,10 @@
 #include <int.h>
 #include <error.h>
 #include <text.h>
+#include <klog.h>
+#include <memmanip.h>
+
+#include <locks/spinlock.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -161,3 +165,11 @@ void MmH_DerefSwapAllocation(swap_allocation* alloc)
 	}
 }
 LIST_GENERATE(swap_allocation_list, struct swap_allocation, node);
+
+void Mm_ConstructContext(context* ctx)
+{
+	OBOS_ASSERT(ctx);
+	memzero(ctx, sizeof(*ctx));
+	ctx->pt = MmS_AllocatePageTable();
+	ctx->lock = Core_SpinlockCreate();
+}

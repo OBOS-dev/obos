@@ -169,6 +169,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
+	OBOS_ResetColor();
 	printf("\n%s\n", ascii_art);
 	printf("Kernel Panic on CPU %d in thread %d, owned by process %d. Reason: %s. Information on the crash is below:\n", getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
 	va_list list;

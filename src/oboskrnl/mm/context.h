@@ -15,14 +15,8 @@
 
 #include <irq/dpc.h>
 
-#ifdef __x86_64__
-typedef uintptr_t page_table;
-#elif __m68k__
-// TODO:
-typedef uintptr_t page_table;
-#else
-#   error Unknown architecture
-#endif
+#include <mm/page_table.h>
+
 /// <summary>
 /// Populates a page structure with protection info about a page in a page table.</para>
 /// Note: If the page is unmapped, the physical address should still be populated.
@@ -127,3 +121,9 @@ extern OBOS_EXPORT context Mm_KernelContext;
 extern char MmS_MMPageableRangeStart[];
 extern char MmS_MMPageableRangeEnd[];
 bool MmH_IsAddressUnPageable(uintptr_t addr);
+
+// Constructs a new (user-mode) context.
+void Mm_ConstructContext(context* ctx);
+// Allocates a page table for a new user-mode context.
+// Must have enough of the kernel mapped for a userspace -> kernel mode switch to work.
+page_table MmS_AllocatePageTable();

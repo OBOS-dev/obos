@@ -31,8 +31,7 @@ enum {
     SIGSEGV    , SIGUSR2,      SIGPIPE,     SIGALRM,      SIGTERM,
     SIGSTKFLT  , SIGCHLD,      SIGCONT,     SIGSTOP,      SIGTSTP,
     SIGTTIN    , SIGTTOU,      SIGURG,      SIGXCPU,      SIGXFSZ,
-    SIGVTALRM  , SIGPROF,      SIGWINCH,    SIGIO,       SIGPWR,
-    SIGSYS     , SIGRTMIN,     SIGRTMAX = 64,
+    SIGVTALRM  , SIGSYS,       SIGMAX = 64,
 };
 
 // Public
@@ -87,6 +86,7 @@ typedef struct signal_header {
     mutex     lock; // take when modifying this structure.
     event    event; // set when a signal runs, clear when it exits (sigreturn)
 } signal_header;
+signal_header* OBOSH_AllocateSignalHeader();
 
 obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval);
 obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact);
@@ -107,3 +107,18 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame);
 
 OBOS_WEAK void OBOSS_SigReturn(interrupt_frame* frame);
 OBOS_WEAK void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame);
+
+enum signal_default_action
+{
+    // When this is the default, the signal runner returns normally.
+    SIGNAL_DEFAULT_IGNORE,
+    // When this is the default, the current thread is exited.
+    SIGNAL_DEFAULT_TERMINATE_PROC,
+    // Blocks the thread.
+    SIGNAL_DEFAULT_STOP,
+    // Readies the thread.
+    SIGNAL_DEFAULT_CONTINUE,
+};
+extern enum signal_default_action OBOS_SignalDefaultActions[SIGMAX];
+
+void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown);

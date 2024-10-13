@@ -5,6 +5,7 @@
 */
 
 #include "mm/page.h"
+#include "signal.h"
 #include <int.h>
 #include <error.h>
 #include <cmdline.h>
@@ -969,6 +970,30 @@ if (st != UACPI_STATUS_OK)\
 	// 	Kdbg_CurrentConnection->connection_active = true;
 	// 	asm("int3");
 	// }
+	context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
+	Mm_ConstructContext(new_ctx);
+	process* new = Core_ProcessAllocate(nullptr);
+	new->ctx = new_ctx;
+	new_ctx->owner = new;
+	Core_ProcessStart(new, nullptr);
+	void* mem = Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x1000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
+	uintptr_t mem_phys = 0;
+	MmS_QueryPageInfo(new_ctx->pt, (uintptr_t)mem, nullptr, &mem_phys);
+	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
+	memcpy(mem_kern, "\x48\xB8\xEF\xBE\xAD\xDE\x00\x00\x00\x00\x48\xC7\x00\x05\x00\x00\x00", 0x11);
+	// jmp $
+	mem_kern[0x11] = 0xeb;
+	mem_kern[0x11+1] = 0xfe;
+	thread* thr = CoreH_ThreadAllocate(nullptr);
+	thread_ctx thr_ctx = {};
+	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+	CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)mem, 0, true, stack, 0x4000);
+	CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
+	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);
+	Core_ProcessAppendThread(new, thr);
+	thr->signal_info = OBOSH_AllocateSignalHeader();
+	// thr->signal_info->signals[SIGSEGV].un.handler = mem+0x11;
+	CoreH_ThreadReady(thr);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 

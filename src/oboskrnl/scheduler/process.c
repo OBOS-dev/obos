@@ -34,11 +34,14 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	if (!proc || !mainThread)
+	if (!proc)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!mainThread->affinity || mainThread->masterCPU || mainThread->proc)
-		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (mainThread)
+		if (!mainThread->affinity || mainThread->masterCPU || mainThread->proc)
+			return OBOS_STATUS_INVALID_ARGUMENT;
 	proc->pid = Core_NextPID++;
+	if (!mainThread)
+		return OBOS_STATUS_SUCCESS;
 	obos_status status = OBOS_STATUS_SUCCESS;
 	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
 	if (obos_is_error(status))

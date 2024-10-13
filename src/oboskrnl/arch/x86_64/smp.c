@@ -92,8 +92,8 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[0] = 0;
 	info->arch_specific.gdtEntries[1] = 0x00af9b000000ffff; // 64-bit code
 	info->arch_specific.gdtEntries[2] = 0x00cf93000000ffff; // 64-bit data
-	info->arch_specific.gdtEntries[3] = 0x00aff3000000ffff; // 64-bit user-mode data
-	info->arch_specific.gdtEntries[4] = 0x00cff3000000ffff; // 64-bit user-mode code
+	info->arch_specific.gdtEntries[3] = 0x00cff3000000ffff; // 64-bit user-mode data
+	info->arch_specific.gdtEntries[4] = 0x00affb000000ffff; // 64-bit user-mode code
 	struct
 	{
 		uint16_t limitLow;

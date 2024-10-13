@@ -44,8 +44,8 @@ pop rax
 struc thread_ctx
 align 8
 .extended_ctx_ptr: resq 1
-.cr3: resq 1
 .irql: resq 1
+.cr3: resq 1
 .gs_base: resq 1
 .fs_base: resq 1
 .frame: resq 0x1b
@@ -67,11 +67,8 @@ CoreS_SwitchToThreadContext:
 	xrstor [rbx]
 .no_xstate:
 	add rdi, 8
-	; Restore CR3 (address space)
-	mov rax, [rdi]
-	mov cr3, rax
-	add rdi, 8
-	; Restore IRQL.
+
+; Restore IRQL.
 	mov rax, [rdi]
 	mov cr8, rax
 	push rdi
@@ -80,14 +77,36 @@ CoreS_SwitchToThreadContext:
 	mov rcx, [rdi]
 	mov [rax], rcx
 	add rdi, 8
+
+	; Restore CR3 (address space)
+	mov rax, [rdi]
+	mov rdx, cr3
+	cmp rax, rdx
+	je .kernel_cr3
+
+; We won't be able to use kernel memory anymore, so copy the context to the stack.
+	mov rsi, rdi
+	sub rsp, 272-8 ; push that many bytes
+	mov rdi, rsp
+	mov rcx, 272 - 8 ; sizeof(thread_ctx) - 8 (the amount of bytes already accessed)
+	rep movsb
+	sub rdi, 272 - 8
+
+.kernel_cr3:
+	mov cr3, rax
+	add rdi, 8
+
 	; Restore GS_BASE
 	test qword [rdi+16+0xB8], 0x3
 	je .restore_fs_base
+	swapgs
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000101
 	wrmsr
+
 .restore_fs_base:
+
 	add rdi, 0x8
 	; Restore FS_BASE
 	mov eax, [rdi]
@@ -95,12 +114,15 @@ CoreS_SwitchToThreadContext:
 	mov ecx, 0xC0000100
 	wrmsr
 	add rdi, 8
+
 	; Restore thread GPRs.
 	mov rsp, rdi
 	add rsp, 0x10 ; Skip the saved DS and CR3
 	popaq
 	add rsp, 0x18
 	iretq
+global CoreS_SwitchToThreadContextEnd: data hidden
+CoreS_SwitchToThreadContextEnd:
 section .pageable.text
 CoreS_FreeThreadContext:
 	push rbp
@@ -149,15 +171,19 @@ CoreS_SetupThreadContext:
 	mov rax, cr3
 	mov qword [rdi+thread_ctx.cr3], rax
 	; Setup GS_BASE.
-	mov rcx, 0xC0000101 ; GS.Base
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
-	mov qword [rdi+thread_ctx.gs_base], rax
+	;mov rcx, 0xC0000101 ; GS.Base
+	;rdmsr
+	;shl rdx, 32
+	;or rax, rdx
+	;mov qword [rdi+thread_ctx.gs_base], rax
 
 	xor rax, rax ; OBOS_STATUS_SUCCESS
 .finish:
 	leave
+	ret
+global CoreS_SetThreadPageTable
+CoreS_SetThreadPageTable:
+	mov qword [rdi+thread_ctx.cr3], rsi
 	ret
 section .text
 extern Arch_GetCPUTempStack
