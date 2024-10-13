@@ -38,10 +38,30 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
     if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (thr->signal_info->pending & BIT(sigval))
+    if (thr->signal_info->pending & BIT(sigval - 1))
         return OBOS_STATUS_SUCCESS;
     Core_MutexAcquire(&thr->signal_info->lock);
-    thr->signal_info->pending |= BIT(sigval);
+    if (sigval == SIGCONT)
+    {
+        if (~thr->signal_info->pending & BIT(SIGSTOP))
+        {
+            // SIGSTOP is not pending, if the thread is blocked, then ready it and exit.
+            if (thr->status == THREAD_STATUS_BLOCKED)
+            {
+                CoreH_ThreadReady(thr);
+                Core_MutexRelease(&thr->signal_info->lock);
+                return OBOS_STATUS_SUCCESS;
+            }
+        }
+    }
+    else if (sigval == SIGSTOP)
+    {
+        // Stop the thread.
+        CoreH_ThreadBlock(thr, true);
+        Core_MutexRelease(&thr->signal_info->lock);
+        return OBOS_STATUS_SUCCESS;
+    }
+    thr->signal_info->pending |= BIT(sigval - 1);
     // set these up before the call to kill.
     // thr->signal_info->signals[sigval].addr = nullptr;
     // thr->signal_info->signals[sigval].status = 0;
@@ -96,6 +116,9 @@ obos_status OBOS_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset)
     {
         Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
         sigset_t newmask = *mask;
+        // These signals cannot be ignored.
+        newmask &= ~BIT(SIGKILL-1);
+        newmask &= ~BIT(SIGSTOP-1);
         switch (how) {
             case SIG_BLOCK:
                 Core_GetCurrentThread()->signal_info->mask |= newmask;
@@ -146,6 +169,7 @@ void OBOS_SyncPendingSignal(interrupt_frame* frame)
         return;
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
     int sigval = __builtin_ctzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
+    sigval += 1;
     Core_GetCurrentThread()->signal_info->pending &= ~BIT(sigval);
     OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
@@ -156,7 +180,8 @@ void OBOS_SyncPendingSignal(interrupt_frame* frame)
 #define I SIGNAL_DEFAULT_IGNORE,
 #define C SIGNAL_DEFAULT_CONTINUE,
 #define S SIGNAL_DEFAULT_STOP,
-enum signal_default_action OBOS_SignalDefaultActions[SIGMAX] = {
+enum signal_default_action OBOS_SignalDefaultActions[SIGMAX+1] = {
+    T
     T T T A A
     A A A T T
     A T T T T

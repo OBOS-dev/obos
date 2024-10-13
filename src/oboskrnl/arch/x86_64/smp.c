@@ -50,7 +50,7 @@ static OBOS_NO_UBSAN void ParseMADT()
 {
 	// Find the MADT in the ACPI tables.
 	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
-	bool tables32 = rsdp->Revision == 0;
+	bool tables32 = rsdp->Revision < 2;
 	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
 	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
 	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);

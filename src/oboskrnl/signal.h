@@ -119,6 +119,6 @@ enum signal_default_action
     // Readies the thread.
     SIGNAL_DEFAULT_CONTINUE,
 };
-extern enum signal_default_action OBOS_SignalDefaultActions[SIGMAX];
+extern enum signal_default_action OBOS_SignalDefaultActions[SIGMAX+1];
 
 void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown);

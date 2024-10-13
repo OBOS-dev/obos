@@ -193,7 +193,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     page_info curr = {};
     MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
     curr.range = rng;
-    // CoW regions are not file mappings (directly, at least, private file mappings are CoW).
+    // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
     if (rng->mapped_here && !rng->cow)
     {
         // page_info info = {};
@@ -232,7 +232,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         goto done;
     }
-    if (!handled && ~ec & PF_EC_PRESENT)
+    if (!handled && ~ec & PF_EC_PRESENT && curr.phys != 0)
     {
         // OBOS_Debug("attempting page in at %p\n", addr);
         // Try a swap in?

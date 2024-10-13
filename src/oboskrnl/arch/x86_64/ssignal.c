@@ -66,7 +66,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     frame->rsp -= sizeof(sig->trampoline_base);
     memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
     uintptr_t ucontext_loc = frame->rsp;
-    if (!sig->un.handler)
+    if (!sig->un.handler || sigval == SIGKILL || sigval == SIGSTOP)
     {
         switch (OBOS_SignalDefaultActions[sigval]) {
             case SIGNAL_DEFAULT_TERMINATE_PROC:
@@ -77,8 +77,8 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
                 CoreH_ThreadBlock(Core_GetCurrentThread(), true);
                 return;
             case SIGNAL_DEFAULT_CONTINUE:
-                OBOS_ASSERT("continue signal handled in wrong place\n");
-                break;
+                CoreH_ThreadReady(Core_GetCurrentThread());
+                return;
             default:
                 OBOS_ASSERT(!"unknown signal default action");
         }
