@@ -154,8 +154,6 @@ int_handler_common:
 	ja .finished
 	mov rax, [Arch_IRQHandlers+rax*8]
 
-	push 0 ; old context
-
 	test rax,rax
 	jz .finished
 
@@ -163,8 +161,6 @@ int_handler_common:
 	call rax
 
 .finished:
-
-	add rsp, 8
 
 	pop rax
 	cmp rax, [Arch_KernelCR3]

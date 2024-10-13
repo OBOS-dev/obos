@@ -15,6 +15,8 @@
 #include <mm/init.h>
 
 #include <scheduler/cpu_local.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
 
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/lapic.h>
@@ -119,16 +121,13 @@ bool CoreS_EnterIRQHandler(interrupt_frame* frame)
 {
 	sti();
 	if (CoreS_GetCPULocalPtr() && Mm_IsInitialized() && ~frame->cs & 0x3 /* kernel mode */)
-	{
-		frame->savedCtx = (uintptr_t)CoreS_GetCPULocalPtr()->currentContext;
 		CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
-	}
 	return true;
 }
 void CoreS_ExitIRQHandler(interrupt_frame* frame)
 {
 	if (~frame->cs & 0x3)
-		CoreS_GetCPULocalPtr()->currentContext = (context*)frame->savedCtx;
+		CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc ? CoreS_GetCPULocalPtr()->currentThread->proc->ctx : &Mm_KernelContext;
 	else
 		OBOS_SyncPendingSignal(frame);
 	cli();

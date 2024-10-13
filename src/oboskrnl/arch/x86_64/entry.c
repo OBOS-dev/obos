@@ -985,11 +985,10 @@ if (st != UACPI_STATUS_OK)\
 	uintptr_t mem_phys = 0;
 	MmS_QueryPageInfo(new_ctx->pt, (uintptr_t)mem, nullptr, &mem_phys);
 	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
-	// call test
-	// jmp $
-	// test:
-	// ret
-	memcpy(mem_kern, "\xE8\x02\x00\x00\x00\xEB\xFE\xC3", 8);
+extern char test_program[];
+extern char test_program_end[];
+	printf("%p\n", mem_kern);
+	memcpy(mem_kern, &test_program, test_program_end - test_program);
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};
 	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
@@ -1018,3 +1017,30 @@ if (st != UACPI_STATUS_OK)\
 	// OBOS_Log("Vfs_Allocator: %d KiB in-use\n", ((basic_allocator*)Vfs_Allocator)->totalMemoryAllocated/1024);
 	Core_ExitCurrentThread();
 }
+
+asm (
+	".intel_syntax noprefix;"
+	".global test_program;"
+"\
+test_program:;\
+	mov eax, 4;\
+	syscall;\
+	mov rcx, 10;\
+	loop_beg:;\
+		push rcx;\
+		call Sys_Yield;\
+		pop rcx;\
+		loop loop_beg;\
+	call Sys_ExitCurrentThread;\
+Sys_ExitCurrentThread:;\
+	mov eax, 0;\
+	syscall;\
+	ret;\
+Sys_Yield:;\
+	mov eax, 1;\
+	syscall;\
+	ret;\
+	.att_syntax prefix;\
+.global test_program_end; test_program_end:\
+"
+);

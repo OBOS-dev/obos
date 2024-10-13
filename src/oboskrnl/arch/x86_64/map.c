@@ -532,7 +532,7 @@ page_table MmS_AllocatePageTable()
 		for (size_t i = 0; i < Core_CpuCount; i++)
 		{
 			cpu_local* const cpu = Core_CpuInfo + i;
-			map_range(cached_root, (uintptr_t)cpu->arch_specific.ist_stack, (uintptr_t)cpu->arch_specific.ist_stack + 0x20000, 1|BIT_TYPE(63, UL)|2);
+			map_range(cached_root, (uintptr_t)cpu->arch_specific.ist_stack, (uintptr_t)cpu->arch_specific.ist_stack + 0x30000, 1|BIT_TYPE(63, UL)|2);
 		}
 		// Map cpu local structs.
 		map_range(cached_root, (uintptr_t)Core_CpuInfo, (uintptr_t)(Core_CpuInfo + Core_CpuCount), 1|BIT_TYPE(63, UL)|2);

@@ -50,7 +50,7 @@ Arch_SyscallTrapHandler:
     swapgs
     mov r10, rsp
     mov rsp, [gs:0xc8]
-    add rsp, 0x20000
+    add rsp, 0x30000
     sys_pushaq
     mov rbp, rsp
 
@@ -92,7 +92,7 @@ Arch_SyscallTrapHandler:
     push rax
     mov rax, r10
 
-    mov r10, 0xffffffff<<32
+    mov r10, 0xffffffff
     and rax, r10
     call [r11+rax*8]
 

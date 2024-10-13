@@ -86,7 +86,7 @@ CoreS_SwitchToThreadContext:
 
 ; We won't be able to use kernel memory anymore, so copy the context to the stack.
 	mov rsi, rdi
-	sub rsp, 272-8 ; push that many bytes
+	sub rsp, 272 - 8 ; push that many bytes
 	mov rdi, rsp
 	mov rcx, 272 - 8 ; sizeof(thread_ctx) - 8 (the amount of bytes already accessed)
 	rep movsb
