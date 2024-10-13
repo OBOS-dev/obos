@@ -23,48 +23,17 @@ obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
         return memcpy(k_dest, usr_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
     uintptr_t usrphys = 0;
-    // uintptr_t base = (uintptr_t)usr_src;
-    // bool tried = false;
-    // page what = {.addr=base};
-    // try_again:
-    // (void)0;
-    // page* volatile found = RB_NFIND(page_tree, &ctx->pages, &what);
-    // if (!found)
-    // {
-    //     if (OBOS_PAGE_SIZE == OBOS_HUGE_PAGE_SIZE || tried)
-    //         return OBOS_STATUS_PAGE_FAULT;
-    //     tried = true;
-    //     what.addr -= (what.addr % OBOS_HUGE_PAGE_SIZE);
-    //     goto try_again;
-    // }
-    // if (found->addr != what.addr) // the address is the key
-    //     found = RB_PREV(page_tree, &context->pages, found);
-    // if (found->prot.ro)
-    //     return OBOS_STATUS_PAGE_FAULT;
-    // bool wasPageable = found->pageable;
-    // obos_status status = 
-    //     wasPageable ?
-    //         Mm_VirtualMemoryProtect(ctx, (void*)(base - base % OBOS_PAGE_SIZE), count, OBOS_PROTECTION_SAME_AS_BEFORE, 0) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
-    if (!usrphys)
-        return OBOS_STATUS_PAGE_FAULT;
     size_t usroffset = (uintptr_t)usr_src % OBOS_PAGE_SIZE;
+    long bytes_left = count;
     for (size_t i = 0; i < count; )
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_src + i, nullptr, &usrphys);
-        size_t currCount = OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE);
+        size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy((void*)((uintptr_t)k_dest + i), MmS_MapVirtFromPhys(usrphys+usroffset), currCount);
         usroffset = 0;
         i += currCount;
+        bytes_left -= currCount;
     }
-    // status =
-    //     wasPageable ?
-    //         Mm_VirtualMemoryProtect(ctx, (void*)base, count, OBOS_PROTECTION_SAME_AS_BEFORE, true) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
@@ -73,46 +42,17 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
         return memcpy(usr_dest, k_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
     uintptr_t usrphys = 0;
-    // uintptr_t base = (uintptr_t)usr_dest;
-    // bool tried = false;
-    // page what = {.addr=base};
-    // try_again:
-    // (void)0;
-    // page* volatile found = RB_NFIND(page_tree, &ctx->pages, &what);
-    // if (!found)
-    // {
-    //     if (OBOS_PAGE_SIZE == OBOS_HUGE_PAGE_SIZE || tried)
-    //         return OBOS_STATUS_PAGE_FAULT;
-    //     tried = true;
-    //     what.addr -= (what.addr % OBOS_HUGE_PAGE_SIZE);
-    //     goto try_again;
-    // }
-    // if (found->addr != what.addr) // the address is the key
-    //     found = RB_PREV(page_tree, &context->pages, found);
-    // if (found->prot.ro)
-    //     return OBOS_STATUS_PAGE_FAULT;
-    // bool wasPageable = found->pageable;
-    // obos_status status = 
-    //     wasPageable ?
-    //         Mm_VirtualMemoryProtect(ctx, (void*)(base - base % OBOS_PAGE_SIZE), count, OBOS_PROTECTION_SAME_AS_BEFORE, 0) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
     size_t usroffset = (uintptr_t)usr_dest % OBOS_PAGE_SIZE;
+    long bytes_left = count;
     for (size_t i = 0; i < count; )
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, nullptr, &usrphys);
-        size_t currCount = OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE);
+        size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);
         usroffset = 0;
         i += currCount;
+        bytes_left -= currCount;
     }
-    // status =
-    //     wasPageable ?
-    //         Mm_VirtualMemoryProtect(ctx, (void*)base, count, OBOS_PROTECTION_SAME_AS_BEFORE, true) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
     return OBOS_STATUS_SUCCESS;
 }
 

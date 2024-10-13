@@ -4,11 +4,11 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/page.h"
-#include "signal.h"
 #include <int.h>
 #include <error.h>
+#include <signal.h>
 #include <cmdline.h>
+#include <syscall.h>
 #include <klog.h>
 #include <stdint.h>
 #include <struct_packing.h>
@@ -60,6 +60,7 @@
 #include <mm/pmm.h>
 #include <mm/disk_swap.h>
 #include <mm/initial_swap.h>
+#include <mm/page.h>
 
 #include <scheduler/process.h>
 #include <scheduler/thread_context_info.h>
@@ -350,6 +351,10 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		wrmsr(0x277, 0x0001040600070406);
 		asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
 		wbinvd();
+		// TODO: Move syscall init somewhere else.
+		if (CoreS_GetCPULocalPtr()->isBSP)
+			wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
+		OBOSS_InitializeSyscallInterface();
 	}
 	else
 		Core_Yield();
@@ -980,10 +985,11 @@ if (st != UACPI_STATUS_OK)\
 	uintptr_t mem_phys = 0;
 	MmS_QueryPageInfo(new_ctx->pt, (uintptr_t)mem, nullptr, &mem_phys);
 	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
-	memcpy(mem_kern, "\x48\xB8\xEF\xBE\xAD\xDE\x00\x00\x00\x00\x48\xC7\x00\x05\x00\x00\x00", 0x11);
-	// jmp $
-	mem_kern[0x11] = 0xeb;
-	mem_kern[0x11+1] = 0xfe;
+	// mov eax, 0
+	// mov rdi, 0x1100
+	// syscall
+	memcpy(mem_kern, "\xB8\x00\x00\x00\x00\x48\xC7\xC7\x00\x11\x00\x00\x0F\x05\xEB\xFE", 17);
+	memcpy(mem_kern+0x100, "hai from usermode", 18);
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};
 	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);

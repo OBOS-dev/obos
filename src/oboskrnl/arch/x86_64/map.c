@@ -5,6 +5,7 @@
 */
 
 #include "mm/page.h"
+#include "syscall.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -576,6 +577,38 @@ page_table MmS_AllocatePageTable()
 		extern uintptr_t Arch_IRQHandlers[256];
 		base = (uintptr_t)&Arch_IRQHandlers;
 		top = ((uintptr_t)&Arch_IRQHandlers) + sizeof(Arch_IRQHandlers);
+		base &= ~0xfff;
+		top += 0xfff;
+		top &= ~0xfff;
+		for (uintptr_t addr = base; addr < top; addr += 0x1000)
+		{
+			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present */, false);
+		}
+		extern char Arch_SyscallTrapHandlerEnd;
+		extern char Arch_SyscallTrapHandler;
+		base = (uintptr_t)&Arch_SyscallTrapHandler;
+		top = (uintptr_t)&Arch_SyscallTrapHandlerEnd;
+		base &= ~0xfff;
+		top += 0xfff;
+		top &= ~0xfff;
+		for (uintptr_t addr = base; addr < top; addr += 0x1000)
+		{
+			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+			Arch_MapPage(cached_root, (void*)addr, phys, 1 /* exec, present */, false);
+		}
+		base = (uintptr_t)&OBOS_SyscallTable;
+		top = ((uintptr_t)&OBOS_SyscallTable) + sizeof(OBOS_SyscallTable);
+		base &= ~0xfff;
+		top += 0xfff;
+		top &= ~0xfff;
+		for (uintptr_t addr = base; addr < top; addr += 0x1000)
+		{
+			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+			Arch_MapPage(cached_root, (void*)addr, phys, 1|BIT_TYPE(63, UL)|2 /* XD, present */, false);
+		}
+		base = (uintptr_t)&OBOS_ArchSyscallTable;
+		top = ((uintptr_t)&OBOS_ArchSyscallTable) + sizeof(OBOS_ArchSyscallTable);
 		base &= ~0xfff;
 		top += 0xfff;
 		top &= ~0xfff;

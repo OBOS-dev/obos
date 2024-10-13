@@ -58,7 +58,7 @@ start:
 	mov esi, (1<<11)
 	cmovnz eax, esi ; If bit 20 is set
 	mov ecx, 0xC0000080
-    or eax, (1 << 8)|(1<<10)
+    or eax, (1 << 8)|(1 << 10)|(1 << 0)
     xor edx,edx
 	wrmsr
 
