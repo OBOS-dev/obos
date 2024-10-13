@@ -985,11 +985,14 @@ if (st != UACPI_STATUS_OK)\
 	uintptr_t mem_phys = 0;
 	MmS_QueryPageInfo(new_ctx->pt, (uintptr_t)mem, nullptr, &mem_phys);
 	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
+	// call test
 	// jmp $
-	memcpy(mem_kern, "\xEB\xFE", 2);
+	// test:
+	// ret
+	memcpy(mem_kern, "\xE8\x02\x00\x00\x00\xEB\xFE\xC3", 8);
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};
-	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
 	CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)mem, 0, true, stack, 0x4000);
 	CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);
@@ -997,11 +1000,6 @@ if (st != UACPI_STATUS_OK)\
 	thr->signal_info = OBOSH_AllocateSignalHeader();
 	// thr->signal_info->signals[SIGSEGV].un.handler = mem+0x11;
 	CoreH_ThreadReady(thr);
-	OBOS_Kill(Core_GetCurrentThread(), thr, SIGSTOP);
-	OBOS_Kill(Core_GetCurrentThread(), thr, SIGCONT);
-	while (thr->masterCPU->currentThread != thr)
-		;
-	printf("%d\n", thr->status);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 

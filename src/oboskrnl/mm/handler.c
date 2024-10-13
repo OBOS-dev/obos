@@ -94,7 +94,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
         return true;
     }
     page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
-    memcpy(MmS_MapVirtFromPhys(new->phys), (void*)addr, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->prot.rw = true;
     info->prot.ro = false;
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
@@ -167,7 +167,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
         page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
         if (~ec & PF_EC_PRESENT)
             MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
-        memcpy(MmS_MapVirtFromPhys(new->phys), (void*)addr, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         info->prot.rw = true;
         info->prot.ro = false;
         MmH_DerefPage(pg);
@@ -181,11 +181,12 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
 obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
 {
     OBOS_ASSERT(ctx);
-    OBOS_UNUSED(addr);
-    OBOS_UNUSED(ec);
+    if (~ec & PF_EC_UM)
+        ctx = &Mm_KernelContext;
     bool handled = false;
     page_range what = {.virt=addr,.size=OBOS_PAGE_SIZE};
-    // OBOS_Debug("Handling page fault at 0x%p...\n", addr);
+    if (ctx != &Mm_KernelContext)
+        OBOS_Debug("Handling page fault at 0x%p...\n", addr);
     fault_type type = INVALID_FAULT;
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
@@ -234,7 +235,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     }
     if (!handled && ~ec & PF_EC_PRESENT && curr.phys != 0)
     {
-        // OBOS_Debug("attempting page in at %p\n", addr);
         // Try a swap in?
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         fault_type curr_type = SOFT_FAULT;
