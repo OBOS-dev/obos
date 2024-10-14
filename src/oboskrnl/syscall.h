@@ -17,8 +17,8 @@
 
 #define IS_ARCH_SYSCALL(n) ((n) >= ARCH_SYSCALL_BEGIN)
 
-extern uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN];
-extern uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
+extern OBOS_EXPORT uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN];
+extern OBOS_EXPORT uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
 
 #if OBOS_ARCHITECTURE_BITS == 64
 typedef __uint128_t syscall_ret_t;

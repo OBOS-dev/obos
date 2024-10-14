@@ -193,7 +193,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
-	// OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+	OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
@@ -1029,7 +1029,7 @@ test_program:;\
 		call Sys_Yield;\
 		pop rcx;\
 		loop loop_beg;\
-	call Sys_ExitCurrentThread;\
+	call Sys_Shutdown;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\
 	syscall;\
@@ -1038,6 +1038,12 @@ Sys_Yield:;\
 	mov eax, 1;\
 	syscall;\
 	ret;\
+Sys_Shutdown:;\
+	mov eax, 3;\
+	syscall; ret;\
+Sys_Reboot:;\
+	mov eax, 2;\
+	syscall; ret;\
 	.att_syntax prefix;\
 .global test_program_end; test_program_end:\
 "
