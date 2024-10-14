@@ -42,12 +42,14 @@ thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; r
  * That is wrong, or rather that's not all it should do, in my opinion.
  * It is also a priority manager, it must make sure no threads starve by temporarily raising their priority.
  * The scheduler must do load balancing.
+ * TODO: Make this good in our scheduler.
 */
 
 // Returns false if the quantum is done, otherwise true if the action was completed
-#ifndef OBOS_UP
+#if 0
 static bool ThreadStarvationPrevention(thread_priority_list* list, thread_priority priority)
 {
+	return true;
 	size_t i = 0;
 	if (++list->noStarvationQuantum >= Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE - priority])
 		return false;
@@ -176,7 +178,7 @@ schedule:
 	// (void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
 	// Thread starvation prevention and work stealing.
 	// The amount of priority lists with a finished (starvation) quantum.
-#ifndef OBOS_UP
+#if 0
 	if (Core_CpuCount > 1)
 	{
 		size_t nPriorityListsFQuantum = 0;

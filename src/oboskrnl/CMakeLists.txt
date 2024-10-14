@@ -15,7 +15,7 @@ list (APPEND oboskrnl_sources
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
-	"syscall.c"
+	"syscall.c" "handle.c"
 )
 
 add_executable(oboskrnl)

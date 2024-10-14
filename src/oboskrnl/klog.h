@@ -12,7 +12,7 @@
 #if OBOS_DEBUG
 #	define OBOS_ASSERT(expression) do { if (!(expression)) { OBOS_Panic(OBOS_PANIC_ASSERTION_FAILED, "Assertion failed in function %s. File: %s, line %d. %s\n", __func__, __FILE__, __LINE__, #expression); } } while(0)
 #else
-#	define OBOS_ASSERT(expression) do { } while(0)
+#	define OBOS_ASSERT(expression) do { (void)(expression); } while(0)
 #endif
 
 #define OBOS_UNREACHABLE (OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unreachable statement reached.\n"))

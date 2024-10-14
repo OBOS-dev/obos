@@ -193,7 +193,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
-	OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+	//OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE

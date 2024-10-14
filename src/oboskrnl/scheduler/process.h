@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <handle.h>
 
 #include <scheduler/thread.h>
 
@@ -19,6 +20,7 @@ typedef struct process
 	uid currentUID;
 	gid currentGID;
 	struct context* ctx;
+	handle_table handles;
 } process;
 extern uint64_t Core_NextPID;
 // The first thread in this process must be the kernel main thread.

@@ -46,8 +46,6 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	CoreS_SendEOI(frame);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
-	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
-	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
@@ -73,7 +71,6 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	if (!irq_obj)
 	{
 		// Spooky actions from a distance...
-		CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 		Core_LowerIrqlNoDPCDispatch(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
@@ -86,7 +83,6 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			irq_obj->handlerUserdata,
 			oldIrql2);
 	}
-	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);
 }

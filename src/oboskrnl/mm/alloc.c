@@ -231,8 +231,21 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     page_range* pc_range = nullptr;
     if (file)
     {
+        bool tried_again = false;
+        try_again1:
+        (void)0;
         page_range what = {.virt=(uintptr_t)file->vn->pagecache.data};
         pc_range = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
+        if (!pc_range)
+        {
+            OBOS_ASSERT(VfsH_PageCacheGetEntry(&file->vn->pagecache, file->offset, size, nullptr));
+            if (!tried_again)
+            {
+                tried_again = true;
+                goto try_again1;
+            }
+            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find pagecache region\n");
+        }
         reg->fileoff = file->offset;
         reg->sz = filesize;
         reg->addr = base;

@@ -4,16 +4,17 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/spinlock.h"
 #include <int.h>
 #include <klog.h>
 
 #include <irq/irql.h>
+#include <irq/dpc.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
-#include <irq/dpc.h>
+
+#include <locks/spinlock.h>
 
 #include <utils/list.h>
 
