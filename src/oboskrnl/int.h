@@ -82,6 +82,14 @@ typedef _Bool bool;
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
 #	define OBOS_NODISCARD __attribute__ ((warn_unused_result))
 #	define OBOS_NODISCARD_REASON(why)  __attribute__ ((warn_unused_result))
+#	define OBOS_MIN(val, val2) \
+	({  typeof (val) _a = (val); \
+		typeof (val2) _b = (val2); \
+		_a < _b ? _a : _b; })
+#	define OBOS_MAX(val, val2) \
+	({  typeof (val) _a = (val); \
+		typeof (val2) _b = (val2); \
+		_a > _b ? _a : _b; })
 #else
 #	define OBOS_NO_KASAN
 #	define OBOS_NO_UBSAN

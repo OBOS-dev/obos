@@ -34,6 +34,14 @@ typedef enum handle_type
     HANDLE_TYPE_EVENT,
     // driver_interface/driverId.h
     HANDLE_TYPE_DRIVER_ID,
+    // scheduler/thread_context_info.h
+    HANDLE_TYPE_THREAD_CTX,
+
+    LAST_VALID_HANDLE_TYPE,
+
+    HANDLE_TYPE_ANY = 0xfd,
+    HANDLE_TYPE_CURRENT = 0xfe,
+    HANDLE_TYPE_INVALID = 0xff,
 } handle_type;
 typedef struct handle_desc
 {
@@ -53,7 +61,16 @@ typedef struct handle_desc
         void* generic; // just in case
     } un;
 } handle_desc;
-typedef unsigned int handle;
+
+#define HANDLE_VALUE_MASK (0xffffff)
+#define HANDLE_TYPE_SHIFT (24)
+
+#define HANDLE_TYPE(hnd) (handle_type)((hnd) >> HANDLE_TYPE_SHIFT)
+#define HANDLE_VALUE(hnd) (unsigned int)((hnd) & HANDLE_VALUE_MASK)
+typedef uint32_t handle;
+#define HANDLE_INVALID (handle)(HANDLE_TYPE_INVALID << 24)
+#define HANDLE_CURRENT (handle)(HANDLE_TYPE_CURRENT << 24)
+#define HANDLE_ANY     (handle)(HANDLE_TYPE_ANY     << 24)
 typedef struct handle_table {
     handle_desc* arr;
     handle_desc* head; // freelist head
@@ -63,6 +80,12 @@ typedef struct handle_table {
 } handle_table;
 
 void OBOS_InitializeHandleTable(handle_table* table);
-handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type);
+handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type, bool ignoreType, obos_status* status);
 handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** const desc);
-void OBOS_HandleFree(handle_table* table, handle hnd);
+void OBOS_HandleFree(handle_table* table, handle_desc *curr);
+
+extern void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handle_desc *new);
+extern void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd);
+
+obos_status Sys_HandleClone(handle hnd, handle* new);
+obos_status Sys_HandleClose(handle hnd);
