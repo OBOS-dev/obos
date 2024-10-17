@@ -96,6 +96,8 @@ typedef struct thread
 	size_t nSignaled; // the count of objects that have signaled the thread.
 
 	struct signal_header* signal_info;
+
+	void* kernelStack; // size: 0x10000 bytes
 } thread;
 typedef struct thread_list
 {

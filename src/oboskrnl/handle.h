@@ -52,25 +52,27 @@ typedef struct handle_desc
         struct dirent* dirent;
         struct thread* thread;
         struct process* process;
-        struct context* context;
+        struct context* vmm_context;
         struct mutex* mutex;
         struct semaphore* semaphore;
         struct pushlock* pushlock;
         struct event* event;
         struct driver_id* driver_id;
+        struct thread_ctx_handle* thread_ctx;
+        struct waitable_header* waitable;
         void* generic; // just in case
     } un;
 } handle_desc;
 
 #define HANDLE_VALUE_MASK (0xffffff)
-#define HANDLE_TYPE_SHIFT (24)
+#define HANDLE_TYPE_SHIFT (24UL)
 
 #define HANDLE_TYPE(hnd) (handle_type)((hnd) >> HANDLE_TYPE_SHIFT)
 #define HANDLE_VALUE(hnd) (unsigned int)((hnd) & HANDLE_VALUE_MASK)
 typedef uint32_t handle;
-#define HANDLE_INVALID (handle)(HANDLE_TYPE_INVALID << 24)
-#define HANDLE_CURRENT (handle)(HANDLE_TYPE_CURRENT << 24)
-#define HANDLE_ANY     (handle)(HANDLE_TYPE_ANY     << 24)
+#define HANDLE_INVALID (handle)((handle)HANDLE_TYPE_INVALID << HANDLE_TYPE_SHIFT)
+#define HANDLE_CURRENT (handle)((handle)HANDLE_TYPE_CURRENT << HANDLE_TYPE_SHIFT)
+#define HANDLE_ANY     (handle)((handle)HANDLE_TYPE_ANY     << HANDLE_TYPE_SHIFT)
 typedef struct handle_table {
     handle_desc* arr;
     handle_desc* head; // freelist head
@@ -80,6 +82,7 @@ typedef struct handle_table {
 } handle_table;
 
 void OBOS_InitializeHandleTable(handle_table* table);
+handle_table* OBOS_CurrentHandleTable();
 handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type, bool ignoreType, obos_status* status);
 handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** const desc);
 void OBOS_HandleFree(handle_table* table, handle_desc *curr);

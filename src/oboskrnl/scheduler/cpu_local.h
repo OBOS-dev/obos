@@ -38,6 +38,7 @@ typedef struct cpu_local
 	bool initialized;
 	dpc_queue dpcs;
 	spinlock dpc_queue_lock;
+	void* currentKernelStack; // size: 0x10000
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;

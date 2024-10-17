@@ -28,12 +28,14 @@ typedef uint64_t syscall_ret_t;
 #error Unknown.
 #endif
 
+// NOTE (for kernel devs): Syscalls can have a max of 5 paramters, any more paramters must be passed through a memory buffer.
+
 // Note: entry can return a max of syscall_ret_t, and can take a max of 6 arguments.
 inline static void OBOS_RegisterSyscall(uint32_t num, uintptr_t entry)
 {
     if (IS_ARCH_SYSCALL(num))
         OBOS_ArchSyscallTable[num-ARCH_SYSCALL_BEGIN] = entry;
     else
-        OBOS_ArchSyscallTable[num-SYSCALL_BEGIN] = entry;
+        OBOS_SyscallTable[num-SYSCALL_BEGIN] = entry;
 }
 void OBOSS_InitializeSyscallInterface();

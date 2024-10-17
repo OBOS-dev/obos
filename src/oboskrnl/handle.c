@@ -13,6 +13,8 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>
 
+#include <irq/irql.h>
+
 #include <locks/mutex.h>
 
 #include <allocators/base.h>
@@ -29,6 +31,16 @@ void OBOS_InitializeHandleTable(handle_table* table)
 {
     table->lock = MUTEX_INITIALIZE();
     expand_handle_table(table, 64);
+}
+handle_table* OBOS_CurrentHandleTable()
+{
+    // can only access cpu local stuff at IRQL_DISPATCH
+    irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : IRQL_INVALID;
+    handle_table* table = &CoreS_GetCPULocalPtr()->currentThread->proc->handles;
+    if (oldIrql != IRQL_INVALID)
+        Core_LowerIrql(oldIrql);
+    return table;
+
 }
 #define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
 handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type, bool ignoreType, obos_status* status)

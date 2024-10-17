@@ -266,6 +266,7 @@ switch_thread:
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
+	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;

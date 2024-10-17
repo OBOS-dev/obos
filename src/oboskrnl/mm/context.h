@@ -104,6 +104,7 @@ typedef struct memstat
 } memstat;
 typedef struct context
 {
+    page_table pt;
     struct process* owner;
     page_tree pages;
     working_set workingSet;
@@ -113,7 +114,6 @@ typedef struct context
         size_t nNodes;
     } referenced;
     spinlock lock;
-    page_table pt;
     dpc file_mapping_dpc;
     memstat stat;
 } context;

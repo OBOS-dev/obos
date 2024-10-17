@@ -11,6 +11,7 @@ extern Core_LowerIrql
 extern Arch_KernelCR3
 
 %macro sys_pushaq 0
+push 0 ; cr3
 push rcx
 push rbx
 push rsi
@@ -42,22 +43,39 @@ pop rdi
 pop rsi
 pop rbx
 pop rcx
+pop r9 ; cr3
+mov cr3, r9
 %endmacro
 
+section .data
+global Arch_cpu_local_currentKernelStack_offset
+Arch_cpu_local_currentKernelStack_offset:
+    dq 0
+section .text
+
 global Arch_SyscallTrapHandler
-; NOTE: Clobbers r10
+; NOTE: Clobbers r10,rcx,r11
+; Return value in rdx:rax
+; Parameter registers (in order):
+; rdi, rsi, rdx, r8, r9
+; Syscall number is in eax.
 Arch_SyscallTrapHandler:
     swapgs
     mov r10, rsp
+    ; Switch to a temporary stack
     mov rsp, [gs:0xc8]
-    add rsp, 0x30000
-    sys_pushaq
-    mov rbp, rsp
+    add rsp, 0x20000
 
-    mov rdx, cr3
     push rdx
     mov rdx, [Arch_KernelCR3]
     mov cr3, rdx
+    pop rdx
+
+    ; Switch to the thread's 'proper' stack
+    mov rsp, [Arch_cpu_local_currentKernelStack_offset] ; hacky, but works
+    mov rsp, [gs:rsp]
+    add rsp, 0x10000
+    sys_pushaq
 
     ; eax has the syscall number.
 
@@ -73,6 +91,7 @@ Arch_SyscallTrapHandler:
 .not_arch_syscall:
 
     push rax
+    push r11
     push rdi
     push rsi
     push rdx
@@ -88,12 +107,15 @@ Arch_SyscallTrapHandler:
     pop rdx
     pop rsi
     pop rdi
+    pop r11
     pop r10
     push rax
     mov rax, r10
 
     mov r10, 0xffffffff
     and rax, r10
+    mov rcx, r8
+    mov r8, r9
     call [r11+rax*8]
 
     cli
@@ -105,11 +127,12 @@ Arch_SyscallTrapHandler:
     pop rax
 
 .done:
-    pop r9
-    mov cr3, r9
 
-    mov rsp, rbp
+    mov r9, gs:0x18
+    mov r9, [r9]
+    mov [rsp+14*8], r9 ; old_cr3 = currentContext->pt
     sys_popaq
+
     mov rsp, r10
     swapgs
     o64 sysret

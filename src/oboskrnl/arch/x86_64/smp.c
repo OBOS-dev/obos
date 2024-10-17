@@ -118,7 +118,7 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	info->arch_specific.gdtEntries[6] = *((uint64_t*)&tss_entry + 1);
 
 	info->arch_specific.tss.ist0 = istStack + 0x10000 /* see comment as to why we do this */;
-	info->arch_specific.tss.rsp0 = istStack + 0x30000 /* see comment as to why we do this */;
+	info->arch_specific.tss.rsp0 = istStack + 0x20000 /* see comment as to why we do this */;
 	info->arch_specific.tss.iopb = sizeof(info->arch_specific.tss) - 1;
 	struct
 	{
@@ -139,7 +139,7 @@ static void idleTaskBootstrap()
 }
 void Arch_APEntry(cpu_local* info)
 {
-	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x30000);
+	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
 	wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
 	Arch_InitializeIDT(false);
 	irql oldIrql = Core_RaiseIrql(0xf);
@@ -191,7 +191,7 @@ void Arch_SMPStartup()
 	{
 		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
 		{
-			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x30000, nullptr)), 0x30000);
+			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);
 			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 			continue;
 		}
@@ -202,7 +202,7 @@ void Arch_SMPStartup()
 		cpu_info[i].currentIrql = 0;
 		cpu_info[i].isBSP = false;
 		cpu_info[i].schedulerTicks = 0;
-		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x30000, nullptr);
+		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr);
 		cpu_info[i].arch_specific.startup_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
 		Core_DefaultThreadAffinity |= CoreH_CPUIdToAffinity(cpu_info[i].id);
 		SetMemberInSMPTrampoline((uintptr_t)&Arch_SMPTrampolineRSP - (uintptr_t)Arch_SMPTrampolineStart, (uint64_t)cpu_info[i].arch_specific.startup_stack + 0x4000);

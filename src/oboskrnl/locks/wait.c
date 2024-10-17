@@ -96,7 +96,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
         CoreH_ThreadBlock(curr, true);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitable_header* objs)
+obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs)
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -108,7 +108,7 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitabl
     curr->nWaiting = 0;
     for (size_t i = 0; i < nObjects; i++)
     {
-        struct waitable_header* obj = (struct waitable_header*)((uintptr_t)objs + stride*i);
+        struct waitable_header* obj = objs[i];
         irql oldIrql = Core_SpinlockAcquire(&obj->lock);
         if (obj->signaled && obj->use_signaled)
         {

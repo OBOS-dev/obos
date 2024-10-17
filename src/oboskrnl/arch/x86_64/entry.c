@@ -992,12 +992,15 @@ extern char test_program_end[];
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};
 	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+	Mm_VirtualMemoryAlloc(new_ctx, (void*)0x40000, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
 	CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)mem, 0, true, stack, 0x4000);
 	CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);
 	Core_ProcessAppendThread(new, thr);
 	thr->signal_info = OBOSH_AllocateSignalHeader();
 	// thr->signal_info->signals[SIGSEGV].un.handler = mem+0x11;
+	if (!thr->kernelStack)
+		thr->kernelStack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
 	CoreH_ThreadReady(thr);
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
@@ -1023,13 +1026,41 @@ asm (
 	".global test_program;"
 "\
 test_program:;\
-	mov rcx, 10;\
-	loop_beg:;\
-		push rcx;\
-		call Sys_Yield;\
-		pop rcx;\
-		loop loop_beg;\
-	call Sys_Shutdown;\
+	push rbp;\
+	mov rbp, rsp;\
+	sub rsp, 0x8;\
+	lea rdi, [rip+test_thread];\
+	mov rsi, 0;\
+	mov rdx, 0x40000;\
+	mov r8, 0x4000;\
+	mov r9, 0xfe000000;\
+	mov eax, 6;\
+	syscall;\
+	mov [rbp-4], eax;\
+	mov rdi, 2;\
+	mov rsi, 0;\
+	mov rdx, 0;\
+	mov r8, [rbp-4];\
+	mov eax, 9;\
+	syscall;\
+	mov [rbp-8], eax;\
+	mov edi, [rbp-8];\
+	mov esi, 0xfe000000;\
+	mov eax, 15;\
+	syscall;\
+	mov edi, [rbp-8];\
+	mov eax, 10;\
+	syscall;\
+	mov edi, [rbp-8];\
+	mov eax, 4;\
+	syscall;\
+	mov edi, [rbp-4];\
+	mov eax, 4;\
+	syscall;\
+	call Sys_ExitCurrentThread;\
+test_thread:;\
+	call Sys_Yield;\
+	call Sys_ExitCurrentThread;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\
 	syscall;\

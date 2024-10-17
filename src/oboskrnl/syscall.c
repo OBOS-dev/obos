@@ -7,9 +7,12 @@
 #include <int.h>
 #include <klog.h>
 #include <syscall.h>
+#include <handle.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
+
+#include <scheduler/sched_sys.h>
 
 /*void Sys_Yield()
 {
@@ -35,12 +38,40 @@ void Sys_Shutdown()
         asm volatile("");
 }
 #else
+void Sys_Reboot()
+{
+    OBOS_Log("Unimplemented: Sys_Reboot\n");
+    return;
+}
+void Sys_Shutdown()
+{
+    OBOS_Log("Unimplemented: Sys_Shutdown\n");
+    return;
+}
 #endif
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
     (uintptr_t)Sys_Reboot,
     (uintptr_t)Sys_Shutdown,
+    (uintptr_t)Sys_HandleClose,
+    (uintptr_t)Sys_HandleClone,
+    (uintptr_t)Sys_ThreadContextCreate, // 6
+    (uintptr_t)Sys_ThreadContextRead,
+    (uintptr_t)Sys_ThreadOpen,
+    (uintptr_t)Sys_ThreadCreate,
+    (uintptr_t)Sys_ThreadReady,
+    (uintptr_t)Sys_ThreadBlock,
+    (uintptr_t)Sys_ThreadBoostPriority,
+    (uintptr_t)Sys_ThreadPriority,
+    (uintptr_t)Sys_ThreadAffinity,
+    (uintptr_t)Sys_ThreadSetOwner,
+    (uintptr_t)Sys_ThreadGetTid, // 16
+    (uintptr_t)Sys_WaitOnObject,
+    (uintptr_t)Sys_WaitOnObjects,
+    (uintptr_t)Sys_ProcessOpen,  // Unimplemented
+    (uintptr_t)Sys_ProcessStart,
+    (uintptr_t)Sys_ProcessKill,  // Unimplemented
 };
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
 };
