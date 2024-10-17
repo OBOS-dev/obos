@@ -193,7 +193,8 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
-	//OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+	OBOS_TextRendererState.fg_color = 0xffffffff;
+	OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
@@ -647,9 +648,9 @@ void Arch_KernelMainBootstrap()
 			0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
 			nullptr, nullptr);
 		memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
-		for (size_t y = 0; y < Arch_Framebuffer->height; y++)
+		/*for (size_t y = 0; y < Arch_Framebuffer->height; y++)
 			for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-				OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
+				// OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);*/
 		OBOS_TextRendererState.fb.base = base_;
 		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
 			OBOS_KernelAllocator,
@@ -987,7 +988,6 @@ if (st != UACPI_STATUS_OK)\
 	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
 extern char test_program[];
 extern char test_program_end[];
-	printf("%p\n", mem_kern);
 	memcpy(mem_kern, &test_program, test_program_end - test_program);
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};

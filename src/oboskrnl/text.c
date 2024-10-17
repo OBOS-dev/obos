@@ -134,12 +134,12 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 	case '\b':
 		if (!state->column)
 			break;
-		putch(state, ' ', --state->column, state->row, 0xffffffff, OBOS_TEXT_BACKGROUND);
+		putch(state, ' ', --state->column, state->row, state->fg_color, OBOS_TEXT_BACKGROUND);
 		break;
 	default:
 		if (state->column >= (state->fb.width/8))
 			newlineHandler(state);
-		putch(state, ch, state->column++, state->row, 0xffffffff, OBOS_TEXT_BACKGROUND);
+		putch(state, ch, state->column++, state->row, state->fg_color, OBOS_TEXT_BACKGROUND);
 		break;
 	}
 	if (state->fb.backbuffer_base)
@@ -168,7 +168,7 @@ obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t 
 	case '\b':
 		break;
 	default:
-		putch(state, ch, column, row, 0xffffffff, OBOS_TEXT_BACKGROUND);
+		putch(state, ch, column, row, state->fg_color, OBOS_TEXT_BACKGROUND);
 		break;
 	}
 	if (state->fb.backbuffer_base)

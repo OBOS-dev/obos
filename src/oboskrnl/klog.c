@@ -234,15 +234,47 @@ OBOS_EXPORT size_t puts(const char *s)
 	return len;
 }
 
-static void output(const char *str, size_t sz, void* userdata)
+static void con_output(const char *str, size_t sz, void* userdata)
 {
 	if (userdata)
 		for (size_t i = 0; i < sz; i++)
 			OBOS_WriteCharacter((text_renderer_state*)userdata, str[i]);
 }
+static void con_set_color(color c, void* userdata)
+{
+	if (userdata)
+	{
+#define RGBX(r,g,b) (((uint32_t)(r) << 24) | ((uint32_t)(g) << 16) | ((uint32_t)(b) << 8))
+		static color color_to_rgbx[16] = {
+			RGBX(0x00,0x00,0x00), // COLOR_BLACK
+			RGBX(0x00,0x00,0xff), // COLOR_BLUE
+			RGBX(0x00,0x80,0x00), // COLOR_GREEN
+			RGBX(0x00,0xff,0xff), // COLOR_CYAN
+			RGBX(0xff,0x00,0x00), // COLOR_RED
+			RGBX(0xff,0x00,0xff), // COLOR_MAGENTA
+			RGBX(0x8b,0x45,0x13), // COLOR_BROWN
+			RGBX(0xd3,0xd3,0xd3), // COLOR_LIGHT_GREY
+			RGBX(0xa9,0xa9,0xa9), // COLOR_DARK_GREY
+			RGBX(0x00,0xbf,0xff), // COLOR_LIGHT_BLUE
+			RGBX(0x90,0xee,0x90), // COLOR_LIGHT_GREEN
+			RGBX(0xe0,0xff,0xff), // COLOR_LIGHT_CYAN
+			RGBX(0xf0,0x80,0x80), // COLOR_LIGHT_RED
+			RGBX(0xff,0x80,0xff), // COLOR_LIGHT_MAGENTA
+			RGBX(0xff,0xff,0x00), // COLOR_YELLOW
+			RGBX(0xff,0xff,0xff), // COLOR_WHITE
+		};
+		uint32_t new_color = color_to_rgbx[c];
+		text_renderer_state* state = userdata;
+		state->fg_color = new_color;
+	}
+}
+static void con_reset_color(void *userdata)
+{
+	con_set_color(COLOR_WHITE, userdata);
+}
 log_backend OBOS_ConsoleOutputCallback = {
-	.write=output,
-	.set_color=nullptr,
-	.reset_color=nullptr,
+	.write=con_output,
+	.set_color=con_set_color,
+	.reset_color=con_reset_color,
 	.userdata=&OBOS_TextRendererState
 };
