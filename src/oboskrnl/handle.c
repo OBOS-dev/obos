@@ -42,6 +42,15 @@ handle_table* OBOS_CurrentHandleTable()
     return table;
 
 }
+
+void OBOS_LockHandleTable(handle_table* table)
+{
+    Core_MutexAcquire(&table->lock);
+}
+void OBOS_UnlockHandleTable(handle_table* table)
+{
+    Core_MutexRelease(&table->lock);
+}
 #define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
 handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type, bool ignoreType, obos_status* status)
 {
@@ -86,7 +95,6 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     OBOS_ASSERT(table);
     OBOS_ASSERT(desc);
     handle hnd = 0;
-    Core_MutexAcquire(&table->lock);
     if (table->head)
     {
         hnd = table->head - table->arr;
@@ -100,15 +108,12 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     }
     *desc = &table->arr[hnd];
     hnd |= (type << HANDLE_TYPE_SHIFT);
-    Core_MutexRelease(&table->lock);
     return hnd;
 }
 void OBOS_HandleFree(handle_table* table, handle_desc *curr)
 {
-    Core_MutexAcquire(&table->lock);
     curr->un.next = table->head;
     table->head = curr;
-    Core_MutexRelease(&table->lock);
     // any use of this handle past here is a use-after-free
 }
 
@@ -119,38 +124,51 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
 {
     handle_table* const current_table = &CoreS_GetCPULocalPtr()->currentThread->proc->handles;
 
+    OBOS_LockHandleTable(current_table);
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* desc = OBOS_HandleLookup(current_table, hnd, 0, true, &status);
     if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(current_table);
         return status;
+    }
 
     handle_type type = HANDLE_TYPE(hnd);
     if (!OBOS_HandleCloneCallbacks[type])
+    {
+        OBOS_UnlockHandleTable(current_table);
         return OBOS_STATUS_INVALID_OPERATION;
+    }
 
     handle_desc* new_desc = nullptr;
     handle new = OBOS_HandleAllocate(current_table, type, &new_desc);
     status = memcpy_k_to_usr(unew, &new, sizeof(new));
     if (obos_is_error(status))
     {
+        OBOS_UnlockHandleTable(current_table);
         OBOS_HandleFree(current_table, new_desc);
         return status;
     }
 
     void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[type];
     cb(desc, new_desc);
+    OBOS_UnlockHandleTable(current_table);
 
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Sys_HandleClose(handle hnd)
 {
     handle_table* const current_table = &CoreS_GetCPULocalPtr()->currentThread->proc->handles;
+    OBOS_LockHandleTable(current_table);
 
     // Get the handle descriptor.
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* desc = OBOS_HandleLookup(current_table, hnd, 0, true, &status);
     if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(current_table);
         return status;
+    }
 
     // Free the handle's underlying object as well as the handle itself.
     handle_type type = HANDLE_TYPE(hnd);
@@ -158,6 +176,7 @@ obos_status Sys_HandleClose(handle hnd)
     if (cb)
         cb(desc);
     OBOS_HandleFree(current_table, desc);
+    OBOS_UnlockHandleTable(current_table);
 
     return OBOS_STATUS_SUCCESS;
 }

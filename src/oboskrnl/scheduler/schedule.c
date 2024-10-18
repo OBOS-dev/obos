@@ -4,11 +4,11 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "scheduler/thread_context_info.h"
 #include <int.h>
 #include <klog.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>

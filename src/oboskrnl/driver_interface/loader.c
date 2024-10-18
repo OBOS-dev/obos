@@ -4,9 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/dpc.h"
-#include "irq/irql.h"
-#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -20,6 +17,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+#include <scheduler/cpu_local.h>
 
 #include <allocators/base.h>
 
@@ -31,7 +29,10 @@
 #include <mm/context.h>
 #include <mm/page.h>
 
-#   include <elf/elf.h>
+#include <irq/dpc.h>
+#include <irq/irql.h>
+
+#include <elf/elf.h>
 
 // Do it in two passes so that any macros can be expanded
 #define token_concat_impl(tok1, tok2) tok1 ##tok2
@@ -256,9 +257,9 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     if (driver->header.ftable.probe)
         APPEND_DRIVER_NODE(Drv_LoadedFsDrivers, &driver->other_node); // pretty high chance it is a fs driver
     if (strlen(driver->header.driverName))
-        OBOS_Debug("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+        OBOS_Log("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     else
-        OBOS_Debug("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+        OBOS_Log("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     return driver;
 }
 typedef driver_init_status(*driver_entry)(driver_id* id);

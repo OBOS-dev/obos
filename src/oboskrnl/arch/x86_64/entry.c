@@ -198,7 +198,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
-	//OBOS_SetLogLevel(LOG_LEVEL_LOG);
+	OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
@@ -1057,7 +1057,7 @@ test_program:;\
 	mov edi, [rbp-4];\
 	mov eax, 4;\
 	syscall;\
-	call Sys_ExitCurrentThread;\
+	call Sys_Shutdown;\
 test_thread:;\
 	call Sys_Yield;\
 	call Sys_ExitCurrentThread;\

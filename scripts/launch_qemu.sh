@@ -4,6 +4,7 @@ rm qemu_log.txt
 
 qemu-system-x86_64 \
 -drive file=out/obos.iso,format=raw \
+-drive file=disk.img,format=raw \
 -m 1G \
 -gdb tcp:0.0.0.0:1234 -S \
 -boot d \

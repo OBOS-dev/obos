@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "elf/elf64.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -54,7 +53,7 @@ OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw,
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Use of memory block after free).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_UninitMemory:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory.).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_AllocatorMismatch:
 		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p trying to free/reallocate %d bytes at %p. (Hint: Mismatched Allocators)\n", (void*)ip, sz, (void*)addr);
@@ -140,6 +139,9 @@ short_circuit2:
 			break;
 		case ASAN_POISON_FREED:
 			type = ASAN_UseAfterFree;
+			break;
+		case ASAN_POISON_ANON_PAGE_UNINITED:
+			type = ASAN_UninitMemory;
 			break;
 		default:
 			break;
