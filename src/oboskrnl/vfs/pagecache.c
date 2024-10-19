@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "utils/tree.h"
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
@@ -29,7 +30,7 @@
 
 #include <stdatomic.h>
 
-LIST_GENERATE(dirty_pc_list, struct pagecache_dirty_region, node);
+RB_GENERATE(dirty_pc_tree, pagecache_dirty_region, node, compare_dirty_regions);
 LIST_GENERATE(mapped_region_list, struct pagecache_mapped_region, node);
 pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 {
@@ -41,42 +42,25 @@ pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
         pc = &vn->pagecache;
     }
     Core_MutexAcquire(&pc->dirty_list_lock);
-    for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
-    {
-        if (off >= curr->fileoff && off < (curr->fileoff + curr->sz))
-        {
-            Core_MutexRelease(&pc->dirty_list_lock);
-            return curr;
-        }
-
-        curr = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
-    }
+    // for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
+    // {
+    //     if (off >= curr->fileoff && off < (curr->fileoff + curr->sz))
+    //     {
+    //         Core_MutexRelease(&pc->dirty_list_lock);
+    //         return curr;
+    //     }
+    //
+    //     curr = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
+    // }
+    pagecache_dirty_region what = {.fileoff=off,.sz=1};
+    pagecache_dirty_region* res = RB_FIND(dirty_pc_tree, &pc->dirty_regions, &what);
     Core_MutexRelease(&pc->dirty_list_lock);
-    return nullptr;
+    return res;
 }
 // looks for a region that's contiguous with the offset passed.
 static pagecache_dirty_region* find_contiguous_region(pagecache* pc, size_t off)
 {
-    vnode* vn = (vnode*)pc->owner;
-    if (vn->flags & VFLAGS_PARTITION)
-    {
-        off += vn->partitions[0].off;
-        vn = vn->partitions[0].drive;
-        pc = &vn->pagecache;
-    }
-    Core_MutexAcquire(&pc->dirty_list_lock);
-    for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
-    {   
-        if (off == (curr->fileoff+curr->sz))
-        {
-            Core_MutexRelease(&pc->dirty_list_lock);
-            return curr;
-        }
-
-        curr = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
-    }
-    Core_MutexRelease(&pc->dirty_list_lock);
-    return nullptr;
+   return VfsH_PCDirtyRegionLookup(pc, off-1);
 }
 // Note!
 // Does a lookup first, and if there is already a dirty region that can fit the contraints passed, it is used.
@@ -121,7 +105,7 @@ pagecache_dirty_region* VfsH_PCDirtyRegionCreate(pagecache* pc, size_t off, size
     dirty->sz = sz;
     dirty->owner = pc;
     Core_MutexAcquire(&pc->dirty_list_lock);
-    LIST_APPEND(dirty_pc_list, &pc->dirty_regions, dirty);
+    RB_INSERT(dirty_pc_tree, &pc->dirty_regions, dirty);
     Core_MutexRelease(&pc->dirty_list_lock);
     return dirty;
 }
@@ -169,12 +153,15 @@ void VfsH_PageCacheFlush(pagecache* pc)
     size_t blkSize = 0;
     // OBOS_Debug("flushing %d regions\n", pc->dirty_regions.nNodes);
     driver->ftable.get_blk_size(vn->desc, &blkSize);
-    for (pagecache_dirty_region* curr = LIST_GET_HEAD(dirty_pc_list, &pc->dirty_regions); curr; )
+    pagecache_dirty_region* curr = nullptr;
+    for ((curr) = RB_MIN(dirty_pc_tree, &pc->dirty_regions);
+        (curr) != nullptr;
+        )
     {   
-        pagecache_dirty_region* next = LIST_GET_NEXT(dirty_pc_list, &pc->dirty_regions, curr);
+        pagecache_dirty_region* next = RB_NEXT(dirty_pc_tree, &pc->dirty_regions, curr);
         // OBOS_Debug("flushing dirty region from offset 0x%016x with a size of 0x%016x bytes\n", curr->fileoff, curr->sz);
         driver->ftable.write_sync(vn->desc, pc->data + curr->fileoff, curr->sz/blkSize, (curr->fileoff+base_offset)/blkSize, nullptr);
-        LIST_REMOVE(dirty_pc_list, &pc->dirty_regions, curr);
+        RB_REMOVE(dirty_pc_tree, &pc->dirty_regions, curr);
         Vfs_Free(curr);
         curr = next;
     }

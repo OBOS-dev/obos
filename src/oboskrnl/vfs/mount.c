@@ -273,8 +273,8 @@ static void deref_vnode(vnode* vn)
 {
     if (!(--vn->refs))
     {
-        if (vn->pagecache.dirty_regions.nNodes)
-            OBOS_Warning("Freeing a vnode before dirty regions are freed. All cached writes will be dropped.\n");
+        // if (vn->pagecache.dirty_regions.nNodes)
+            // OBOS_Warning("Freeing a vnode before dirty regions are freed. All cached writes will be dropped.\n");
         VfsH_PageCacheUnref(&vn->pagecache);
         if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
             if (!(vn->un.device->refs--))
