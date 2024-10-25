@@ -198,7 +198,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
-	OBOS_SetLogLevel(LOG_LEVEL_LOG);
+	//OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
@@ -991,8 +991,8 @@ extern char test_program_end[];
 	memcpy(mem_kern, &test_program, test_program_end - test_program);
 	thread* thr = CoreH_ThreadAllocate(nullptr);
 	thread_ctx thr_ctx = {};
-	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
-	Mm_VirtualMemoryAlloc(new_ctx, (void*)0x40000, 0x4000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+	Mm_VirtualMemoryAlloc(new_ctx, (void*)0x40000, 0x4000, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
 	CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)mem, 0, true, stack, 0x4000);
 	CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);
@@ -1028,10 +1028,18 @@ asm (
 test_program:;\
 	push rbp;\
 	mov rbp, rsp;\
-	sub rsp, 0x8;\
+	sub rsp, 0x10;\
+	mov rdi, 0xfe0000000;\
+	mov rsi, 0;\
+	mov rdx, 0x4000;\
+	lea r8, [rip+alloc_packet];\
+	mov r9, 0;\
+	mov eax, 22;\
+	syscall;\
+	mov [rbp-0x10], rax;\
 	lea rdi, [rip+test_thread];\
 	mov rsi, 0;\
-	mov rdx, 0x40000;\
+	mov rdx, [rbp-0x10];\
 	mov r8, 0x4000;\
 	mov r9, 0xfe000000;\
 	mov eax, 6;\
@@ -1057,10 +1065,9 @@ test_program:;\
 	mov edi, [rbp-4];\
 	mov eax, 4;\
 	syscall;\
-	call Sys_Shutdown;\
-test_thread:;\
-	call Sys_Yield;\
 	call Sys_ExitCurrentThread;\
+test_thread:;\
+	call Sys_Shutdown;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\
 	syscall;\
@@ -1076,6 +1083,10 @@ Sys_Reboot:;\
 	mov eax, 2;\
 	syscall; ret;\
 	.att_syntax prefix;\
+alloc_packet:\
+.int 0;\
+.int 1<<2;\
+.int 0xff000000;\
 .global test_program_end; test_program_end:\
 "
 );

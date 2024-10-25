@@ -32,7 +32,7 @@ typedef struct page_info
     struct page_node ln_node; // for the 'struct page' list.
     uintptr_t virt;
     uintptr_t phys;
-    struct page_range* range;
+    struct page_range* range; // note: reserved for user mode versions of this struct
     page_protection prot;
     bool dirty : 1;
     bool accessed : 1;
@@ -96,9 +96,6 @@ typedef struct page_range
     size_t refs;
     struct pagecache_mapped_region* mapped_here;
     RB_ENTRY(page_range) rb_node;
-    struct cow_page_range_node {
-        struct cow_page_range_node* next, *prev;
-    } cow_page_range_node;
     struct {
         struct working_set_node *head, *tail;
         size_t nNodes;
@@ -109,6 +106,7 @@ typedef struct page_range
     bool hasGuardPage : 1;
     bool reserved : 1;
     bool cow : 1;
+    bool can_fork; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
     union {
         enum {

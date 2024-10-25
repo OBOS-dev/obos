@@ -70,8 +70,11 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     curr.range = rng;
     curr.prot = rng->prot;
     curr.prot.rw = (ec & PF_EC_RW) && !rng->prot.ro;
-    if (rng->cow)
-        curr.prot.rw = false;
+    page what = {.phys=phys};
+
+    page* phys_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    MmH_RefPage(phys_pg);
+
     curr.prot.present = true;
     MmS_SetPageMapping(ctx->pt, &curr, phys, true);
     if (curr.prot.rw)

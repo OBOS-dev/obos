@@ -31,7 +31,6 @@
 #include <stdatomic.h>
 
 RB_GENERATE(dirty_pc_tree, pagecache_dirty_region, node, compare_dirty_regions);
-LIST_GENERATE(mapped_region_list, struct pagecache_mapped_region, node);
 pagecache_dirty_region* VfsH_PCDirtyRegionLookup(pagecache* pc, size_t off)
 {
     vnode* vn = (vnode*)pc->owner;

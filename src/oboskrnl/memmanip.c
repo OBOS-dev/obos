@@ -28,6 +28,8 @@ obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
     for (size_t i = 0; i < count; )
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_src + i, nullptr, &usrphys);
+        if (!usrphys)
+            return OBOS_STATUS_PAGE_FAULT;
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy((void*)((uintptr_t)k_dest + i), MmS_MapVirtFromPhys(usrphys+usroffset), currCount);
         usroffset = 0;
@@ -47,6 +49,8 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     for (size_t i = 0; i < count; )
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, nullptr, &usrphys);
+        if (!usrphys)
+            return OBOS_STATUS_PAGE_FAULT;
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);
         usroffset = 0;

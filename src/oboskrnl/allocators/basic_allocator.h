@@ -62,6 +62,8 @@ typedef struct basic_allocator
 	basicalloc_region *regionHead, *regionTail;
 	size_t nRegions;
 	size_t totalMemoryAllocated;
+	size_t nAllocations;
+	size_t nFrees;
 	spinlock lock;
 } basic_allocator;
 

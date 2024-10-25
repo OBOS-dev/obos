@@ -4,7 +4,6 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -15,6 +14,7 @@
 #include <locks/spinlock.h>
 
 #include <scheduler/schedule.h>
+#include <scheduler/cpu_local.h>
 
 #ifdef __x86_64__
 #	define spinlock_hint() __builtin_ia32_pause()

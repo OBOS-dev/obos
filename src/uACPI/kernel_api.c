@@ -18,7 +18,6 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
-#include <irq/dpc.h>
 
 #include <locks/spinlock.h>
 #include <locks/mutex.h>
@@ -30,6 +29,7 @@
 #include <irq/irq.h>
 #include <irq/irql.h>
 #include <irq/timer.h>
+#include <irq/dpc.h>
 
 #include <allocators/base.h>
 
@@ -498,7 +498,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr* out)
     return UACPI_STATUS_OK;
 }
 
-void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql oldIrql)
+static void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql oldIrql)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
@@ -507,6 +507,7 @@ void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql old
     uacpi_interrupt_handler handler = (uacpi_interrupt_handler)((void**)udata)[1];
     handler(ctx);
 }
+
 uacpi_status uacpi_kernel_install_interrupt_handler(
     uacpi_u32 irq, uacpi_interrupt_handler handler, uacpi_handle ctx,
     uacpi_handle *out_irq_handle

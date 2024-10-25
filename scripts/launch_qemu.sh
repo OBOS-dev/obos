@@ -16,7 +16,7 @@ qemu-system-x86_64 \
 -smp cores=4,threads=1,sockets=1 \
 -M smm=off \
 -d int \
--D qemu_log.txt
+-D qemu_log.txt -no-shutdown
 # -nographic
 # -enable-kvm \
 # -drive id=disk2,file=disk.img,if=none,format=raw -device ide-hd,drive=disk2,bus=ahci1.1 \

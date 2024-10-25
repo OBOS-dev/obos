@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/interrupt_frame.h>
@@ -40,10 +41,13 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 		lapic_region.mmioRange = true;
 		OBOSH_BasicMMAddRegion(&lapic_region, Arch_LAPICAddress, 0x1000);
 	}
+	cli();
 	lapic_msr |= APIC_ENABLE;
 	if (isBSP)
 		lapic_msr |= APIC_BSP;
 	wrmsr(IA32_APIC_BASE, lapic_msr);
+	if (isBSP)
+		Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
 	Arch_LAPICAddress->spuriousInterruptVector = 0x1ff /* LAPIC Enabled, spurious vector 0xff */;
 	Arch_LAPICAddress->lvtLINT0 = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	if (isBSP)
@@ -54,10 +58,12 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	Arch_LAPICAddress->lvtPerformanceMonitoringCounters = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtThermalSensor = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtTimer = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
-	Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
+	sti();
+
 }
 void Arch_LAPICSendEOI()
 {
+	OBOS_ASSERT(Arch_LAPICAddress);
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;
 }

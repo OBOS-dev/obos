@@ -85,7 +85,7 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
     {
         if (status)
             *status = OBOS_STATUS_INVALID_ARGUMENT;
-        return nullptr; // use-after-free
+        return nullptr; // use-after-free; it is impossible for a handle in-use to be nullptr
     }
     *status = OBOS_STATUS_SUCCESS;
     return &table->arr[hnd];
@@ -117,8 +117,44 @@ void OBOS_HandleFree(handle_table* table, handle_desc *curr)
     // any use of this handle past here is a use-after-free
 }
 
-void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handle_desc *new);
-void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd);
+void unimpl_handle_clone(handle_desc *hnd, handle_desc *new)
+{
+    OBOS_UNUSED(new);
+    OBOS_Warning("Cannot clone handle descriptor %p. Unimplemented.\n", hnd);
+}
+void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handle_desc *new) = {
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+    unimpl_handle_clone,
+};
+
+void unimpl_handle_close(handle_desc* hnd)
+{
+    OBOS_Warning("Cannot close handle descriptor %p. Unimplemented.\n", hnd);
+}
+void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    nullptr, // TODO: Refcount vmm contexts.
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+    unimpl_handle_close,
+};
 
 obos_status Sys_HandleClone(handle hnd, handle* unew)
 {

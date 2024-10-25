@@ -14,6 +14,8 @@
 
 #include <scheduler/sched_sys.h>
 
+#include <mm/mm_sys.h>
+
 /*void Sys_Yield()
 {
     OBOS_Debug("yielding\n");
@@ -21,8 +23,10 @@
 }*/
 #if OBOS_ARCHITECTURE_HAS_ACPI
 #include <uacpi/sleep.h>
+// TODO: Do we need to do this on the BSP?
 void Sys_Reboot()
 {
+    OBOSS_HaltCPUs();
     uacpi_reboot();
     while(1)
         asm volatile("");
@@ -30,6 +34,7 @@ void Sys_Reboot()
 void Sys_Shutdown()
 {
     OBOS_Log("oboskrnl: Shutdown requested.\n");
+    OBOSS_HaltCPUs();
     // We're at IRQL_DISPATCH which should probably be enough for prepare for sleep state.
     uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
     UACPI_ARCH_DISABLE_INTERRUPTS();
@@ -72,6 +77,16 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ProcessOpen,  // Unimplemented
     (uintptr_t)Sys_ProcessStart,
     (uintptr_t)Sys_ProcessKill,  // Unimplemented
+    (uintptr_t)Sys_VirtualMemoryAlloc, // 22
+    (uintptr_t)Sys_VirtualMemoryFree,
+    (uintptr_t)Sys_VirtualMemoryProtect,
+    (uintptr_t)Sys_VirtualMemoryLock, // Unimplemented
+    (uintptr_t)Sys_VirtualMemoryUnlock, // Unimplemented
+    (uintptr_t)Sys_MakeNewContext,
+    (uintptr_t)Sys_ContextExpandWSCapacity,
+    (uintptr_t)Sys_ContextGetStat,
+    (uintptr_t)Sys_GetUsedPhysicalMemoryCount,
+    (uintptr_t)Sys_QueryPageInfo,
 };
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
 };

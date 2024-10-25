@@ -27,6 +27,7 @@
 #include <irq/irql.h>
 
 #include <locks/spinlock.h>
+#include <locks/pushlock.h>
 
 allocator_info* OBOS_NonPagedPoolAllocator;
 allocator_info* Mm_Allocator;
@@ -251,7 +252,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         reg->addr = base;
         reg->owner = &file->vn->pagecache;
         reg->ctx = ctx;
-        LIST_APPEND(mapped_region_list, &reg->owner->mapped_regions, reg);
     }
     bool present = false;
     volatile bool isNew = true;
@@ -331,9 +331,10 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                     rng->un.cow_type = COW_SYMMETRIC;
                     pc_range->cow = true;
                     pc_range->un.cow_type = COW_SYMMETRIC;
+                    pc_range->prot.rw = false;
                     info.prot.rw = false;
-                    MmS_SetPageMapping(ctx->pt, &info, info.phys, false);
                 }
+                MmS_SetPageMapping(ctx->pt, &info, info.phys, false);
             }
             else
             {

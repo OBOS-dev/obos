@@ -326,6 +326,7 @@ tryAgain:
 	if (memcmp_b(OBOS_NODE_ADDR(freeNode), OBOS_ASANPoisonValues[ASAN_POISON_FREED], 8))
 		memzero(OBOS_NODE_ADDR(freeNode), freeNode->size);
 #endif
+	((basic_allocator*)This_)->nAllocations++;
 	return OBOS_NODE_ADDR(freeNode);
 }
 static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
@@ -402,6 +403,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		r->allocated.head = n->next;
 	if (r->allocated.tail == n)
 		r->allocated.tail = n->prev;
+	((basic_allocator*)This_)->nFrees++;
 	if (!(--r->allocated.nNodes))
 	{
 		freeRegion((basic_allocator*)This_, r);

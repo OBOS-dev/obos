@@ -19,6 +19,8 @@
 #include <utils/list.h>
 #include <utils/tree.h>
 
+// TODO: Make namecache a tree of cached directory hierarchy, instead of storing paths in the cache
+
 static size_t str_search(const char* str, char ch)
 {
     size_t ret = strchr(str, ch);

@@ -8,17 +8,15 @@
 
 #include <int.h>
 
-#include <utils/list.h>
 #include <utils/tree.h>
 
 #include <locks/mutex.h>
+#include <locks/pushlock.h>
 
 #include <mm/handler.h>
 
 #include <stdatomic.h>
 
-typedef LIST_HEAD(mapped_region_list, struct pagecache_mapped_region) mapped_region_list;
-LIST_PROTOTYPE(mapped_region_list, struct pagecache_mapped_region, node);
 typedef RB_HEAD(dirty_pc_tree, pagecache_dirty_region) dirty_pc_tree;
 RB_PROTOTYPE(dirty_pc_tree, pagecache_dirty_region, node, compare_dirty_regions);
 typedef struct pagecache
@@ -31,7 +29,6 @@ typedef struct pagecache
     mutex dirty_list_lock;
     dirty_pc_tree dirty_regions;
     atomic_size_t refcnt;
-    mapped_region_list mapped_regions;
     struct vnode* owner;
 } pagecache;
 typedef struct pagecache_dirty_region
@@ -52,7 +49,6 @@ typedef struct pagecache_mapped_region
     atomic_size_t sz;
     pagecache* owner;
     struct context* ctx;
-    LIST_NODE(mapped_region_list, struct pagecache_mapped_region) node;
 } pagecache_mapped_region;
 #define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
 inline static int compare_dirty_regions(pagecache_dirty_region* left, pagecache_dirty_region* right)
