@@ -181,11 +181,7 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	node->prev = list->tail;
 	list->tail = node;
 	list->nNodes++;
-	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
-	{
-		Core_LowerIrql(oldIrql);
-		Core_SpinlockForcedRelease(&list->lock);
-	}
+	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
@@ -216,11 +212,7 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 	list->nNodes--;
 	node->next = nullptr;
 	node->prev = nullptr;
-	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
-	{
-		Core_LowerIrql(oldIrql);
-		Core_SpinlockForcedRelease(&list->lock);
-	}
+	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
 thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)

@@ -164,8 +164,10 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	if (OBOSS_HaltCPUs)
 		OBOSS_HaltCPUs();
 #endif
-	Core_SpinlockForcedRelease(&s_printfLock);
-	Core_SpinlockForcedRelease(&s_loggerLock);
+/*	Core_SpinlockForcedRelease(&s_printfLock);
+	Core_SpinlockForcedRelease(&s_loggerLock);*/
+	Core_SpinlockRelease(&s_printfLock, Core_GetIrql());
+	Core_SpinlockRelease(&s_loggerLock, Core_GetIrql());
 	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
 	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);

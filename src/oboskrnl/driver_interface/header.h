@@ -57,13 +57,13 @@ typedef enum driver_header_flags
     /// </summary>
     DRIVER_HEADER_PCI_HAS_DEVICE_ID = 0x80,
     /// <summary>
-    /// Set if the timeout field is valid.
+    /// Set if the driver header has the version field.
     /// </summary>
-    DRIVER_HEADER_HAS_TIMEOUT = 0x100,
+    DRIVER_HEADER_HAS_VERSION_FIELD = 0x100,
     /// <summary>
-    /// Set if timeouts should be ignored.
+    /// Set to tell PnP to ignore the driver.
     /// </summary>
-    DRIVER_HEADER_DISALLOW_TIMEOUT = 0x100,
+    DRIVER_HEADER_PNP_IGNORE = 0x200,
 } driver_header_flags;
 typedef enum iterate_decision
 {
@@ -145,10 +145,14 @@ typedef struct driver_ftable
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 } driver_ftable;
+#define CURRENT_DRIVER_HEADER_VERSION (1)
 typedef struct driver_header
 {
+    // Set to OBOS_DRIVER_MAGIC.
     uint64_t magic;
+    // See driver_header_flags
     uint32_t flags;
+    // The PCI device associcated with this.
     pci_device pciId;
     struct
     {
@@ -163,6 +167,14 @@ typedef struct driver_header
     size_t stackSize; // If DRIVER_HEADER_FLAGS_REQUEST_STACK_SIZE is set.
     driver_ftable ftable;
     char driverName[64];
+    uint32_t version;
+    // If UACPI_INIT_LEVEL_EARLY, this field does nothing.
+    // If a uacpi symbol is used in the driver, and this field is specified, the kernel will the current uacpi init level against this.
+    // If the init level is < level, then the driver load is failed.
+    // Only valid if version >= 1, and the version field exists.
+    uint32_t uacpi_init_level_required;
+    // Reserved for future use; do not use when version <= 1
+    char reserved[0x100-8];
 } driver_header;
 typedef struct driver_header_node
 {

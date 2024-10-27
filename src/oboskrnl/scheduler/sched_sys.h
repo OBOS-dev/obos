@@ -28,7 +28,6 @@ typedef struct thread_ctx_handle
 // scheduler/thread_context_info.h
 
 handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, size_t stack_size, handle vmm_context);
-obos_status Sys_ThreadContextRead(handle thread_context, struct thread_context_info* out);
 
 // scheduler/thread.h
 

@@ -64,6 +64,8 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
 
     return hnd;
 }
+/*
+ * We have removed this syscall since it simply leaks kernel data, and does not do what userspace would expect.
 obos_status Sys_ThreadContextRead(handle thread_context, struct thread_context_info* out)
 {
     if (!out)
@@ -84,7 +86,7 @@ obos_status Sys_ThreadContextRead(handle thread_context, struct thread_context_i
     status = memcpy_k_to_usr(out, thr_ctx->ctx, sizeof(*out));
     Core_PushlockRelease(&thr_ctx->lock, true);
     return status;
-}
+}*/
 
 // scheduler/thread.h
 

@@ -60,6 +60,24 @@ static OBOS_NO_UBSAN driver_header* find_header(void* file, size_t szFile)
     }
     return nullptr;
 }
+static size_t get_header_size(driver_header* header)
+{
+    size_t sizeof_header = 0;
+    if (~header->flags & DRIVER_HEADER_HAS_VERSION_FIELD)
+        sizeof_header = sizeof(*header)-0x100; // An old-style driver.
+    else
+    {
+        switch (header->version)
+        {
+            case CURRENT_DRIVER_HEADER_VERSION:
+                sizeof_header = sizeof(*header);
+                break;
+            default:
+                return SIZE_MAX;
+        }
+    }
+    return sizeof_header;
+}
 OBOS_NO_UBSAN obos_status Drv_LoadDriverHeader(const void* file_, size_t szFile, driver_header* header)
 {
     if (!header)
@@ -123,7 +141,11 @@ OBOS_NO_UBSAN obos_status Drv_LoadDriverHeader(const void* file_, size_t szFile,
     // Verify its contents.
     if (header_->magic != OBOS_DRIVER_MAGIC)
         return OBOS_STATUS_INVALID_HEADER;
-    memcpy(header, header_, sizeof(*header));
+    size_t sizeof_header = get_header_size(header_);
+    if (sizeof_header == SIZE_MAX)
+        return OBOS_STATUS_INVALID_HEADER;
+    memcpy(header, header_, sizeof_header);
+    memzero((void*)((uintptr_t)header + sizeof_header), sizeof(*header) - sizeof_header);
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_status* status)
@@ -142,6 +164,10 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     size_t nEntriesDynamicSymbolTable = 0;
     const char* dynstrtab = nullptr;
     void* top = nullptr;
+    // Temporarily do this.
+    driver->header.flags = header_.flags;
+    if (header_.flags & DRIVER_HEADER_HAS_VERSION_FIELD && header_.version >= 1)
+        driver->header.uacpi_init_level_required = header_.uacpi_init_level_required;
     driver->base = DrvS_LoadRelocatableElf(driver, file_, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
     if (!driver->base)
     {
@@ -183,7 +209,10 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             OBOS_ASSERT(header); // If this fails, something scuffed has happened.
         }
     }
-    driver->header = *header;
+    //driver->header = *header;
+    size_t sizeof_header = get_header_size(header);
+    memcpy(&driver->header, header, sizeof_header);
+    memzero((void*)((uintptr_t)&driver->header + sizeof_header), sizeof(*header) - sizeof_header);
     if (!(header->flags & DRIVER_HEADER_FLAGS_NO_ENTRY))
         driver->entryAddr = OffsetPtr(driver->base, ehdr->e_entry, uintptr_t);
     for (size_t i = 0; i < nEntriesDynamicSymbolTable; i++)

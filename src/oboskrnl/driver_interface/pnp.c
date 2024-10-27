@@ -329,9 +329,16 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
     for (driver_header_node* node = what.head; node; )
     {
         if (!node->data)
+        {
+            node = node->next;
             continue;
+        }
         driver_header* drv = node->data;
-        OBOS_UNUSED(drv);
+        if (drv->flags & DRIVER_HEADER_PNP_IGNORE)
+        {
+            node = node->next;
+            continue;
+        }
 #if OBOS_ARCHITECTURE_HAS_ACPI
         if ((drv->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI))
             for (size_t i = 0; i < drv->acpiId.nPnpIds; i++) 

@@ -137,6 +137,7 @@ static void idleTaskBootstrap()
 	CoreS_GetCPULocalPtr()->initialized = true;
 	Arch_IdleTask();
 }
+extern void Arch_InitializeMiscFeatures();
 void Arch_APEntry(cpu_local* info)
 {
 	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
@@ -155,6 +156,7 @@ void Arch_APEntry(cpu_local* info)
 	Core_ProcessAppendThread(OBOS_KernelProcess, idleThread);
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);
+	Arch_InitializeMiscFeatures();
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
 }
 static OBOS_NO_UBSAN void SetMemberInSMPTrampoline(uint8_t off, uint64_t val)
@@ -239,6 +241,7 @@ void Arch_SMPStartup()
 	Core_LowerIrql(oldIrql);
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage(nullptr);
+	Arch_InitializeMiscFeatures();
 }
 _Atomic(bool) Arch_HaltCPUs = false;
 _Atomic(uint8_t) Arch_CPUsHalted = 0;

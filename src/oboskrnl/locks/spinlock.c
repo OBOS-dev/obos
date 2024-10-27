@@ -16,12 +16,6 @@
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
 
-#ifdef __x86_64__
-#	define spinlock_hint() __builtin_ia32_pause()
-#elif defined(__m68k__)
-#	define spinlock_hint() asm("nop")
-#endif
-
 spinlock Core_SpinlockCreate()
 {
 	spinlock tmp = {};
@@ -42,9 +36,16 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 	// if (++lock->nCPUsWaiting == Core_CpuCount && Core_CpuCount != 1)
 	// 	OBOS_Warning("Deadlocked! Thread with spinlock has a tid of %ld.\n", lock->owner ? lock->owner->tid : UINT64_MAX);
 #endif
-	irql newIrql = minIrql == IRQL_INVALID ? IRQL_INVALID : Core_GetIrql() < minIrql ? irqlNthrVariant ? Core_RaiseIrqlNoThread(minIrql) : Core_RaiseIrql(minIrql) : IRQL_INVALID;
+	irql newIrql =
+		(minIrql == IRQL_INVALID) ?
+			IRQL_INVALID :
+			(Core_GetIrql() < minIrql) ?
+				irqlNthrVariant ?
+					Core_RaiseIrqlNoThread(minIrql) :
+					Core_RaiseIrql(minIrql) : IRQL_INVALID
+		;
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_seq_cst))
-		spinlock_hint();
+		OBOSS_SpinlockHint();
 	// lock->nCPUsWaiting--;
 	lock->irqlNThrVariant = irqlNthrVariant;
 #ifdef OBOS_DEBUG
@@ -74,6 +75,8 @@ OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrq
 	lock->irqlNThrVariant = false;
 	return OBOS_STATUS_SUCCESS;
 }
+/*
+ * No.
 OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 {
 	atomic_flag_clear_explicit(&lock->val, memory_order_seq_cst);
@@ -82,7 +85,7 @@ OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 	lock->owner = nullptr;
 #endif
 	lock->locked = false;
-}
+}*/
 bool Core_SpinlockAcquired(spinlock* const lock)
 {
 	return lock ? lock->locked : false;

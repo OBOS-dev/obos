@@ -9,6 +9,7 @@ extern OBOS_ArchSyscallTable
 extern Core_RaiseIrql
 extern Core_LowerIrql
 extern Arch_KernelCR3
+extern Sys_InvalidSyscall
 
 %macro sys_pushaq 0
 push 0 ; cr3
@@ -54,6 +55,7 @@ Arch_cpu_local_currentKernelStack_offset:
 section .text
 
 global Arch_SyscallTrapHandler
+
 ; NOTE: Clobbers r10,rcx,r11
 ; Return value in rdx:rax
 ; Parameter registers (in order):
@@ -116,7 +118,14 @@ Arch_SyscallTrapHandler:
     and rax, r10
     mov rcx, r8
     mov r8, r9
+    cmp qword [r11+rax*8], 0
+    ; Basically a call if zero
+    ; Maybe we should just do something normal?
+    push .finished
+    jz Sys_InvalidSyscall
     call [r11+rax*8]
+    add rsp, 8
+.finished:
 
     cli
     pop rdi

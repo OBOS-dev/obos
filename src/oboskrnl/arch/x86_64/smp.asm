@@ -85,11 +85,52 @@ reload_cs_addr: equ $-Arch_SMPTrampolineStart
 	mov rsp, [Arch_SMPTrampolineRSP-Arch_SMPTrampolineStart]
 
 extern Arch_APEntry
+
 ; Call AP initialization code.
 	mov rdi, [Arch_SMPTrampolineCPULocalPtr-Arch_SMPTrampolineStart]
 	mov rax, Arch_APEntry
 	call rax
 Arch_SMPTrampolineEnd:
+section .text
+; All of these CPUID bits are in CPUID.07H.0H:EBX
+%define CPUID_FSGSBASE (1<<0)
+%define CPUID_SMEP (1<<7)
+%define CPUID_SMAP (1<<20)
+%define CR4_FSGSBASE (1<<16)
+%define CR4_SMEP (1<<20)
+%define CR4_SMAP (1<<21)
+global Arch_InitializeMiscFeatures
+Arch_InitializeMiscFeatures:
+	push rbp
+	mov rbp, rsp
+	sub rsp, 8
+	mov [rbp-8], rbx
+
+	mov eax, 7
+	xor ecx, ecx
+	cpuid
+
+	mov rax, cr4
+
+; NOTE: We don't use this in the kernel, but userspace might like it.
+	test ebx, CPUID_FSGSBASE
+	jz .next1
+	or rax, CR4_FSGSBASE
+.next1:
+	test ebx, CPUID_SMEP
+	jz .next2
+	or rax, CR4_SMEP
+.next2:
+	test ebx, CPUID_SMAP
+	jz .next3
+	or rax, CR4_SMAP
+.next3:
+
+	mov cr4, rax
+
+	mov rbx, [rbp-8]
+	leave
+	ret
 global Arch_APYield:function hidden
 extern Core_Yield
 extern OBOS_BasicMMFreePages

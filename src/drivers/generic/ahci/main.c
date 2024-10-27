@@ -91,7 +91,7 @@ void driver_cleanup_callback()
 }
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI|DRIVER_HEADER_HAS_VERSION_FIELD,
     .acpiId.nPnpIds = 0,
     .pciId.indiv = {
         .classCode = 0x01, // mass storage controller
@@ -109,7 +109,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .read_sync = read_sync,
         .write_sync = write_sync,
     },
-    .driverName = "AHCI Driver"
+    .driverName = "AHCI Driver",
+    .version=1,
+    .uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL
 };
 
 volatile HBA_MEM* HBA;

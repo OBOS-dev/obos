@@ -12,6 +12,8 @@
 
 #include <irq/irq.h>
 
+#include <uacpi/types.h>
+
 typedef enum pci_iteration_decision
 {
     PCI_ITERATION_DECISION_ABORT,
@@ -81,6 +83,10 @@ OBOS_EXPORT size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bo
 uint64_t DrvS_MSIAddressAndData(uint64_t* data, irq_vector_id vec, uint32_t processor, bool edgetrigger, bool deassert);
 obos_status DrvS_RegisterIRQPin(const pci_device_node* dev, uint32_t* handle, irq_vector_id vector);
 obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
+#ifdef __x86_64__
+#   define PCI_IRQ_CAN_USE_ACPI 1 /* for stuff like PCI routing tables */
+#   define PCI_IRQ_UACPI_INIT_LEVEL UACPI_INIT_LEVEL_NAMESPACE_LOADED
+#endif
 // Note: Overwrites irq->irqChecker as well as irq->irqCheckerUserdata.
 // It also overwrites the IRQ move callback.
 typedef struct pci_irq_handle
@@ -107,12 +113,22 @@ OBOS_WEAK size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bool
 OBOS_WEAK uint64_t DrvS_MSIAddressAndData(uint64_t* data, uint8_t vec, uint32_t processor, bool edgetrigger, bool deassert);
 OBOS_WEAK obos_status DrvS_RegisterIRQPin(const pci_device_node* dev, uint32_t* handle, irq_vector_id vector);
 OBOS_WEAK obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
-// Note: Overwrites irq->irqChecker as well as irq->irqCheckerUserdata.
-// It also overwrites the IRQ move callback.
 typedef struct pci_irq_handle
 {
     uint8_t unused;
 } pci_irq_handle;
 OBOS_WEAK obos_status Drv_RegisterPCIIrq(irq* irq, const pci_device_node* dev, pci_irq_handle* handle);
 OBOS_WEAK obos_status Drv_MaskPCIIrq(const pci_irq_handle* handle, bool mask);
+#endif
+
+#ifndef PCI_IRQ_CAN_USE_ACPI
+#   define PCI_IRQ_CAN_USE_ACPI 0
+#endif
+
+#ifndef PCI_IRQ_UACPI_INIT_LEVEL
+#   if !PCI_IRQ_CAN_USE_ACPI
+#       define PCI_IRQ_UACPI_INIT_LEVEL 0
+#   else
+#       define PCI_IRQ_UACPI_INIT_LEVEL UACPI_INIT_LEVEL_NAMESPACE_LOADED
+#   endif
 #endif

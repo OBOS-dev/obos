@@ -155,4 +155,8 @@ typedef enum
 	/// For example, this can happen if the size of a write to a pipe is greater than the pipe's size.'
 	/// </summary>
 	OBOS_STATUS_NO_SPACE,
+	/// <summary>
+	/// There is no syscall at this syscall number :(
+	/// </summary>
+	OBOS_STATUS_NO_SYSCALL,
 } obos_status;

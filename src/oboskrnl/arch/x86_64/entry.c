@@ -157,6 +157,7 @@ static void e9_reset_color(void* unused)
 {
 	e9_out("\x1b[0m", 4, unused);
 }
+uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
 OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).

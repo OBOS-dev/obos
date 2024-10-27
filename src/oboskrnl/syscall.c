@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <syscall.h>
 #include <handle.h>
@@ -54,6 +55,10 @@ void Sys_Shutdown()
     return;
 }
 #endif
+obos_status Sys_InvalidSyscall()
+{
+    return OBOS_STATUS_NO_SYSCALL;
+}
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -62,7 +67,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_HandleClose,
     (uintptr_t)Sys_HandleClone,
     (uintptr_t)Sys_ThreadContextCreate, // 6
-    (uintptr_t)Sys_ThreadContextRead,
+    (uintptr_t)Sys_InvalidSyscall,
     (uintptr_t)Sys_ThreadOpen,
     (uintptr_t)Sys_ThreadCreate,
     (uintptr_t)Sys_ThreadReady,
@@ -88,5 +93,4 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_GetUsedPhysicalMemoryCount,
     (uintptr_t)Sys_QueryPageInfo,
 };
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
-};
+// Arch syscall table is defined per-arch

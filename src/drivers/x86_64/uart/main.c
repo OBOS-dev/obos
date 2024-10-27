@@ -35,6 +35,7 @@
 
 #include "serial_port.h"
 
+#include <uacpi/types.h>
 #include <uacpi_libc.h>
 
 driver_id* this_driver;
@@ -147,7 +148,7 @@ obos_status ioctl(size_t nParameters, uint64_t request, ...);
 obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
+    .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI|DRIVER_HEADER_HAS_VERSION_FIELD,
     .acpiId.nPnpIds = 2,
     .acpiId.pnpIds = {
         "PNP0500", // Standard PC COM port
@@ -164,7 +165,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .read_sync = read_sync,
         .write_sync = write_sync,
     },
-    .driverName = "COM Driver"
+    .driverName = "COM Driver",
+    .version = 1,
+    .uacpi_init_level_required = UACPI_INIT_LEVEL_NAMESPACE_INITIALIZED
 };
 
 uacpi_resource_iteration_decision resource_iterator(void *user, uacpi_resource *resource)
