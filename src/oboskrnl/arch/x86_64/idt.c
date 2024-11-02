@@ -126,7 +126,7 @@ bool CoreS_EnterIRQHandler(interrupt_frame* frame)
 }
 void CoreS_ExitIRQHandler(interrupt_frame* frame)
 {
-	if (~frame->cs & 0x3)
+	if (~frame->cs & 0x3 && CoreS_GetCPULocalPtr()->currentThread)
 		CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc ? CoreS_GetCPULocalPtr()->currentThread->proc->ctx : &Mm_KernelContext;
 	else
 		OBOS_SyncPendingSignal(frame);

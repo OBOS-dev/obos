@@ -27,6 +27,17 @@ void Core_Schedule();
 /// Yields the current thread. This will save the current thread context, then call Core_Schedule after raising the IRQL (if needed).
 /// </summary>
 OBOS_EXPORT void Core_Yield();
+/// <summary>
+/// Suspends or unsuspends the scheduler.<para/>
+/// This causes it to hang indefinitely on yield. This is used so that we can save thread contexts<para/>
+/// of all CPUs' threads before suspending the system.
+/// </summary>
+/// <param name="suspended">Whether to suspend (true) or unsuspend (false) the scheduler..</param>
+void Core_SuspendScheduler(bool suspended);
+/// <summary>
+/// Waits for all CPUs (but the current CPU) to suspend their scheduler,
+/// </summary>
+void Core_WaitForSchedulerSuspend();
 
 extern OBOS_EXPORT size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;

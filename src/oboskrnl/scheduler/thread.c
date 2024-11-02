@@ -229,7 +229,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 	CoreH_ThreadBlock(currentThread, false);
 	if (currentThread->proc)
 		CoreH_ThreadListRemove(&currentThread->proc->threads, currentThread->pnode);
-	if (currentThread->pnode->free)
+	if (currentThread->pnode && currentThread->pnode->free)
 		currentThread->pnode->free(currentThread->pnode);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);

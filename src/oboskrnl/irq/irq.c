@@ -47,6 +47,8 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
+	//if (frame->vector == 0x60)
+	//	printf("sci received\n");
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
@@ -70,6 +72,8 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	}
 	if (!irq_obj)
 	{
+		//if (frame->vector == 0x60)
+			//printf("could not resolve irq object\n");
 		// Spooky actions from a distance...
 		Core_LowerIrqlNoDPCDispatch(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
@@ -77,12 +81,16 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	}
 	if (irq_obj->handler)
 	{
+		//if (frame->vector == 0x60)
+			//printf("handling sci\n");
 		irq_obj->handler(
 			irq_obj,
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
 	}
+	//else if (frame->vector == 0x60)
+		//printf("no irq handler\n");
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);
 }

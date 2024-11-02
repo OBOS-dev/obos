@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <syscall.h>
 
 #include <stdatomic.h>
 
@@ -45,7 +46,7 @@ static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
 #define NextMADTEntry(cur) OffsetPtr(cur, cur->length, MADT_EntryHeader)
-obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool);
 static OBOS_NO_UBSAN void ParseMADT()
 {
 	// Find the MADT in the ACPI tables.
@@ -157,11 +158,17 @@ void Arch_APEntry(cpu_local* info)
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);
 	Arch_InitializeMiscFeatures();
+	// UC UC- WT WB UC WC WT WB
+	wrmsr(0x277, 0x0001040600070406);
+	asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
+	wbinvd();
+	wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
+	OBOSS_InitializeSyscallInterface();
 	Arch_APYield(info->arch_specific.startup_stack, info->arch_specific.ist_stack);
 }
 static OBOS_NO_UBSAN void SetMemberInSMPTrampoline(uint8_t off, uint64_t val)
 {
-	*OffsetPtr(nullptr, off, uint64_t) = val;
+	*OffsetPtr(0x1000, off, uint64_t) = val;
 }
 // static OBOS_NO_UBSAN uint64_t GetMemberInSMPTrampoline(uint8_t off)
 // {
@@ -184,7 +191,7 @@ void Arch_SMPStartup()
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];
 	cpu_info[0].currentPriorityList = cpu_info[0].priorityLists + (Core_CpuInfo[0].currentPriorityList - Core_CpuInfo[0].priorityLists);
-	Arch_MapPage(getCR3(), nullptr, 0, 0x3);
+	Arch_MapPage(getCR3(), (void*)0x1000, 0x1000, 0x3, false);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
 	Core_CpuCount = s_nLAPICIDs;
@@ -195,9 +202,15 @@ void Arch_SMPStartup()
 		{
 			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);
 			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
+			// UC UC- WT WB UC WC WT WB
+			wrmsr(0x277, 0x0001040600070406);
+			asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
+			wbinvd();
+			wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
+			OBOSS_InitializeSyscallInterface();
 			continue;
 		}
-		memcpy(nullptr, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);
+		memcpy((void*)0x1000, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);
 		for (thread_priority j = 0; j <= THREAD_PRIORITY_MAX_VALUE; j++)
 			cpu_info[i].priorityLists[j].priority = j;
 		cpu_info[i].id = s_lapicIDs[i];
@@ -228,7 +241,7 @@ void Arch_SMPStartup()
 			continue;
 		}
 		vector.deliveryMode = LAPIC_DELIVERY_MODE_SIPI;
-		vector.info.address = 0x0000;
+		vector.info.address = 0x1000;
 		if ((status = Arch_LAPICSendIPI(lapic, vector)) != OBOS_STATUS_SUCCESS)
 		{
 			OBOS_Error("%s: Could not send IPI. Status: %d.\n", status);
@@ -240,7 +253,7 @@ void Arch_SMPStartup()
 	}
 	Core_LowerIrql(oldIrql);
 	Arch_SMPInitialized = true;
-	OBOSS_UnmapPage(nullptr);
+	OBOSS_UnmapPage((void*)0x1000);
 	Arch_InitializeMiscFeatures();
 }
 _Atomic(bool) Arch_HaltCPUs = false;

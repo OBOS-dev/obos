@@ -97,9 +97,9 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
             OBOS_ASSERT(polarity != 0b10);
             bool res = false;
             if (polarity == 0b1 || polarity == 0)
-                res = true;
+                res = PolarityActiveHigh;
             else if (polarity == 0b11)
-                res = false;
+                res = PolarityActiveLow;
             ioapic_trigger_mode tm = TriggerModeLevelSensitive;
             uint8_t tmFlg = (ent->flags >> 2) & 0b11;
             OBOS_ASSERT(tmFlg != 0b10);
@@ -116,6 +116,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 	}
     return OBOS_STATUS_SUCCESS;
 }
+
 // FIXME: Optimizations break things for some reason.
 #pragma GCC optimize("-O0")
 OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
@@ -173,7 +174,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask)
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4, ent[1]);
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, bool polarity, ioapic_trigger_mode tm)
+OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, ioapic_polarity polarity, ioapic_trigger_mode tm)
 {
     if (tm < 0 || tm > 1)
         return OBOS_STATUS_INVALID_ARGUMENT;

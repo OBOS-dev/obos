@@ -153,8 +153,15 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 // This should be assumed to be called with the current thread's context saved.
 // It does NOT do that on it's own.
 spinlock Core_SchedulerLock;
+static bool suspendSched = false;
+static _Atomic(size_t) nSuspended = 0;
 void Core_Schedule()
 {
+	// NOTE: Do not remove.
+	if (suspendSched)
+		nSuspended++;
+	for (volatile bool b = suspendSched; b; )
+		;
 	getSchedulerTicks++;
 	if (!getCurrentThread)
 		goto schedule;
@@ -305,4 +312,15 @@ void Core_Yield()
 		OBOS_ASSERT(!(oldIrql & ~0xf));
 		Core_LowerIrql(oldIrql);
 	}
+}
+
+void Core_SuspendScheduler(bool suspended)
+{
+	suspendSched = suspended;
+	nSuspended = 0;
+}
+void Core_WaitForSchedulerSuspend()
+{
+	while (suspendSched && nSuspended < (Core_CpuCount - 1))
+		OBOSS_SpinlockHint();
 }

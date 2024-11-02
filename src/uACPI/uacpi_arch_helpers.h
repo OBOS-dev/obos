@@ -6,6 +6,7 @@
 #   ifdef __x86_64__
 #       define UACPI_ARCH_FLUSH_CPU_CACHE() asm volatile ("wbinvd")
 #       define UACPI_ARCH_DISABLE_INTERRUPTS() asm volatile ("cli")
+#       define UACPI_ARCH_ENABLE_INTERRUPTS() asm volatile ("sti") /* not actually used by uacpi */
 #   else
 #       error Invalid architecture.
 #   endif

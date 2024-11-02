@@ -93,15 +93,15 @@ Arch_FlushGDT:
 
 	lgdt [rdi]
 
-	mov ax, 0x28
-	ltr ax
-
 	mov ax, 0x10
 	mov ds, ax
 	mov ss, ax
 	mov es, ax
 	mov fs, ax
-	mov gs, ax 
+	mov gs, ax
+
+	mov ax, 0x28
+	ltr ax
 
 	leave
 	pop rax

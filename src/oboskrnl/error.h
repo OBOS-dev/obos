@@ -159,4 +159,8 @@ typedef enum
 	/// There is no syscall at this syscall number :(
 	/// </summary>
 	OBOS_STATUS_NO_SYSCALL,
+	/// <summary>
+	/// The ACPI device is not capable to wake the system from the requested sleep state.
+	/// </summary>
+	OBOS_STATUS_WAKE_INCAPABLE,
 } obos_status;

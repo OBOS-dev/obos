@@ -68,11 +68,16 @@ typedef enum ioapic_trigger_mode
 	TriggerModeEdgeSensitive = 0,
 	TriggerModeLevelSensitive = 1,
 } ioapic_trigger_mode;
+typedef enum ioapic_polarity
+{
+    PolarityActiveHigh,
+    PolarityActiveLow,
+} ioapic_polarity;
 typedef struct ioapic_irq_redirection_entry
 {
     uint8_t source;
     uint32_t globalSystemInterrupt;
-    bool polarity; // polarity (0: active-high, 1: active-low)
+    ioapic_polarity polarity; // polarity (0: active-high, 1: active-low)
     ioapic_trigger_mode tm;
 } ioapic_irq_redirection_entry;
 typedef struct ioapic_descriptor
@@ -104,10 +109,10 @@ OBOS_EXPORT obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask);
 /// </summary>
 /// <param name="gsi">The gsi to register.</param>
 /// <param name="vector">The CPU vector to use. If this is zero, the IRQ is unregistered.</param>
-/// <param name="polarity">The polarity of the IRQ. true: active-low, false: active-high</param>
+/// <param name="polarity">The polarity of the IRQ.</param>
 /// <param name="tm">The trigger mode of the IRQ.</param>
 /// <returns>The status of the function.</returns>
-OBOS_EXPORT obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, bool polarity, ioapic_trigger_mode tm);
+OBOS_EXPORT obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, ioapic_polarity polarity, ioapic_trigger_mode tm);
 /// <summary>
 /// Checks if a GSI is in use or not.
 /// </summary>

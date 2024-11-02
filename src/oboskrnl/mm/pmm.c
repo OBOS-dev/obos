@@ -59,8 +59,18 @@ obos_status Mm_InitializePMM()
 		}
 		if (phys == 0x0)
 		{
+#ifdef __x86_64__
+			phys = OBOS_PAGE_SIZE*3;
+			if (nPages <= 3)
+			{
+				entry = MmS_GetNextPMemMapEntry(entry, &i);
+				continue;
+			}
+			nPages -= 3;
+#else
 			phys = OBOS_PAGE_SIZE;
 			nPages--;
+#endif
 		}
 		Mm_TotalPhysicalPages += nPages;
 		if ((phys + nPages * OBOS_PAGE_SIZE) > Mm_PhysicalMemoryBoundaries)

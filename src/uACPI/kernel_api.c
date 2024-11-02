@@ -479,14 +479,14 @@ void uacpi_kernel_stall(uacpi_u8 usec)
     uint64_t ns = usec*1000;
     uint64_t deadline = CoreS_TimerTickToNS(CoreS_GetTimerTick()) + ns;
     while (CoreS_TimerTickToNS(CoreS_GetTimerTick()) < deadline)
-        Core_Yield();
+        OBOSS_SpinlockHint();
 }
 void uacpi_kernel_sleep(uacpi_u64 msec)
 {
     uint64_t ns = msec*1000000;
     uint64_t deadline = CoreS_TimerTickToNS(CoreS_GetTimerTick()) + ns;
     while (CoreS_TimerTickToNS(CoreS_GetTimerTick()) < deadline)
-        Core_Yield();
+        OBOSS_SpinlockHint();
 }
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr* out)
 {
@@ -505,6 +505,7 @@ static void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, i
     OBOS_UNUSED(oldIrql);
     uacpi_handle ctx = *((void**)udata);
     uacpi_interrupt_handler handler = (uacpi_interrupt_handler)((void**)udata)[1];
+    //printf("%s calling 0x%p(0x%p)\n", __func__, handler, ctx);
     handler(ctx);
 }
 
@@ -520,7 +521,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
         OBOS_Error("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
-    uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uintptr_t), nullptr);
+    uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(uintptr_t), nullptr);
     udata[0] = (uintptr_t)ctx;
     udata[1] = (uintptr_t)handler;
     irqHnd->handler = bootstrap_irq_handler;
@@ -528,9 +529,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 #if defined(__x86_64__)
     if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
         return UACPI_STATUS_INTERNAL_ERROR;
-    // TODO: Fix issue where some hardware gets infinite GPEs.
-    // NOTE(oberrow): It's quite a funny issue, except it's kinda annoying.
-    Arch_IOAPICMaskIRQ(irq, /* false */ true);
+    Arch_IOAPICMaskIRQ(irq, false);
 #endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;
@@ -617,7 +616,7 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
 }
 
 #endif
-// So we use the uACPI stdlib in some places in the kernel.
+// So we use the uACPI stdlib in some places in the kernel...
 
 // uacpi_stdlib
 void *uacpi_memcpy(void *dest, const void* src, size_t sz)

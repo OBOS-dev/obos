@@ -16,7 +16,8 @@ list (APPEND oboskrnl_sources
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
-	"mm/fork.c"
+	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
+	"power/shutdown.c"
 )
 
 add_executable(oboskrnl)

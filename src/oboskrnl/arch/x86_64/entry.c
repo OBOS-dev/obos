@@ -75,6 +75,10 @@
 #include <uacpi/namespace.h>
 #include <uacpi/sleep.h>
 #include <uacpi/event.h>
+#include <uacpi/context.h>
+#include <uacpi/kernel_api.h>
+#include <uacpi/utilities.h>
+#include <uacpi_libc.h>
 
 #if 0
 #include "gdbstub/connection.h"
@@ -84,11 +88,6 @@
 #include "gdbstub/stop_reply.h"
 #include "gdbstub/bp.h"
 #endif
-
-#include <uacpi/kernel_api.h>
-#include <uacpi/utilities.h>
-
-#include <uacpi_libc.h>
 
 #include <vfs/init.h>
 #include <vfs/alloc.h>
@@ -100,6 +99,9 @@
 #include <locks/wait.h>
 #include <locks/semaphore.h>
 #include <locks/event.h>
+
+#include <power/suspend.h>
+#include <power/init.h>
 
 extern void Arch_InitBootGDT();
 
@@ -191,11 +193,11 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
+		OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
 	OBOS_TextRendererState.fg_color = 0xffffffff;
-	OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 	if (Arch_LdrPlatformInfo->page_table_depth != 4)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 #if OBOS_RELEASE
@@ -348,15 +350,6 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 		OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
 		CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
 		nCPUsWithInitializedTimer++;
-		// TODO: Move the PAT initialization code somewhere else.
-		// UC UC- WT WB UC WC WT WB
-		wrmsr(0x277, 0x0001040600070406);
-		asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
-		wbinvd();
-		// TODO: Move syscall init somewhere else.
-		if (CoreS_GetCPULocalPtr()->isBSP)
-			wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
-		OBOSS_InitializeSyscallInterface();
 	}
 	else
 		Core_Yield();
@@ -664,26 +657,8 @@ void Arch_KernelMainBootstrap()
 	}
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();
-	OBOS_Debug("%s: Initializing uACPI\n", __func__);
-#define verify_status(st, in) \
-if (st != UACPI_STATUS_OK)\
-	OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "uACPI Failed in %s! Status code: %d, error message: %s\n", #in, st, uacpi_status_to_string(st));
-	uacpi_status st = uacpi_initialize(0);
-	verify_status(st, uacpi_initialize);
-
-	st = uacpi_namespace_load();
-	verify_status(st, uacpi_namespace_load);
-
-	st = uacpi_namespace_initialize();
-	verify_status(st, uacpi_namespace_initialize);
-	
-	uacpi_install_fixed_event_handler(
-        UACPI_FIXED_EVENT_POWER_BUTTON,
-	handle_power_button, UACPI_NULL
-	);
-
-	st = uacpi_finalize_gpe_initialization();
-	verify_status(st, uacpi_finalize_gpe_initialization);
+	OBOS_Log("%s: Initializing uACPI\n", __func__);
+	OBOS_InitializeUACPI();
 
 	// Set the interrupt model.
 	uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
@@ -977,6 +952,7 @@ if (st != UACPI_STATUS_OK)\
 	// 	Kdbg_CurrentConnection->connection_active = true;
 	// 	asm("int3");
 	// }
+	// OBOS_Suspend();
 	context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
 	Mm_ConstructContext(new_ctx);
 	process* new = Core_ProcessAllocate(nullptr);

@@ -56,7 +56,7 @@ list (APPEND oboskrnl_sources
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
 	"arch/x86_64/ioapic.c" "arch/x86_64/drv_loader.c" "arch/x86_64/ssignal.c" "arch/x86_64/except.c" 
-	"arch/x86_64/pci.c" "arch/x86_64/syscall.c" "arch/x86_64/syscall.asm"
+	"arch/x86_64/pci.c" "arch/x86_64/syscall.c" "arch/x86_64/syscall.asm" "arch/x86_64/wake.c"
 	${gdbstub_source}
 )
 
@@ -70,7 +70,7 @@ list (APPEND oboskrnl_sources
 add_compile_definitions(
 	__x86_64__=1 
 	OBOS_PAGE_SIZE=4096 OBOS_HUGE_PAGE_SIZE=2097152 
-	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xffffff0000000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffffffffffff000 
+	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xffff900000000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffffffffffff000
 	OBOS_USER_ADDRESS_SPACE_BASE=0x1000 OBOS_USER_ADDRESS_SPACE_LIMIT=0x7FFFFFFFFFFF
 	OBOS_ARCH_USES_SOFT_FLOAT=0
 	OBOS_ARCH_EMULATED_IRQL=0
