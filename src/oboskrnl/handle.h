@@ -81,7 +81,7 @@ typedef struct handle_table {
     mutex lock;
 } handle_table;
 
-// Call before manipulating a handle descriptor, or calling a handle table manipulation (allocate, fre, lookup) function.
+// Call before manipulating a handle descriptor, or calling a handle table manipulation (allocate, free, lookup) function.
 void OBOS_LockHandleTable(handle_table* table);
 void OBOS_UnlockHandleTable(handle_table* table);
 
