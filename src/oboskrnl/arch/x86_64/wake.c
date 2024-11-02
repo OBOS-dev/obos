@@ -19,6 +19,7 @@
 #include <arch/x86_64/pmm.h>
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/idt.h>
+#include <arch/x86_64/mtrr.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
@@ -133,12 +134,13 @@ static void on_wake(cpu_local* info)
     wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
     irql oldIrql = Core_RaiseIrqlNoThread(0xf);
     OBOS_UNUSED(oldIrql);
-    Arch_LAPICInitialize(info->isBSP);
     Arch_InitializeMiscFeatures();
     // UC UC- WT WB UC WC WT WB
+    Arch_RestoreMTRRs();
     wrmsr(0x277, 0x0001040600070406);
     asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
     wbinvd();
+    Arch_LAPICInitialize(info->isBSP);
     wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
     OBOSS_InitializeSyscallInterface();
     if (info->isBSP)

@@ -1044,6 +1044,8 @@ test_program:;\
 	syscall;\
 	call Sys_ExitCurrentThread;\
 test_thread:;\
+	mov eax, 7;\
+	syscall;\
 	call Sys_Shutdown;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\

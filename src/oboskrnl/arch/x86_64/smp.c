@@ -19,6 +19,7 @@
 
 #include <arch/x86_64/sdt.h>
 #include <arch/x86_64/madt.h>
+#include <arch/x86_64/mtrr.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
@@ -160,6 +161,7 @@ void Arch_APEntry(cpu_local* info)
 	Arch_InitializeMiscFeatures();
 	// UC UC- WT WB UC WC WT WB
 	wrmsr(0x277, 0x0001040600070406);
+	Arch_RestoreMTRRs();
 	asm volatile("mov %0, %%cr3" : :"r"(getCR3()));
 	wbinvd();
 	wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
@@ -177,6 +179,7 @@ static OBOS_NO_UBSAN void SetMemberInSMPTrampoline(uint8_t off, uint64_t val)
 bool Arch_SMPInitialized = false;
 void Arch_SMPStartup()
 {
+	Arch_SaveMTRRs();
 	Arch_RawRegisterInterrupt(0x2, (uintptr_t)nmiHandler);
 	ParseMADT();
 #ifdef OBOS_UP
