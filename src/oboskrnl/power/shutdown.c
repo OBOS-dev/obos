@@ -30,7 +30,6 @@ OBOS_NORETURN void OBOS_Reboot()
     OBOSS_HaltCPUs();
     uacpi_reboot();
 #ifdef __x86_64__
-    (void)Core_RaiseIrqlNoThread(IRQL_MASKED);
     UACPI_ARCH_DISABLE_INTERRUPTS();
     // Try triple faulting.
     struct {

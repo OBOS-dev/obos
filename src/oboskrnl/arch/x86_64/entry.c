@@ -368,9 +368,9 @@ uint64_t Arch_CalibrateHPET(uint64_t freq)
 	return compValue;
 }
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
+extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool e);
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN void InitializeHPET()
 {
-	extern obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 	static basicmm_region hpet_region;
 	hpet_region.mmioRange = true;
 	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
@@ -393,7 +393,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN void InitializeHPET()
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n");
 	uintptr_t phys = hpet_table->baseAddress.address;
 	Arch_HPETAddress = (HPET*)0xffffffffffffd000;
-	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013);
+	Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013, false);
 	OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);
 }
 static void hpet_irq_move_callback(irq* i, irq_vector* from, irq_vector* to, void* userdata)
@@ -548,6 +548,7 @@ void Arch_KernelMainBootstrap()
 				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find module %s.\n", initrd_module_name);
 			OBOS_InitrdBinary = (const char*)initrd->address;
 			OBOS_InitrdSize = initrd->size;
+			OBOS_Debug("InitRD is at %p (size: %d)\n", OBOS_InitrdBinary, OBOS_InitrdSize);
 		}
 		else
 			OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
@@ -622,7 +623,6 @@ void Arch_KernelMainBootstrap()
 			// We got memory for the framebuffer.
 			// Now modify the physical pages
 			uintptr_t offset = 0;
-			extern obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 			for (uintptr_t addr = base; addr < (base + size); addr += offset)
 			{
 				uintptr_t oldPhys = 0, phys = Arch_Framebuffer->physical_address + (addr-base);

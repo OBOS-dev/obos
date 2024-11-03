@@ -9,8 +9,8 @@
 #include <int.h>
 
 extern OBOS_EXPORT const char* OBOS_KernelCmdLine;
-extern OBOS_EXPORT const char* OBOS_InitrdBinary;
-extern OBOS_EXPORT size_t OBOS_InitrdSize;
+extern OBOS_EXPORT const char* volatile OBOS_InitrdBinary;
+extern OBOS_EXPORT size_t volatile OBOS_InitrdSize;
 extern OBOS_EXPORT char** OBOS_argv;
 extern OBOS_EXPORT size_t OBOS_argc;
 

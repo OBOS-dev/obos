@@ -18,7 +18,7 @@
 #include <mm/context.h>
 #include <mm/pmm.h>
 
-#include <sanitizers/asan.h>
+#include <asan.h>
 
 #include <locks/spinlock.h>
 

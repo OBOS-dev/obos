@@ -5,7 +5,7 @@
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
-	"text.c" "sanitizers/stack.c" "irq/irq.c" "scheduler/process.c"
+	"text.c" "irq/irq.c" "scheduler/process.c" "power/shutdown.c"
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
 	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
@@ -17,7 +17,6 @@ list (APPEND oboskrnl_sources
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
-	"power/shutdown.c"
 )
 
 add_executable(oboskrnl)
@@ -41,6 +40,7 @@ target_compile_options(oboskrnl
 target_link_libraries(oboskrnl
 	PRIVATE ${LIBGCC} 
 	PRIVATE uacpi
+	PRIVATE sanitizers
 )
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
@@ -48,12 +48,14 @@ set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 target_include_directories(oboskrnl 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/drivers"
+	PRIVATE "${CMAKE_SOURCE_DIR}/src/sanitizers"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES}
 )
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
 #	PRIVATE "-fvisibility=hidden"
+	PRIVATE "-Wl,--export-dynamic"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )

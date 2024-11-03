@@ -1,5 +1,5 @@
 /*
- * oboskrnl/sanitizers/asan.h
+ * sanitizers/asan.h
  *
  * Copyright (c) 2024 Omar Berrow
 */

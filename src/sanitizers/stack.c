@@ -1,5 +1,5 @@
 /*
- * oboskrnl/sanitizers/stack.c
+ * sanitizers/stack.c
  *
  * Copyright (c) 2024 Omar Berrow
 */

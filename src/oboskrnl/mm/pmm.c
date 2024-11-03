@@ -13,7 +13,7 @@
 
 #include <irq/irql.h>
 
-#include <sanitizers/asan.h>
+#include <asan.h>
 
 #include <mm/pmm.h>
 #include <mm/init.h>

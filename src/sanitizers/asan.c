@@ -1,5 +1,5 @@
 /*
- * oboskrnl/sanitizers/asan.c
+ * sanitizers/asan.c
  * 
  * Copyright (c) 2024 Omar Berrow
 */
@@ -11,7 +11,7 @@
 
 #include <allocators/basic_allocator.h>
 
-#include <sanitizers/asan.h>
+#include "asan.h"
 
 #include <mm/context.h>
 

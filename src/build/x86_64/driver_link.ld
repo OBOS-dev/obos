@@ -18,6 +18,7 @@ PHDRS
     dynamic PT_DYNAMIC;
 }
 
+
 SECTIONS
 {
     Drv_Base = .;
@@ -37,6 +38,7 @@ SECTIONS
 
     .data : {
         *(.data .data.*)
+        KEEP(*.driverheader)
     } :data
 
     .bss : {

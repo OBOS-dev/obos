@@ -13,11 +13,11 @@
 
 #include <uacpi_libc.h>
 
-const char* OBOS_KernelCmdLine;
-const char* OBOS_InitrdBinary;
-size_t OBOS_InitrdSize;
-char** OBOS_argv;
-size_t OBOS_argc;
+OBOS_PAGEABLE_VARIABLE const char* OBOS_KernelCmdLine;
+OBOS_PAGEABLE_VARIABLE const char* volatile OBOS_InitrdBinary;
+OBOS_PAGEABLE_VARIABLE size_t volatile OBOS_InitrdSize;
+OBOS_PAGEABLE_VARIABLE char** OBOS_argv;
+OBOS_PAGEABLE_VARIABLE size_t OBOS_argc;
 
 // Parses the command line into argv and argc
 void OBOS_ParseCMDLine()

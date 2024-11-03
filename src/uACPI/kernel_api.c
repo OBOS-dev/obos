@@ -681,6 +681,8 @@ void *uacpi_memmove(void *dest, const void* src, size_t len)
 }
 size_t uacpi_strnlen(const char *src, size_t maxcnt)
 {
+    if (!src)
+        return 0;
     size_t i = 0;
     for (; i < maxcnt && src[i]; i++);
     return i;

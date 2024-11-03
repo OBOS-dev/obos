@@ -11,18 +11,10 @@
 
 #define obos_expect(expr, eval) __builtin_expect((expr), (eval))
 
-#if OBOS_KERNEL
+#if defined(OBOS_KERNEL) || defined(OBOS_DRIVER)
 #	define OBOS_EXPORT __attribute__((visibility("default")))
 // Usually redundant.
 #	define OBOS_LOCAL __attribute__((visibility("hidden")))
-
-#	define DRV_EXPORT __attribute__((visibility("default")))
-// Usually redundant.
-#	define DRV_LOCAL __attribute__((visibility("hidden")))
-#elif defined(OBOS_DRIVER)
-#	define OBOS_EXPORT 
-// Usually redundant.
-#	define OBOS_LOCAL
 
 #	define DRV_EXPORT __attribute__((visibility("default")))
 // Usually redundant.

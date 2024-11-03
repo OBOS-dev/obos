@@ -224,6 +224,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             "OBOS_DriverEntry",
             "Drv_Base",
             "Drv_Top",
+            "Drv_Header",
         };
         int symbolType = -1;
 		switch (ELF_ST_TYPE(esymbol->st_info)) 
@@ -294,6 +295,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
 typedef driver_init_status(*driver_entry)(driver_id* id);
 static void driver_trampoline(driver_id* id)
 {
+    OBOS_Debug("calling driver entry %p\n", id->entryAddr);
     driver_init_status status = ((driver_entry)id->entryAddr)(id);
     Drv_ExitDriver(id, &status);
 }

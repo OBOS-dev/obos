@@ -131,7 +131,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
         ioapic_descriptor* ioapic = &Arch_IOAPICs[i];
         ArchH_IOAPICWriteRegister(ioapic->address, 0, i<<24);
         for (uint32_t gsi = ioapic->gsi; gsi <= ioapic->gsi+ioapic->maxRedirectionEntries; gsi++)
-            OBOS_ASSERT(obos_is_success(Arch_IOAPICMapIRQToVector(gsi, 0, false, TriggerModeEdgeSensitive)));
+            OBOS_ASSERT(obos_is_success(Arch_IOAPICMapIRQToVector(gsi, 0, PolarityActiveHigh, TriggerModeEdgeSensitive)));
     }
     return status;
 }

@@ -21,7 +21,7 @@
 #define APIC_BSP 0x100
 #define APIC_ENABLE 0x800
 
-obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool e);
 
 lapic* Arch_LAPICAddress;
 static basicmm_region lapic_region;
@@ -37,7 +37,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	{
 		uintptr_t phys = lapic_msr & ~0xfff;
 		Arch_LAPICAddress = (lapic*)(0xffffffffffffe000);
-		Arch_MapPage(getCR3(), Arch_LAPICAddress, phys, 0x8000000000000013);
+		Arch_MapPage(getCR3(), Arch_LAPICAddress, phys, 0x8000000000000013, false);
 		lapic_region.mmioRange = true;
 		OBOSH_BasicMMAddRegion(&lapic_region, Arch_LAPICAddress, 0x1000);
 	}

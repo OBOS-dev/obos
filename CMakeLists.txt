@@ -76,7 +76,7 @@ execute_process(COMMAND
 add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_compile_definitions (OBOS_ARCHITECTURE_ENDIANNESS="${OBOS_ARCHITECTURE_ENDIANNESS}")
 
-list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
+#list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
 if (DEFINED OBOS_ENABLE_UBSAN)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
@@ -86,7 +86,8 @@ else()
 	set(OBOS_ENABLE_UBSAN "0")
 endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
-list (APPEND oboskrnl_sources "sanitizers/asan.c")
+
+#list (APPEND oboskrnl_sources "sanitizers/asan.c")
 if (DEFINED OBOS_ENABLE_KASAN)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
@@ -143,6 +144,7 @@ add_compile_definitions(
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 add_subdirectory("src/uACPI")
+add_subdirectory("src/sanitizers")
 # Include drivers
 get_target_property(uacpi_INCLUDES uacpi INCLUDE_DIRECTORIES)
 include_directories(${uacpi_INCLUDES})
