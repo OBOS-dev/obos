@@ -39,6 +39,7 @@ call launch_qemu.bat
 ```
 ## Credits
 - My friend [@LemurLord16](https://github.com/LemurLord16) (@dudeplayer2 on discord) for listening to me yap about new features.
+- My cousin Ali because why not.
 ## License Notice
 Most code in this repository is licensed under the MIT license.<br>
 Any code from other projects that require a license notice will be put below.
