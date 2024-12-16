@@ -241,9 +241,9 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 								 CoreS_GetThreadStackSize(&currentThread->context),
 								currentThread->stackFreeUserdata);
 	}
+	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
-	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }

@@ -27,10 +27,12 @@ obos_status OBOS_DeviceSetDState(uacpi_namespace_node* dev, d_state new_state, b
     uacpi_status ustatus = UACPI_STATUS_OK;
 
     const char psn_path[] = { '_', 'P', 'S', '0' + new_state, '\0' };
-    uacpi_namespace_node* psn = uacpi_namespace_node_find(dev, psn_path);
+    uacpi_namespace_node* psn = nullptr;
+    uacpi_namespace_node_find(dev, psn_path, &psn);
 
     const char prn_path[] = { '_', 'P', 'R', '0' + new_state, '\0' };
-    uacpi_namespace_node* prn = uacpi_namespace_node_find(dev, prn_path);
+    uacpi_namespace_node* prn = nullptr;
+    uacpi_namespace_node_find(dev, prn_path, &prn);
 
     if (!psn && !prn)
         return OBOS_STATUS_NOT_FOUND;
@@ -71,12 +73,14 @@ obos_status OBOS_DeviceHasDState(uacpi_namespace_node* dev, d_state state)
         state = DSTATE_3HOT;
 
     const char psn_path[] = { '_', 'P', 'S', '0' + state };
-    uacpi_namespace_node* psn = uacpi_namespace_node_find(dev, psn_path);
+    uacpi_namespace_node* psn = nullptr;
+    uacpi_namespace_node_find(dev, psn_path, &psn);
 
     const char prn_path[] = { '_', 'P', 'R', '0' + state };
-    uacpi_namespace_node* prn = uacpi_namespace_node_find(dev, prn_path);
+    uacpi_namespace_node* prn = nullptr;
+    uacpi_namespace_node_find(dev, prn_path, &prn);
 
-    return !psn && !prn ? OBOS_STATUS_NOT_FOUND :OBOS_STATUS_SUCCESS;
+    return !psn && !prn ? OBOS_STATUS_NOT_FOUND : OBOS_STATUS_SUCCESS;
 }
 
 static obos_status enable_wake_gpe(uacpi_namespace_node* dev, uacpi_object_array* pkg)
@@ -246,15 +250,13 @@ registerGPE:
     return OBOS_STATUS_SUCCESS;
 }
 
-static uint64_t eval_integer_node(uacpi_namespace_node* node)
+static uint64_t eval_integer_node(uacpi_namespace_node* dev, const char* path)
 {
-    if (!node)
+    if (!path)
         return UINT64_MAX;
-    uacpi_object* obj = nullptr;
-    uacpi_eval(node, "", nullptr, &obj);
     uint64_t integer = 0;
-    uacpi_object_get_integer(obj, &integer);
-    return integer;
+    uacpi_status status = uacpi_eval_integer(dev, path, nullptr, &integer);
+    return status == UACPI_STATUS_NOT_FOUND ? UINT64_MAX : integer;
 }
 d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state state, obos_status* status)
 {
@@ -304,8 +306,8 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
     char path_d[5] = { '_', 'S', '0' + state, 'D', '\0' };
     char path_w[5] = { '_', 'S', '0' + state, 'W', '\0' };
 
-    uint64_t snd = eval_integer_node(uacpi_namespace_node_find(dev, path_d));
-    uint64_t snw = eval_integer_node(uacpi_namespace_node_find(dev, path_w));
+    uint64_t snd = eval_integer_node(dev, path_d);
+    uint64_t snw = eval_integer_node(dev, path_w);
 
     d_state val = DSTATE_INVALID;
 

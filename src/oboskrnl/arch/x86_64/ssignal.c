@@ -24,6 +24,8 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
 
+// Abandon all hope, ye who enter here.
+
 #define FS_BASE (0xC0000100)
 #define GS_BASE (0xC0000101)
 #define KERNEL_GS_BASE (0xC0000102)

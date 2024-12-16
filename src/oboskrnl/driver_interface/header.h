@@ -117,6 +117,11 @@ typedef struct driver_ftable
     // memory leak.
     void(*driver_cleanup_callback)();
 
+    // NOTE: These functions are optional for device drivers, and filesystem drivers shouldn't implement this.
+    // Although, it is still allowed, if for any reason these functions are required for a FS driver.
+    void(*on_suspend)();
+    void(*on_wake)();
+
     // -------- END GENERIC FUNCTIONS --------
     // ---------------------------------------
     // ---------- START FS FUNCTIONS ---------
@@ -153,7 +158,7 @@ typedef struct driver_header
     // See driver_header_flags
     uint32_t flags;
     // The PCI device associcated with this.
-    pci_device pciId;
+    pci_hid pciId;
     struct
     {
         // These strings are not null-terminated.
@@ -171,7 +176,7 @@ typedef struct driver_header
     // If UACPI_INIT_LEVEL_EARLY, this field does nothing.
     // If a uacpi symbol is used in the driver, and this field is specified, the kernel will the current uacpi init level against this.
     // If the init level is < level, then the driver load is failed.
-    // Only valid if version >= 1, and the version field exists.
+    // Only valid if version >= 1, and the version field exists (flags & DRIVER_HEADER_HAS_VERSION_FIELD).
     uint32_t uacpi_init_level_required;
     // Reserved for future use; do not use when version <= 1
     char reserved[0x100-8];

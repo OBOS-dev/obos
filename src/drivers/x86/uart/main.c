@@ -1,5 +1,5 @@
 /*
- * drivers/x86_64/uart/main.c
+ * drivers/x86/uart/main.c
  * 
  * Copyright (c) 2024 Omar Berrow
 */
@@ -170,7 +170,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .uacpi_init_level_required = UACPI_INIT_LEVEL_NAMESPACE_INITIALIZED
 };
 
-uacpi_resource_iteration_decision resource_iterator(void *user, uacpi_resource *resource)
+uacpi_iteration_decision resource_iterator(void *user, uacpi_resource *resource)
 {
     serial_port* curr = (serial_port*)user;
     switch (resource->type)
@@ -188,17 +188,19 @@ uacpi_resource_iteration_decision resource_iterator(void *user, uacpi_resource *
         }
         default: break;
     }
-    return UACPI_RESOURCE_ITERATION_CONTINUE;
+    return UACPI_ITERATION_DECISION_CONTINUE;
 }
-static uacpi_ns_iteration_decision match_uart(void *user, uacpi_namespace_node *node)
+static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *node, uint32_t max_depth)
 {
     OBOS_UNUSED(user);
+    OBOS_UNUSED(max_depth);
+
     uacpi_resources* resources = nullptr;
     uacpi_status ret = uacpi_get_current_resources(node, &resources);
     if (uacpi_unlikely_error(ret))
     {
         OBOS_Error("Could not retrieve resources! Status: %s\n", uacpi_status_to_string(ret));
-        return UACPI_NS_ITERATION_DECISION_NEXT_PEER;
+        return UACPI_ITERATION_DECISION_NEXT_PEER;
     }
     serialPorts = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, serialPorts, (++nSerialPorts)*sizeof(serial_port), nullptr);
     memzero(&serialPorts[nSerialPorts - 1], sizeof(*serialPorts));
@@ -213,7 +215,7 @@ static uacpi_ns_iteration_decision match_uart(void *user, uacpi_namespace_node *
     //     serialPorts[nSerialPorts-1].gsi
     // );
 
-    return UACPI_NS_ITERATION_DECISION_CONTINUE;
+    return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
 obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)

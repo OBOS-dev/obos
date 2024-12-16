@@ -109,7 +109,7 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	} tss_entry;
 	memzero(&tss_entry, sizeof(tss_entry));
 	uintptr_t tss = (uintptr_t)&info->arch_specific.tss;
-	tss_entry.limitLow = sizeof(info->arch_specific.tss);
+	tss_entry.limitLow = sizeof(info->arch_specific.tss)-1;
 	tss_entry.baseLow = tss & 0xffff;
 	tss_entry.baseMiddle1 = (tss >> 16) & 0xff;
 	tss_entry.baseMiddle2 = (tss >> 24) & 0xff;

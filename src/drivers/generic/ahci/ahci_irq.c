@@ -93,5 +93,6 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void ahci_irq_handler(struct irq* i, interrupt_frame
         }
         HBA->ports[curr->hbaPortIndex].is = portStatus;
     }
+    // Set HBA->is to itself to reset it.
     HBA->is = HBA->is;
 }

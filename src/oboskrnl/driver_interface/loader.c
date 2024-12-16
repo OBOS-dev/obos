@@ -341,8 +341,8 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
     thr->stackFreeUserdata = &Mm_KernelContext;
     if (mainThread)
     {
-        *mainThread = thr;
         thr->references++;
+        *mainThread = thr;
     }
     driver->main_thread = thr;
     thr->references++;

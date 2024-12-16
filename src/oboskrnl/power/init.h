@@ -8,4 +8,5 @@
 
 #include <int.h>
 
+void OBOS_SetupEarlyTableAccess();
 void OBOS_InitializeUACPI();

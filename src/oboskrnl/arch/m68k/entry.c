@@ -325,14 +325,17 @@ Core_InitializeIRQInterface();
     );
     Core_ExitCurrentThread();
 }
+
 void Arch_IdleTask()
 {
     while(1);
 }
+
 cpu_local* CoreS_GetCPULocalPtr()
 {
     return &bsp_cpu;
 }
+
 BootInfoTag* Arch_GetBootInfo(BootInfoType type)
 {
     return Arch_GetBootInfoFrom(type, nullptr);

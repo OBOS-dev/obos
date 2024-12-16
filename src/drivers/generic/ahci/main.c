@@ -43,9 +43,13 @@
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 
+#include <utils/list.h>
+
 #if defined(__x86_64__)
 #include <arch/x86_64/ioapic.h>
 #endif
+
+pci_resource* PCIIrqResource = nullptr;
 
 OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
@@ -84,7 +88,11 @@ void driver_cleanup_callback()
         for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
             ClearCommand(port, port->PendingCommands[i]);
     }
-    Drv_MaskPCIIrq(&PCIIrqHandle, true);
+    if (PCIIrqResource)
+    {
+        PCIIrqResource->irq->masked = true;
+        Drv_PCISetResource(PCIIrqResource);
+    }
     Core_IrqObjectFree(&HbaIrq);
     // TODO: Free HBA, port clb, and fb
     
@@ -119,28 +127,10 @@ volatile HBA_MEM* HBA;
 uint32_t HbaIrqNumber;
 Port Ports[32];
 size_t PortCount;
-pci_device_node PCINode;
+// TODO: Make AHCI driver support multiple controllers.
+pci_device* PCINode;
 bool FoundPCINode;
-pci_irq_handle PCIIrqHandle;
-pci_iteration_decision find_pci_node(void* udata, pci_device_node node)
-{
-    OBOS_UNUSED(udata);
-    if (node.device.indiv.classCode == drv_hdr.pciId.indiv.classCode && 
-        node.device.indiv.subClass == drv_hdr.pciId.indiv.subClass &&
-        node.device.indiv.progIf == drv_hdr.pciId.indiv.progIf)
-    {
-        PCINode = node;
-        FoundPCINode = true;
-        return PCI_ITERATION_DECISION_ABORT;
-    }
-    return PCI_ITERATION_DECISION_CONTINUE;
-}
-uacpi_ns_iteration_decision pci_bus_match(void *user, uacpi_namespace_node *node)
-{
-    uacpi_namespace_node** pNode = (uacpi_namespace_node**)user;
-    *pNode = node;
-    return UACPI_NS_ITERATION_DECISION_BREAK;
-}
+
 static void* map_registers(uintptr_t phys, size_t size, bool uc)
 {
     size_t phys_page_offset = (phys % OBOS_PAGE_SIZE);
@@ -163,6 +153,7 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     }
     return virt+phys_page_offset;
 }
+
 uintptr_t HBAAllocate(size_t size, size_t alignment)
 {
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
@@ -175,6 +166,7 @@ uintptr_t HBAAllocate(size_t size, size_t alignment)
         return Mm_AllocatePhysicalPages32(size, alignment, nullptr);
     OBOS_UNREACHABLE;
 }
+
 const char* const DeviceNames[32] = {
     "sda", "sdb", "sdc", "sdd",
     "sde", "sdf", "sdg", "sdh",
@@ -185,41 +177,73 @@ const char* const DeviceNames[32] = {
     "sdy", "sdz", "sd1", "sd2",
     "sd3", "sd4", "sd5", "sd6",
 };
+
+static void search_bus(pci_bus* bus)
+{
+    for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev; )
+    {
+        if ((dev->hid.id & 0xffffffff) == (drv_hdr.pciId.id & 0xffffffff))
+        {
+            PCINode = dev;
+            FoundPCINode = true;
+            break;
+        }
+
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+    }
+}
 // https://forum.osdev.org/viewtopic.php?t=40969
 driver_init_status OBOS_DriverEntry(driver_id* this)
 {
-    DrvS_EnumeratePCI(find_pci_node, nullptr);
+    for (size_t i = 0; i < Drv_PCIBusCount; i++)
+        search_bus(&Drv_PCIBuses[i]);
     if (!FoundPCINode)
         return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find PCI Device."};
-    uintptr_t bar = PCINode.bars.indiv32.bar5;
-    // for (volatile bool b = true; b; )
-    //     ;
-    uint64_t pciCommand = 0;
-    size_t barlen = DrvS_GetBarSize(PCINode.info, 5, false, nullptr);
-    barlen = barlen + (OBOS_PAGE_SIZE - (barlen % OBOS_PAGE_SIZE));
+    //uintptr_t bar = PCINode.bars.indiv32.bar5;
+    // Look for BAR 5.
+    pci_resource* bar = nullptr;
+    for (pci_resource* curr = LIST_GET_HEAD(pci_resource_list, &PCINode->resources); curr; )
+    {
+        if (curr->type == PCI_RESOURCE_BAR)
+        {
+            if (curr->bar->idx == 5)
+                bar = curr;
+        } else if (curr->type == PCI_RESOURCE_IRQ)
+            PCIIrqResource = curr;
+
+        if (bar && PCIIrqResource)
+            break;
+
+        curr = LIST_GET_NEXT(pci_resource_list, &PCINode->resources, curr);
+    }
+
+    size_t barlen = bar->bar->size;
     OBOS_Log("%*s: Initializing AHCI controller at %02x:%02x:%02x. HBA at 0x%p-0x%p.\n",
         uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName,
-        PCINode.info.bus, PCINode.info.slot, PCINode.info.function, 
+        PCINode->location.bus, PCINode->location.slot, PCINode->location.function,
         bar, bar+barlen);
+
     OBOS_Debug("Enabling bus master and memory space access in PCI command.\n");
-    DrvS_ReadPCIRegister(PCINode.info, 1*4, 2, &pciCommand);
-    pciCommand |= 6; // memory space + bus master
-    DrvS_WritePCIRegister(PCINode.info, 1*4, 2, pciCommand);
+    PCINode->resource_cmd_register->cmd_register |= 6; // memory space + bus master
+    Drv_PCISetResource(PCINode->resource_cmd_register);
     OBOS_Debug("Mapping HBA memory.\n");
-    HBA = map_registers(bar, barlen, true);
+    HBA = map_registers(bar->bar->phys, barlen, true);
     // OBOS_Log("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize IRQ object."};
     OBOS_Debug("Enabling IRQs...\n");
-    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
+/*    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize HBA Irq."};
-    HbaIrq.irqChecker = ahci_irq_checker;
-    HbaIrq.handler = ahci_irq_handler;
     status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
     if (obos_is_error(status))
-        return (driver_init_status){.status=status,.fatal=true,.context="Could not unmask HBA Irq."};
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not unmask HBA Irq."};*/
+    PCIIrqResource->irq->irq = &HbaIrq;
+    PCIIrqResource->irq->masked = false;
+    Drv_PCISetResource(PCIIrqResource);
+    HbaIrq.irqChecker = ahci_irq_checker;
+    HbaIrq.handler = ahci_irq_handler;
     OBOS_Debug("Enabled IRQs.\n");
     HBA->ghc |= BIT(31);
     while (!(HBA->ghc & BIT(31)))

@@ -249,7 +249,7 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // new (&s_uACPIAllocator) allocators::BasicAllocator{};
         // s_uACPIAllocatorInitialized = true;
     // }
-    void* ret = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, size, nullptr);
+    void* ret = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
     /*else
@@ -269,11 +269,11 @@ void uacpi_kernel_free(void* mem)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
         // __func__, __LINE__);
     size_t sz = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, mem, &sz);
+    OBOS_NonPagedPoolAllocator->QueryBlockSize(OBOS_NonPagedPoolAllocator, mem, &sz);
     if (sz == SIZE_MAX)
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Function %s, line %d: free of object by uACPI not allocated by uACPI allocator. This is a bug, please report in some way.\n", 
         __func__, __LINE__);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, sz);
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, mem, sz);
     //logger::debug("Freed 0x%p.\n", mem);
 }
 void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
@@ -317,18 +317,19 @@ void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_
     vprintf(format, list);
     OBOS_ResetColor();
 }
-uint64_t CoreS_TimerTickToNS(timer_tick tp);
-uacpi_u64 uacpi_kernel_get_ticks(void)
+timer_tick CoreS_GetNativeTimerTick();
+timer_tick CoreS_GetNativeTimerFrequency();
+uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
 {
-    // This value is strictly monotonic, so in the case that the tick counter doesn't change,
-    // we need to account for that.
-    static uint64_t cached = 0;
-    static uint64_t offset = 0;
-    if (cached == CoreS_TimerTickToNS(CoreS_GetTimerTick())/100)
-        return cached + (++offset);
-    cached = CoreS_TimerTickToNS(CoreS_GetTimerTick())/100;
-    offset = 0;
-    return cached;
+    static uint64_t cached_rate = 0;
+    // NOTE: If our frequency is greater than 1 GHZ, we get zero for our rate.
+    if (obos_expect(!cached_rate, false))
+    {
+        cached_rate = (1*1000000000)/CoreS_GetNativeTimerFrequency();
+        if (!cached_rate)
+            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "uACPI: Conversion from a native timer tick to NS failed.\nNative timer frequency was greater than 1GHZ, which is unsupported. This is a bug, report it.\n");
+    }
+    return CoreS_GetNativeTimerTick() * cached_rate;
 }
 void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
 {
@@ -340,7 +341,7 @@ void uacpi_kernel_unmap(void* b, uacpi_size s)
 { OBOS_UNUSED(b); OBOS_UNUSED(s); /* Does nothing. */}
 uacpi_handle uacpi_kernel_create_spinlock(void)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(spinlock), nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(spinlock), nullptr);
 }
 void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 {
@@ -358,7 +359,7 @@ void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 }
 uacpi_handle uacpi_kernel_create_event(void)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(size_t), nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(size_t), nullptr);
 }
 void uacpi_kernel_free_event(uacpi_handle e)
 {
@@ -441,12 +442,12 @@ void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(mutex));
 }
-uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
+uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
     OBOS_UNUSED(t);
     mutex *mut = (mutex*)hnd;
     Core_MutexAcquire(mut);
-    return UACPI_TRUE;
+    return UACPI_STATUS_OK;
 }
 void uacpi_kernel_release_mutex(uacpi_handle hnd)
 {
@@ -474,6 +475,7 @@ uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
     }
     return UACPI_STATUS_OK;
 }
+uint64_t CoreS_TimerTickToNS(timer_tick tp);
 void uacpi_kernel_stall(uacpi_u8 usec)
 {
     uint64_t ns = usec*1000;

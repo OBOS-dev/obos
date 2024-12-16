@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#include "driver_interface/driverId.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -16,6 +17,8 @@
 #include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
+
+#include <driver_interface/pci.h>
 
 #include <locks/mutex.h>
 
@@ -31,6 +34,8 @@
 #include <uacpi/utilities.h>
 #include <uacpi_arch_helpers.h>
 
+#include <utils/list.h>
+
 // Note: Only currently supports S3
 
 static mutex suspend_lock = MUTEX_INITIALIZE();
@@ -38,15 +43,52 @@ static mutex suspend_lock = MUTEX_INITIALIZE();
 static thread* suspended_thread = nullptr;
 thread* OBOS_SuspendWorkerThread = nullptr;
 bool OBOS_WokeFromSuspend;
+
+static void restore_pci(pci_bus* bus)
+{
+    for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev; )
+    {
+        // Restore the command register.
+        Drv_PCISetResource(dev->resource_cmd_register);
+
+        // Restore the other resources.
+        for (pci_resource* resource = LIST_GET_HEAD(pci_device_list, &dev->resources); resource; )
+        {
+            if (resource->type == PCI_RESOURCE_CMD_REGISTER)
+                goto next1;
+            Drv_PCISetResource(resource);
+
+            next1:
+            resource = LIST_GET_NEXT(pci_resource_list, &dev->resources, resource);
+        }
+
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+    }
+}
+
 static void suspend_impl()
 {
     if (OBOS_WokeFromSuspend)
     {
-        /*for (volatile bool b = true; b; )
-            ;*/
+        // Call AML's wake functions.
         uacpi_prepare_for_wake_from_sleep_state(UACPI_SLEEP_STATE_S3);
         UACPI_ARCH_ENABLE_INTERRUPTS();
         uacpi_wake_from_sleep_state(UACPI_SLEEP_STATE_S3);
+
+        // Restore PCI.
+        for (size_t i = 0; i < Drv_PCIBusCount; i++)
+            restore_pci(&Drv_PCIBuses[i]);
+
+        // Tell all drivers we're awake.
+        for (driver_node* node = Drv_LoadedDrivers.head; node; )
+        {
+            if (node->data->header.ftable.on_wake)
+                node->data->header.ftable.on_wake();
+
+            node = node->next;
+        }
+
+        // Wake the thread that suspended the kernel to begin with.
         OBOS_WokeFromSuspend = false;
         CoreH_ThreadReady(suspended_thread);
         Core_ExitCurrentThread();
@@ -61,23 +103,23 @@ static void suspend_impl()
     while(1)
         asm volatile("");
 }
-static uacpi_ns_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespace_node *node)
+static uacpi_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespace_node *node, uint32_t max_depth)
 {
-    OBOS_UNUSED(ctx);
+    OBOS_UNUSED(max_depth);
 
     obos_status status = OBOS_DeviceMakeWakeCapable(node, UACPI_SLEEP_STATE_S3, !!ctx);
     if (obos_is_error(status))
     {
         if (status != OBOS_STATUS_WAKE_INCAPABLE)
             OBOS_Warning("Could not make device wake capable. Status: %d. Continuing...\n", status);
-        return UACPI_NS_ITERATION_DECISION_CONTINUE;
+        return UACPI_ITERATION_DECISION_CONTINUE;
     }
 
-    return UACPI_NS_ITERATION_DECISION_CONTINUE;
+    return UACPI_ITERATION_DECISION_CONTINUE;
 }
 static void set_wake_devs()
 {
-    uacpi_namespace_for_each_node_depth_first(
+    uacpi_namespace_for_each_child_simple(
         uacpi_namespace_root(),
         acpi_enumerate_callback,
         (void*)false
@@ -85,7 +127,7 @@ static void set_wake_devs()
 }
 void OBOS_InitWakeGPEs()
 {
-    uacpi_namespace_for_each_node_depth_first(
+    uacpi_namespace_for_each_child_simple(
         uacpi_namespace_root(),
         acpi_enumerate_callback,
         (void*)true // only mark GPEs for wake.
@@ -98,7 +140,8 @@ obos_status OBOS_Suspend()
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (obos_is_error(Core_MutexTryAcquire(&suspend_lock)))
         return OBOS_STATUS_ABORTED;
-    uacpi_namespace_node* s3 = uacpi_namespace_node_find(uacpi_namespace_root(), "_S3_");
+    uacpi_namespace_node* s3 = nullptr;
+    uacpi_namespace_node_find(uacpi_namespace_root(), "_S3_", &s3);
     if (!s3)
     {
         OBOS_Error("Firmware does not have the _S3 sleep state\n");
@@ -115,9 +158,22 @@ obos_status OBOS_Suspend()
         Core_MutexRelease(&suspend_lock);
         return OBOS_STATUS_INTERNAL_ERROR;
     }
-    set_wake_devs();
     OBOS_Log("oboskrnl: Suspend requested\n");
     OBOS_Warning("Note: Framebuffer might die\n");
+
+    // Set wake GPEs.
+    set_wake_devs();
+
+    // Tell all drivers we're going to sleep.
+    for (driver_node* node = Drv_LoadedDrivers.head; node; )
+    {
+        if (node->data->header.ftable.on_suspend)
+            node->data->header.ftable.on_suspend();
+
+        node = node->next;
+    }
+
+    log_level old_log_level = OBOS_GetLogLevel();
     OBOS_SetLogLevel(LOG_LEVEL_NONE);
     uacpi_context_set_log_level(UACPI_LOG_ERROR);
     thread* thr = CoreH_ThreadAllocate(nullptr);
@@ -138,6 +194,7 @@ obos_status OBOS_Suspend()
     suspended_thread = Core_GetCurrentThread();
     // We will be blocked until further notice.
     CoreH_ThreadBlock(suspended_thread, true);
+    OBOS_SetLogLevel(old_log_level);
     Core_MutexRelease(&suspend_lock);
     OBOS_Log("oboskrnl: Woke up from suspend.\n");
     return OBOS_STATUS_SUCCESS;

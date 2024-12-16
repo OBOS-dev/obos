@@ -61,7 +61,7 @@ OBOS_WEAK bool probe(void* vn);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_NO_ENTRY,
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
@@ -88,9 +88,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     },
     .driverName = "FAT Driver",
 };
-allocator_info* FATAllocator = nullptr;
-void OBOS_DriverEntry()
-{
-    FATAllocator = OBOS_KernelAllocator;
-    Core_ExitCurrentThread();
-}
+// allocator_info* FATAllocator = nullptr;
+// void OBOS_DriverEntry()
+// {
+//     FATAllocator = OBOS_KernelAllocator;
+//     Core_ExitCurrentThread();
+// }

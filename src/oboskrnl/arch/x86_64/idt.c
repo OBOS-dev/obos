@@ -108,7 +108,7 @@ obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interr
 }
 obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 {
-	if (vector > 224)
+	if (vector > 223)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	return Arch_IRQHandlers[vector+32] ? OBOS_STATUS_IN_USE : OBOS_STATUS_SUCCESS;
 }

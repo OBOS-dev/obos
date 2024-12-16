@@ -9,8 +9,8 @@
 #include <int.h>
 
 #include <scheduler/thread.h>
-#include <irq/dpc.h>
 
+#include <irq/dpc.h>
 #include <irq/irql.h>
 
 #include <locks/spinlock.h>

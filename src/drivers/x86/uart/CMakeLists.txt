@@ -1,4 +1,4 @@
-# drivers/x86_64/uart/CMakeLists.txt
+# drivers/x86/uart/CMakeLists.txt
 # 
 # Copyright (c) 2024 Omar Berrow
 

@@ -26,6 +26,8 @@
 
 #include <utils/list.h>
 
+// Abandon all hope, ye who enter here.
+
 signal_header* OBOSH_AllocateSignalHeader()
 {
     signal_header* hdr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(signal_header), nullptr);

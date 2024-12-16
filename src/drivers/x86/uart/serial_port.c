@@ -1,5 +1,5 @@
 /*
- * drivers/x86_64/uart/serial_port.c
+ * drivers/x86/uart/serial_port.c
  *
  * Copyright (c) 2024 Omar Berrow
 */

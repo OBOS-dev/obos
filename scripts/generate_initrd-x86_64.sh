@@ -7,6 +7,7 @@ cd $(git rev-parse --show-toplevel)
 cp out/uart tar
 cp out/ahci tar
 cp out/slowfat tar
+cp out/bochs_vbe tar
 if [[ ! -d tar/dev ]]
 then
     mkdir tar/dev
