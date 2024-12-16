@@ -229,7 +229,9 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		}
 	}
 
+#if 0
 	init_serial_log_backend();
+#endif
 
 	if (!Arch_Framebuffer)
 		OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
