@@ -187,14 +187,9 @@ uacpi_iteration_decision pci_bus_match(void *user, uacpi_namespace_node *node, u
     OBOS_UNUSED(max_depth);
     uint64_t curr_bus = 0;
     // Evaluate _BBN
-    uacpi_object* obj = nullptr;
-    uacpi_status status = uacpi_eval(node, "_BBN", nullptr, &obj);
-    if (uacpi_likely_success(status))
-    {
-        if (uacpi_unlikely_error(uacpi_object_get_integer(obj, &curr_bus)))
-            return UACPI_ITERATION_DECISION_CONTINUE;
-    }
-    else if (uacpi_likely(status == UACPI_STATUS_NOT_FOUND))
+    uint64_t obj = 0;
+    uacpi_status status = uacpi_eval_simple_integer(node, "_BBN", &obj);
+    if (uacpi_unlikely(status == UACPI_STATUS_NOT_FOUND))
         curr_bus = 0;
     else
         return UACPI_ITERATION_DECISION_CONTINUE;

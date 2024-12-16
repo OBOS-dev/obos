@@ -4,10 +4,10 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
 #include <error.h>
+#include <cmdline.h>
 #include <klog.h>
 
 #include <mm/bare_map.h>
@@ -219,11 +219,13 @@ void Mm_Initialize()
     }
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     Mm_InitializePageWriter();
+#if 0
     OBOS_Log("Initialized MM.\n");
     printf("Working set capacity: %ld KiB.\n", Mm_KernelContext.workingSet.capacity/1024);
     printf("%ld pageable pages.\n", udata.szPageablePages/OBOS_PAGE_SIZE);
     printf("%ld committed pages.\n", Mm_KernelContext.stat.committedMemory/OBOS_PAGE_SIZE);
     printf("Using " OBOS_PAGE_REPLACEMENT_ALGORITHM " PRA.\n", udata.szPageablePages/OBOS_PAGE_SIZE);
+#endif
 }
 bool Mm_IsInitialized()
 {

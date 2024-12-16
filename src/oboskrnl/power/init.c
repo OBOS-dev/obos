@@ -4,11 +4,13 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#include "cmdline.h"
-#include "driver_interface/pci.h"
-#include "mm/bare_map.h"
 #include <int.h>
 #include <klog.h>
+#include <cmdline.h>
+
+#include <driver_interface/pci.h>
+
+#include "mm/bare_map.h"
 
 #include <power/init.h>
 #include <power/suspend.h>

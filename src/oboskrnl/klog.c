@@ -19,10 +19,19 @@
 
 #include <irq/irql.h>
 
-#define STB_SPRINTF_NOFLOAT 1
-#define STB_SPRINTF_IMPLEMENTATION 1
-#define STB_SPRINTF_MIN 8
-#include <external/stb_sprintf.h>
+// #define STB_SPRINTF_NOFLOAT 1
+// #define STB_SPRINTF_IMPLEMENTATION 1
+// #define STB_SPRINTF_MIN 8
+// #include <external/stb_sprintf.h>
+
+#define NANOPRINTF_USE_FIELD_WIDTH_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_PRECISION_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_FLOAT_FORMAT_SPECIFIERS 0
+#define NANOPRINTF_USE_LARGE_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_BINARY_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_WRITEBACK_FORMAT_SPECIFIERS 0
+#define NANOPRINTF_IMPLEMENTATION
+#include <external/nanoprintf.h>
 
 #ifdef __x86_64__
 #	include <arch/x86_64/asm_helpers.h>
@@ -182,12 +191,13 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 		asm volatile("");
 }
 
-static char* outputCallback(const char* buf, void* a, int len)
+static void outputCallback(int val, void* a)
 {
 	OBOS_UNUSED(a);
+	// Cast val to a char for big endian systems.
+	char c = val;
 	for (size_t j = 0; j < nOutputCallbacks; j++)
-		outputCallbacks[j].write(buf, len, outputCallbacks[j].userdata);
-	return (char*)buf;
+		outputCallbacks[j].write(&c, 1, outputCallbacks[j].userdata);
 }
 void OBOS_AddLogSource(const log_backend* backend)
 {
@@ -209,9 +219,8 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 		s_printfLockInitialized = true;
 		s_printfLock = Core_SpinlockCreate();
 	}
-	char ch[8];
 	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
-	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
+	size_t ret = npf_vpprintf(outputCallback, nullptr, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
@@ -225,15 +234,16 @@ OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 }
 OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
-	return stbsp_vsnprintf(buf, bufSize, format, list);
+	return npf_vsnprintf(buf, bufSize, format, list);
 }
 OBOS_EXPORT size_t puts(const char *s)
 {
-	size_t len = strlen(s);
 	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
-	outputCallback(s, nullptr, len);
+	size_t i = 0;
+	for (; s[i]; i++)
+		outputCallback(s[i], nullptr);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
-	return len;
+	return i;
 }
 
 static void con_output(const char *str, size_t sz, void* userdata)

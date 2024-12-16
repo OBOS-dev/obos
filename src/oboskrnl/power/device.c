@@ -12,6 +12,7 @@
 #include <uacpi/internal/namespace.h>
 #include <uacpi/namespace.h>
 #include <uacpi/types.h>
+#include <uacpi/uacpi.h>
 #include <uacpi/sleep.h>
 #include <uacpi/event.h>
 #include <uacpi/context.h>
@@ -52,7 +53,7 @@ obos_status OBOS_DeviceSetDState(uacpi_namespace_node* dev, d_state new_state, b
             ustatus = uacpi_object_resolve_as_aml_namepath(obj, nullptr, &pr);
             if (uacpi_unlikely_error(ustatus))
                 continue; // an error, weird.
-            ustatus = uacpi_eval(pr, "_ON", nullptr, nullptr);
+            ustatus = uacpi_eval_simple(pr, "_ON", nullptr);
             if (uacpi_unlikely_error(ustatus))
             {
                 OBOS_Warning("Could not enable power resource. Status: %d. Continuing.\n", ustatus);
@@ -61,7 +62,7 @@ obos_status OBOS_DeviceSetDState(uacpi_namespace_node* dev, d_state new_state, b
         }
     }
 
-    ustatus = dry_run ? UACPI_STATUS_OK : uacpi_eval(psn, nullptr, nullptr, nullptr);
+    ustatus = dry_run ? UACPI_STATUS_OK : uacpi_eval_simple(psn, nullptr, nullptr);
     return ustatus == UACPI_STATUS_OK ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
 }
 
@@ -123,7 +124,7 @@ static void enable_pwr(uacpi_namespace_node* dev, uacpi_object_array *pkg, bool 
             continue;
         }
         //OBOS_Debug("evaluating %04s.%s\n", pwr_resource->name.id, on ? "_ON" : "_OFF");
-        ustatus = uacpi_eval(pwr_resource, on ? "_ON" : "_OFF", nullptr, nullptr);
+        ustatus = uacpi_eval_simple(pwr_resource, on ? "_ON" : "_OFF", nullptr);
         //OBOS_Debug("uacpi_eval returned %d\n", ustatus);
         if (uacpi_unlikely_error(ustatus))
         {
@@ -181,7 +182,8 @@ obos_status OBOS_DeviceMakeWakeCapable(uacpi_namespace_node* dev, uacpi_sleep_st
         return status;
 
     uacpi_object* buf = {};
-    uacpi_eval(dev, "_PRW", nullptr, &buf);
+    if (uacpi_unlikely_error(uacpi_eval_simple_package(dev, "_PRW", &buf)))
+        return OBOS_STATUS_INTERNAL_ERROR;
 
     uacpi_object_array pkg = {};
     uacpi_object_get_package(buf, &pkg);
@@ -255,7 +257,7 @@ static uint64_t eval_integer_node(uacpi_namespace_node* dev, const char* path)
     if (!path)
         return UINT64_MAX;
     uint64_t integer = 0;
-    uacpi_status status = uacpi_eval_integer(dev, path, nullptr, &integer);
+    uacpi_status status = uacpi_eval_simple_integer(dev, path, &integer);
     return status == UACPI_STATUS_NOT_FOUND ? UINT64_MAX : integer;
 }
 d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state state, obos_status* status)
@@ -268,7 +270,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
     }
     // Evaluate PRW, if it exists.
     uacpi_object* buf = {};
-    uacpi_status ret = uacpi_eval(dev, "_PRW", nullptr, &buf);
+    uacpi_status ret = uacpi_eval_simple_package(dev, "_PRW", &buf);
     if (uacpi_unlikely_error(ret))
     {
         if (status)
