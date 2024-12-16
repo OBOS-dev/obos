@@ -17,7 +17,7 @@ list (APPEND oboskrnl_sources
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
-	"driver_interface/pci.c"
+	"driver_interface/pci.c" "utils/shared_ptr.c"
 )
 
 add_executable(oboskrnl)
