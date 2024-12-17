@@ -22,6 +22,8 @@ obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
     if (CoreS_GetCPULocalPtr()->currentContext == &Mm_KernelContext)
         return memcpy(k_dest, usr_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+    // TODO: F****** implement virtual page locking
+    // Mm_VirtualMemoryLock(ctx, futex, sizeof(*futex));
     uintptr_t usrphys = 0;
     size_t usroffset = (uintptr_t)usr_src % OBOS_PAGE_SIZE;
     long bytes_left = count;
@@ -29,13 +31,17 @@ obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_src + i, nullptr, &usrphys);
         if (!usrphys)
+        {
+            // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
             return OBOS_STATUS_PAGE_FAULT;
+        }
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy((void*)((uintptr_t)k_dest + i), MmS_MapVirtFromPhys(usrphys+usroffset), currCount);
         usroffset = 0;
         i += currCount;
         bytes_left -= currCount;
     }
+    // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
     return OBOS_STATUS_SUCCESS;
 }
 obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
@@ -43,6 +49,8 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     if (CoreS_GetCPULocalPtr()->currentContext == &Mm_KernelContext)
         return memcpy(usr_dest, k_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+    // TODO: F****** implement virtual page locking
+    // Mm_VirtualMemoryLock(ctx, futex, sizeof(*futex));
     uintptr_t usrphys = 0;
     size_t usroffset = (uintptr_t)usr_dest % OBOS_PAGE_SIZE;
     long bytes_left = count;
@@ -50,13 +58,17 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     {
         MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, nullptr, &usrphys);
         if (!usrphys)
+        {
+            // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
             return OBOS_STATUS_PAGE_FAULT;
+        }
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);
         usroffset = 0;
         i += currCount;
         bytes_left -= currCount;
     }
+    // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
     return OBOS_STATUS_SUCCESS;
 }
 

@@ -20,6 +20,8 @@
 
 #include <mm/mm_sys.h>
 
+#include <locks/sys_futex.h>
+
 /*void Sys_Yield()
 {
     OBOS_Debug("yielding\n");
@@ -62,5 +64,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ContextGetStat,
     (uintptr_t)Sys_GetUsedPhysicalMemoryCount,
     (uintptr_t)Sys_QueryPageInfo,
+    (uintptr_t)Sys_FutexWake, // 32
+    (uintptr_t)Sys_FutexWait,
 };
 // Arch syscall table is defined per-arch
