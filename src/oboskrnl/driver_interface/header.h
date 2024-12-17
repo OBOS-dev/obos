@@ -109,8 +109,7 @@ typedef struct driver_ftable
     obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.
-    obos_status(*ioctl)(size_t nParameters, uint64_t request, ...);
-    obos_status(*ioctl_var)(size_t nParameters, uint64_t request, va_list list);
+    obos_status(*ioctl)(dev_desc what, uint32_t request, void* argp);
     // Called on driver unload.
     // Frees all the driver's allocated resources, as the kernel 
     // does not keep a track of allocated resources, and cannot free them on driver unload, causing a

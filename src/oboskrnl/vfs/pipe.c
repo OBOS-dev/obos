@@ -92,17 +92,11 @@ static obos_status get_max_blk_count(dev_desc desc, size_t* count)
     *count = pipe->pipe_size;
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status ioctl(size_t nParameters, uint64_t request, ...)
+OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(nParameters);
+    OBOS_UNUSED(what);
     OBOS_UNUSED(request);
-    return OBOS_STATUS_INVALID_IOCTL;
-}
-static obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
-{
-    OBOS_UNUSED(nParameters);
-    OBOS_UNUSED(request);
-    OBOS_UNUSED(list);
+    OBOS_UNUSED(argp);
     return OBOS_STATUS_INVALID_IOCTL;
 }
 static obos_status remove_file(dev_desc desc)
@@ -124,7 +118,6 @@ driver_id OBOS_FIFODriver = {
             .read_sync = read_sync,
             .write_sync = write_sync,
             .ioctl = ioctl,
-            .ioctl_var = ioctl_var,
             .get_blk_size=get_blk_size,
             .get_max_blk_count=get_max_blk_count,
             .remove_file=remove_file,

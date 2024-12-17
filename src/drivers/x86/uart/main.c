@@ -144,8 +144,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status ioctl(size_t nParameters, uint64_t request, ...);
-obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list);
+obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI|DRIVER_HEADER_HAS_VERSION_FIELD,
@@ -157,7 +156,6 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = cleanup,
         .ioctl = ioctl,
-        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
@@ -218,19 +216,38 @@ static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *nod
     return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
-obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
+    OBOS_UNUSED(what);
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
     switch (request) 
     {
         case IOCTL_OPEN_SERIAL_CONNECTION:
         {
-            if (nParameters != IOCTL_OPEN_SERIAL_CONNECTION_PARAMETER_COUNT)
-            {
-                status = OBOS_STATUS_INVALID_ARGUMENT;
-                break;
-            }
-            uint8_t id = (uint8_t)va_arg(list, uint32_t);
+            /*
+            struct {
+                uint8_t id;
+                uint32_t baudRate;
+                uint32_t dataBits;
+                uint32_t stopBits;
+                uint32_t parityBit;
+                dev_desc* connection;
+            } aligned(4) open_serial_connection_argp;
+            */
+
+            uint8_t id = (uint8_t)*(uint32_t*)argp;
+            argp = (void*)((uintptr_t)argp + 4);
+            uint32_t baudRate = *(uint32_t*)argp;
+            argp = (void*)((uintptr_t)argp + 4);
+            data_bits dataBits = *(uint32_t*)argp;
+            argp = (void*)((uintptr_t)argp + 4);
+            stop_bits stopBits = *(uint32_t*)argp;
+            argp = (void*)((uintptr_t)argp + 4);
+            parity_bit parityBit = *(uint32_t*)argp;
+            argp = (void*)((uintptr_t)argp + 4);
+            dev_desc* connection = (void*)*(uintptr_t*)argp;
+            argp = (void*)((uintptr_t)argp + sizeof(dev_desc*));
+
             if (id > nSerialPorts)
             {
                 status = OBOS_STATUS_INVALID_ARGUMENT;
@@ -242,13 +259,8 @@ obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
                 status = OBOS_STATUS_INTERNAL_ERROR;
                 break;
             }
-            uint32_t baudRate = va_arg(list, uint32_t);
-            data_bits dataBits = va_arg(list, data_bits);
-            stop_bits stopBits = va_arg(list, stop_bits);
-            parity_bit parityBit = va_arg(list, parity_bit);
-            dev_desc* connection = va_arg(list, dev_desc*);
             status = open_serial_connection(
-                port, 
+                port,
                 baudRate,
                 dataBits,
                 stopBits,
@@ -257,15 +269,6 @@ obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
             break;
         }
     }
-    return status;
-}
-obos_status ioctl(size_t nParameters, uint64_t request, ...)
-{
-    obos_status status = OBOS_STATUS_INVALID_IOCTL;
-    va_list list;
-    va_start(list, request);
-    status = ioctl_var(nParameters, request, list);
-    va_end(list);
     return status;
 }
 

@@ -50,6 +50,6 @@ OBOS_EXPORT uoff_t         Vfs_FdTellOff(const fd* desc);
 OBOS_EXPORT size_t        Vfs_FdGetBlkSz(const fd* desc);
 OBOS_EXPORT obos_status        Vfs_FdEOF(const fd* desc); 
 OBOS_EXPORT struct vnode* Vfs_FdGetVnode(fd* desc);
-OBOS_EXPORT obos_status      Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...);
+OBOS_EXPORT obos_status      Vfs_FdIoctl(fd* desc, uint64_t request, void* argp);
 OBOS_EXPORT obos_status      Vfs_FdFlush(fd* desc);
 OBOS_EXPORT obos_status      Vfs_FdClose(fd* desc);

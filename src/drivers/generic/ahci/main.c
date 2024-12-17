@@ -57,20 +57,12 @@ OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_
 OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
-OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(nParameters);
+    OBOS_UNUSED(what);
     OBOS_UNUSED(request);
-    OBOS_UNUSED(list);
-    return OBOS_STATUS_INVALID_IOCTL; // we don't support any
-}
-OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl(size_t nParameters, uint64_t request, ...)
-{
-    va_list list;
-    va_start(list, request);
-    obos_status status = ioctl_var(nParameters, request, list);
-    va_end(list);
-    return status;
+    OBOS_UNUSED(argp);
+    return OBOS_STATUS_INVALID_IOCTL;
 }
 void driver_cleanup_callback()
 {
@@ -109,7 +101,6 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
-        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,

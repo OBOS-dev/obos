@@ -305,7 +305,7 @@ vnode* Vfs_FdGetVnode(fd* desc)
 {
     return desc ? desc->vn : nullptr;
 }
-obos_status Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...)
+obos_status Vfs_FdIoctl(fd* desc, uint64_t request, void* argp)
 {
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -313,11 +313,7 @@ obos_status Vfs_FdIoctl(fd* desc, size_t nParameters, uint64_t request, ...)
         return OBOS_STATUS_UNINITIALIZED;
     if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
         return OBOS_STATUS_INVALID_IOCTL;
-    va_list list;
-    va_start(list, request);
-    obos_status status = desc->vn->un.device->driver->header.ftable.ioctl_var(nParameters, request, list);
-    va_end(list);
-    return status;
+    return desc->vn->un.device->driver->header.ftable.ioctl(desc->vn->desc, request, argp);
 }
 obos_status Vfs_FdFlush(fd* desc)
 {
