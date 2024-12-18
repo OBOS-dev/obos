@@ -7,7 +7,7 @@ if (OBOS_ARCHITECTURE_HAS_ACPI)
 	uacpi_add_sources()
 endif()
 
-add_library(uacpi STATIC ${UACPI_SOURCES} "kernel_api.c")
+add_library(uacpi STATIC ${UACPI_SOURCES} "kernel_api.c" "ec.c")
 
 target_compile_options(uacpi
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
