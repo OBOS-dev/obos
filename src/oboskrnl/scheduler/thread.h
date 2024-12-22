@@ -98,6 +98,11 @@ typedef struct thread
 	struct signal_header* signal_info;
 
 	void* kernelStack; // size: 0x10000 bytes
+
+	// Thread profiling info
+
+	// The amount of quantums the thread has ever ran for.
+	uint8_t total_quantums;
 } thread;
 typedef struct thread_list
 {

@@ -38,7 +38,7 @@ SECTIONS
 
     .data : {
         *(.data .data.*)
-        KEEP(*.driverheader)
+        *(.driverheader)
     } :data
 
     .bss : {

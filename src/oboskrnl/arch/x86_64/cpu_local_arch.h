@@ -43,4 +43,5 @@ typedef struct cpu_local_arch
 	bool pf_handler_running;
 	gdb_ctx dbg_ctx;
 	dpc dbg_dpc;
+	uint64_t stack_check_guard;
 } cpu_local_arch;

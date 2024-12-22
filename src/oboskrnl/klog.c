@@ -159,7 +159,7 @@ static uint32_t getPID()
 }
 OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
-	const char* ascii_art =
+	static const char ascii_art[] =
 		"       )\r\n"
         "    ( /(                        (\r\n"
         "    )\\())  (   (             (  )\\             )        (\r\n"

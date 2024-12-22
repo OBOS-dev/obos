@@ -4,13 +4,14 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <cmdline.h>
 
 #include <driver_interface/pci.h>
 
-#include "mm/bare_map.h"
+#include <mm/bare_map.h>
 
 #include <power/init.h>
 #include <power/suspend.h>
@@ -36,9 +37,7 @@ static void *tables_buf;
 static size_t table_buf_size;
 void OBOS_SetupEarlyTableAccess()
 {
-    table_buf_size = OBOS_GetOPTD("early-table-access-buf-size");
-    if (!table_buf_size)
-        table_buf_size = 4096;
+    table_buf_size = OBOS_GetOPTD_Ex("early-table-access-buf-size", OBOS_PAGE_SIZE);
     if (table_buf_size >= 16384)
     {
         OBOS_Warning("Early table access buffer size is greater than 16K. Truncating to 16K.\n");
@@ -51,10 +50,14 @@ void OBOS_SetupEarlyTableAccess()
 
 void OBOS_InitializeUACPI()
 {
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+
     uacpi_context_set_log_level(UACPI_LOG_INFO);
 
     uacpi_status st = uacpi_initialize(0);
     verify_status(st, uacpi_initialize);
+
+    OBOS_InitializeECFromECDT();
 
     st = uacpi_namespace_load();
     verify_status(st, uacpi_namespace_load);
@@ -62,5 +65,9 @@ void OBOS_InitializeUACPI()
     st = uacpi_namespace_initialize();
     verify_status(st, uacpi_namespace_initialize);
 
+    OBOS_InitializeECFromNamespace();
+
     OBOS_InitWakeGPEs();
+
+    Core_LowerIrql(oldIrql);
 }

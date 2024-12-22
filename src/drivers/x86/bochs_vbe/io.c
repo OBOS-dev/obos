@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#pragma once
-
 #include <int.h>
 
 #include <arch/x86_64/asm_helpers.h>

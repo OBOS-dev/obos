@@ -4,6 +4,8 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
+
 #include <int.h>
 #include <klog.h>
 
@@ -216,7 +218,7 @@ static void install_ec_handlers()
 
 void OBOS_InitializeECFromECDT()
 {
-    OBOS_ASSERT(ec_initialized);
+    OBOS_ASSERT(!ec_initialized);
     uacpi_table tbl = {};
     uacpi_status status = uacpi_table_find_by_signature("ECDT", &tbl);
     if (status != UACPI_STATUS_OK)
@@ -312,3 +314,5 @@ void OBOS_InitializeECFromNamespace()
         OBOS_Log("ACPI: Initialized EC from namespace (post-namespace init)\n");
 
 }
+
+#endif

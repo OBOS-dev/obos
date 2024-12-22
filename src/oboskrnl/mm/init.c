@@ -32,7 +32,7 @@
 #include <allocators/basic_allocator.h>
 
 #if OBOS_KASAN_ENABLED
-#   include <sanitizers/asan.h>
+#   include <asan.h>
 #endif
 
 static bool initialized;
@@ -191,11 +191,9 @@ void Mm_Initialize()
 #   error oopsie
 #endif
     // Mm_KernelContext.workingSet.capacity = udata.szPageablePages;
-    Mm_KernelContext.workingSet.capacity = OBOS_GetOPTD("working-set-cap");
+    Mm_KernelContext.workingSet.capacity = OBOS_GetOPTD_Ex("working-set-cap", 4*1024*1024);
     if (Mm_KernelContext.workingSet.capacity < OBOS_PAGE_SIZE && Mm_KernelContext.workingSet.capacity != 0)
         OBOS_Warning("Working set capacity set to < PAGE_SIZE.\n");
-    if (Mm_KernelContext.workingSet.capacity < OBOS_PAGE_SIZE)
-        Mm_KernelContext.workingSet.capacity = 4*1024*1024;
     initialized = true;
     page_range* i = nullptr;
     // size_t committedMemory;
@@ -219,7 +217,7 @@ void Mm_Initialize()
     }
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     Mm_InitializePageWriter();
-#if 0
+#if 1
     OBOS_Log("Initialized MM.\n");
     printf("Working set capacity: %ld KiB.\n", Mm_KernelContext.workingSet.capacity/1024);
     printf("%ld pageable pages.\n", udata.szPageablePages/OBOS_PAGE_SIZE);

@@ -188,14 +188,14 @@ obos_status OBOS_DeviceMakeWakeCapable(uacpi_namespace_node* dev, uacpi_sleep_st
     uacpi_object_array pkg = {};
     uacpi_object_get_package(buf, &pkg);
 
+    // If false, use _PSW on cleanup, otherwise use _DSW on cleanup.
+    bool useDSW = false;
+
     if (registerGPEOnly)
         goto registerGPE;
 
     // Enable all power resources set by _PRW.
     enable_pwr(dev, &pkg, true);
-
-    // If false, use _PSW on cleanup, otherwise use _DSW on cleanup.
-    bool useDSW = false;
 
     // Try evaluating _DSW
     status = dsw(dev, true, state, new_dstate);
@@ -269,6 +269,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
     // Evaluate PRW, if it exists.
+    //printf("%s:%d\n", __FILE__, __LINE__);
     uacpi_object* buf = {};
     uacpi_status ret = uacpi_eval_simple_package(dev, "_PRW", &buf);
     if (uacpi_unlikely_error(ret))
@@ -278,12 +279,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
 
-    if (uacpi_unlikely(!uacpi_object_is(buf, UACPI_OBJECT_PACKAGE)))
-    {
-        if (status)
-            *status = OBOS_STATUS_MISMATCH;
-        return DSTATE_INVALID;
-    }
+    printf("%s:%d\n", __FILE__, __LINE__);
 
     uacpi_object_array pkg = {};
     uacpi_object_get_package(buf, &pkg);
@@ -301,6 +297,8 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
             *status = OBOS_STATUS_WAKE_INCAPABLE;
         return DSTATE_INVALID;
     }
+
+    printf("%s:%d\n", __FILE__, __LINE__);
 
     // We have the deepest sleep state that this device can wake us in.
     // Now we need the D states from _SnD and _SnW
@@ -326,8 +324,9 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
 
-//    OBOS_Debug("%04s.%s evaluated to %d\n", dev->name.text, path_d, snd);
-//    OBOS_Debug("%04s.%s evaluated to %d\n", dev->name.text, path_w, snw);
+    printf("%s:%d\n", __FILE__, __LINE__);
+    printf("%04s.%s evaluated to %d\n", dev->name.text, path_d, snd);
+    printf("%04s.%s evaluated to %d\n", dev->name.text, path_w, snw);
 
     // Sort from deepest->shallowest
     d_state avaliableStates[DSTATE_MAX + 1] = {};
@@ -340,6 +339,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         avaliableStates[0] = snd;
     }
 
+    printf("%s:%d\n", __FILE__, __LINE__);
 
     // TODO: Do we use <= or ==?
     if (snw <= DSTATE_2 && snd == UINT64_MAX)
@@ -350,11 +350,15 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         avaliableStates[2] = DSTATE_0;
     }
 
+    printf("%s:%d\n", __FILE__, __LINE__);
+
     if (snd <= DSTATE_2 && snw == UINT64_MAX)
     {
         nStates = 1;
         avaliableStates[0] = DSTATE_2;
     }
+
+    printf("%s:%d\n", __FILE__, __LINE__);
 
     if (snd == DSTATE_2 && (snw >= DSTATE_3HOT && snw != UINT64_MAX))
     {
@@ -367,20 +371,22 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
     // Choose the state.
     for (size_t i = 0; i < nStates; i++)
     {
-        //OBOS_Debug("Attempting to use D state %d for wake\n", avaliableStates[i]);
+        printf("Attempting to use D state %d for wake\n", avaliableStates[i]);
         obos_status stat = OBOS_DeviceHasDState(dev, avaliableStates[i]);
         if (obos_is_error(stat) && stat != OBOS_STATUS_NOT_FOUND)
         {
             if (status) *status = stat;
-            //OBOS_Debug("Query of D state %d for wake failed. Status: %d\n", avaliableStates[i], stat);
+            printf("Query of D state %d for wake failed. Status: %d\n", avaliableStates[i], stat);
             return DSTATE_INVALID;
         }
         if (stat == OBOS_STATUS_NOT_FOUND)
             continue;
-        //OBOS_Debug("D state %d is wake-capable and exists.\n", avaliableStates[i]);
+        printf("D state %d is wake-capable and exists.\n", avaliableStates[i]);
         val = avaliableStates[i];
         break;
     }
+
+    printf("%s:%d\n", __FILE__, __LINE__);
 
     if (status)
         *status = OBOS_STATUS_SUCCESS;

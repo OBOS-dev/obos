@@ -75,6 +75,8 @@ static OBOS_NO_UBSAN void ParseMADT()
 			MADT_EntryType0* mLapicId = (MADT_EntryType0*)cur;
 			if (s_nLAPICIDs == 255)
 				break; // make continue if more types are parsed
+			if (~mLapicId->flags & BIT(0))
+				continue;
 			s_lapicIDs[s_nLAPICIDs++] = mLapicId->apicID;
 		}
 	}
@@ -130,6 +132,7 @@ void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackS
 	gdtr.limit = sizeof(info->arch_specific.gdtEntries) - 1;
 	gdtr.base = (uintptr_t)&info->arch_specific.gdtEntries;
 	Arch_FlushGDT((uintptr_t)&gdtr);
+	wrmsr(0xC0000101, (uintptr_t)info);
 }
 extern void Arch_IdleTask();
 OBOS_NORETURN extern void Arch_APYield(void* startup_stack, void* temp_stack);
@@ -140,10 +143,10 @@ static void idleTaskBootstrap()
 	Arch_IdleTask();
 }
 extern void Arch_InitializeMiscFeatures();
-void Arch_APEntry(cpu_local* info)
+void __attribute__((no_stack_protector)) Arch_APEntry(cpu_local* info)
 {
-	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
 	wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
+	Arch_CPUInitializeGDT(info, (uintptr_t)info->arch_specific.ist_stack, 0x20000);
 	Arch_InitializeIDT(false);
 	irql oldIrql = Core_RaiseIrql(0xf);
 	OBOS_UNUSED(oldIrql);

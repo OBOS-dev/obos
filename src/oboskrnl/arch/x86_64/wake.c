@@ -118,7 +118,7 @@ static void restart_cpus()
     }
 }
 extern uint64_t Arch_FindCounter(uint64_t hz);
-static void on_wake(cpu_local* info)
+static void __attribute__((no_stack_protector)) on_wake(cpu_local* info)
 {
     static uint64_t cached_counter;
     struct
@@ -128,10 +128,11 @@ static void on_wake(cpu_local* info)
     } OBOS_PACK gdtr;
     gdtr.limit = sizeof(info->arch_specific.gdtEntries) - 1;
     gdtr.base = (uintptr_t)&info->arch_specific.gdtEntries;
+    wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
     reinit_tss_segment(info);
-    Arch_InitializeIDT(false);
     Arch_FlushGDT((uintptr_t)&gdtr);
     wrmsr(0xC0000101 /* GS_BASE */, (uint64_t)info);
+    Arch_InitializeIDT(false);
     irql oldIrql = Core_RaiseIrqlNoThread(0xf);
     OBOS_UNUSED(oldIrql);
     Arch_InitializeMiscFeatures();

@@ -6,6 +6,10 @@ if (NOT HAS_CROSS_COMPILER)
 	message(FATAL_ERROR "No m68k-obos cross compiler in the PATH!")
 endif()
 
+if (OBOS_USE_CLANG)
+	message(WARNING "OBOS does not support m68k clang")
+endif()
+
 set(CMAKE_C_COMPILER "m68k-obos-gcc")
 set(CMAKE_CXX_COMPILER "m68k-obos-g++")
 set(CMAKE_ASM-ATT_COMPILER ${CMAKE_C_COMPILER})

@@ -18,7 +18,7 @@
 #define IA32_FSTAR 0xC0000084
 
 extern uint64_t Arch_cpu_local_currentKernelStack_offset;
-extern void Arch_SyscallTrapHandler();
+extern char Arch_SyscallTrapHandler[];
 void OBOSS_InitializeSyscallInterface()
 {
     // Enable IA32_EFER.SCE

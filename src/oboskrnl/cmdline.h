@@ -20,6 +20,7 @@ void OBOS_ParseCMDLine();
 OBOS_EXPORT char* OBOS_GetOPTS(const char* opt);
 // Gets the value of an integer command line option.
 OBOS_EXPORT uint64_t OBOS_GetOPTD(const char* opt);
+OBOS_EXPORT uint64_t OBOS_GetOPTD_Ex(const char* opt, uint64_t default_value);
 // Gets the value of a flag command line option.
 // true if the flag was found on the command line, otherwise false.
 OBOS_EXPORT bool OBOS_GetOPTF(const char* opt);

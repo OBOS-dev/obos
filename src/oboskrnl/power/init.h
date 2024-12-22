@@ -10,3 +10,6 @@
 
 void OBOS_SetupEarlyTableAccess();
 void OBOS_InitializeUACPI();
+
+void OBOS_InitializeECFromECDT();
+void OBOS_InitializeECFromNamespace();

@@ -210,13 +210,31 @@ static void init_serial_log_backend()
 }
 
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
-OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext)
+OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
+	bsp_cpu.id = 0;
+	bsp_cpu.isBSP = true;
+	Core_CpuCount = 1;
+	Core_CpuInfo = &bsp_cpu;
+
+	extern uint64_t __stack_chk_guard;
+	Core_CpuInfo->arch_specific.stack_check_guard = __stack_chk_guard;
+
+	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
+
 	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
 	Core_GetIrql();
 	ParseBootContext(bcontext);
 	Arch_BootContext = bcontext;
+	OBOS_ParseCMDLine();
 	asm("sti");
+
+	uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_DEBUG);
+	if (log_level > 4)
+		log_level = LOG_LEVEL_DEBUG;
+	OBOS_SetLogLevel(log_level);
+	extern uint64_t Arch_KernelCR3;
+	Arch_KernelCR3 = getCR3();
 
 	{
 		uint32_t ecx = 0;
@@ -259,7 +277,6 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 
 #if OBOS_RELEASE
-	OBOS_SetLogLevel(LOG_LEVEL_LOG);
 	OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
@@ -277,6 +294,8 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 
 	OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
 	Arch_InitBootGDT();
+
+	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 
 	OBOS_Debug("%s: Initializing the Boot IDT.\n", __func__);
 	Arch_InitializeIDT(true);
@@ -299,11 +318,6 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 
 	OBOS_Debug("%s: Initializing scheduler.\n", __func__);
 
-	bsp_cpu.id = 0;
-	bsp_cpu.isBSP = true;
-	Core_CpuCount = 1;
-	Core_CpuInfo = &bsp_cpu;
-
 	thread_ctx ctx1, ctx2;
 	memzero(&ctx1, sizeof(ctx1));
 	memzero(&ctx2, sizeof(ctx2));
@@ -319,7 +333,6 @@ OBOS_PAGEABLE_FUNCTION void Arch_KernelEntry(struct ultra_boot_context* bcontext
 
 	// Initialize the CPU's GDT.
 	Arch_CPUInitializeGDT(&Core_CpuInfo[0], (uintptr_t)Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
-	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 	Core_CpuInfo[0].currentIrql = Core_GetIrql();
 	Core_CpuInfo[0].arch_specific.ist_stack = Arch_InitialISTStack;
 	for (thread_priority i = 0; i <= THREAD_PRIORITY_MAX_VALUE; i++)
@@ -456,8 +469,6 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
-	OBOS_Debug("%s: Parsing command line.\n", __func__);
-	OBOS_ParseCMDLine();
 	{
 		char* initrd_module_name = OBOS_GetOPTS("initrd-module");
 		char* initrd_driver_module_name = OBOS_GetOPTS("initrd-driver-module");
@@ -922,7 +933,7 @@ test_program:;\
 test_thread:;\
 	mov eax, 7;\
 	syscall;\
-	call Sys_ExitCurrentThread;\
+	call Sys_Shutdown;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\
 	syscall;\

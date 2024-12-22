@@ -1,5 +1,5 @@
 /*
-	libs/uACPI/kernel_api.cpp
+	uACPI/kernel_api.c
 	
 	Copyright (c) 2024 Omar Berrow
 */
@@ -35,6 +35,7 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+#include <mm/bare_map.h>
 
 #include <driver_interface/pci.h>
 
@@ -250,11 +251,12 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // s_uACPIAllocatorInitialized = true;
     // }
     void* ret = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
+    // void* ret = OBOS_BasicMMAllocatePages(size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
     /*else
         OBOS_Debug("Allocated %lu bytes at 0x%p\n", size, ret);*/
-    return memzero(ret, size);
+    return ret ? memzero(ret, size) : ret;
 }
 void* uacpi_kernel_calloc(uacpi_size count, uacpi_size size)
 {
@@ -349,11 +351,13 @@ void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 }
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
+    return 0;
     spinlock* lock = (spinlock*)hnd;
     return Core_SpinlockAcquire(lock);
 }
 void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
+    return;
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
 }
@@ -610,7 +614,7 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
 	size_t spin = 0;
     while (s_nWork > 0)
     {
-        if (spin++ > 10000)
+        if (spin++ > 1000000)
 			spin_hung();
         spinlock_hint();
     }
@@ -683,11 +687,7 @@ void *uacpi_memmove(void *dest, const void* src, size_t len)
 }
 size_t uacpi_strnlen(const char *src, size_t maxcnt)
 {
-    if (!src)
-        return 0;
-    size_t i = 0;
-    for (; i < maxcnt && src[i]; i++);
-    return i;
+    return strnlen(src, maxcnt);
 }
 size_t uacpi_strlen(const char *src)
 {

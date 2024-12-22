@@ -22,6 +22,8 @@
 
 #include <locks/sys_futex.h>
 
+#include <vfs/fd_sys.h>
+
 /*void Sys_Yield()
 {
     OBOS_Debug("yielding\n");
@@ -66,5 +68,22 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_QueryPageInfo,
     (uintptr_t)Sys_FutexWake, // 32
     (uintptr_t)Sys_FutexWait,
+    (uintptr_t)Sys_FdAlloc, // 33
+    (uintptr_t)Sys_FdOpen,
+    (uintptr_t)Sys_FdOpenDirent,
+    (uintptr_t)Sys_FdWrite,
+    (uintptr_t)Sys_FdAWrite,
+    (uintptr_t)Sys_FdRead,
+    (uintptr_t)Sys_FdARead,
+    (uintptr_t)Sys_FdSeek,
+    (uintptr_t)Sys_FdTellOff,
+    (uintptr_t)Sys_FdEOF,
+    (uintptr_t)Sys_FdIoctl,
+    (uintptr_t)Sys_FdFlush,
+    (uintptr_t)Sys_FdClose, // 45
 };
 // Arch syscall table is defined per-arch
+
+obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
+{
+}

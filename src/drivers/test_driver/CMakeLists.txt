@@ -23,7 +23,7 @@ target_include_directories(test_driver
 
 target_link_options(test_driver
 	PRIVATE "-nostdlib"
-	PRIVATE "-Wl,-pic"
+	PRIVATE "-fPIC"
 	PRIVATE "-Wl,--unresolved-symbols=ignore-all"
 #	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"

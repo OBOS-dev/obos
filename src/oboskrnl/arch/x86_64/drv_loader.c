@@ -30,6 +30,8 @@
 #include <uacpi/types.h>
 #include <uacpi_libc.h>
 
+// Abandon all hope, ye who enter here.
+
 #define OffsetPtr(ptr, off, type) (type)(((uintptr_t)ptr) + ((intptr_t)off))
 // Please forgive me for this
 #define Cast(what, to) ((to)what)
@@ -92,6 +94,66 @@ static void free_copy_reloc_array(struct copy_reloc_array* arr)
     memzero(arr, sizeof(*arr));
 }
 
+static uint32_t GnuHash(const char* name)
+{
+    uint32_t h = 5381 /* oooo magic number */;
+
+    while (*name)
+        h = ((h<<5)+h) + *name++; // h*33 + *name++
+
+    return h;
+}
+
+#define getEntryOffset(ptr, type, offset) (*((type*)((uintptr_t)(ptr) + (offset))))
+static Elf64_Sym* GetSymbolFromGnuTable(
+			uint8_t* fileStart,
+			uint8_t* baseAddress,
+			Elf64_Sym* symbolTable,
+            uintptr_t gnuHashTableOffset,
+			Elf64_Off stringTable,
+            const char* _symbol)
+{
+    void* base = baseAddress+gnuHashTableOffset;
+
+    uint32_t nbuckets = getEntryOffset(base, uint32_t, 0);
+    uint32_t symoffset = getEntryOffset(base, uint32_t , 4);
+    uint32_t bloom_size = getEntryOffset(base, uint32_t, 8);
+    uint32_t bloom_shift = getEntryOffset(base, uint32_t, 12);
+    // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
+    uint64_t* bloom = &getEntryOffset(base, uint64_t, 16);
+    uint32_t* buckets = &getEntryOffset(base, uint32_t, 16+bloom_size);
+    uint32_t* chain = &getEntryOffset(base, uint32_t, 16+bloom_size+nbuckets*sizeof(uint32_t));
+
+    uint32_t hash = GnuHash(_symbol);
+
+    // Look at the bloom table (ooo fancy)
+    uint32_t bloom_value = bloom[hash/64 % bloom_size];
+
+    // OpenBSD, you confuse me greatly.
+    uint32_t h1 = hash % 64;
+    uint32_t h2 = (hash >> bloom_shift) % 64;
+
+    if (((bloom_value >> h1) & (bloom_value >> h2) & 1) == 0)
+        return nullptr; // The symbol definitely does not exist.
+
+    // First, fetch the bucket.
+    uint32_t bucket = buckets[hash % nbuckets];
+    if (bucket < symoffset)
+        return nullptr; // bruh
+
+
+    for (uint32_t currhash = chain[bucket-symoffset]; ~currhash & 1; currhash = chain[++bucket-symoffset])
+    {
+        Elf64_Sym* symbol = &symbolTable[bucket];
+        const char* name = stringTable + (char*)fileStart + symbol->st_name;
+
+        if (((hash|1) == (currhash|1)) && strcmp(name, _symbol))
+            return symbol;
+
+        if (currhash & 1)
+            return nullptr;
+    }
+}
 // From https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-48031.html#scrolltoc
 static uint32_t ElfHash(const char* name)
 {
@@ -111,9 +173,12 @@ static Elf64_Sym* GetSymbolFromTable(
 			uint8_t* baseAddress,
 			Elf64_Sym* symbolTable,
 			uintptr_t hashTableOff,
+            uintptr_t gnuHashTableOffset,
 			Elf64_Off stringTable,
 			const char* _symbol)
 {
+    if (gnuHashTableOffset)
+        return GetSymbolFromGnuTable(fileStart, baseAddress, symbolTable, gnuHashTableOffset, stringTable, _symbol);
     Elf64_Word* hashTableBase = (Elf64_Word*)(baseAddress + hashTableOff);
     Elf64_Word nBuckets = hashTableBase[0];
     uint32_t currentBucket = ElfHash(_symbol) % nBuckets;
@@ -155,7 +220,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
     list->nNodes++;
     dependency->refCnt++;
 }
-static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset, bool *usesUacpiSymbol)
+static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset, uintptr_t gnuHashTableOffset, bool *usesUacpiSymbol)
 {
     driver_symbol* Symbol = nullptr;
     driver_symbol internal_symbol = {};
@@ -178,7 +243,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         if (!Symbol)
         {
             Elf64_Sym* sym = GetSymbolFromTable(
-                (uint8_t*)file, base, symbolTable, hashTableOffset, stringTable,
+                (uint8_t*)file, base, symbolTable, hashTableOffset, gnuHashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
             if (!obos_expect((uintptr_t)sym != 0, 1))
@@ -471,6 +536,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     Elf64_Sym* symbolTable = 0;
 	Elf64_Off stringTable = 0;
 	uintptr_t hashTableOffset = 0;
+	uintptr_t gnuHashTableOffset = 0;
 	Elf64_Addr* GOT = nullptr;
     Elf64_Dyn* currentDynamicHeader = OffsetPtr(file, dynamic->p_offset, Elf64_Dyn*);
     size_t last_dtrelasz = 0, last_dtrelsz = 0, last_dtpltrelsz = 0;
@@ -478,7 +544,9 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     Elf64_Dyn* dynEntryAwaitingRelaSz = nullptr;
     bool awaitingRelSz = false, foundRelSz = false;
     Elf64_Dyn* dynEntryAwaitingRelSz = nullptr;
-    uint64_t last_dlpltrel = 0;
+    bool awaitingPltRelSz = false, foundPltRelSz = false;
+    Elf64_Dyn* dynEntryAwaitingPltRelSz = nullptr;
+    uint64_t last_dlpltrel = 0xffffffff;
     struct relocation_table current = {};
 	for (size_t i = 0; currentDynamicHeader->d_tag != DT_NULL; i++, currentDynamicHeader++)
 	{
@@ -486,6 +554,9 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         {
         case DT_HASH:
             hashTableOffset = currentDynamicHeader->d_un.d_ptr;
+            break;
+        case DT_GNU_HASH:
+            gnuHashTableOffset = currentDynamicHeader->d_un.d_ptr;
             break;
         case DT_PLTGOT:
             // TODO: Find out whether this is the PLT or GOT (if possible).
@@ -520,6 +591,12 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             last_dtrelasz = 0;
             break;
         case DT_JMPREL:
+            if (!foundPltRelSz)
+            {
+                awaitingPltRelSz = true;
+                dynEntryAwaitingPltRelSz = currentDynamicHeader;
+                break;
+            }
             switch (last_dlpltrel)
             {
             case DT_REL:
@@ -564,9 +641,53 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             break;
         case DT_PLTREL:
             last_dlpltrel = currentDynamicHeader->d_un.d_val;
+            if (awaitingPltRelSz)
+            {
+                switch (last_dlpltrel)
+                {
+                    case DT_REL:
+                        current.rel = true;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    case DT_RELA:
+                        current.rel = false;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    default:
+                        break;
+                }
+                awaitingPltRelSz = false;
+            }
+            foundPltRelSz = true;
             break;
         case DT_PLTRELSZ:
             last_dtpltrelsz = currentDynamicHeader->d_un.d_val;
+            if (awaitingPltRelSz && (last_dlpltrel != UINT32_MAX))
+            {
+                switch (last_dlpltrel)
+                {
+                    case DT_REL:
+                        current.rel = true;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    case DT_RELA:
+                        current.rel = false;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    default:
+                        break;
+                }
+                awaitingPltRelSz = false;
+            }
+            foundPltRelSz = (last_dlpltrel != UINT32_MAX);
             break;
         case DT_STRTAB:
             stringTable = currentDynamicHeader->d_un.d_ptr;
@@ -614,6 +735,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
                                       GOT,
                                       &copy_relocations,
                                       hashTableOffset,
+                                      gnuHashTableOffset,
                                       &usesUacpiSymbol))
                 return nullptr;
         }
@@ -652,16 +774,21 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         *dynamicSymbolTable = symbolTable;
     if (nEntriesDynamicSymbolTable)
     {
-        if (!hashTableOffset)
+        if (gnuHashTableOffset)
+        {
+            Elf64_Word* hashTable = OffsetPtr(file, gnuHashTableOffset, Elf64_Word*);
+            *nEntriesDynamicSymbolTable = hashTable[0]+hashTable[1];
+        }
+        else if (hashTableOffset)
+        {
+            Elf64_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf64_Word*);
+            *nEntriesDynamicSymbolTable = hashTable[1];
+        }
+        else
         {
             // There is no possible way to know the size without a hash table.
 
             *nEntriesDynamicSymbolTable = 0;
-        }
-        else
-        {
-            Elf64_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf64_Word*);
-            *nEntriesDynamicSymbolTable = hashTable[1];
         }
     }
     if (dynstrtab)

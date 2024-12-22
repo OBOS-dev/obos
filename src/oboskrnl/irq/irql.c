@@ -36,6 +36,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrql(irql to)
 }
 OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrql(irql to)
 {
+	if (to == *Core_GetIRQLVar())
+		return;
 	Core_LowerIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
@@ -54,6 +56,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
 }
 OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoThread(irql to)
 {
+	if (to == *Core_GetIRQLVar())
+		return;
 	Core_LowerIrqlNoDPCDispatch(to);
 	if (to < IRQL_DISPATCH && CoreS_GetCPULocalPtr())
 	{
@@ -71,6 +75,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return;
+	if (to == *Core_GetIRQLVar())
+		return;
 	if (to > *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	uint8_t old = *Core_GetIRQLVar();
@@ -84,6 +90,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return IRQL_INVALID;
+	if (to == *Core_GetIRQLVar())
+		return to;
 	if (to < *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
 	irql oldIRQL = Core_GetIrql();

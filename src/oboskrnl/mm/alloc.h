@@ -73,9 +73,31 @@ OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags 
 // file can be nullptr for a anonymous mapping.
 OBOS_EXPORT void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status);
 OBOS_EXPORT obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t size);
-// Note: base must be the exact address as returned by AllocateVirtualMemory.
+// Note: base must be the exact address as returned by VirtualMemoryAlloc.
 // isPageable values:
 // 0: Non-pageable
 // 1: Pageable
 // >1: Same as previous value.
 OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t size, prot_flags newProt, int isPageable);
+
+// Maps user pages into the kernel address space. This can be used in syscalls to avoid copying large amounts of memory.
+OBOS_EXPORT obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool lock_pages);
+
+typedef enum unmap_behavior {
+	// Default behavior.
+	// Allow the pages to be unmapped from the address space, but do not unlock the backing memory.
+	UNMAP_FLAGS_ALLOW = 0,
+	// Defers the unmap until the pages are unlocked manually.
+	UNMAP_FLAGS_DEFER,
+	// Unlocks the pages on unmap, then unmaps them.
+	UNMAP_FLAGS_UNLOCK,
+} unmap_behavior;
+
+// Locks pages from base to base+sz in the working-set.
+// If space is not avaliable in the working-set, pages are removed until space can be satisified.
+// If the working-set's capacity is too small, then it can be inflated until the pages are unlocked.
+// The unmap_
+OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz, unmap_behavior unmap_action);
+// Unlocks pages from base to base+sz from the working-set.
+// If the pages caused the working-set capacity to be inflated, then it is deflated once again.
+OBOS_EXPORT obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base, size_t sz);

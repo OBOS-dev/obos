@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "irq/timer.h"
 #include <int.h>
 #include <klog.h>
 
@@ -207,56 +208,33 @@ schedule:
 	}
 #endif
 	thread* chosenThread = nullptr;
-	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
-		CoreS_GetCPULocalPtr()->currentPriorityList = &CoreS_GetCPULocalPtr()->priorityLists[THREAD_PRIORITY_MAX_VALUE];
-	if (++CoreS_GetCPULocalPtr()->currentPriorityList->quantum >= Core_ThreadPriorityToQuantum[CoreS_GetCPULocalPtr()->currentPriorityList->priority])
-	{
-		CoreS_GetCPULocalPtr()->currentPriorityList->quantum = 0;
-		thread_priority nextPriority = CoreS_GetCPULocalPtr()->currentPriorityList->priority - 1;
-		if (nextPriority < 0)
-			nextPriority = THREAD_PRIORITY_MAX_VALUE;
-		CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(nextPriority);
-		
-	}
-	thread_priority_list* list = CoreS_GetCPULocalPtr()->currentPriorityList;
-	find_list:
-	OBOS_ASSERT(list);
-	while (!list->list.head)
-	{
-		thread_priority nextPriority = list->priority - 1;
-		if (nextPriority < 0)
-		{
-			list = nullptr;
-			chosenThread = CoreS_GetCPULocalPtr()->idleThread;
-			if (!chosenThread)
-				OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
-			break;
-		}
-		OBOS_ASSERT(nextPriority <= THREAD_PRIORITY_MAX_VALUE);
-		list = priorityList(nextPriority);
-	}
-	if (!list)
+timer_tick CoreS_GetNativeTimerTick();
+	// timer_tick start = CoreS_GetNativeTimerTick();
+	if (obos_expect(getCurrentThread != nullptr, true))
+		chosenThread = getCurrentThread->snode->next ? getCurrentThread->snode->next->data : nullptr;
+	if (chosenThread)
 		goto switch_thread;
-	thread_node* node = list->list.head;
-	while (node && node->data->status == THREAD_STATUS_RUNNING)
-		node = node->next;
-	if (!node)
-	{
-		thread_priority nextPriority = list->priority - 1;
-		if (nextPriority < 0)
-		{
-			list = nullptr;
-			chosenThread = CoreS_GetCPULocalPtr()->idleThread;
-			if (!chosenThread)
-				OBOS_Panic(OBOS_PANIC_SCHEDULER_ERROR, "Error in %s while rescheduling CPU %d: Could not find an appropriate idle thread when all thread lists have exhausted.\n", __func__, CoreS_GetCPULocalPtr()->id);
-			goto switch_thread;
-		}
-		list = priorityList(nextPriority);
-		goto find_list;
-	}
 
-	chosenThread = node->data;
+	if (!CoreS_GetCPULocalPtr()->currentPriorityList)
+		CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(THREAD_PRIORITY_MAX_VALUE);
+
+	get_next_list:
+	(void)0;
+	// Go to the next priority list.
+	thread_priority next_priority = CoreS_GetCPULocalPtr()->currentPriorityList->priority-1;
+	if (next_priority < 0)
+		next_priority = THREAD_PRIORITY_MAX_VALUE;
+
+	CoreS_GetCPULocalPtr()->currentPriorityList = priorityList(next_priority);
+	if (!CoreS_GetCPULocalPtr()->currentPriorityList->list.head)
+		goto get_next_list;
+
+	chosenThread = CoreS_GetCPULocalPtr()->currentPriorityList->list.head->data;
+
 switch_thread:
+	(void)0;
+	// timer_tick end = CoreS_GetNativeTimerTick();
+	// CoreS_GetCPULocalPtr()->last_sched_algorithm_time = end-start;
 	OBOS_ASSERT(chosenThread);
 	// if (chosenThread == getCurrentThread)
 	// 	return; // We might as well save some time and return.
@@ -289,6 +267,7 @@ void Core_Yield()
 	if (getCurrentThread)
 	{
 		bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
+		++getCurrentThread->total_quantums;
 		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
 		{
 			if (oldIrql != IRQL_INVALID)

@@ -4,9 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
+#include <cmdline.h>
 #include <error.h>
 #include <klog.h>
 
@@ -54,6 +54,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, 
 	irql oldIrql = Lock();
 	if (!bump_region.addr)
 	{
+		// OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[256*1024*1024]; // 256M
 		OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[4*1024*1024]; // 4M
 		bump_region.size = sizeof(region);
 		bump_region.addr = (uintptr_t)region;

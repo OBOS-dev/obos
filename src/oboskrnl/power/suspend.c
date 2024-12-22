@@ -96,6 +96,7 @@ static void suspend_impl()
     // NOTE: It is up to the arch to unsuspend the scheduler.
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
+    // printf("good night\n");
     uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S3);
     UACPI_ARCH_DISABLE_INTERRUPTS();
     // good night computer.
@@ -120,7 +121,7 @@ static uacpi_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespa
 static void set_wake_devs()
 {
     uacpi_namespace_for_each_child_simple(
-        uacpi_namespace_root(),
+        uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
         acpi_enumerate_callback,
         (void*)false
     );
@@ -164,6 +165,8 @@ obos_status OBOS_Suspend()
     // Set wake GPEs.
     set_wake_devs();
 
+    // printf("hallo 1\n");
+
     // Tell all drivers we're going to sleep.
     for (driver_node* node = Drv_LoadedDrivers.head; node; )
     {
@@ -173,9 +176,12 @@ obos_status OBOS_Suspend()
         node = node->next;
     }
 
+    // printf("hallo 2\n");
+
     log_level old_log_level = OBOS_GetLogLevel();
     OBOS_SetLogLevel(LOG_LEVEL_NONE);
-    uacpi_context_set_log_level(UACPI_LOG_ERROR);
+    // uacpi_log_level old_uacpi_log_level = uacpi_context_get_log_level();
+    // uacpi_context_set_log_level(UACPI_LOG_ERROR);
     thread* thr = CoreH_ThreadAllocate(nullptr);
     thread_ctx ctx = {};
     CoreS_SetupThreadContext(&ctx, (uintptr_t)suspend_impl, 0, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x10000);
@@ -190,9 +196,11 @@ obos_status OBOS_Suspend()
     CoreS_SetThreadIRQL(&ctx, IRQL_DISPATCH);
     CoreH_ThreadInitialize(thr, THREAD_PRIORITY_URGENT, bsp_affinity, &ctx);
     OBOS_SuspendWorkerThread = thr;
+    // printf("hallo 3\n");
     CoreH_ThreadReady(thr);
     suspended_thread = Core_GetCurrentThread();
     // We will be blocked until further notice.
+    // printf("hallo 4\n");
     CoreH_ThreadBlock(suspended_thread, true);
     OBOS_SetLogLevel(old_log_level);
     Core_MutexRelease(&suspend_lock);

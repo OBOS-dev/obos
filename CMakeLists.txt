@@ -2,18 +2,36 @@
 #
 # Copyright (c) 2024 Omar Berrow
 
-if (NOT DEFINED OUTPUT_DIR)
-	set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out)
-endif()
+cmake_minimum_required(VERSION 3.10)
+
+# Boolean options.
+
+option (OBOS_UP "Make a Uniprocessor-Build of obos.")
+option (OBOS_ENABLE_UBSAN "Enables UBSan.")
+option (OBOS_ENABLE_KASAN "Enables KAsan.")
+option (OBOS_ENABLE_FANALYZER "(Developers only) Enables the compiler's static analyzer")
+option (OBOS_ENABLE_WERROR "(Developers only) Enables the -Werror option")
+option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
+
+# String options
+
+# NOTE: Unless we add FORCE to the end, CMake shouldn't override user values.
+set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out CACHE STRING "The output directory.")
+set (OBOS_PAGE_REPLACEMENT_ALGORITHM "Aging" CACHE STRING "(Kernel developers only) The page replacement algorithm used by the MM.")
+set (OBOS_DEV_PREFIX "/dev" CACHE STRING "Directory where the kernel places devices.")
+set (OBOS_CLANG_SUFFIX "" CACHE STRING "Some Linux distributions add a suffix to various clang and LLVM commands, such as the version used. Specify that suffix, if needed")
 
 file (TO_CMAKE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
 file (TO_NATIVE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
 
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 
-cmake_minimum_required(VERSION 3.7)
-
-project(OBOS C CXX ASM)
+project(
+	OBOS
+	LANGUAGES C CXX ASM
+	DESCRIPTION "Hybrid Kernel with advanced driver loading."
+	HOMEPAGE_URL https://github.com/OBOS-dev/obos
+	)
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	enable_language(ASM_NASM)
 else()
@@ -50,7 +68,7 @@ else()
 	endif()
 endif()
 
-if (DEFINED OBOS_UP)
+if (OBOS_UP)
 	add_compile_definitions(OBOS_UP=1)
 endif()
 
@@ -58,7 +76,7 @@ add_compile_definitions(OBOS_BINARY_DIRECTORY="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
 
 add_compile_definitions(OBOS_ARCHITECTURE_BITS=${OBOS_ARCHITECTURE_BITS})
 
-add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fno-strict-aliasing>)
+#add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fno-strict-aliasing>)
 
 execute_process(COMMAND
   "${GIT_EXECUTABLE}" describe --match=NeVeRmAtCh --always --abbrev=40 --dirty
@@ -77,24 +95,18 @@ add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_compile_definitions (OBOS_ARCHITECTURE_ENDIANNESS="${OBOS_ARCHITECTURE_ENDIANNESS}")
 
 #list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
-if (DEFINED OBOS_ENABLE_UBSAN)
+if (OBOS_ENABLE_UBSAN EQUAL TRUE)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
 	)
-	set(OBOS_ENABLE_UBSAN "1")
-else()
-	set(OBOS_ENABLE_UBSAN "0")
 endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
 
 #list (APPEND oboskrnl_sources "sanitizers/asan.c")
-if (DEFINED OBOS_ENABLE_KASAN)
+if (OBOS_ENABLE_KASAN EQUAL TRUE)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
 	)
-	set(OBOS_ENABLE_KASAN "1")
-else()
-	set(OBOS_ENABLE_KASAN "0")
 endif()
 add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
 add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})
@@ -106,9 +118,6 @@ add_compile_definitions(
 	$<$<CONFIG:MinSizeRel>:OBOS_RELEASE>
 )
 
-if (NOT DEFINED OBOS_PAGE_REPLACEMENT_ALGORITHM)
-	set(OBOS_PAGE_REPLACEMENT_ALGORITHM "Aging")
-endif()
 string(TOUPPER "${OBOS_PAGE_REPLACEMENT_ALGORITHM}" OBOS_PAGE_REPLACEMENT_ALGORITHM)
 set(OBOS_PAGE_REPLACEMENT_ALGORITHM_DEFINE "OBOS_PAGE_REPLACEMENT_")
 string(APPEND OBOS_PAGE_REPLACEMENT_ALGORITHM_DEFINE "${OBOS_PAGE_REPLACEMENT_ALGORITHM}")
@@ -121,19 +130,20 @@ set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true
 					PROPERTY C_EXTENSIONS On)
 
-if (DEFINED OBOS_ENABLE_WERROR AND NOT DEFINED OBOS_ENABLE_FANALYZER)
+if (OBOS_ENABLE_WERROR AND NOT OBOS_ENABLE_FANALYZER)
 	add_compile_options("-Werror" $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function> $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-parameter>)
 endif()
-if (DEFINED OBOS_ENABLE_FANALYZER)
+if (OBOS_ENABLE_FANALYZER)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fanalyzer>)
 endif()
-if (DEFINED OBOS_ENABLE_FANALYZER AND DEFINED OBOS_ENABLE_WERROR)
+if (OBOS_ENABLE_FANALYZER AND OBOS_ENABLE_WERROR)
 	message(WARNING "OBOS_ENABLE_FANALYZER and OBOS_ENABLE_WERROR are mutually exclusive. Preferring OBOS_ENABLE_FANALYZER.")
 endif()
 
-if (NOT DEFINED OBOS_DEV_PREFIX)
-	set(OBOS_DEV_PREFIX "/dev/")
-endif()
+# Now done somewhere else.
+# if (NOT DEFINED OBOS_DEV_PREFIX)
+# 	set(OBOS_DEV_PREFIX "/dev/")
+# endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/inc/dev_prefix.h.in ${CMAKE_SOURCE_DIR}/src/oboskrnl/inc/dev_prefix.h @ONLY)
 
 add_compile_definitions(

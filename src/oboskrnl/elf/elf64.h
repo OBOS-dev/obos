@@ -250,6 +250,7 @@ enum
 	DT_FLAGS,
 	DT_ENCODING,
 	DT_PREINIT_ARRAY,
+	DT_GNU_HASH = 0x6ffffef5,
 };
 
 #ifdef __x86_64__

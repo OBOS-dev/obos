@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <error.h>
 
 // All syscall number ranges outside this are reserved.
 #define SYSCALL_BEGIN (0)
@@ -39,3 +40,9 @@ inline static void OBOS_RegisterSyscall(uint32_t num, uintptr_t entry)
         OBOS_SyscallTable[num-SYSCALL_BEGIN] = entry;
 }
 void OBOSS_InitializeSyscallInterface();
+
+// if buf and sz_buf are nullptr, the function silently fails
+// if ustr is nullptr, OBOS_STATUS_INVALID_ARGUMENT is returned
+// if a page fault occurs reading the string, then OBOS_STATUS_PAGE_FAULT is returned
+// if all goes well, you get a string and its size back, and OBOS_STATUS_SUCCESS
+obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf);

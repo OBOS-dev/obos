@@ -17,7 +17,7 @@ list (APPEND oboskrnl_sources
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
-	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c"
+	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 )
 
 add_executable(oboskrnl)
@@ -31,7 +31,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
