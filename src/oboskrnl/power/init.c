@@ -4,9 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#include "uacpi/namespace.h"
-#include "uacpi/notify.h"
-#include "uacpi/types.h"
 #include <int.h>
 #include <klog.h>
 #include <cmdline.h>
@@ -24,6 +21,10 @@
 #include <uacpi/status.h>
 #include <uacpi/context.h>
 #include <uacpi/event.h>
+#include <uacpi/namespace.h>
+#include <uacpi/notify.h>
+#include <uacpi/types.h>
+#include <uacpi/osi.h>
 
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\

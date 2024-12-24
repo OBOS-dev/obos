@@ -922,9 +922,9 @@ test_program:;\
 	syscall;\
 	call Sys_ExitCurrentThread;\
 test_thread:;\
-	mov eax, 7;\
+	mov eax, 1;\
 	syscall;\
-	call Sys_Shutdown;\
+	call Sys_ExitCurrentThread;\
 Sys_ExitCurrentThread:;\
 	mov eax, 0;\
 	syscall;\

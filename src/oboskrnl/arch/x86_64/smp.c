@@ -9,6 +9,7 @@
 #include <klog.h>
 #include <memmanip.h>
 #include <syscall.h>
+#include <cmdline.h>
 
 #include <stdatomic.h>
 
@@ -188,6 +189,12 @@ void Arch_SMPStartup()
 #ifdef OBOS_UP
 	OBOS_Log("Uniprocessor-build of OBOS. No other cores will be initialized.\n");
 	s_nLAPICIDs = 1;
+#else
+	if (OBOS_GetOPTF("no-smp"))
+	{
+		OBOS_Log("Running OBOS as Uniprocessor. No other cores will be initialized.\n");
+		s_nLAPICIDs = 1;
+	}
 #endif
 	// if (s_nLAPICIDs == 1)
 	// 	return; // No work to do.
