@@ -92,27 +92,7 @@ Arch_SyscallTrapHandler:
 
 .not_arch_syscall:
 
-    push rax
-    push r11
-    push rdi
-    push rsi
-    push rdx
-    push rcx
-    push r8
-    push r9
-    mov rdi, 0x2 ; IRQL_DISPATCH
-    call Core_RaiseIrql
     sti
-    pop r9
-    pop r8
-    pop rcx
-    pop rdx
-    pop rsi
-    pop rdi
-    pop r11
-    pop r10
-    push rax
-    mov rax, r10
 
     mov r10, 0xffffffff
     and rax, r10
@@ -126,16 +106,7 @@ Arch_SyscallTrapHandler:
     call [r11+rax*8]
     add rsp, 8
 .finished:
-
     cli
-    pop rdi
-    push rax
-    push rdx
-    call Core_LowerIrql
-    pop rdx
-    pop rax
-
-.done:
 
     mov r9, gs:0x18
     mov r9, [r9]
