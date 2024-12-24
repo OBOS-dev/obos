@@ -20,6 +20,7 @@ global CoreS_FreeThreadContext:function hidden
 global CoreS_CallFunctionOnStack:function default
 global CoreS_SetThreadIRQL:function hidden
 global CoreS_GetThreadIRQL:function hidden
+global CoreS_ThreadAlloca:function hidden
 
 %macro popaq 0
 pop rbp
@@ -288,4 +289,34 @@ CoreS_GetThreadStack:
 
 	leave
 	ret
+
+CoreS_ThreadAlloca:
+	push rbp
+	mov rbp, rsp
+
+	cmp rdx, 0
+	jz .status_nullptr1
+	mov dword [rdx], 0 ; OBOS_STATUS_SUCCESS
+.status_nullptr1:
+
+	; ret = ctx->frame.rsp - size
+	mov rax, [rdi+thread_ctx.frame+0xc8]
+	sub rax, rsi
+	; if (ret < ctx->stackBase)
+	cmp rax, [rdi+thread_ctx.stackBase]
+	jae .done
+
+	cmp rdx, 0
+	jz .status_nullptr2
+	; if (status) *status = OBOS_STATUS_NOT_ENOUGH_MEMORY
+	mov dword [rdx], 6 ; OBOS_STATUS_NOT_ENOUGH_MEMORY
+.status_nullptr2:
+	; ret = nullptr
+	xor rax,rax
+.done:
+
+	; return ret;
+	leave
+	ret
+
 section .text

@@ -723,3 +723,14 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool lock_pages)
+{
+    OBOS_UNUSED(user_context);
+    OBOS_UNUSED(ubase);
+    OBOS_UNUSED(kbase);
+    OBOS_UNUSED(nBytes);
+    OBOS_UNUSED(protection);
+    OBOS_UNUSED(lock_pages);
+    return OBOS_STATUS_UNIMPLEMENTED;
+}

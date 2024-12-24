@@ -18,6 +18,7 @@ list (APPEND oboskrnl_sources
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
+	"elf/load.c"
 )
 
 add_executable(oboskrnl)
