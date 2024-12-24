@@ -10,11 +10,23 @@
 #include <stdatomic.h>
 
 #include <irq/irql.h>
+#include <irq/timer.h>
 
 #include <locks/spinlock.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
+
+static uint64_t nanoseconds_since_boot()
+{
+	if (!CoreS_GetNativeTimerFrequency())
+		return 0;
+#if !OBOS_ENABLE_LOCK_PROFILING
+	return 0;
+#else
+	return CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
+#endif
+}
 
 spinlock Core_SpinlockCreate()
 {
@@ -52,6 +64,7 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 	lock->owner = Core_GetCurrentThread();
 #endif
 	lock->locked = true;
+	lock->lastLockTimeNS = nanoseconds_since_boot();
 	return newIrql;
 }
 OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
@@ -73,6 +86,7 @@ OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrq
 	if (oldIrql != IRQL_INVALID)
 		lock->irqlNThrVariant ? Core_LowerIrqlNoThread(oldIrql) : Core_LowerIrql(oldIrql);
 	lock->irqlNThrVariant = false;
+	lock->lastLockTimeNS = nanoseconds_since_boot() - lock->lastLockTimeNS;
 	return OBOS_STATUS_SUCCESS;
 }
 /*

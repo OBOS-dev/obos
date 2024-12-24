@@ -179,7 +179,7 @@ OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick()
         return 0;
     return Arch_HPETAddress->mainCounterValue;
 }
-OBOS_EXPORT timer_tick CoreS_GetNativeTimerFrequency()
+OBOS_EXPORT uint64_t CoreS_GetNativeTimerFrequency()
 {
     return Arch_HPETFrequency;
 }

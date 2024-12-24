@@ -119,7 +119,7 @@ void spin_hung()
 {
     // Use to report a lock hanging.
 }
-uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
+uacpi_status io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
 {
     uint8_t (*readB)(uacpi_io_addr address) = raw_io_readB;
     uint16_t(*readW)(uacpi_io_addr address) = raw_io_readW;
@@ -158,6 +158,7 @@ uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth,
         else
             status = UACPI_STATUS_INVALID_ARGUMENT;
     }
+    // printf("read 0x%0*x from I/O Port 0x%04x\n", byteWidth*2, (uint32_t)*out_value, address);
     return status;
 }
 #ifdef __x86_64__
@@ -169,8 +170,9 @@ uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth,
     static void(*raw_io_writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD_impl;
     static void(*raw_io_writeQ)(uacpi_io_addr address, uint64_t val) = nullptr;
 #endif
-uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
+uacpi_status io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
 {
+    // printf("writing 0x%0*x to I/O Port 0x%04x\n", byteWidth*2, in_value, address);
     void(*writeB)(uacpi_io_addr address, uint8_t  val) = raw_io_writeB;
     void(*writeW)(uacpi_io_addr address, uint16_t val) = raw_io_writeW;
     void(*writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD;
@@ -351,13 +353,11 @@ void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 }
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
-    return 0;
     spinlock* lock = (spinlock*)hnd;
     return Core_SpinlockAcquire(lock);
 }
 void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
-    return;
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
 }
@@ -395,47 +395,37 @@ void uacpi_kernel_reset_event(uacpi_handle _e)
     volatile size_t* e = (size_t*)_e;
     __atomic_store_n(e, 0, __ATOMIC_SEQ_CST);
 }
-typedef struct io_range
-{
-    uacpi_io_addr base;
-    uacpi_size len;
-} io_range;
 uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle *out_handle)
 {
 #if defined(__x86_64__) || defined(__i386__)
     if (base > 0xffff)
         return UACPI_STATUS_INVALID_ARGUMENT;
 #endif
-    io_range* rng = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(io_range), nullptr);
-    rng->base = base;
-    rng->len = len;
-    *out_handle = (uacpi_handle)rng;
+    OBOS_UNUSED(len);
+    *out_handle = (uacpi_handle)base;
     return UACPI_STATUS_OK;
 }
 void uacpi_kernel_io_unmap(uacpi_handle handle)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, handle, sizeof(io_range));
+    OBOS_UNUSED(handle);
 }
 uacpi_status uacpi_kernel_io_read(
     uacpi_handle hnd, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 *value
 )
 {
-    io_range* rng = (io_range*)hnd;
-    if (offset >= rng->len)
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    return uacpi_kernel_raw_io_read(rng->base + offset, byte_width, value);
+    uintptr_t base = (uintptr_t)hnd;
+    return io_read(base + offset, byte_width, value);
 }
 uacpi_status uacpi_kernel_io_write(
     uacpi_handle hnd, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 value
 )
 {
-    io_range* rng = (io_range*)hnd;
-    if (offset >= rng->len)
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    return uacpi_kernel_raw_io_write(rng->base + offset, byte_width, value);
+    uintptr_t base = (uintptr_t)hnd;
+    return io_write(base + offset, byte_width, value);
 }
+
 uacpi_handle uacpi_kernel_create_mutex(void)
 {
     mutex* mut = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
@@ -444,12 +434,12 @@ uacpi_handle uacpi_kernel_create_mutex(void)
 }
 void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(mutex));
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(struct mutex));
 }
 uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
     OBOS_UNUSED(t);
-    mutex *mut = (mutex*)hnd;
+    mutex *mut = hnd;
     Core_MutexAcquire(mut);
     return UACPI_STATUS_OK;
 }
@@ -460,7 +450,7 @@ void uacpi_kernel_release_mutex(uacpi_handle hnd)
 }
 uacpi_thread_id uacpi_kernel_get_thread_id()
 {
-    return Core_GetCurrentThread()->tid;
+    return (uacpi_thread_id)Core_GetCurrentThread();
 }
 uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
 {

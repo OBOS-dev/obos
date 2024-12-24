@@ -33,3 +33,10 @@ void OBOS_InitWakeGPEs();
 extern uint32_t OBOSS_WakeVector;
 
 extern OBOS_WEAK obos_status OBOSS_PrepareWakeVector();
+
+void OBOSS_SuspendSavePlatformState();
+
+// Saves EC state before entering S3.
+void OBOS_ECSave();
+// Restores previously saved EC state before entering S3.
+void OBOS_ECResume();

@@ -41,7 +41,6 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 		lapic_region.mmioRange = true;
 		OBOSH_BasicMMAddRegion(&lapic_region, Arch_LAPICAddress, 0x1000);
 	}
-	cli();
 	lapic_msr |= APIC_ENABLE;
 	if (isBSP)
 		lapic_msr |= APIC_BSP;
@@ -58,8 +57,6 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	Arch_LAPICAddress->lvtPerformanceMonitoringCounters = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtThermalSensor = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtTimer = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
-	sti();
-
 }
 void Arch_LAPICSendEOI()
 {

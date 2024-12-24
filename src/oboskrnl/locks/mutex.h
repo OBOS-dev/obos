@@ -24,6 +24,8 @@ typedef struct mutex {
     bool ignoreAllAndBlowUp;
     // The thread that took the mutex.
     thread* who;
+    // The last lock time, in nanoseconds.
+    uint64_t lastLockTimeNS;
 } mutex;
 
 #define MUTEX_INITIALIZE() (mutex){ .hdr=WAITABLE_HEADER_INITIALIZE(true, false), .locked=false, .who=nullptr }

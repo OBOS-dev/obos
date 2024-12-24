@@ -279,7 +279,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    //printf("%s:%d\n", __FILE__, __LINE__);
 
     uacpi_object_array pkg = {};
     uacpi_object_get_package(buf, &pkg);
@@ -298,7 +298,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    //printf("%s:%d\n", __FILE__, __LINE__);
 
     // We have the deepest sleep state that this device can wake us in.
     // Now we need the D states from _SnD and _SnW
@@ -324,9 +324,9 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         return DSTATE_INVALID;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
-    printf("%04s.%s evaluated to %d\n", dev->name.text, path_d, snd);
-    printf("%04s.%s evaluated to %d\n", dev->name.text, path_w, snw);
+    // printf("%s:%d\n", __FILE__, __LINE__);
+    // printf("%04s.%s evaluated to %d\n", dev->name.text, path_d, snd);
+    // printf("%04s.%s evaluated to %d\n", dev->name.text, path_w, snw);
 
     // Sort from deepest->shallowest
     d_state avaliableStates[DSTATE_MAX + 1] = {};
@@ -339,7 +339,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         avaliableStates[0] = snd;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    // printf("%s:%d\n", __FILE__, __LINE__);
 
     // TODO: Do we use <= or ==?
     if (snw <= DSTATE_2 && snd == UINT64_MAX)
@@ -350,7 +350,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         avaliableStates[2] = DSTATE_0;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    // pritf("%s:%d\n", __FILE__, __LINE__);
 
     if (snd <= DSTATE_2 && snw == UINT64_MAX)
     {
@@ -358,7 +358,7 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
         avaliableStates[0] = DSTATE_2;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    // printf("%s:%d\n", __FILE__, __LINE__);
 
     if (snd == DSTATE_2 && (snw >= DSTATE_3HOT && snw != UINT64_MAX))
     {
@@ -371,22 +371,22 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
     // Choose the state.
     for (size_t i = 0; i < nStates; i++)
     {
-        printf("Attempting to use D state %d for wake\n", avaliableStates[i]);
+        // printf("Attempting to use D state %d for wake\n", avaliableStates[i]);
         obos_status stat = OBOS_DeviceHasDState(dev, avaliableStates[i]);
         if (obos_is_error(stat) && stat != OBOS_STATUS_NOT_FOUND)
         {
             if (status) *status = stat;
-            printf("Query of D state %d for wake failed. Status: %d\n", avaliableStates[i], stat);
+            // printf("Query of D state %d for wake failed. Status: %d\n", avaliableStates[i], stat);
             return DSTATE_INVALID;
         }
         if (stat == OBOS_STATUS_NOT_FOUND)
             continue;
-        printf("D state %d is wake-capable and exists.\n", avaliableStates[i]);
+        // printf("D state %d is wake-capable and exists.\n", avaliableStates[i]);
         val = avaliableStates[i];
         break;
     }
 
-    printf("%s:%d\n", __FILE__, __LINE__);
+    // printf("%s:%d\n", __FILE__, __LINE__);
 
     if (status)
         *status = OBOS_STATUS_SUCCESS;

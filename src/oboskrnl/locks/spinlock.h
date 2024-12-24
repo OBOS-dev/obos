@@ -19,11 +19,11 @@ typedef struct {
 #ifdef OBOS_DEBUG
 	// for debugging purposes only
 	struct thread* owner;
-	// size_t nCPUsWaiting; // If == Core_CpuCount, you have a deadlock on your hands.
 #else
 	uintptr_t resv1;
-	size_t resv2;
 #endif
+	// The last lock time, in nanoseconds.
+	uint64_t lastLockTimeNS;
 } spinlock;
 
 OBOS_EXPORT spinlock Core_SpinlockCreate();

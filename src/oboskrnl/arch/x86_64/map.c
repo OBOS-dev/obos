@@ -545,9 +545,6 @@ page_table MmS_AllocatePageTable()
 		extern char Arch_SyscallTrapHandlerEnd;
 		extern char Arch_SyscallTrapHandler;
 		map_range(cached_root, (uintptr_t)&Arch_SyscallTrapHandler, (uintptr_t)&Arch_SyscallTrapHandlerEnd, 1|2);
-		// Map syscall tables.
-		map_range(cached_root, (uintptr_t)&OBOS_SyscallTable, ((uintptr_t)&OBOS_SyscallTable) + sizeof(OBOS_SyscallTable), 1|BIT_TYPE(63, UL)|2);
-		map_range(cached_root, (uintptr_t)&OBOS_ArchSyscallTable, ((uintptr_t)&OBOS_ArchSyscallTable) + sizeof(OBOS_ArchSyscallTable), 1|BIT_TYPE(63, UL)|2);
 	}
 	memcpy(Arch_MapToHHDM(root), Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
 	return root;

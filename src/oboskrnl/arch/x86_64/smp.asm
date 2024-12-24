@@ -120,7 +120,6 @@ reload_cs_addr: equ $-Arch_SMPTrampolineStart+trampoline_base
 	mov rsp, [rsp_loc]
 
 ; Call AP initialization code.
-;db 0xeb, 0xfe
 	mov rdi, [cpu_local_loc]
     mov rax, [Arch_SMPTrampolineWakeLocation]
     call rax

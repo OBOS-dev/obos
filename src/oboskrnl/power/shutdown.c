@@ -4,10 +4,13 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#include "irq/irql.h"
 #include <int.h>
 #include <klog.h>
 #include <struct_packing.h>
+
+#include <irq/irql.h>
+
+#include <scheduler/schedule.h>
 
 #include <power/shutdown.h>
 
@@ -16,8 +19,9 @@
 
 OBOS_NORETURN void OBOS_Shutdown()
 {
+    Core_SuspendScheduler(true);
+    Core_WaitForSchedulerSuspend();
     OBOS_Log("oboskrnl: Shutdown requested.\n");
-    OBOSS_HaltCPUs();
     // We're at IRQL_DISPATCH which should probably be enough for prepare for sleep state.
     uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
     UACPI_ARCH_DISABLE_INTERRUPTS();
@@ -27,7 +31,8 @@ OBOS_NORETURN void OBOS_Shutdown()
 }
 OBOS_NORETURN void OBOS_Reboot()
 {
-    OBOSS_HaltCPUs();
+    Core_SuspendScheduler(true);
+    Core_WaitForSchedulerSuspend();
     uacpi_reboot();
 #ifdef __x86_64__
     UACPI_ARCH_DISABLE_INTERRUPTS();

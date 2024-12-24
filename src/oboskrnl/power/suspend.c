@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#include "driver_interface/driverId.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -19,6 +18,7 @@
 #include <scheduler/schedule.h>
 
 #include <driver_interface/pci.h>
+#include <driver_interface/driverId.h>
 
 #include <locks/mutex.h>
 
@@ -71,6 +71,7 @@ static void suspend_impl()
     if (OBOS_WokeFromSuspend)
     {
         // Call AML's wake functions.
+        OBOS_ECResume();
         uacpi_prepare_for_wake_from_sleep_state(UACPI_SLEEP_STATE_S3);
         UACPI_ARCH_ENABLE_INTERRUPTS();
         uacpi_wake_from_sleep_state(UACPI_SLEEP_STATE_S3);
@@ -97,6 +98,8 @@ static void suspend_impl()
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
     // printf("good night\n");
+    OBOS_ECSave();
+    OBOSS_SuspendSavePlatformState();
     uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S3);
     UACPI_ARCH_DISABLE_INTERRUPTS();
     // good night computer.
@@ -133,7 +136,6 @@ void OBOS_InitWakeGPEs()
         acpi_enumerate_callback,
         (void*)true // only mark GPEs for wake.
     );
-    uacpi_finalize_gpe_initialization();
 }
 obos_status OBOS_Suspend()
 {

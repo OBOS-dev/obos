@@ -4,7 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#include "irq/irql.h"
+#include "uacpi/namespace.h"
+#include "uacpi/notify.h"
+#include "uacpi/types.h"
 #include <int.h>
 #include <klog.h>
 #include <cmdline.h>
@@ -16,9 +18,12 @@
 #include <power/init.h>
 #include <power/suspend.h>
 
+#include <irq/irql.h>
+
 #include <uacpi/uacpi.h>
 #include <uacpi/status.h>
 #include <uacpi/context.h>
+#include <uacpi/event.h>
 
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\
@@ -37,6 +42,7 @@ static void *tables_buf;
 static size_t table_buf_size;
 void OBOS_SetupEarlyTableAccess()
 {
+    uacpi_context_set_log_level(UACPI_LOG_ERROR);
     table_buf_size = OBOS_GetOPTD_Ex("early-table-access-buf-size", OBOS_PAGE_SIZE);
     if (table_buf_size >= 16384)
     {
@@ -48,26 +54,40 @@ void OBOS_SetupEarlyTableAccess()
     verify_status_panic(st, uacpi_setup_early_table_access);
 }
 
+uacpi_status default_notify(uacpi_handle context, uacpi_namespace_node *node, uacpi_u64 value)
+{
+    OBOS_UNUSED(context);
+    const uacpi_char* path = uacpi_namespace_node_generate_absolute_path(node);
+    OBOS_Debug("ignoring firmware Notify(%s, 0x%02x) request, no listener.\n", path, value);
+    uacpi_kernel_free((void*)path);
+    return UACPI_STATUS_OK;
+}
+
 void OBOS_InitializeUACPI()
 {
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 
-    uacpi_context_set_log_level(UACPI_LOG_INFO);
-
     uacpi_status st = uacpi_initialize(0);
-    verify_status(st, uacpi_initialize);
+    verify_status_panic(st, uacpi_initialize);
+
+    uacpi_context_set_log_level(UACPI_LOG_INFO);
 
     OBOS_InitializeECFromECDT();
 
     st = uacpi_namespace_load();
-    verify_status(st, uacpi_namespace_load);
+    verify_status_panic(st, uacpi_namespace_load);
 
     st = uacpi_namespace_initialize();
-    verify_status(st, uacpi_namespace_initialize);
+    verify_status_panic(st, uacpi_namespace_initialize);
 
     OBOS_InitializeECFromNamespace();
 
     OBOS_InitWakeGPEs();
+    OBOS_ECSetGPEs();
+
+    uacpi_install_notify_handler(uacpi_namespace_root(), default_notify, nullptr);
+
+    uacpi_finalize_gpe_initialization();
 
     Core_LowerIrql(oldIrql);
 }

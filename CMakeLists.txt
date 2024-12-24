@@ -12,6 +12,8 @@ option (OBOS_ENABLE_KASAN "Enables KAsan.")
 option (OBOS_ENABLE_FANALYZER "(Developers only) Enables the compiler's static analyzer")
 option (OBOS_ENABLE_WERROR "(Developers only) Enables the -Werror option")
 option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
+option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" ON)
+option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 
 # String options
 
@@ -72,6 +74,20 @@ if (OBOS_UP)
 	add_compile_definitions(OBOS_UP=1)
 endif()
 
+if (OBOS_NVS_SAVE_S3)
+	set (OBOS_NVS_SAVE_S3 "1")
+else()
+	set (OBOS_NVS_SAVE_S3 "0")
+endif()
+add_compile_definitions(OBOS_NVS_SAVE_S3=${OBOS_NVS_SAVE_S3})
+
+if (OBOS_ENABLE_LOCK_PROFILING)
+	set (OBOS_ENABLE_LOCK_PROFILING "1")
+else()
+	set (OBOS_ENABLE_LOCK_PROFILING "0")
+endif()
+add_compile_definitions(OBOS_ENABLE_LOCK_PROFILING=${OBOS_ENABLE_LOCK_PROFILING})
+
 add_compile_definitions(OBOS_BINARY_DIRECTORY="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
 add_compile_definitions(OBOS_ARCHITECTURE_BITS=${OBOS_ARCHITECTURE_BITS})
@@ -95,18 +111,24 @@ add_compile_definitions (GIT_SHA1="${GIT_SHA1}" GIT_DATE="${GIT_DATE}")
 add_compile_definitions (OBOS_ARCHITECTURE_ENDIANNESS="${OBOS_ARCHITECTURE_ENDIANNESS}")
 
 #list (APPEND oboskrnl_sources "sanitizers/ubsan.c")
-if (OBOS_ENABLE_UBSAN EQUAL TRUE)
+if (OBOS_ENABLE_UBSAN)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=undefined>
 	)
+	set (OBOS_ENABLE_UBSAN "1")
+else()
+	set (OBOS_ENABLE_UBSAN "0")
 endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
 
 #list (APPEND oboskrnl_sources "sanitizers/asan.c")
-if (OBOS_ENABLE_KASAN EQUAL TRUE)
+if (OBOS_ENABLE_KASAN)
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
 	)
+	set (OBOS_ENABLE_KASAN "1")
+else()
+	set (OBOS_ENABLE_KASAN "0")
 endif()
 add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
 add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})

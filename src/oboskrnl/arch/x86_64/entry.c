@@ -430,15 +430,6 @@ static basic_allocator kalloc;
 void Arch_SMPStartup();
 
 extern bool Arch_MakeIdleTaskSleep;
-static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx)
-{
-	OBOS_UNUSED(ctx);
-	OBOS_Log("%s: Power button pressed. Requesting system shutdown...\n", __func__);
-	uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
-	asm("cli");
-	uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
-	return UACPI_INTERRUPT_HANDLED;
-}
 static void test_allocator(allocator_info* alloc)
 {
 	void* to_free = nullptr;
