@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "wait.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -50,8 +51,9 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
         return status;
     }
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
-    if (obj->signaled && obj->use_signaled)
+    if (obj->signaled && obj->use_signaled && !obj->interrupted)
         return OBOS_STATUS_SUCCESS;
+    if (obj->interrupted) return OBOS_STATUS_ABORTED;
     CoreH_ThreadBlock(curr, true);
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
@@ -154,6 +156,13 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
         curr = next;
     }
     return OBOS_STATUS_SUCCESS;   
+}
+obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj)
+{
+    if (!obj)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    obj->interrupted = 1;
+    return CoreH_SignalWaitingThreads(obj, true, false);
 }
 void CoreH_ClearSignaledState(struct waitable_header* obj)
 {

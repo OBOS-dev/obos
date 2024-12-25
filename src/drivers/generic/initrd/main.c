@@ -128,7 +128,7 @@ OBOS_PAGEABLE_FUNCTION obos_status get_max_blk_count(dev_desc desc, size_t* coun
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (hdr->type != AREGTYPE && hdr->type != REGTYPE)
         return OBOS_STATUS_NOT_A_FILE;
-    *count = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));;
+    *count = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_PAGEABLE_FUNCTION obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
@@ -140,7 +140,7 @@ OBOS_PAGEABLE_FUNCTION obos_status read_sync(dev_desc desc, void* buf, size_t bl
         return OBOS_STATUS_SUCCESS;
     if (hdr->type != AREGTYPE && hdr->type != REGTYPE)
         return OBOS_STATUS_NOT_A_FILE;
-    size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));;
+    size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
     if (blkOffset >= filesize)
     {
         *nBlkRead = 0;

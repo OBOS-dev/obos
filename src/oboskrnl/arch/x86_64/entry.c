@@ -340,7 +340,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 	Core_CpuInfo->initialized = true;
 
 	// Finally yield into the scheduler.
-	OBOS_Debug("Yielding into the scheduler!\n");
+	
 	Core_Yield();
 
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
@@ -445,6 +445,13 @@ static void test_allocator(allocator_info* alloc)
 			to_free = ret;
 		}
 	}
+}
+static void Arch_KernelNyauxTest(mutex* mut) 
+{
+	obos_status status = Core_MutexAcquire(mut);
+	CoreH_AbortWaitingThreads(WAITABLE_OBJECT(*mut));
+	OBOS_Log("status from %s: %d", __PRETTY_FUNCTION__, status);
+	
 }
 void Arch_KernelMainBootstrap()
 {
@@ -858,6 +865,20 @@ extern char test_program_end[];
 		thr->kernelStack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
 	CoreH_ThreadReady(thr);
 	OBOS_Log("%s: Done early boot.\n", __func__);
+	// Nyauxmasters Test
+	thread* thrr = CoreH_ThreadAllocate(nullptr);
+	thread_ctx thr_ctxx = {};
+	void* stackk =  Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+	mutex mut = MUTEX_INITIALIZE();
+	
+	CoreS_SetupThreadContext(&thr_ctxx, (uintptr_t)Arch_KernelNyauxTest, (uintptr_t)&mut, true, stackk, 0x10000);
+	CoreH_ThreadInitialize(thrr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctxx);
+	CoreH_ThreadReady(thrr);
+	obos_status statuss = Core_MutexAcquire(&mut);
+	CoreH_AbortWaitingThreads(WAITABLE_OBJECT(mut));
+	OBOS_Log("status from %s: %d", __PRETTY_FUNCTION__, statuss);
+	
+	
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 

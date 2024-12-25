@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "wait.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -65,11 +66,14 @@ obos_status Core_MutexAcquire(mutex* mut)
     {
         mut->who = Core_GetCurrentThread();
         mut->locked = true;
-        mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);;
+        mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
         return OBOS_STATUS_SUCCESS;
     }
     printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
-    Core_WaitOnObject(&mut->hdr);
+    obos_status st = Core_WaitOnObject(&mut->hdr);
+    if (st != OBOS_STATUS_SUCCESS) {
+        return st;
+    }
     if (mut->ignoreAllAndBlowUp)
         return OBOS_STATUS_ABORTED;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)

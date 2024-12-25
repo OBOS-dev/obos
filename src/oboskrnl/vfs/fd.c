@@ -151,7 +151,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
     {
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
         if (!VfsH_LockMountpoint(point))
-            return OBOS_STATUS_ABORTED;;
+            return OBOS_STATUS_ABORTED;
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
         OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
         Core_MutexAcquire(&dirty->lock);

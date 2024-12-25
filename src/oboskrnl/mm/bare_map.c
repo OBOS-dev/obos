@@ -165,7 +165,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION obos_status OBOS_BasicMMFreePages(void* bas
 	// s_regionList.nNodes--;
 	// Unlock(oldIrql);
 	// // Unmap the basicmm_region.
-	// base &= ~0xfff;;
+	// base &= ~0xfff;
 	// for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
 	// {
 	// 	uintptr_t phys = 0;
