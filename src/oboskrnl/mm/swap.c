@@ -93,17 +93,19 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         // Simply remap the page.
         if (onDirtyList)
         {
-            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
+            if (!node->pagedCount)
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
             Mm_DirtyPagesBytes -= page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         }
-        else if (onStandbyList)
+        else if (onStandbyList && !node->pagedCount)
             LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
-        else 
-            OBOS_ASSERT(!"Funny business");
+        // else
+        //     OBOS_ASSERT(!"Funny business");
+        node->pagedCount++;
         page->prot.present = true;
         obos_status status = MmS_SetPageMapping(page->range->ctx->pt, page, node->phys, false);
         // Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
-        if (obos_expect(obos_is_error(status) == true, false))
+        if (obos_expect(obos_is_error(status), false))
         {
             // Unlikely error.
             Core_SpinlockRelease(&swap_lock, oldIrql);
@@ -211,6 +213,14 @@ void Mm_MarkAsDirty(page_info* pg)
     page what = {.phys=pg->phys};
     page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
     OBOS_ASSERT(node);
+
+    if (--node->pagedCount)
+    {
+        node->flags |= PHYS_PAGE_DIRTY;
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return;
+    }
+
     page_info* pg_copy = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_info), nullptr);
     *pg_copy = *pg;
     APPEND_PAGE_NODE(node->virt_pages, &pg_copy->ln_node);
@@ -237,6 +247,14 @@ void Mm_MarkAsStandby(page_info* pg)
     if (node->flags & PHYS_PAGE_STANDBY)
         return;
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+
+    if (--node->pagedCount)
+    {
+        node->flags |= PHYS_PAGE_DIRTY;
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return;
+    }
+
     if (node->flags & PHYS_PAGE_DIRTY)
         LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
     else

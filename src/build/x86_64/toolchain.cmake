@@ -47,7 +47,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_ASM_NASM_OBJECT_FORMAT "elf64")
 
 execute_process(COMMAND x86_64-elf-gcc -print-file-name=no-red-zone/libgcc.a OUTPUT_VARIABLE LIBGCC)
-if (LIBGCC STREQUAL "no-red-zone/libgcc.a")
+if (LIBGCC STREQUAL "no-red-zone/libgcc.a" OR LIBGCC STREQUAL "")
 	# Use normal libgcc
 	execute_process(COMMAND x86_64-elf-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC)
 endif()

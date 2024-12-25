@@ -1,6 +1,6 @@
 /*
  * oboskrnl/mm/alloc.c
- * 
+ *
  * Copyright (c) 2024 Omar Berrow
 */
 #include <int.h>
@@ -43,11 +43,11 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
     size_t pgSize = flags & VMA_FLAGS_HUGE_PAGE ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     if (size % pgSize)
         size -= (size % pgSize);
-    uintptr_t base = 
+    uintptr_t base =
         ctx->owner->pid == 1 ?
         OBOS_KERNEL_ADDRESS_SPACE_BASE :
         OBOS_USER_ADDRESS_SPACE_BASE,
-              limit = 
+              limit =
         ctx->owner->pid == 1 ?
         OBOS_KERNEL_ADDRESS_SPACE_LIMIT :
         OBOS_USER_ADDRESS_SPACE_LIMIT;
@@ -63,8 +63,8 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 	page_range* lastNode = RB_FIND(page_tree, &ctx->pages, &what);
 	uintptr_t lastAddress = base;
 	uintptr_t found = 0;
-	for (currentNode = RB_MIN(page_tree, &ctx->pages); 
-        currentNode; 
+	for (currentNode = RB_MIN(page_tree, &ctx->pages);
+        currentNode;
         currentNode = RB_NEXT(page_tree, &ctx->pages, currentNode))
     {
 		uintptr_t currentNodeAddr = currentNode->virt;
@@ -98,6 +98,30 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 	}
     // OBOS_Debug("%s %p\n", __func__, found);
     return (void*)found;
+}
+
+// checks if the pages from base->base+size exist
+// internal use only
+// returns false when at least one of the pages doesn't exist, otherwise true if they all exist.
+static bool pages_exist(context* ctx, void* base, size_t size)
+{
+    OBOS_ASSERT(ctx);
+    OBOS_ASSERT(base);
+    if (!size)
+        return false;
+
+    uintptr_t virt = (uintptr_t)base;
+    page_range what = {.virt = virt,.size=size};
+    page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
+    if (!rng)
+        return false;
+
+    size_t rng_size = OBOS_MIN(rng->size - virt-rng->virt, size);
+
+    if (rng_size >= size)
+        return true; // all the pages exist in this region
+
+    return pages_exist(ctx, (void*)(rng->size+rng->virt), size - rng_size);
 }
 
 page* Mm_AnonPage = nullptr;
@@ -254,11 +278,14 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         reg->owner = &file->vn->pagecache;
         reg->ctx = ctx;
     }
+
     bool present = false;
     volatile bool isNew = true;
+
     if (!rng)
     {
         rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+
         present = rng->prot.present = !(flags & VMA_FLAGS_RESERVE);
         rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
         if (!(flags & VMA_FLAGS_PRIVATE) || !file)
@@ -268,6 +295,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
         if (!(flags & VMA_FLAGS_PRIVATE) && file)
             rng->prot.rw = false; // force it off so that we can mark dirty pages.
+
         rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
         rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
         rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
@@ -276,15 +304,16 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         rng->mapped_here = reg;
         rng->size = size;
         rng->virt = base;
-        // note for future me: the '~' is intentionally there
+
         rng->pageable = ~flags & VMA_FLAGS_NON_PAGED;
         rng->reserved = (flags & VMA_FLAGS_RESERVE);
+
         // this can be implied by doing '!rng->cow && rng->mapped_here'
         // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
         rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
         rng->ctx = ctx;
     }
-    else 
+    else
     {
         isNew = false;
         // OBOS_UNUSED(isNew);
@@ -293,19 +322,22 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             rng->reserved = false;
         present = true;
     }
-    page* phys = 0;
+
+    page* phys = nullptr;
     if (!file && !(flags & VMA_FLAGS_NON_PAGED) && !(flags & VMA_FLAGS_RESERVE))
     {
         OBOS_ASSERT(Mm_AnonPage);
         // Use anon physical page.
         phys = Mm_AnonPage;
     }
+
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
     {
         bool isPresent = !(rng->hasGuardPage && (base==addr)) && present;
         bool cow = false;
         // for (volatile bool b = (addr==0xffffff00003d3000); b; )
         //     ;
+
         if (isPresent)
         {
             if (!file && (flags & VMA_FLAGS_NON_PAGED))
@@ -314,7 +346,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             {
                 // File page.
                 page_info info = {};
-                MmS_QueryPageInfo(ctx->pt, (uintptr_t)reg->owner->data+currFileOff, &info, nullptr);
+                MmS_QueryPageInfo(Mm_KernelContext.pt, (uintptr_t)reg->owner->data+currFileOff, &info, nullptr);
                 if (flags & VMA_FLAGS_PRIVATE)
                 {
                     // Private.
@@ -322,10 +354,12 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                     cow = true;
                 }
                 isPresent = info.prot.present;
+
                 page what = {.phys=info.phys};
                 phys = isPresent ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
                 if (phys)
                     MmH_RefPage(phys);
+
                 rng->cow = cow;
                 if (cow)
                 {
@@ -335,7 +369,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                     pc_range->prot.rw = false;
                     info.prot.rw = false;
                 }
-                MmS_SetPageMapping(ctx->pt, &info, info.phys, false);
+
+                MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
             }
             else
             {
@@ -344,8 +379,13 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                 MmH_RefPage(phys);
             }
         }
-        // Append the virtual page to phys on demand as apposed to now to save memory.
+
+        // Append the virtual page to *phys on demand as apposed to now to save memory.
         // An example of where it'd be added is on swap out, as the virtual_pages list is not needed until then.
+
+        if (phys)
+            phys->pagedCount++;
+
         page_info curr = {};
         curr.range = rng;
         curr.virt = addr;
@@ -356,9 +396,9 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         if (rng->cow && rng->un.cow_type == COW_ASYMMETRIC)
             curr.prot.present = false;
         OBOS_ASSERT(phys != 0 || !isPresent);
+
         MmS_SetPageMapping(ctx->pt, &curr, curr.phys, false);
-        // if (rng->pageable && !rng->reserved && isPresent && !file)
-        //     Mm_SwapOut(&curr);
+
         currFileOff += pgSize;
     }
     if (!(flags & VMA_FLAGS_RESERVE))
@@ -384,6 +424,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     // printf("mapped %d bytes at %p\n", size, base);
     return (void*)base;
 }
+
+// TODO: Make this support freeing multiple 'page_range's at the same time without bugging out.
 obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 {
     // OBOS_Debug("%s %p\n", __func__, base_);
@@ -399,7 +441,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         - Unmap the pages
         - Remove the pages from any VMM data structures (working set, page tree, referenced list)
     */
-    
+
     // Verify the pages' existence.
     page_range what = {.virt=base,.size=size};
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
@@ -496,7 +538,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         }
     }
     OBOS_ASSERT(rng->size);
-    
+
     page_info pg = {};
     pg.prot = new_prot;
     pg.range = nullptr;
@@ -551,6 +593,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
+
+// TODO: Make this support protecting multiple 'page_range's at the same time without bugging out.
 obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot_flags prot, int isPageable)
 {
     uintptr_t base = (uintptr_t)base_;
@@ -724,13 +768,101 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool lock_pages)
+obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kbase_, size_t size, prot_flags prot)
 {
-    OBOS_UNUSED(user_context);
-    OBOS_UNUSED(ubase);
-    OBOS_UNUSED(kbase);
-    OBOS_UNUSED(nBytes);
-    OBOS_UNUSED(protection);
-    OBOS_UNUSED(lock_pages);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
+    uintptr_t ubase = (uintptr_t)ubase_;
+    uintptr_t kbase = (uintptr_t)kbase_;
+    ubase -= (ubase % OBOS_PAGE_SIZE);
+    kbase -= (kbase % OBOS_PAGE_SIZE);
+    if (!ubase || !kbase)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    irql oldIrql = Core_SpinlockAcquireExplicit(&user_context->lock, IRQL_DISPATCH, true);
+    if (!pages_exist(user_context, (void*)ubase, size))
+    {
+        Core_SpinlockRelease(&user_context->lock, oldIrql);
+        return OBOS_STATUS_PAGE_FAULT;
+    }
+
+    irql oldIrql2 = Core_SpinlockAcquireExplicit(&Mm_KernelContext.lock, IRQL_DISPATCH, true);
+
+    // This function is undesirable for cheking if memory to be allocated doesn't already exist
+    // So just assume the kernel is unfalliable
+    // TODO: Fix
+    // if (pages_exist(&Mm_KernelContext, (void*)kbase, size))
+    // {
+    //     Core_SpinlockRelease(&user_context->lock, oldIrql);
+    //     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql2);
+    //     return OBOS_STATUS_INVALID_ARGUMENT;
+    // }
+
+    page_range* rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+    rng->virt = kbase;
+    rng->ctx = &Mm_KernelContext;
+    rng->phys32 = false;
+    rng->hasGuardPage = false;
+    rng->cow = false;
+    rng->size = size;
+    rng->prot.huge_page = false;
+    rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+    rng->pageable = false;
+    rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+    rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+    rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+    rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+    RB_INSERT(page_tree, &Mm_KernelContext.pages, rng);
+
+    for (uintptr_t kaddr = kbase, uaddr = ubase; kaddr < (kbase+size); kaddr += OBOS_PAGE_SIZE, uaddr += OBOS_PAGE_SIZE)
+    {
+        page* phys = nullptr;
+        page_info info = {};
+        MmS_QueryPageInfo(user_context->pt, uaddr, &info, nullptr);
+        page what = {.phys=info.phys};
+        phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+        if (phys)
+        {
+            MmH_RefPage(phys);
+            if (!phys->pagedCount)
+            {
+                // Every owning page has this page swapped out- but us.
+                // We need to undo that.
+                fault_type type = INVALID_FAULT;
+                Mm_SwapIn(&info, &type);
+                user_context->stat.pageFaultCount++;
+                user_context->stat.pageFaultCountSinceSample++;
+                switch (type) {
+                    case SOFT_FAULT:
+                        user_context->stat.softPageFaultCount++;
+                        user_context->stat.softPageFaultCountSinceSample++;
+                        break;
+                    case HARD_FAULT:
+                        user_context->stat.hardPageFaultCount++;
+                        user_context->stat.hardPageFaultCountSinceSample++;
+                        break;
+                    case ACCESS_FAULT:
+                        // propagate the error.
+                        break;
+                    default:
+                        OBOS_ASSERT(!"invalid fault type. fault is neither a SOFT_FAULT, HARD_FAULT, nor a ACCESS_FAULT.");
+                        break;
+                }
+            }
+            else
+                phys->pagedCount++;
+        }
+        info.virt = kaddr;
+        info.dirty = false;
+        info.accessed = false;
+        info.range = rng;
+        info.prot = rng->prot;
+        info.prot.present = !!phys;
+        MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
+    }
+
+    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql2);
+    Core_SpinlockRelease(&user_context->lock, oldIrql);
+
+    return OBOS_STATUS_SUCCESS;
 }

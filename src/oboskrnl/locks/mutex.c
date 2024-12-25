@@ -66,7 +66,9 @@ obos_status Core_MutexAcquire(mutex* mut)
     {
         mut->who = Core_GetCurrentThread();
         mut->locked = true;
+#if OBOS_ENABLE_LOCK_PROFILING
         mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
+#endif
         return OBOS_STATUS_SUCCESS;
     }
     //printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
@@ -93,6 +95,7 @@ obos_status Core_MutexTryAcquire(mutex* mut)
         return OBOS_STATUS_IN_USE;
     return Core_MutexAcquire(mut);
 }
+
 obos_status Core_MutexRelease(mutex* mut)
 {
     if (!mut)
@@ -112,6 +115,7 @@ obos_status Core_MutexRelease(mutex* mut)
     mut->locked = false;
     return OBOS_STATUS_SUCCESS;
 }
+
 bool Core_MutexAcquired(mutex* mut)
 {
     if (!mut)

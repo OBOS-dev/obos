@@ -81,7 +81,9 @@ OBOS_EXPORT obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t si
 OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t size, prot_flags newProt, int isPageable);
 
 // Maps user pages into the kernel address space. This can be used in syscalls to avoid copying large amounts of memory.
-OBOS_EXPORT obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool lock_pages);
+// returns OBOS_STATUS_PAGE_FAULT when a portion of the user memory requested is not mapped.
+// The allocated kernel pages will be locked into memory with unmap flags UNMAP_FLAGS_DEFER,
+OBOS_EXPORT obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection);
 
 typedef enum unmap_behavior {
 	// Default behavior.

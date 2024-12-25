@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "wait.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -66,9 +65,11 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+
     va_list list;
     va_start(list, nObjects);
     thread* curr = Core_GetCurrentThread();
@@ -84,6 +85,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
             Core_SpinlockRelease(&obj->lock, oldIrql);
             continue;
         }
+
         thread_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
         node->data = curr;
         node->free = free_node;
@@ -94,20 +96,25 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
         curr->nWaiting++;
     }
     va_end(list);
+
     if (curr->nWaiting)
         CoreH_ThreadBlock(curr, true);
+
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs)
 {
     if (!nObjects)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+
     thread* curr = Core_GetCurrentThread();
     curr->nSignaled = 0;
     curr->nWaiting = 0;
+
     for (size_t i = 0; i < nObjects; i++)
     {
         struct waitable_header* obj = objs[i];
@@ -126,19 +133,24 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs
             continue;
         curr->nWaiting++;
     }
+
     if (curr->nWaiting)
         CoreH_ThreadBlock(curr, true);
+
     return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bool boostPriority)
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (obj->use_signaled)
-        obj->signaled = true;
+
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+
+    if (obj->use_signaled)
+        obj->signaled = true;
+
     for (thread_node* curr = obj->waiting.head; curr; )
     {
         thread_node* next = curr->next;
@@ -155,8 +167,10 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
             break;
         curr = next;
     }
+
     return OBOS_STATUS_SUCCESS;   
 }
+
 obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj)
 {
     if (!obj)
@@ -164,6 +178,7 @@ obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj)
     obj->interrupted = 1;
     return CoreH_SignalWaitingThreads(obj, true, false);
 }
+
 void CoreH_ClearSignaledState(struct waitable_header* obj)
 {
     if (!obj || !obj->use_signaled)

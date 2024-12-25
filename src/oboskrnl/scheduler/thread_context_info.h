@@ -22,8 +22,6 @@
 /// </summary>
 typedef struct thread_context_info thread_ctx;
 
-
-// TODO: Add a way to specify the address space of the thread.
 /// <summary>
 /// Sets up the context of a thread.
 /// </summary>

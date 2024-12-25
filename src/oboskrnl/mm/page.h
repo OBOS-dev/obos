@@ -22,11 +22,13 @@ typedef struct page_protection
     bool ro : 1;           // If set, this page was originally allocated as read-only. This is only for decoration, and is only really guaranteed to be set in page ranges.
     bool is_swap_phys : 1; // If set, the physical address of the page is actually a swap id. On x86-64, this uses bit 9 of the PTE.
 } page_protection;
+
 typedef struct page_node
 {
     struct page_node *next, *prev;
     struct page_info *data;
 } page_node;
+
 typedef struct page_info
 {
     struct page_node ln_node; // for the 'struct page' list.
@@ -37,33 +39,44 @@ typedef struct page_info
     bool dirty : 1;
     bool accessed : 1;
 } page_info;
+
 typedef enum phys_page_flags
 {
     PHYS_PAGE_STANDBY = BIT(0),
     PHYS_PAGE_DIRTY = BIT(1),
     PHYS_PAGE_HUGE_PAGE = BIT(2),
 } phys_page_flags;
+
 typedef RB_HEAD(phys_page_tree, page) phys_page_tree;
 RB_PROTOTYPE(phys_page_tree, page, rb_node, phys_page_cmp);
 typedef LIST_HEAD(phys_page_list, struct page) phys_page_list;
 LIST_PROTOTYPE(phys_page_list, struct page, lnk_node);
+
 typedef struct page
 {
     RB_ENTRY(page) rb_node;
     // only valid if the page is dirty/standby.
     LIST_NODE(phys_page_list, struct page) lnk_node; 
     uintptr_t phys;
+
     _Atomic(size_t) refcount;
+    // A reference count of pages that have this page paged in.
+    // Must always be <= refcount.
+    _Atomic(size_t) pagedCount;
+
     struct {
         page_node *head, *tail;
         size_t nNodes;
     } virt_pages /* virtual pages with a reference to us */;
+
     uintptr_t swap_id;
     phys_page_flags flags;
 } page;
+
 typedef LIST_HEAD(swap_allocation_list, struct swap_allocation) swap_allocation_list;
 LIST_PROTOTYPE(swap_allocation_list, struct swap_allocation, node);
 extern swap_allocation_list Mm_SwapAllocations;
+
 // represents a swap allocation, as well as the physical page that it uses, if it was already read.
 typedef struct swap_allocation
 {
@@ -77,10 +90,12 @@ OBOS_NODISCARD swap_allocation* MmH_LookupSwapAllocation(uintptr_t id);
 swap_allocation* MmH_AddSwapAllocation(uintptr_t id);
 void MmH_RefSwapAllocation(swap_allocation* alloc);
 void MmH_DerefSwapAllocation(swap_allocation* alloc);
+
 inline static int phys_page_cmp(struct page* lhs, struct page* rhs)
 {
     return (lhs->phys < rhs->phys) ? -1 : (lhs->phys == rhs->phys ? 0 : 1);
 }
+
 // Adds a reference to the page.
 page* MmH_PgAllocatePhysical(bool phys32, bool huge);
 page* MmH_AllocatePage(uintptr_t phys, bool huge);
@@ -88,12 +103,12 @@ void MmH_RefPage(page* buf);
 void MmH_DerefPage(page* buf);
 extern phys_page_tree Mm_PhysicalPages;
 extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
+
 typedef struct page_range
 {
     uintptr_t virt;
     size_t size;
     page_protection prot;
-    size_t refs;
     struct pagecache_mapped_region* mapped_here;
     RB_ENTRY(page_range) rb_node;
     struct {
@@ -115,11 +130,13 @@ typedef struct page_range
         } cow_type : 1;
     } un;
 } page_range;
+
 typedef struct working_set_node
 {
     struct working_set_node *next, *prev;
     struct working_set_entry* data;
 } working_set_node;
+
 typedef struct working_set_entry
 {
     page_info info;
@@ -138,6 +155,7 @@ typedef struct page_list
     size_t nNodes;
 } page_list;
 typedef RB_HEAD(page_tree, page_range) page_tree;
+
 #pragma GCC push_options
 #pragma GCC optimize ("-O0")
 #define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
@@ -153,6 +171,7 @@ inline static int pg_cmp_pages(const page_range* left, const page_range* right)
 }
 #undef in_range
 #pragma GCC pop_options
+
 RB_PROTOTYPE_INTERNAL(page_tree, page_range, rb_node, pg_cmp_pages, __attribute__((noinline)));
 #define APPEND_PAGE_NODE(list, node) do {\
 	(node)->next = nullptr;\

@@ -27,8 +27,6 @@ typedef enum d_state {
 // if dry_run is true, then the function does not actually put the device into the state,
 // but only checks if it would be able to and returns an apprioriate status.
 
-// TODO: PCI D State helpers?
-
 OBOS_EXPORT obos_status OBOS_DeviceSetDState(uacpi_namespace_node* dev, d_state new_state, bool dry_run);
 OBOS_EXPORT obos_status OBOS_DeviceHasDState(uacpi_namespace_node* dev, d_state state);
 

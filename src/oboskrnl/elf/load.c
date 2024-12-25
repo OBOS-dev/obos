@@ -94,8 +94,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
                                         ubase,
                                         (kbase = MmH_FindAvailableAddress(&Mm_KernelContext, phdrs[i].p_memsz, 0, nullptr)),
                                         phdrs[i].p_memsz,
-                                        0,
-                                        false);
+                                        0);
         if (obos_is_error(status))
         {
             // Clean up.
