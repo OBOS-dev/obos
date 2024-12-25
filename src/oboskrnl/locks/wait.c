@@ -51,13 +51,13 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
         return status;
     }
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
-    if (obj->signaled && obj->use_signaled && !obj->interrupted)
-        return OBOS_STATUS_SUCCESS;
-    if (obj->interrupted) return OBOS_STATUS_ABORTED;
     CoreH_ThreadBlock(curr, true);
     Core_LowerIrql(oldIrql);
+    if (obj->interrupted)
+        return OBOS_STATUS_ABORTED;
     return OBOS_STATUS_SUCCESS;
 }
+
 static void free_node(thread_node* n)
 {
     OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, n, sizeof(*n));

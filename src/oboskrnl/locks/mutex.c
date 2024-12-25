@@ -69,11 +69,10 @@ obos_status Core_MutexAcquire(mutex* mut)
         mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
         return OBOS_STATUS_SUCCESS;
     }
-    printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
+    //printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
     obos_status st = Core_WaitOnObject(&mut->hdr);
-    if (st != OBOS_STATUS_SUCCESS) {
+    if (st != OBOS_STATUS_SUCCESS)
         return st;
-    }
     if (mut->ignoreAllAndBlowUp)
         return OBOS_STATUS_ABORTED;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
@@ -85,6 +84,7 @@ obos_status Core_MutexAcquire(mutex* mut)
     mut->locked = true;
     return OBOS_STATUS_SUCCESS;
 }
+
 obos_status Core_MutexTryAcquire(mutex* mut)
 {
     if (!mut)
