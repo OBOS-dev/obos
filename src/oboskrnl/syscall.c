@@ -9,6 +9,7 @@
 #include <klog.h>
 #include <syscall.h>
 #include <handle.h>
+#include <partition.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
@@ -23,12 +24,20 @@
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
-
-/*void Sys_Yield()
+obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
-    OBOS_Debug("yielding\n");
-    Core_Yield();
-}*/
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return OBOS_PartProbeDrive(dent->un.dirent, check_checksum);
+}
 obos_status Sys_InvalidSyscall()
 {
     return OBOS_STATUS_NO_SYSCALL;
@@ -80,6 +89,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FdEOF,
     (uintptr_t)Sys_FdIoctl,
     (uintptr_t)Sys_FdFlush, // 45
+    (uintptr_t)OBOS_PartProbeAllDrives,
+    (uintptr_t)Sys_PartProbeDrive, // 47
 };
 // Arch syscall table is defined per-arch
 
