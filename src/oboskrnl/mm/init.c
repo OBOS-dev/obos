@@ -46,7 +46,7 @@ typedef struct
 } mm_regions_udata;
 #define round_up(addr) (uintptr_t)((uintptr_t)(addr) + (OBOS_PAGE_SIZE - ((uintptr_t)(addr) % OBOS_PAGE_SIZE)))
 #define round_down(addr) (uintptr_t)((uintptr_t)(addr) - ((uintptr_t)(addr) % OBOS_PAGE_SIZE))
-static bool count_pages(basicmm_region* region, void* udatablk)
+static OBOS_NO_UBSAN bool count_pages(basicmm_region* region, void* udatablk)
 {
     OBOS_ASSERT(udatablk);
     if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)
@@ -88,7 +88,7 @@ static bool count_pages(basicmm_region* region, void* udatablk)
         (udata->nNodes)++;
     return true;
 }
-static bool register_pages(basicmm_region* region, void* udatablk)
+static OBOS_NO_UBSAN bool register_pages(basicmm_region* region, void* udatablk)
 {
     OBOS_ASSERT(udatablk);
     if (region->addr < OBOS_KERNEL_ADDRESS_SPACE_BASE)

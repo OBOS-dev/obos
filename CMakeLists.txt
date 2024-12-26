@@ -34,10 +34,22 @@ project(
 	DESCRIPTION "Hybrid Kernel with advanced driver loading."
 	HOMEPAGE_URL https://github.com/OBOS-dev/obos
 	)
+
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	enable_language(ASM_NASM)
 else()
 	enable_language(ASM-ATT)
+endif()
+
+if (OBOS_USE_CLANG)
+	add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=unknown-pragmas>
+						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unknown-pragmas>
+						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=unknown-attributes>
+						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=c23-extensions>)
+	if (OBOS_ENABLE_KASAN)
+		set (OBOS_ENABLE_KASAN OFF)
+		message (WARNING "OBOS does not support Clang's ASAN implementation. If you really care about this, make a PR, as I don't.")
+	endif()
 endif()
 
 # Download dependencies.

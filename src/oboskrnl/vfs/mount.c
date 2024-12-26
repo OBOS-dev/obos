@@ -164,6 +164,8 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
 
         tok += str_search(tok, '/');
         size_t currentPathLen = strlen(tok)-1;
+        if (currentPathLen == (size_t)-1)
+            currentPathLen = 0;
         if (tok[currentPathLen] != '/')
             currentPathLen++;
         while (tok[currentPathLen] == '/')

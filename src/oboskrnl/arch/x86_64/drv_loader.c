@@ -105,7 +105,7 @@ static uint32_t GnuHash(const char* name)
 }
 
 #define getEntryOffset(ptr, type, offset) (*((type*)((uintptr_t)(ptr) + (offset))))
-static Elf64_Sym* GetSymbolFromGnuTable(
+static OBOS_NO_UBSAN Elf64_Sym* GetSymbolFromGnuTable(
 			uint8_t* fileStart,
 			uint8_t* baseAddress,
 			Elf64_Sym* symbolTable,
@@ -153,6 +153,8 @@ static Elf64_Sym* GetSymbolFromGnuTable(
         if (currhash & 1)
             return nullptr;
     }
+
+    return nullptr;
 }
 // From https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-48031.html#scrolltoc
 static uint32_t ElfHash(const char* name)
@@ -550,6 +552,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     struct relocation_table current = {};
 	for (size_t i = 0; currentDynamicHeader->d_tag != DT_NULL; i++, currentDynamicHeader++)
 	{
+        OBOS_UNUSED(i);
         switch (currentDynamicHeader->d_tag)
         {
         case DT_HASH:

@@ -67,17 +67,17 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten)
 {
-
+    return OBOS_STATUS_UNIMPLEMENTED;
 }
 
-obos_status       Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead) {}
+obos_status       Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead) { return OBOS_STATUS_UNIMPLEMENTED; }
 
-obos_status     Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt) {}
-obos_status      Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt) {}
-obos_status       Sys_FdSeek(handle desc, off_t off, whence_t whence) {}
-uoff_t         Sys_FdTellOff(const handle desc) {}
-size_t        Sys_FdGetBlkSz(const handle desc) {}
-obos_status        Sys_FdEOF(const handle desc) {}
-obos_status      Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp) {}
-obos_status      Sys_FdFlush(handle desc) {}
-obos_status      Sys_FdClose(handle desc) {}
+obos_status     Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status      Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status       Sys_FdSeek(handle desc, off_t off, whence_t whence) { return OBOS_STATUS_UNIMPLEMENTED; }
+uoff_t         Sys_FdTellOff(const handle desc) { return OBOS_STATUS_UNIMPLEMENTED; }
+size_t        Sys_FdGetBlkSz(const handle desc) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status        Sys_FdEOF(const handle desc) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status      Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status      Sys_FdFlush(handle desc) { return OBOS_STATUS_UNIMPLEMENTED; }
+obos_status      Sys_FdClose(handle desc) { return OBOS_STATUS_UNIMPLEMENTED; }

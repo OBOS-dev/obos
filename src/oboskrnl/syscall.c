@@ -86,4 +86,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
 
 obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
 {
+    OBOS_UNUSED(ustr);
+    OBOS_UNUSED(buf);
+    OBOS_UNUSED(sz_buf);
+    return OBOS_STATUS_UNIMPLEMENTED;
 }

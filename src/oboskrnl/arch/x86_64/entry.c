@@ -505,6 +505,7 @@ void Arch_KernelMainBootstrap()
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
 	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
 	Arch_InitializeSchedulerTimer();
+	Core_LowerIrql(oldIrql);
 	OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
 	if (obos_is_error(status = Arch_InitializeIOAPICs()))
 		OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);

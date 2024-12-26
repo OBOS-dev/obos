@@ -268,8 +268,8 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
         return OBOS_STATUS_INTERNAL_ERROR;
     const char* dir_filename = (const char*)&dir->filename;
     if (dir_ == UINTPTR_MAX)
-        dir_filename = "";
-    size_t dirnamelen = uacpi_strnlen(dir_filename, 100);
+        dir_filename = "/";
+    size_t dirnamelen = strnlen(dir_filename, 100);
     size_t real_dirnamelen = dirnamelen;
     if (dir_filename[dirnamelen-1] == '/')
         dirnamelen--;

@@ -26,7 +26,9 @@ size_t Arch_IOAPICCount;
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
 #define NextMADTEntry(cur) OffsetPtr(cur, cur->length, MADT_EntryHeader)
 #define MADTEntryStruct(entry_type) MADT_EntryType ##entry_type
-#define OffsetOfReg(reg) ((uintptr_t)&(((ioapic_registers*)nullptr)->reg))
+// #define OffsetOfReg(reg) ((uintptr_t)&(((ioapic_registers*)nullptr)->reg))
+#define OffsetOfReg(reg) offsetof(ioapic_registers, reg)
+
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 {
 	// Find the MADT in the ACPI tables.
