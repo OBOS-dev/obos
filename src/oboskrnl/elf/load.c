@@ -90,11 +90,13 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
                 Mm_VirtualMemoryFree(ctx, (void*)phdrs[j].p_vaddr, phdrs[j].p_memsz);
             return status;
         }
-        status = Mm_MapViewOfUserMemory(ctx,
-                                        ubase,
-                                        (kbase = MmH_FindAvailableAddress(&Mm_KernelContext, phdrs[i].p_memsz, 0, nullptr)),
-                                        phdrs[i].p_memsz,
-                                        0);
+        kbase = Mm_MapViewOfUserMemory(ctx,
+                                       ubase,
+                                       nullptr,
+                                       phdrs[i].p_memsz,
+                                       0,
+                                       false, // disrespect user protection flags.
+                                       &status);
         if (obos_is_error(status))
         {
             // Clean up.
@@ -111,7 +113,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
             prot |= OBOS_PROTECTION_EXECUTABLE;
         if (~phdrs[i].p_flags & PF_W)
             prot |= OBOS_PROTECTION_READ_ONLY;
-        status = Mm_VirtualMemoryProtect(ctx, kbase, phdrs[i].p_memsz, prot, true);
+        status = Mm_VirtualMemoryProtect(ctx, ubase, phdrs[i].p_memsz, prot, true);
         if (obos_is_error(status))
         {
             // Clean up.

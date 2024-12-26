@@ -79,8 +79,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FdTellOff,
     (uintptr_t)Sys_FdEOF,
     (uintptr_t)Sys_FdIoctl,
-    (uintptr_t)Sys_FdFlush,
-    (uintptr_t)Sys_FdClose, // 46
+    (uintptr_t)Sys_FdFlush, // 45
 };
 // Arch syscall table is defined per-arch
 

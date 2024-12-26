@@ -103,7 +103,7 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 // checks if the pages from base->base+size exist
 // internal use only
 // returns false when at least one of the pages doesn't exist, otherwise true if they all exist.
-static bool pages_exist(context* ctx, void* base, size_t size)
+static bool pages_exist(context* ctx, void* base, size_t size, bool respectUserProtection, prot_flags kprot)
 {
     OBOS_ASSERT(ctx);
     OBOS_ASSERT(base);
@@ -115,13 +115,25 @@ static bool pages_exist(context* ctx, void* base, size_t size)
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
         return false;
+    if (respectUserProtection)
+    {
+        if (kprot & OBOS_PROTECTION_EXECUTABLE)
+        {
+            OBOS_Error("Kernel is doing shady things, refusing to map user pages as executable inside the kernel address space. If all is in your favour, this is a bug, otherwise it's malware.");
+            return false;
+        }
+        // If the kernel wants an RW mapping, but the user range is RO, then fail.
+        if (!!(kprot & OBOS_PROTECTION_READ_ONLY) < rng->prot.ro)
+            return false;
+        // continue with our checks.
+    }
 
     size_t rng_size = OBOS_MIN(rng->size - virt-rng->virt, size);
 
     if (rng_size >= size)
         return true; // all the pages exist in this region
 
-    return pages_exist(ctx, (void*)(rng->size+rng->virt), size - rng_size);
+    return pages_exist(ctx, (void*)(rng->size+rng->virt), size - rng_size, respectUserProtection, kprot);
 }
 
 page* Mm_AnonPage = nullptr;
@@ -768,7 +780,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kbase_, size_t size, prot_flags prot)
+void* Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kbase_, size_t size, prot_flags prot, bool respectUserProtection, obos_status *status)
 {
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
@@ -777,13 +789,17 @@ obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kb
     ubase -= (ubase % OBOS_PAGE_SIZE);
     kbase -= (kbase % OBOS_PAGE_SIZE);
     if (!ubase || !kbase)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    {
+        set_statusp(status, OBOS_STATUS_INVALID_ARGUMENT);
+        return nullptr;
+    }
 
     irql oldIrql = Core_SpinlockAcquireExplicit(&user_context->lock, IRQL_DISPATCH, true);
-    if (!pages_exist(user_context, (void*)ubase, size))
+    if (!pages_exist(user_context, (void*)ubase, size, respectUserProtection, prot))
     {
         Core_SpinlockRelease(&user_context->lock, oldIrql);
-        return OBOS_STATUS_PAGE_FAULT;
+        set_statusp(status, OBOS_STATUS_PAGE_FAULT);
+        return nullptr;
     }
 
     irql oldIrql2 = Core_SpinlockAcquireExplicit(&Mm_KernelContext.lock, IRQL_DISPATCH, true);
@@ -797,6 +813,17 @@ obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kb
     //     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql2);
     //     return OBOS_STATUS_INVALID_ARGUMENT;
     // }
+
+    if (!kbase)
+    {
+        kbase = (uintptr_t)MmH_FindAvailableAddress(&Mm_KernelContext, size, 0, status);
+        if (!kbase)
+        {
+            Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql2);
+            Core_SpinlockRelease(&user_context->lock, oldIrql);
+            return nullptr;
+        }
+    }
 
     page_range* rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->virt = kbase;
@@ -864,5 +891,6 @@ obos_status Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kb
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql2);
     Core_SpinlockRelease(&user_context->lock, oldIrql);
 
-    return OBOS_STATUS_SUCCESS;
+    set_statusp(status, OBOS_STATUS_SUCCESS);
+    return (void*)kbase;
 }

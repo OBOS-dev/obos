@@ -31,4 +31,3 @@ obos_status        Sys_FdEOF(const handle desc);
 obos_status      Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp);
 
 obos_status      Sys_FdFlush(handle desc);
-obos_status      Sys_FdClose(handle desc);
