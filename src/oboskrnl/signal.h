@@ -10,6 +10,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <handle.h>
 
 #include <irq/irq.h>
 
@@ -60,6 +61,15 @@ typedef struct siginfo_t
     } udata;
 } siginfo_t;
 // Public
+typedef struct user_sigaction {
+    union {
+        void(*handler)(int signum);
+        void(*sa_sigaction)(int signum, siginfo_t* info, void* unknown);
+    } un;
+    // NOTE(oberrow): Set to __mlibc_restorer in the mlibc sysdeps.
+    uintptr_t trampoline_base; // required
+    uint32_t  flags;
+} user_sigaction;
 typedef struct sigaction {
     union {
         void(*handler)(int signum);
@@ -83,8 +93,9 @@ typedef struct signal_header {
     sigset_t  pending;
     sigset_t  mask;
     uintptr_t sp;
+    size_t    stack_size; // Unused in the actual signal implemtation, only exists for Sys_SigAltStack.
     mutex     lock; // take when modifying this structure.
-    event    event; // set when a signal runs, clear when it exits (sigreturn)
+    event     event; // set when a signal runs, clear when it exits (sigreturn)
 } signal_header;
 signal_header* OBOSH_AllocateSignalHeader();
 
@@ -105,7 +116,10 @@ typedef struct thread_context_info ucontext_t;
 void OBOS_SyncPendingSignal(interrupt_frame* frame);
 void OBOS_RunSignal(int sigval, interrupt_frame* frame);
 
+// NOTE: This function is implemented as if it is a syscall,
+// i.e., frame is `memcpy_usr_to_k`ed to a kernel buffer.
 OBOS_WEAK void OBOSS_SigReturn(interrupt_frame* frame);
+
 OBOS_WEAK void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame);
 
 enum signal_default_action
@@ -122,3 +136,24 @@ enum signal_default_action
 extern enum signal_default_action OBOS_SignalDefaultActions[SIGMAX+1];
 
 void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown);
+
+enum {
+    SS_DISABLE = BIT(0),
+};
+typedef struct stack {
+    void *ss_sp;
+    int ss_flags;
+    size_t ss_size;
+} stack_t;
+
+// TODO: Better values?
+
+#define MINSIGSTKSZ 0x20000
+#define SIGSTKSZ 0x20000
+
+// Syscalls
+obos_status Sys_Kill(handle thr, int sigval);
+obos_status Sys_SigAction(int signum, const user_sigaction* act, user_sigaction* oldact);
+obos_status Sys_SigPending(sigset_t* mask);
+obos_status Sys_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset);
+obos_status Sys_SigAltStack(const stack_t* sp, stack_t* oldsp);

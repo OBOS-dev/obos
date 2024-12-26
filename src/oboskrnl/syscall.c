@@ -10,6 +10,7 @@
 #include <syscall.h>
 #include <handle.h>
 #include <partition.h>
+#include <signal.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
@@ -93,6 +94,12 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FdFlush, // 45
     (uintptr_t)OBOS_PartProbeAllDrives,
     (uintptr_t)Sys_PartProbeDrive, // 47
+    (uintptr_t)OBOSS_SigReturn,
+    (uintptr_t)Sys_Kill,
+    (uintptr_t)Sys_SigAction,
+    (uintptr_t)OBOS_SigSuspend,
+    (uintptr_t)Sys_SigProcMask,
+    (uintptr_t)Sys_SigAltStack,
 };
 // Arch syscall table is defined per-arch
 
