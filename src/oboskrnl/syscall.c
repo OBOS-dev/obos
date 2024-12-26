@@ -24,6 +24,8 @@
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
+
+// TODO: Check permissions?
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
     obos_status status = OBOS_STATUS_SUCCESS;

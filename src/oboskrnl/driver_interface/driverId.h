@@ -52,6 +52,9 @@ typedef struct driver_list
     driver_node *head, *tail;
     size_t nNodes;
 } driver_list;
+
+// TODO: Lock?
+
 #define APPEND_DRIVER_NODE(list, node) do {\
 	(node)->next = nullptr;\
 	(node)->prev = nullptr;\
@@ -85,6 +88,7 @@ typedef struct driver_id
     driver_header header;
     uintptr_t entryAddr; // If zero, there is no entry point.
     // The amount of loaded drivers that depend on this driver.
+    // Also incremented whenever a user thread opens a handle to this driver.
     // This is set to one (the kernel) on driver load.
     size_t refCnt;
     // The driver's dependencies.
