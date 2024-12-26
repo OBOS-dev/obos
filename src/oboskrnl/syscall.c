@@ -99,7 +99,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SigAction,
     (uintptr_t)OBOS_SigSuspend,
     (uintptr_t)Sys_SigProcMask,
-    (uintptr_t)Sys_SigAltStack,
+    (uintptr_t)Sys_SigAltStack, // 53
+    (uintptr_t)Sys_OpenDir,
+    (uintptr_t)Sys_ReadEntries, // 55
 };
 // Arch syscall table is defined per-arch
 

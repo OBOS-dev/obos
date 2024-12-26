@@ -272,3 +272,81 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
     return ent;
 }
 LIST_GENERATE(dirent_list, dirent, node);
+
+struct mlibc_dirent {
+    uint32_t d_ino;
+    off_t d_off;
+    unsigned short d_reclen;
+    unsigned char d_type;
+    char d_name[MAX_FILENAME_LEN];
+};
+
+#define DT_UNKNOWN 0
+#define DT_FIFO 1
+#define DT_CHR 2
+#define DT_DIR 4
+#define DT_BLK 6
+#define DT_REG 8
+#define DT_LNK 10
+#define DT_SOCK 12
+// #define DT_WHT 14
+
+obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** last, size_t* nRead)
+{
+    if (!VfsH_LockMountpoint(dent->vnode->mount_point))
+        return OBOS_STATUS_ABORTED;
+    if (!buffer)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    size_t nDirentsToRead = szBuf/sizeof(struct mlibc_dirent);
+    if (!nDirentsToRead)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    size_t nReadableDirents = 0;
+    struct mlibc_dirent* iter = buffer;
+    for (dirent* curr = dent; curr && nReadableDirents < nDirentsToRead; nReadableDirents++)
+    {
+        // TODO: Directory inodes (maybe?)
+        iter->d_ino = UINT32_MAX;
+        iter->d_off = 0;
+        iter->d_reclen = sizeof(struct mlibc_dirent);
+
+        switch (curr->vnode->vtype) {
+            case VNODE_TYPE_REG:
+                iter->d_type = DT_REG;
+                break;
+            case VNODE_TYPE_BLK:
+                iter->d_type = DT_BLK;
+                break;
+            case VNODE_TYPE_CHR:
+                iter->d_type = DT_CHR;
+                break;
+            case VNODE_TYPE_LNK:
+                iter->d_type = DT_LNK;
+                break;
+            case VNODE_TYPE_FIFO:
+                iter->d_type = DT_FIFO;
+                break;
+            case VNODE_TYPE_SOCK:
+                iter->d_type = DT_SOCK;
+                break;
+            case VNODE_TYPE_DIR:
+                iter->d_type = DT_DIR;
+                break;
+            default:
+                iter->d_type = DT_UNKNOWN;
+                break;
+        }
+
+        memcpy(iter->d_name, OBOS_GetStringCPtr(&curr->name), OBOS_MIN(OBOS_GetStringSize(&curr->name), MAX_FILENAME_LEN));
+
+        iter++;
+        curr = curr->d_next_child;
+        *last = curr;
+    }
+
+    if (nRead)
+        *nRead = nReadableDirents*sizeof(struct mlibc_dirent);
+
+    VfsH_UnlockMountpoint(dent->vnode->mount_point);
+    return nReadableDirents ? OBOS_STATUS_SUCCESS : OBOS_STATUS_EOF;
+}

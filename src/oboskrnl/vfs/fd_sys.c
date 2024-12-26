@@ -20,6 +20,7 @@
 #include <vfs/limits.h>
 #include <vfs/fd.h>
 #include <vfs/alloc.h>
+#include <vfs/dirent.h>
 
 handle Sys_FdAlloc()
 {
@@ -75,6 +76,32 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags);
+}
+
+obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    dirent* real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
+    if (!real_dent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags);
 }
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten)
@@ -255,4 +282,57 @@ obos_status Sys_FdFlush(handle desc)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     return Vfs_FdFlush(fd->un.fd);
+}
+
+
+handle Sys_OpenDir(const char* path, obos_status *statusp)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    dirent* dent = VfsH_DirentLookup(path);
+    if (!dent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        if (statusp)
+            memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+        return HANDLE_INVALID;
+    }
+
+    handle_desc* desc = nullptr;
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_DIRENT, &desc);
+    desc->un.dirent = dent;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (statusp)
+        memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+
+    return ret;
+}
+
+obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRead)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* kbuff = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer, nullptr, szBuf, 0, true, &status);
+    if (!kbuff)
+        return status;
+
+    size_t k_nRead = 0;
+    status = Vfs_ReadEntries(dent->un.dirent, kbuff, szBuf, &dent->un.dirent, nRead ? &k_nRead : nullptr);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuff, szBuf);
+    if (obos_is_error(status))
+        return status;
+
+    if (nRead)
+        memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
+
+    return status;
 }

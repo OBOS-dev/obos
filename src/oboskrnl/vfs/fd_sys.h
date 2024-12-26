@@ -16,6 +16,7 @@ handle           Sys_FdAlloc();
 
 obos_status       Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
 obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags);
+obos_status     Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags);
 
 obos_status      Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status       Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead);
@@ -31,3 +32,6 @@ obos_status        Sys_FdEOF(const handle desc);
 obos_status      Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp);
 
 obos_status      Sys_FdFlush(handle desc);
+
+handle Sys_OpenDir(const char* path, obos_status *status);
+obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);
