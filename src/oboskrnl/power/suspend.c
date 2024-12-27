@@ -36,8 +36,6 @@
 
 #include <utils/list.h>
 
-// Note: Only currently supports S3
-
 static mutex suspend_lock = MUTEX_INITIALIZE();
 // the thread that initiated the suspend.
 static thread* suspended_thread = nullptr;

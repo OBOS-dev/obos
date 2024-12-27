@@ -149,6 +149,7 @@ typedef struct driver_ftable
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 } driver_ftable;
+
 #define CURRENT_DRIVER_HEADER_VERSION (1)
 typedef struct driver_header
 {

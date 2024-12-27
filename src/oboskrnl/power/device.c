@@ -138,7 +138,8 @@ static obos_status dsw(uacpi_namespace_node* dev, bool enableWake, uacpi_sleep_s
 {
     uacpi_object_array args = {};
     args.count = 3;
-    args.objects = uacpi_kernel_calloc(args.count, sizeof(uacpi_object*));
+    uacpi_object* objs[3] = {};
+    args.objects = objs;
     args.objects[0] = uacpi_object_create_integer(enableWake);
     args.objects[1] = uacpi_object_create_integer(target_slp);
     args.objects[2] = uacpi_object_create_integer(target_d_state == DSTATE_INVALID ? 0 : target_d_state);
@@ -146,7 +147,6 @@ static obos_status dsw(uacpi_namespace_node* dev, bool enableWake, uacpi_sleep_s
     uacpi_object_unref(args.objects[0]);
     uacpi_object_unref(args.objects[1]);
     uacpi_object_unref(args.objects[2]);
-    uacpi_kernel_free(args.objects);
     if (uacpi_likely(ustatus == UACPI_STATUS_NOT_FOUND))
         return OBOS_STATUS_NOT_FOUND;
     if (uacpi_unlikely_error(ustatus))
@@ -157,11 +157,11 @@ static obos_status psw(uacpi_namespace_node* dev, bool enableWake)
 {
     uacpi_object_array args = {};
     args.count = 1;
-    args.objects = uacpi_kernel_calloc(args.count, sizeof(uacpi_object*));
-    args.objects[0] = uacpi_object_create_integer(enableWake);
+    uacpi_object* obj = uacpi_object_create_integer(enableWake);
+    args.objects = &obj;
+
     uacpi_status ustatus = uacpi_eval(dev, "_PSW", &args, nullptr);
     uacpi_object_unref(args.objects[0]);
-    uacpi_kernel_free(args.objects);
     if (uacpi_unlikely(ustatus == UACPI_STATUS_NOT_FOUND))
         return OBOS_STATUS_NOT_FOUND;
     if (uacpi_unlikely_error(ustatus))

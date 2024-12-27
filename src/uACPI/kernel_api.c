@@ -212,11 +212,25 @@ uacpi_status io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_va
     }
     return status;
 }
+
+uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
+{
+    *out_handle = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uacpi_pci_address), nullptr);
+    memcpy(*out_handle, &address, sizeof(address));
+    return UACPI_STATUS_OK;
+}
+
+void uacpi_kernel_pci_device_close(uacpi_handle hnd)
+{
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(uacpi_pci_address));
+}
+
 uacpi_status uacpi_kernel_pci_read(
-    uacpi_pci_address *address, uacpi_size offset,
+    uacpi_handle device, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 *value
 )
 {
+    uacpi_pci_address* address = device;
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
     pci_device_location loc = {
@@ -228,10 +242,11 @@ uacpi_status uacpi_kernel_pci_read(
     return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
 uacpi_status uacpi_kernel_pci_write(
-    uacpi_pci_address *address, uacpi_size offset,
+    uacpi_handle device, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 value
 )
 {
+    uacpi_pci_address* address = device;
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
     pci_device_location loc = {
@@ -260,10 +275,12 @@ void* uacpi_kernel_alloc(uacpi_size size)
         OBOS_Debug("Allocated %lu bytes at 0x%p\n", size, ret);*/
     return ret ? memzero(ret, size) : ret;
 }
-void* uacpi_kernel_calloc(uacpi_size count, uacpi_size size)
+
+void* uacpi_kernel_alloc_zeroed(uacpi_size count)
 {
-    return uacpi_kernel_alloc(count * size);
+    return uacpi_kernel_alloc(count);
 }
+
 void uacpi_kernel_free(void* mem)
 {
     if (!mem)

@@ -195,6 +195,9 @@ static OBOS_NO_KASAN void freeRegion(basic_allocator* This, basicalloc_region* b
 			OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "(possible?) Region corruption in allocator (struct basic_allocator*) %p, region %p. Invalid block source: %d.\n", This, block, block->blockSource);
 	}
 }
+
+#define ALLOCATOR_ALIGNMENT 0x10
+
 static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !size)
@@ -205,7 +208,7 @@ static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_sta
 	basic_allocator* This = (basic_allocator*)This_;
 	makeSafeLock(lock, This);
 	set_status(status, OBOS_STATUS_SUCCESS);
-	size = round_up(size, 0x10);
+	size = round_up(size, ALLOCATOR_ALIGNMENT);
 #if OBOS_KASAN_ENABLED
 	size += 0x100 /* add 256 byte shadow space */;
 #endif
@@ -355,7 +358,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 	}
 	if (!base)
 		return This_->Allocate(This_, newSize, status);
-	newSize = round_up(newSize, 0x10);
+	newSize = round_up(newSize, ALLOCATOR_ALIGNMENT);
 	// NOTE: Memory corruption can happen with KASAN enabled if QueryObjectSize() doesn't remove the shadow space size from the size returned.
 	// Because of this, make sure to subtract the shadow space size if you ever decide to change this code to use the node directly.
 	size_t objSize = 0;
