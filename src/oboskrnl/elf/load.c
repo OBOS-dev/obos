@@ -14,16 +14,17 @@
 #include <elf/elf.h>
 #include <elf/load.h>
 
+#include <vfs/fd.h>
+#include <vfs/vnode.h>
+#include <vfs/mount.h>
 
 // Do it in two passes so that any macros can be expanded
 #define token_concat_impl(tok1, tok2) tok1 ##tok2
 #define token_concat(tok1, tok2) token_concat_impl(tok1, tok2)
 #define GetCurrentElfClass() token_concat(ELFCLASS, OBOS_ARCHITECTURE_BITS)
 
-obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
+static obos_status verify_elf(const void* file, size_t szFile)
 {
-    if (!ctx || !file || !szFile)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     const Elf_Ehdr* ehdr = file;
     if (ehdr->e_ident[EI_MAG0] != ELFMAG0 || ehdr->e_ident[EI_MAG1] != ELFMAG1 ||
         ehdr->e_ident[EI_MAG2] != ELFMAG2 || ehdr->e_ident[EI_MAG3] != ELFMAG3)
@@ -45,17 +46,107 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
     if (ehdr->e_machine != EM_CURRENT)
         return OBOS_STATUS_INVALID_FILE;
 
+    if ((ehdr->e_phoff > szFile) || ((ehdr->e_phoff+ehdr->e_phentsize*ehdr->e_phnum) > szFile))
+        return OBOS_STATUS_INVALID_FILE;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info* info, bool dryRun, bool noLdr)
+{
+    if (!ctx || !file || !szFile)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!info && !dryRun)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    obos_status status = verify_elf(file, szFile);
+    if (obos_is_error(status))
+        return status;
+
+    const Elf_Ehdr* ehdr = file;
+
+    bool load_dynld = false;
+
+    switch (ehdr->e_type) {
+        case ET_DYN:
+            load_dynld = !noLdr;
+            break;
+        case ET_EXEC:
+            break;
+        default:
+            return OBOS_STATUS_INVALID_FILE;
+    }
+
+    load:
+    (void)0; // thanks clang
     uintptr_t limit = 0;
     uintptr_t base = 0;
-    Elf_Phdr* phdrs = (Elf_Phdr*)((char*)file+ehdr->e_phoff);
+    const Elf_Phdr* phdrs = (Elf_Phdr*)((const char*)file+ehdr->e_phoff);
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
         if (phdrs[i].p_type != PT_LOAD)
             continue;
+        if (phdrs[i].p_offset > szFile)
+            return OBOS_STATUS_INVALID_FILE;
+        if ((phdrs[i].p_offset + phdrs[i].p_filesz) > szFile)
+            return OBOS_STATUS_INVALID_FILE;
         if (phdrs[i].p_vaddr > limit)
             limit = phdrs[i].p_vaddr;
         if (phdrs[i].p_vaddr <= base)
             base = phdrs[i].p_vaddr + phdrs[i].p_memsz;
+    }
+
+    if (dryRun)
+        goto dry;
+
+    uintptr_t real_entry = 0;
+    if (load_dynld)
+    {
+        const Elf_Phdr* phdrs = (Elf_Phdr*)((const char*)file+ehdr->e_phoff);
+        const char* interp = nullptr;
+        for (size_t i = 0; i < ehdr->e_phnum; i++)
+        {
+            if (phdrs[i].p_type == PT_INTERP)
+            {
+                interp = (char*)file+phdrs[i].p_offset;
+                break;
+            }
+        }
+
+        if (!interp)
+        {
+            load_dynld = false;
+            goto load;
+        }
+
+        fd interp_fd = {};
+        status = Vfs_FdOpen(&interp_fd, interp, FD_OFLAGS_READ);
+        if (obos_is_error(status))
+            return status;
+
+        // Load the interpreter instead, but also make sure to sanity check it.
+        // Assume the interpreter doesn't need an interpreter, that'd be pretty dumb.
+
+        if (!VfsH_LockMountpoint(interp_fd.vn->mount_point))
+            return OBOS_STATUS_INTERNAL_ERROR;
+        volatile size_t buff_size = interp_fd.vn->filesize;
+        VfsH_UnlockMountpoint(interp_fd.vn->mount_point);
+
+        status = OBOS_STATUS_SUCCESS;
+        void* buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, buff_size, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &interp_fd, &status);
+        if (obos_is_error(status))
+        {
+            Vfs_FdClose(&interp_fd);
+            return status;
+        }
+        Vfs_FdClose(&interp_fd);
+
+        elf_info tmp_info = {};
+        status = OBOS_LoadELF(ctx, buff, buff_size, &tmp_info, dryRun, true);
+        if (obos_is_error(status))
+            return status;
+        real_entry = tmp_info.entry;
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)buff, buff_size);
     }
 
     limit += (OBOS_PAGE_SIZE-(limit%OBOS_PAGE_SIZE));
@@ -122,5 +213,12 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile)
             return status;
         }
     }
+
+    info->base = (void*)base;
+    info->entry = (require_addend ? base : 0) + ehdr->e_entry;
+    info->real_entry = real_entry ? real_entry : info->entry;
+
+    dry:
+
     return OBOS_STATUS_SUCCESS;
 }

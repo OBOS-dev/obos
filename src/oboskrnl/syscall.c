@@ -11,6 +11,7 @@
 #include <handle.h>
 #include <partition.h>
 #include <signal.h>
+#include <execve.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
@@ -25,6 +26,8 @@
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
+
+#include <asan.h>
 
 // TODO: Check permissions?
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
@@ -102,13 +105,46 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SigAltStack, // 53
     (uintptr_t)Sys_OpenDir,
     (uintptr_t)Sys_ReadEntries, // 55
+    (uintptr_t)Sys_ExecVE, // 56
 };
 // Arch syscall table is defined per-arch
 
 obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
 {
-    OBOS_UNUSED(ustr);
-    OBOS_UNUSED(buf);
-    OBOS_UNUSED(sz_buf);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    if (buf && sz_buf)
+        return memcpy_usr_to_k(buf, ustr, *sz_buf);
+
+    context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+    char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)ustr, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
+    if (!kstr)
+        return status;
+
+    char* iter = kstr;
+    uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
+    size_t currSize = OBOS_PAGE_SIZE;
+
+    size_t str_len = 0;
+    while ((*iter++) != 0)
+    {
+        if (OBOS_CROSSES_PAGE_BOUNDARY(iter, sizeof(*iter)*2))
+        {
+            Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kstr, currSize);
+            currSize += OBOS_PAGE_SIZE;
+            kstr = Mm_MapViewOfUserMemory(ctx, (void*)(iter+1), nullptr, currSize, OBOS_PROTECTION_READ_ONLY, true, &status);
+            if (!kstr)
+                return status;
+            iter = (char*)((uintptr_t)kstr + offset);
+        }
+        offset += 1;
+        str_len++;
+    }
+
+    if (buf)
+        memcpy(buf, kstr, OBOS_MIN(sz_buf ? *sz_buf : SIZE_MAX, str_len));
+    if (sz_buf)
+        *sz_buf = str_len;
+
+    return OBOS_STATUS_SUCCESS;
 }

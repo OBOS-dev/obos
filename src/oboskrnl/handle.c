@@ -107,6 +107,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
             expand_handle_table(table, OBOS_MAX(table->size + (table->size / 4), hnd));
     }
     *desc = &table->arr[hnd];
+    table->arr[hnd].type = type;
     hnd |= (type << HANDLE_TYPE_SHIFT);
     return hnd;
 }

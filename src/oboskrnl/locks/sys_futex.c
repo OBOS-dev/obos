@@ -41,6 +41,7 @@ static futex_object* find_futex(uint32_t* obj, bool create)
         ret = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(futex_object), nullptr);
         ret->obj = obj;
         ret->wait_hdr = WAITABLE_HEADER_INITIALIZE(false, false);
+        ret->ctx = CoreS_GetCPULocalPtr()->currentContext;
         RB_INSERT(futex_tree, &futexes, ret);
     }
     Core_MutexRelease(&futexes_lock);

@@ -43,6 +43,7 @@ typedef enum handle_type
     HANDLE_TYPE_CURRENT = 0xfe,
     HANDLE_TYPE_INVALID = 0xff,
 } handle_type;
+
 typedef struct handle_desc
 {
     union {
@@ -61,7 +62,10 @@ typedef struct handle_desc
         struct thread_ctx_handle* thread_ctx;
         struct waitable_header* waitable;
         void* generic; // just in case
+        uintptr_t as_int; // just in case
     } un;
+    // TODO: Integrate this in a way that it doesn't add extra memory overhead?
+    handle_type type;
 } handle_desc;
 
 #define HANDLE_VALUE_MASK (0xffffff)
@@ -73,6 +77,7 @@ typedef uint32_t handle;
 #define HANDLE_INVALID (handle)((handle)HANDLE_TYPE_INVALID << HANDLE_TYPE_SHIFT)
 #define HANDLE_CURRENT (handle)((handle)HANDLE_TYPE_CURRENT << HANDLE_TYPE_SHIFT)
 #define HANDLE_ANY     (handle)((handle)HANDLE_TYPE_ANY     << HANDLE_TYPE_SHIFT)
+
 typedef struct handle_table {
     handle_desc* arr;
     handle_desc* head; // freelist head

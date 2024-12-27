@@ -26,11 +26,16 @@ typedef struct futex
     struct waitable_header wait_hdr;
     size_t refs;
     uint32_t *obj;
+    struct context* ctx;
     RB_ENTRY(futex) node;
 } futex_object;
 
 inline static int cmp_futex(futex_object* lhs, futex_object* rhs)
 {
+    if (lhs->ctx < rhs->ctx)
+        return -1;
+    if (lhs->ctx > rhs->ctx)
+        return -1;
     if (lhs->obj < rhs->obj)
         return -1;
     if (lhs->obj > rhs->obj)

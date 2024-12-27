@@ -40,9 +40,14 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
     if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
+
     if (thr->signal_info->pending & BIT(sigval - 1))
         return OBOS_STATUS_SUCCESS;
-    Core_MutexAcquire(&thr->signal_info->lock);
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = Core_MutexAcquire(&thr->signal_info->lock)))
+        return status;
+
     if (sigval == SIGCONT)
     {
         if (~thr->signal_info->pending & BIT(SIGSTOP))

@@ -100,6 +100,8 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags &= ~FD_FLAGS_WRITE;
     if (oflags & FD_OFLAGS_UNCACHED)
         desc->flags |= FD_FLAGS_UNCACHED;
+    if (oflags & FD_OFLAGS_NOEXEC)
+        desc->flags |= FD_FLAGS_NOEXEC;
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
     desc->flags |= FD_FLAGS_OPEN;

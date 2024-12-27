@@ -24,12 +24,14 @@ enum
     FD_FLAGS_READ = 2,
     FD_FLAGS_WRITE = 4,
     FD_FLAGS_UNCACHED = 8,
+    FD_FLAGS_NOEXEC = 16,
 };
 enum
 {
     FD_OFLAGS_READ = 1,
     FD_OFLAGS_WRITE = 2,
     FD_OFLAGS_UNCACHED = 4,
+    FD_OFLAGS_NOEXEC = 8,
 };
 typedef struct fd
 {

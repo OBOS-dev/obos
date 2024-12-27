@@ -82,7 +82,7 @@ OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t
 
 // Maps user pages into the kernel address space. This can be used in syscalls to avoid copying large amounts of memory.
 // returns OBOS_STATUS_PAGE_FAULT when a portion of the user memory requested is not mapped.
-// The allocated kernel pages will be locked into memory with unmap flags UNMAP_FLAGS_DEFER,
+// NOTE: The returned address is not aligned down to the page size.
 OBOS_EXPORT void* Mm_MapViewOfUserMemory(context* user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool respectUserProtection, obos_status* status);
 
 typedef enum unmap_behavior {

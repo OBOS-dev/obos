@@ -163,4 +163,8 @@ typedef enum
 	/// The ACPI device is not capable to wake the system from the requested sleep state.
 	/// </summary>
 	OBOS_STATUS_WAKE_INCAPABLE,
+	/// <summary>
+	/// The ELF file has an invalid, or unsupported elf type in it's header.
+	/// </summary>
+	OBOS_STATUS_INVALID_ELF_TYPE,
 } obos_status;

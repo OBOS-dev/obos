@@ -869,7 +869,7 @@ void* Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kbase_, 
                         user_context->stat.hardPageFaultCountSinceSample++;
                         break;
                     case ACCESS_FAULT:
-                        // propagate the error.
+                        // TODO: Propagate the error.
                         break;
                     default:
                         OBOS_ASSERT(!"invalid fault type. fault is neither a SOFT_FAULT, HARD_FAULT, nor a ACCESS_FAULT.");
@@ -892,5 +892,5 @@ void* Mm_MapViewOfUserMemory(context* user_context, void* ubase_, void* kbase_, 
     Core_SpinlockRelease(&user_context->lock, oldIrql);
 
     set_statusp(status, OBOS_STATUS_SUCCESS);
-    return (void*)kbase;
+    return (void*)(kbase + ((uintptr_t)ubase_ % OBOS_PAGE_SIZE));
 }
