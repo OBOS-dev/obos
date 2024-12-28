@@ -19,6 +19,7 @@
 
 OBOS_NORETURN void OBOS_Shutdown()
 {
+    (void)Core_RaiseIrql(IRQL_DISPATCH);
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
     OBOS_Log("oboskrnl: Shutdown requested.\n");

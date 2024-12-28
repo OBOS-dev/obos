@@ -33,19 +33,22 @@ obos_pmem_map_entry* MmS_GetNextPMemMapEntry(obos_pmem_map_entry* current, uintp
 }
 #define MAP_TO_HHDM(addr, type) ((type*)(Arch_LdrPlatformInfo->higher_half_base + (uintptr_t)(addr)))
 #define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LdrPlatformInfo->higher_half_base)
-OBOS_NO_KASAN OBOS_NO_UBSAN void* Arch_MapToHHDM(uintptr_t phys)
+
+OBOS_NO_KASAN OBOS_NO_UBSAN __attribute__((no_instrument_function)) void* Arch_MapToHHDM(uintptr_t phys)
 {
 	return MAP_TO_HHDM(phys, void);
 }
-OBOS_NO_KASAN OBOS_NO_UBSAN uintptr_t Arch_UnmapFromHHDM(void* virt)
+OBOS_NO_KASAN OBOS_NO_UBSAN __attribute__((no_instrument_function)) uintptr_t Arch_UnmapFromHHDM(void* virt)
 {
 	return UNMAP_FROM_HHDM(virt);
 }
-void* MmS_MapVirtFromPhys(uintptr_t addr)
+
+__attribute__((no_instrument_function)) void* MmS_MapVirtFromPhys(uintptr_t addr)
 {
 	return Arch_MapToHHDM(addr);
 }
-uintptr_t MmS_UnmapVirtFromPhys(void* virt)
+
+__attribute__((no_instrument_function)) uintptr_t MmS_UnmapVirtFromPhys(void* virt)
 {
 	return Arch_UnmapFromHHDM(virt);
 }

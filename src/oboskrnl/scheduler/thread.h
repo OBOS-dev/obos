@@ -13,6 +13,10 @@
 
 #include <locks/spinlock.h>
 
+#if OBOS_ENABLE_PROFILING && defined(OBOS_KERNEL)
+#	include <prof.h>
+#endif
+
 typedef enum
 {
 	THREAD_PRIORITY_INVALID = -1,
@@ -100,6 +104,14 @@ typedef struct thread
 	void* kernelStack; // size: 0x10000 bytes
 
 	// Thread profiling info
+
+#if OBOS_ENABLE_PROFILING && defined(OBOS_KERNEL)
+	call_frame_t frames[MAX_FRAMES];
+	size_t cur_frame;
+#else
+	uintptr_t resv1[2];
+	uint64_t resv2[2];
+#endif
 
 	// The amount of quantums the thread has ever ran for.
 	uint8_t total_quantums;

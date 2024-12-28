@@ -18,6 +18,7 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
 
 struct exec_aux_values {
     elf_info elf;
+
     struct {
         void* ptr;
         size_t phnum;

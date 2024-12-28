@@ -195,15 +195,17 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
                 Mm_VirtualMemoryFree(ctx, (void*)phdrs[j].p_vaddr, phdrs[j].p_memsz);
             return status;
         }
-        memcpy(kbase, ubase, phdrs[i].p_filesz);
+
+        memcpy(kbase, (void*)((uintptr_t)file + phdrs[i].p_offset), phdrs[i].p_filesz);
         if (phdrs[i].p_memsz-phdrs[i].p_filesz)
             memzero((void*)((uintptr_t)kbase+phdrs[i].p_filesz), phdrs[i].p_memsz-phdrs[i].p_filesz);
-        Mm_VirtualMemoryFree(ctx, kbase, phdrs[i].p_memsz);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbase, phdrs[i].p_memsz);
         prot_flags prot = OBOS_PROTECTION_USER_PAGE;
         if (phdrs[i].p_flags & PF_X)
             prot |= OBOS_PROTECTION_EXECUTABLE;
         if (~phdrs[i].p_flags & PF_W)
             prot |= OBOS_PROTECTION_READ_ONLY;
+
         status = Mm_VirtualMemoryProtect(ctx, ubase, phdrs[i].p_memsz, prot, true);
         if (obos_is_error(status))
         {

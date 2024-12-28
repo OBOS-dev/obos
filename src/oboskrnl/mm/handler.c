@@ -97,6 +97,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
         return true;
     }
     page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
+    new->pagedCount++;
     memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->prot.rw = true;
     info->prot.ro = false;
@@ -104,6 +105,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
     MmH_DerefPage(pg);
     return true;
 }
+
 static obos_status ref_page(context* ctx, page_info *curr)
 {
     page_range* const rng = curr->range;
@@ -149,6 +151,7 @@ static obos_status ref_page(context* ctx, page_info *curr)
         status = Mm_RunPRA(ctx);
     return status;
 }
+
 static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page_info* info) 
 {
     page what = {.phys=info->phys};
@@ -168,6 +171,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
             goto done;
         }
         page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
+        new->pagedCount++;
         if (~ec & PF_EC_PRESENT)
             MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
         memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
@@ -181,6 +185,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     ref_page(ctx, info);
     return true;
 }
+
 obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
 {
     OBOS_ASSERT(ctx);
@@ -197,6 +202,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     page_info curr = {};
     MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
     curr.range = rng;
+    curr.prot.user = ec & PF_EC_UM;
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
     if (rng->mapped_here && !rng->cow)
     {
@@ -215,7 +221,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             type = curr_type;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
-    if (rng->cow)
+    if (rng->cow && (ec & PF_EC_RW))
     {
         // Mooooooooo.
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);

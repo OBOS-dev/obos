@@ -117,4 +117,30 @@ Arch_SyscallTrapHandler:
     swapgs
     o64 sysret
 global Arch_SyscallTrapHandlerEnd
+; OBOS_NORETURN void Arch_GotoUser(uintptr_t rip, uintptr_t cr3, uintptr_t rsp);
+global Arch_GotoUser
+extern Core_GetIRQLVar
+Arch_GotoUser:
+    cli
+
+    mov rax, 0
+	mov cr8, rax
+	push rdi
+	push rsi
+	push rdx
+	call Core_GetIRQLVar
+	pop rdx
+	pop rsi
+	pop rdi
+	mov qword [rax], 0
+
+	mov cr3, rsi
+
+	swapgs
+
+    mov rcx, rdi
+    mov r11, 0x200202 ; rflags=IF,ID
+    mov rsp, rdx
+    o64 sysret
 Arch_SyscallTrapHandlerEnd:
+

@@ -15,7 +15,7 @@
 text_renderer_state OBOS_TextRendererState;
 
 // colour is rgbx.
-void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
+__attribute__((no_instrument_function)) void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 {
 	switch (fbFmt)
 	{
@@ -40,7 +40,7 @@ void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt)
 		break;
 	}
 }
-static OBOS_NO_UBSAN void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
+static OBOS_NO_UBSAN __attribute__((no_instrument_function)) void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
 {
 	int cy;
 	int mask[8] = { 128,64,32,16,8,4,2,1 };

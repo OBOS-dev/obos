@@ -157,7 +157,7 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
-OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* format, ...)
+OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	static const char ascii_art[] =
 		"       )\r\n"
@@ -173,7 +173,12 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	if (OBOSS_HaltCPUs)
 		OBOSS_HaltCPUs();
 #endif
-/*	Core_SpinlockForcedRelease(&s_printfLock);
+
+#if OBOS_ENABLE_PROFILING
+	prof_stop();
+#endif
+
+	/*	Core_SpinlockForcedRelease(&s_printfLock);
 	Core_SpinlockForcedRelease(&s_loggerLock);*/
 	Core_SpinlockRelease(&s_printfLock, Core_GetIrql());
 	Core_SpinlockRelease(&s_loggerLock, Core_GetIrql());

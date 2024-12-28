@@ -299,9 +299,10 @@ CoreS_ThreadAlloca:
 	mov dword [rdx], 0 ; OBOS_STATUS_SUCCESS
 .status_nullptr1:
 
-	; ret = ctx->frame.rsp - size
+	; ret = ctx->frame.rsp -= size
 	mov rax, [rdi+thread_ctx.frame+0xc8]
 	sub rax, rsi
+	mov [rdi+thread_ctx.frame+0xc8], rax
 	; if (ret < ctx->stackBase)
 	cmp rax, [rdi+thread_ctx.stackBase]
 	jae .done

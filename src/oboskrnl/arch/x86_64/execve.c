@@ -8,6 +8,7 @@
 #include <memmanip.h>
 #include <klog.h>
 #include <execve.h>
+#include <init_proc.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/thread.h>
@@ -67,9 +68,18 @@ static void write_vector_to_stack(char* const* vec, char** stck_buf, size_t cnt)
     }
 }
 
+OBOS_NORETURN void Arch_GotoUser(uintptr_t rip, uintptr_t cr3, uintptr_t rsp);
+uintptr_t Arch_GotoUserBootstrap(uintptr_t udata)
+{
+    uintptr_t* user = (void*)udata;
+    Arch_GotoUser(user[0], user[1], user[2]);
+    return -1;
+}
+
 OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
 {
-    (void)Core_RaiseIrql(IRQL_DISPATCH);
+    if (Core_GetIrql() < IRQL_DISPATCH)
+        (void)Core_RaiseIrql(IRQL_DISPATCH);
     Core_GetCurrentThread()->context.frame.rsp = (uintptr_t)Core_GetCurrentThread()->context.stackBase + Core_GetCurrentThread()->context.stackSize;
     // 1+argc+char*[argc]+NULL+char*[envpc]+NULL+4(aux)+1
     // 1+1+argc+1+envpc+1+8+1=9+envpc+argc
@@ -79,7 +89,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     init_vals[0] = aux->argc;
     init_vals[1+aux->argc+1] = 0;
 
-    auxv_t* auxv = (auxv_t*)&init_vals[1+aux->argc+2+aux->envpc+2];
+    auxv_t* auxv = (auxv_t*)&init_vals[1+aux->argc+1+aux->envpc+1];
 
     auxv[0].a_type = AT_PHDR;
     auxv[0].a_un.a_ptr = aux->phdr.ptr;
@@ -96,19 +106,34 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     auxv[4].a_type = AT_NULL;
 
     write_vector_to_stack(aux->argv, (char**)(init_vals+1), aux->argc);
-    write_vector_to_stack(aux->envp, (char**)(init_vals+1+aux->argc+2), aux->envpc);
+    write_vector_to_stack(aux->envp, (char**)(init_vals+1+aux->argc+1), aux->envpc);
     init_vals[1+aux->argc+2+aux->envpc+1] = 0;
 
-    Core_GetCurrentThread()->context.frame.cr3 = ctx->pt;
-    Core_GetCurrentThread()->context.frame.cs = 0x18|3;
-    Core_GetCurrentThread()->context.frame.ss = 0x20|3;
-    Core_GetCurrentThread()->context.frame.rip = aux->elf.real_entry;
-    Core_GetCurrentThread()->context.frame.rflags = 0x200202; // CPUID,IF
-    Core_GetCurrentThread()->context.irql = 0;
-    Core_GetCurrentThread()->context.fs_base = 0;
-    Core_GetCurrentThread()->context.gs_base = 0;
+    // Core_GetCurrentThread()->context.frame.cr3 = ctx->pt;
+    // Core_GetCurrentThread()->context.frame.cs = 0x20|3;
+    // Core_GetCurrentThread()->context.frame.ss = 0x18|3;
+    // Core_GetCurrentThread()->context.frame.rip = aux->elf.real_entry;
+    // Core_GetCurrentThread()->context.frame.rflags = 0x200202; // CPUID,IF
+    // Core_GetCurrentThread()->context.irql = 0;
+    // Core_GetCurrentThread()->context.fs_base = 0;
+    // Core_GetCurrentThread()->context.gs_base = 0;
 
     // TODO: Reset extended context info.
 
-    CoreS_SwitchToThreadContext(&Core_GetCurrentThread()->context);
+    uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };
+    CoreS_CallFunctionOnStack(Arch_GotoUserBootstrap, (uintptr_t)&udata);
+    OBOS_UNREACHABLE;
+}
+
+void OBOSS_HandOffToInit(struct exec_aux_values* aux)
+{
+    (void)Core_RaiseIrql(IRQL_DISPATCH);
+    context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+
+    Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+    Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
+
+    CoreS_SetThreadPageTable(&Core_GetCurrentThread()->context, ctx->pt);
+
+    OBOSS_HandControlTo(ctx, aux);
 }

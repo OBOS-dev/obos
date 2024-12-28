@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <cmdline.h>
 #include <syscall.h>
+#include <init_proc.h>
 #include <klog.h>
 #include <stdint.h>
 #include <struct_packing.h>
@@ -102,6 +103,8 @@
 
 #include <power/suspend.h>
 #include <power/init.h>
+
+#include <elf/load.h>
 
 extern void Arch_InitBootGDT();
 
@@ -236,6 +239,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 	extern uint64_t Arch_KernelCR3;
 	Arch_KernelCR3 = getCR3();
 
+#if !OBOS_ENABLE_PROFILING
 	{
 		uint32_t ecx = 0;
 		__cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
@@ -246,6 +250,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 			OBOS_AddLogSource(&e9_out_cb);
 		}
 	}
+#endif
 
 #if 0
 	init_serial_log_backend();
@@ -458,6 +463,9 @@ void Arch_KernelMainBootstrap()
 	if (obos_is_error(status))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
 	bsp_idleThread.context.cr3 = getCR3();
+#if OBOS_ENABLE_PROFILING
+	prof_start();
+#endif
 	OBOS_Debug("%s: Initializing allocator...\n", __func__);
 	OBOSH_ConstructBasicAllocator(&kalloc);
 	OBOS_KernelAllocator = (allocator_info*)&kalloc;
@@ -832,33 +840,17 @@ void Arch_KernelMainBootstrap()
 	// 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
-	// OBOS_Debug("%s: Loading init program...\n", __func__);
-	// OBOS_Suspend();
-	context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
-	Mm_ConstructContext(new_ctx);
-	process* new = Core_ProcessAllocate(nullptr);
-	new->ctx = new_ctx;
-	new_ctx->owner = new;
-	Core_ProcessStart(new, nullptr);
-	void* mem = Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x1000, OBOS_PROTECTION_EXECUTABLE|OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_NON_PAGED, nullptr, nullptr);
-	uintptr_t mem_phys = 0;
-	MmS_QueryPageInfo(new_ctx->pt, (uintptr_t)mem, nullptr, &mem_phys);
-	char* mem_kern = MmS_MapVirtFromPhys(mem_phys);
-extern char test_program[];
-extern char test_program_end[];
-	memcpy(mem_kern, &test_program, test_program_end - test_program);
-	thread* thr = CoreH_ThreadAllocate(nullptr);
-	thread_ctx thr_ctx = {};
-	void* stack =  Mm_VirtualMemoryAlloc(new_ctx, nullptr, 0x4000, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
-	CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)mem, 0, true, stack, 0x4000);
-	CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
-	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);
-	Core_ProcessAppendThread(new, thr);
-	thr->signal_info = OBOSH_AllocateSignalHeader();
-	// thr->signal_info->signals[SIGSEGV].un.handler = mem+0x11;
-	if (!thr->kernelStack)
-		thr->kernelStack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
-	CoreH_ThreadReady(thr);
+
+	OBOS_LoadInit();
+
+	/*driver_id* test_driver = nullptr;
+	driver_symbol* TestDriver_Fireworks_sym = DrvH_ResolveSymbol("TestDriver_Fireworks", &test_driver);
+	if (TestDriver_Fireworks_sym)
+	{
+		void(*TestDriver_Fireworks)(uint32_t max_iterations, int spawn_min, int spawn_max, bool stress_test) = (void*)TestDriver_Fireworks_sym->address;
+		OBOS_Log("Running Test Driver fireworks test!\n");
+		TestDriver_Fireworks(UINT32_MAX, 1, 4, false);
+	}*/
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400,
@@ -871,81 +863,14 @@ extern char test_program_end[];
 		Mm_KernelContext.stat.hardPageFaultCount,
 		Mm_KernelContext.stat.softPageFaultCount
     );
+#if OBOS_ENABLE_PROFILING
+	prof_stop();
+	prof_show("oboskrnl");
+#endif
+
 	// OBOS_Log("Mm_Allocator: %d KiB in-use\n", ((basic_allocator*)Mm_Allocator)->totalMemoryAllocated/1024);
 	// OBOS_Log("OBOS_KernelAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_KernelAllocator)->totalMemoryAllocated/1024);
 	// OBOS_Log("OBOS_NonPagedPoolAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_NonPagedPoolAllocator)->totalMemoryAllocated/1024);
 	// OBOS_Log("Vfs_Allocator: %d KiB in-use\n", ((basic_allocator*)Vfs_Allocator)->totalMemoryAllocated/1024);
 	Core_ExitCurrentThread();
 }
-
-asm (
-	".intel_syntax noprefix;"
-	".global test_program;"
-"\
-test_program:;\
-	push rbp;\
-	mov rbp, rsp;\
-	sub rsp, 0x10;\
-	mov rdi, 0xfe0000000;\
-	mov rsi, 0;\
-	mov rdx, 0x4000;\
-	lea r8, [rip+alloc_packet];\
-	mov r9, 0;\
-	mov eax, 22;\
-	syscall;\
-	mov [rbp-0x10], rax;\
-	lea rdi, [rip+test_thread];\
-	mov rsi, 0;\
-	mov rdx, [rbp-0x10];\
-	mov r8, 0x4000;\
-	mov r9, 0xfe000000;\
-	mov eax, 6;\
-	syscall;\
-	mov [rbp-4], eax;\
-	mov rdi, 2;\
-	mov rsi, 0;\
-	mov rdx, 0;\
-	mov r8, [rbp-4];\
-	mov eax, 9;\
-	syscall;\
-	mov [rbp-8], eax;\
-	mov edi, [rbp-8];\
-	mov esi, 0xfe000000;\
-	mov eax, 15;\
-	syscall;\
-	mov edi, [rbp-8];\
-	mov eax, 10;\
-	syscall;\
-	mov edi, [rbp-8];\
-	mov eax, 4;\
-	syscall;\
-	mov edi, [rbp-4];\
-	mov eax, 4;\
-	syscall;\
-	call Sys_ExitCurrentThread;\
-test_thread:;\
-	mov eax, 1;\
-	syscall;\
-	call Sys_ExitCurrentThread;\
-Sys_ExitCurrentThread:;\
-	mov eax, 0;\
-	syscall;\
-	ret;\
-Sys_Yield:;\
-	mov eax, 1;\
-	syscall;\
-	ret;\
-Sys_Shutdown:;\
-	mov eax, 3;\
-	syscall; ret;\
-Sys_Reboot:;\
-	mov eax, 2;\
-	syscall; ret;\
-	.att_syntax prefix;\
-alloc_packet:\
-.int 0;\
-.int 1<<2;\
-.int 0xff000000;\
-.global test_program_end; test_program_end:\
-"
-);

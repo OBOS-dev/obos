@@ -19,6 +19,7 @@ list (APPEND oboskrnl_sources
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
+	"init_proc.c"
 )
 
 add_executable(oboskrnl)
@@ -38,6 +39,10 @@ target_compile_options(oboskrnl
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
 )
+
+if (OBOS_ENABLE_PROFILER)
+	target_compile_options(oboskrnl PRIVATE $<$<COMPILE_LANGUAGE:C>:-finstrument-functions>)
+endif()
 
 target_link_libraries(oboskrnl
 	PRIVATE ${LIBGCC} 

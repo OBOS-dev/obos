@@ -34,7 +34,8 @@ spinlock Core_SpinlockCreate()
 	tmp.val = (atomic_flag)ATOMIC_FLAG_INIT;
 	return tmp;
 }
-OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
 {
 	if (!lock)
 		return IRQL_INVALID;
@@ -67,11 +68,13 @@ OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIr
 	lock->lastLockTimeNS = nanoseconds_since_boot();
 	return newIrql;
 }
-OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
 {
 	return Core_SpinlockAcquireExplicit(lock, IRQL_DISPATCH, false);
 }
-OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql)
 {
 	if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
 	{
@@ -100,7 +103,8 @@ OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
 #endif
 	lock->locked = false;
 }*/
-bool Core_SpinlockAcquired(spinlock* const lock)
+
+__attribute__((no_instrument_function)) bool Core_SpinlockAcquired(spinlock* const lock)
 {
 	return lock ? lock->locked : false;
 }

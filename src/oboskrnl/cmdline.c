@@ -21,6 +21,26 @@ OBOS_PAGEABLE_VARIABLE size_t volatile OBOS_InitrdSize;
 OBOS_PAGEABLE_VARIABLE char** OBOS_argv;
 OBOS_PAGEABLE_VARIABLE size_t OBOS_argc;
 
+static const char* const help_message =
+"OBOSKRNL usage:\n"
+"NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
+"--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
+"--initrd-module=name: The name or path of the initrd module.\n"
+"--initrd-driver-module=name: The name or path of the initrd driver module.\n"
+"--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"
+"                            in the initrd, otherwise it is the name of a module to load as a driver.\n"
+"--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted\n"
+"                         when 'init' is called.\n"
+"--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+"                     is used as root.\n"
+"--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+"--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
+"--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
+"--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
+"--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
+"--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
+"--help: Displays this help message.\n";
+
 struct cmd_allocation_header
 {
     size_t alloc_size;
@@ -133,27 +153,7 @@ void OBOS_ParseCMDLine()
         iter += arg_len+1;
     }
     if (OBOS_GetOPTF("help"))
-    {
-        static const char* const help_message = 
-            "OBOSKRNL usage:\n"
-            "NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
-            "--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
-            "--initrd-module=name: The name or path of the initrd module.\n"
-            "--initrd-driver-module=name: The name or path of the initrd driver module.\n"
-            "--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"
-            "                            in the initrd, otherwise it is the name of a module to load as a driver.\n"
-            "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted\n"
-            "                         when 'init' is called.\n"
-            "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
-            "                     is used as root.\n"
-            "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
-            "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
-            "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
-            "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
-            "--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
-            "--help: Displays this help message.\n";
         printf("%s", help_message);
-    }
 }
 char* OBOS_GetOPTS(const char* opt)
 {

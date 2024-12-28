@@ -14,6 +14,7 @@ option (OBOS_ENABLE_WERROR "(Developers only) Enables the -Werror option")
 option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
 option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" ON)
 option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
+option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 
 # String options
 
@@ -99,6 +100,13 @@ else()
 	set (OBOS_ENABLE_LOCK_PROFILING "0")
 endif()
 add_compile_definitions(OBOS_ENABLE_LOCK_PROFILING=${OBOS_ENABLE_LOCK_PROFILING})
+
+if (OBOS_ENABLE_PROFILER)
+	set (OBOS_ENABLE_PROFILER "1")
+else()
+	set (OBOS_ENABLE_PROFILER "0")
+endif()
+add_compile_definitions(OBOS_ENABLE_PROFILING=${OBOS_ENABLE_PROFILER})
 
 add_compile_definitions(OBOS_BINARY_DIRECTORY="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
@@ -203,4 +211,5 @@ add_subdirectory("src/drivers/generic/initrd")
 add_subdirectory("src/drivers/generic/slowfat")
 add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
+add_subdirectory("src/init")
 add_subdirectory("src/isogen")

@@ -56,6 +56,7 @@ static int pnp_pci_driver_cmp(const void* a_, const void* b_, void* udata)
         return (int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf;
     return 0;
 }
+
 static uint64_t pnp_pci_driver_hash(const void *item, uint64_t seed0, uint64_t seed1) 
 {
     const struct pnp_device* drv = item;

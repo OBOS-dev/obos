@@ -167,7 +167,8 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
+
+__attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -184,7 +185,8 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
+
+__attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -220,7 +222,7 @@ thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 	return ((thread_affinity)1 << cpuId);
 }
 
-OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_t unused)
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
 	OBOS_UNUSED(unused);
 	thread* currentThread = Core_GetCurrentThread();

@@ -293,7 +293,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     return driver;
 }
 typedef driver_init_status(*driver_entry)(driver_id* id);
-static void driver_trampoline(driver_id* id)
+__attribute__((no_instrument_function)) static void driver_trampoline(driver_id* id)
 {
     OBOS_Debug("calling driver entry %p\n", id->entryAddr);
     driver_init_status status = ((driver_entry)id->entryAddr)(id);
@@ -406,7 +406,7 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     return nullptr; // symbol unresolved.
 }
 
-static void unload_driver_dpc(dpc* unused, void* userdata)
+static __attribute__((no_instrument_function)) void unload_driver_dpc(dpc* unused, void* userdata)
 {
     Drv_UnloadDriver(userdata);
     CoreH_FreeDPC(unused);

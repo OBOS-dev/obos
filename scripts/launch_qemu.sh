@@ -13,7 +13,7 @@ qemu-system-x86_64 \
 -accel kvm \
 -debugcon file:/dev/stdout \
 -monitor stdio \
--smp cores=4,threads=1,sockets=1 \
+-smp cores=1,threads=1,sockets=1 \
 -serial tcp:0.0.0.0:1534,server,nowait \
 -d int \
 -D qemu_log.txt "$@"

@@ -48,6 +48,7 @@ static void update_bar(pci_device* dev, pci_resource* resource)
     uint8_t bar_flags = tmp & 0b111;
     if (bar_flags & 0b1)
         bar_flags &= ~BIT(2); // Only bits 0-1 of an IO space bar are reserved, so to prevent this from breaking, clear bit 2
+    // OBOS_Debug("updating bar %d address\n", bar);
     switch (bar_flags) {
         case PCI_BAR_MASK_IOSPACE:
             resource->bar->type = PCI_BARIO;
@@ -70,6 +71,8 @@ static void update_bar(pci_device* dev, pci_resource* resource)
 
     // Read the size.
     // NOTE: We need to make sure IO Space and memory decode is off before doing this.
+
+    irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
 
     uint64_t cmd_register = 0;
     DrvS_ReadPCIRegister(dev->location, 0x4, 4, &cmd_register);
@@ -114,6 +117,8 @@ static void update_bar(pci_device* dev, pci_resource* resource)
             break;
         }
     }
+
+    Core_LowerIrql(oldIrql);
 
     // Write back old values.
     DrvS_WritePCIRegister(dev->location, 0x10+bar*4, 4, resource->bar->phys & 0xffffffff);
@@ -360,7 +365,7 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
     );
 
     // Initialize resources.
-    // NOTE: The order of these
+    // NOTE: The order of these matters.
     initialize_cmd_register_resource(dev);
     initialize_bar_resources(dev);
     initialize_capability_resources(dev);
@@ -454,7 +459,6 @@ obos_status Drv_PCIInitialize()
     uint8_t hdr_type = (tmp >> 24) & 0xff;
     if (hdr_type & BIT(7))
     {
-        OBOS_Debug("host bridge multi function\n");
         // Multi-function device, enumerate the other functions.
         pci_device_location loc = {};
         for (loc.function = 1; loc.function < 8; loc.function++)

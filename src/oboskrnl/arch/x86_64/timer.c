@@ -166,23 +166,27 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
     initialized = true;
     return OBOS_STATUS_SUCCESS;
 }
+
 static uint64_t cached_divisor = 0;
-timer_tick CoreS_GetTimerTick()
+__attribute__((no_instrument_function)) timer_tick CoreS_GetTimerTick()
 {
     if (!cached_divisor)
         cached_divisor = Arch_HPETFrequency/CoreS_TimerFrequency;
     return Arch_HPETAddress->mainCounterValue/cached_divisor;
 }
-OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick()
+
+__attribute__((no_instrument_function)) OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick()
 {
     if (obos_expect(!Arch_HPETAddress, false))
         return 0;
     return Arch_HPETAddress->mainCounterValue;
 }
-OBOS_EXPORT uint64_t CoreS_GetNativeTimerFrequency()
+
+__attribute__((no_instrument_function)) OBOS_EXPORT uint64_t CoreS_GetNativeTimerFrequency()
 {
     return Arch_HPETFrequency;
 }
+
 uint64_t CoreS_TimerTickToNS(timer_tick tp)
 {
     // 1000000000/freq*tp

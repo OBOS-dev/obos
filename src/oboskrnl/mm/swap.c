@@ -166,7 +166,8 @@ obos_status Mm_ChangeSwapProvider(swap_dev* to)
     return OBOS_STATUS_UNIMPLEMENTED;
 }
 static void mark_standby(page* pg);
-static void page_writer()
+
+static __attribute__((no_instrument_function)) void page_writer()
 {
     // const char* const This = "Page Writer";
     while (1)
@@ -202,6 +203,7 @@ static void page_writer()
         Core_EventSet(&page_writer_done, false);
     }
 }
+
 phys_page_list Mm_DirtyPageList;
 phys_page_list Mm_StandbyPageList;
 size_t Mm_DirtyPagesBytes;
@@ -231,6 +233,7 @@ void Mm_MarkAsDirty(page_info* pg)
     if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold)
         Mm_WakePageWriter(true);
 }
+
 static void mark_standby(page* pg)
 {
     // if (pg->virt == 0xffffff0000200000)
@@ -239,6 +242,7 @@ static void mark_standby(page* pg)
     LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
     pg->flags |= PHYS_PAGE_STANDBY;
 }
+
 void Mm_MarkAsStandby(page_info* pg)
 {
     page what = {.phys=pg->phys};
@@ -266,6 +270,7 @@ void Mm_MarkAsStandby(page_info* pg)
     mark_standby(node);
     Core_SpinlockRelease(&swap_lock, oldIrql);
 }
+
 void Mm_InitializePageWriter()
 {
     // page_writer_wake = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -275,6 +280,7 @@ void Mm_InitializePageWriter()
     CoreH_ThreadInitialize(&page_writer_thread, THREAD_PRIORITY_LOW, Core_DefaultThreadAffinity, &ctx);
     CoreH_ThreadReadyNode(&page_writer_thread, &page_writer_thread_node);
 }
+
 // Wakes up the page writer to free up memory
 // Set 'wait' to true to wait for the page writer to release
 void Mm_WakePageWriter(bool wait)
@@ -284,10 +290,12 @@ void Mm_WakePageWriter(bool wait)
     if (wait)
         Core_WaitOnObject(WAITABLE_OBJECT(page_writer_done));
 }
+
 irql Mm_TakeSwapLock()
 {
     return Core_SpinlockAcquire(&swap_lock);
 }
+
 void Mm_ReleaseSwapLock(irql oldIrql)
 {
     Core_SpinlockRelease(&swap_lock, oldIrql);

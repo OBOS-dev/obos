@@ -4,7 +4,6 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/timer.h"
 #include <int.h>
 #include <klog.h>
 
@@ -15,6 +14,7 @@
 #include <scheduler/process.h>
 
 #include <irq/irql.h>
+#include <irq/timer.h>
 
 #include <locks/spinlock.h>
 
@@ -35,7 +35,7 @@ const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
 	12, // THREAD_PRIORITY_URGENT
 };
 
-thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
+__attribute__((no_instrument_function)) thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
 
 /*
  * The scheduler is the thing that chooses a thread to run.
@@ -156,7 +156,7 @@ static void WorkStealing(thread_priority_list* list, thread_priority priority)
 spinlock Core_SchedulerLock;
 static bool suspendSched = false;
 static _Atomic(size_t) nSuspended = 0;
-void Core_Schedule()
+__attribute__((no_instrument_function)) void Core_Schedule()
 {
 	// NOTE: Do not remove.
 	if (suspendSched)
@@ -251,7 +251,10 @@ switch_thread:
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
-	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;
+	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;/*
+	if (chosenThread->tid == 6)
+		for (volatile bool b = true; b; )
+			asm volatile ("" :"=r"(b) :"r"(b));*/
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;

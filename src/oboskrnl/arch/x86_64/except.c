@@ -24,12 +24,12 @@
 #include "gdbstub/debug.h"
 
 uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
-OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_PageFaultHandler(interrupt_frame* frame)
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_PageFaultHandler(interrupt_frame* frame)
 {
     sti();
     uintptr_t virt = getCR2();
     virt &= ~0xfff;
-    if (Arch_GetPML2Entry(getCR3(), virt) & (1<<7))
+    if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
         virt &= ~0x1fffff;
     if (Mm_IsInitialized())
     {
@@ -118,7 +118,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_PageFaultHandler(interrupt_frame* frame)
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt_frame* frame)
 {
     static const char format[] = "Double fault!\n"
         "Register dump:\n"
@@ -144,7 +145,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DoubleFaultHandler(interrupt
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -155,7 +157,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame*
         return;
     }
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
-        "Kernel segmentation fault! Exception code: %d\n"
+        "Kernel segmentation fault! Exception code: %d. Error code: 0x%08x\n"
         "Register dump:\n"
         "\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
         "\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
@@ -166,7 +168,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame*
         "\t SS: 0x%016lx,  DS: 0x%016lx,  CS: 0x%016lx\n"
         "\tCR0: 0x%016lx, CR2: 0x%016lx, CR3: 0x%016lx\n"
         "\tCR4: 0x%016lx, CR8: 0x%016x, EFER: 0x%016lx\n",
-        frame->intNumber,
+        frame->intNumber, frame->errorCode,
         frame->rdi, frame->rsi, frame->rbp,
         frame->rsp, frame->rbx, frame->rdx,
         frame->rcx, frame->rax, frame->rip,
@@ -178,7 +180,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame*
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(interrupt_frame* frame)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -212,7 +215,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_UndefinedOpcodeHandler(inter
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* frame)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* frame)
 {
     if (frame->cs & 3)
     {
@@ -246,7 +250,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_FPEHandler(interrupt_frame* 
         getCR4(), Core_GetIrql(), getEFER()
     );
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DbgExceptHandler(interrupt_frame* frame)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_DbgExceptHandler(interrupt_frame* frame)
 {
     // if (Kdbg_CurrentConnection->pipe_interface && Kdbg_CurrentConnection->pipe_interface->read_sync)
     // {

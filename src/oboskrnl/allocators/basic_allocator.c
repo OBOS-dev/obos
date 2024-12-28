@@ -206,6 +206,7 @@ static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t size, obos_sta
 		return nullptr;
 	}
 	basic_allocator* This = (basic_allocator*)This_;
+
 	makeSafeLock(lock, This);
 	set_status(status, OBOS_STATUS_SUCCESS);
 	size = round_up(size, ALLOCATOR_ALIGNMENT);

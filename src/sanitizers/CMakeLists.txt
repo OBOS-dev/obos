@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-add_library(sanitizers STATIC "asan.c" "stack.c" "ubsan.c")
+add_library(sanitizers STATIC "asan.c" "stack.c" "ubsan.c" "prof.c")
 
 target_compile_options(sanitizers
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -16,6 +16,7 @@ target_compile_options(sanitizers
 )
 
 target_include_directories(sanitizers PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
+target_include_directories(sanitizers PRIVATE "${CMAKE_SOURCE_DIR}/src/sanitizers")
 target_include_directories(sanitizers PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 target_include_directories(sanitizers PUBLIC "${CMAKE_SOURCE_DIR}/src/uACPI")
 

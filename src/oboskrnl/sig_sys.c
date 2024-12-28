@@ -4,8 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
-#pragma once
-
 #include <int.h>
 #include <error.h>
 #include <handle.h>
