@@ -29,6 +29,10 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     sti();
     uintptr_t virt = getCR2();
     virt &= ~0xfff;
+    if (!CoreS_GetCPULocalPtr())
+        goto down;
+    if (!CoreS_GetCPULocalPtr()->currentContext)
+        goto down;
     if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
         virt &= ~0x1fffff;
     if (Mm_IsInitialized())
@@ -88,6 +92,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     //         Core_LowerIrqlNoThread(oldIrql);
     //     asm("cli");
     // }
+    down:
     asm("cli");
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
         "Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"

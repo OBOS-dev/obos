@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <cmdline.h>
+#include <memmanip.h>
 
 #include <driver_interface/pci.h>
 
@@ -60,7 +61,7 @@ uacpi_status default_notify(uacpi_handle context, uacpi_namespace_node *node, ua
     OBOS_UNUSED(context);
     const uacpi_char* path = uacpi_namespace_node_generate_absolute_path(node);
     OBOS_Debug("ignoring firmware Notify(%s, 0x%02x) request, no listener.\n", path, value);
-    uacpi_kernel_free((void*)path);
+    uacpi_kernel_free((void*)path, strlen(path));
     return UACPI_STATUS_OK;
 }
 

@@ -64,27 +64,28 @@ typedef struct swap_header
 typedef struct swap_mem_tag
 {
     allocator_info* allocator;
+    size_t sz;
 } swap_mem_tag;
 static void* swap_malloc(size_t sz)
 {
     allocator_info* alloc = OBOS_NonPagedPoolAllocator ? OBOS_NonPagedPoolAllocator : OBOS_KernelAllocator;
     swap_mem_tag* tag = alloc->ZeroAllocate(alloc, 1, sz+sizeof(swap_mem_tag), nullptr);
     tag->allocator = alloc;
+    tag->sz = sz+sizeof(swap_mem_tag);
     return tag + 1;
 }
 static void* swap_realloc(void* buf, size_t sz)
 {
     swap_mem_tag* tag = (swap_mem_tag*)buf;
     tag--;
-    return tag->allocator->Reallocate(tag->allocator, tag, sz+sizeof(swap_mem_tag), nullptr);
+    tag->sz += sz;
+    return tag->allocator->Reallocate(tag->allocator, tag, sz, tag->sz-sz, nullptr);
 }
 static void swap_libc_free(void* buf)
 {
     swap_mem_tag* tag = (swap_mem_tag*)buf;
     tag--;
-    size_t size = 0;
-    tag->allocator->QueryBlockSize(tag->allocator, buf, &size);
-    tag->allocator->Free(tag->allocator, buf, size);
+    tag->allocator->Free(tag->allocator, tag, tag->sz);
 }
 #define PAGE_SHIFT (__builtin_clz(OBOS_HUGE_PAGE_SIZE > 0 ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
 static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_page)

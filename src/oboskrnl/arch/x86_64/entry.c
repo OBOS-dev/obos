@@ -422,7 +422,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 
 extern obos_status Arch_InitializeKernelPageTable();
 
-// TODO: Why is this here?
 uint64_t random_number();
 uint8_t random_number8();
 __asm__(

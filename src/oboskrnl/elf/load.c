@@ -90,10 +90,10 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             return OBOS_STATUS_INVALID_FILE;
         if ((phdrs[i].p_offset + phdrs[i].p_filesz) > szFile)
             return OBOS_STATUS_INVALID_FILE;
-        if (phdrs[i].p_vaddr > limit)
-            limit = phdrs[i].p_vaddr;
-        if (phdrs[i].p_vaddr <= base)
-            base = phdrs[i].p_vaddr + phdrs[i].p_memsz;
+        if ((phdrs[i].p_vaddr+ phdrs[i].p_memsz) > limit)
+            limit = phdrs[i].p_vaddr + phdrs[i].p_memsz;
+        if (phdrs[i].p_vaddr <= base || !base)
+            base = phdrs[i].p_vaddr;
     }
 
     if (dryRun)
@@ -171,7 +171,18 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         void* ubase = nullptr;
         obos_status status = OBOS_STATUS_SUCCESS;
         if (!require_addend)
-            ubase = Mm_VirtualMemoryAlloc(ctx, (void*)phdrs[i].p_vaddr, phdrs[i].p_memsz, 0, 0, nullptr, &status);
+        {
+            uintptr_t real_base = phdrs[i].p_vaddr;
+            real_base -= (real_base%OBOS_PAGE_SIZE);
+            uintptr_t real_limit = phdrs[i].p_vaddr+phdrs[i].p_memsz;
+            if (real_limit % OBOS_PAGE_SIZE)
+                real_limit += (OBOS_PAGE_SIZE-(real_limit%OBOS_PAGE_SIZE));
+            ubase = Mm_VirtualMemoryAlloc(ctx,
+                                          (void*)real_base,
+                                          real_limit-real_base,
+                                          0, 0, nullptr,
+                                          &status) + (phdrs[i].p_vaddr%OBOS_PAGE_SIZE);
+        }
         else
             ubase = (void*)(phdrs[i].p_vaddr + base);
         if (obos_is_error(status))
@@ -181,13 +192,19 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
                 Mm_VirtualMemoryFree(ctx, (void*)phdrs[j].p_vaddr, phdrs[j].p_memsz);
             return status;
         }
+
+        uintptr_t real_base = phdrs[i].p_vaddr;
+        real_base -= (real_base%OBOS_PAGE_SIZE);
+        uintptr_t real_limit = phdrs[i].p_vaddr+phdrs[i].p_memsz;
+        if (real_limit % OBOS_PAGE_SIZE)
+            real_limit += (OBOS_PAGE_SIZE-(real_limit%OBOS_PAGE_SIZE));
         kbase = Mm_MapViewOfUserMemory(ctx,
-                                       ubase,
+                                       (void*)real_base,
                                        nullptr,
-                                       phdrs[i].p_memsz,
+                                       real_limit-real_base,
                                        0,
                                        false, // disrespect user protection flags.
-                                       &status);
+                                       &status) + (phdrs[i].p_vaddr % OBOS_PAGE_SIZE);
         if (obos_is_error(status))
         {
             // Clean up.
@@ -200,6 +217,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         if (phdrs[i].p_memsz-phdrs[i].p_filesz)
             memzero((void*)((uintptr_t)kbase+phdrs[i].p_filesz), phdrs[i].p_memsz-phdrs[i].p_filesz);
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbase, phdrs[i].p_memsz);
+
         prot_flags prot = OBOS_PROTECTION_USER_PAGE;
         if (phdrs[i].p_flags & PF_X)
             prot |= OBOS_PROTECTION_EXECUTABLE;

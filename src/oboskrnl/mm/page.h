@@ -123,11 +123,13 @@ typedef struct page_range
     bool cow : 1;
     bool can_fork; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
+    bool kernelStack : 1; // See Mm_AllocateKernelStack
     union {
         enum {
             COW_SYMMETRIC, // for fork, etc.
             COW_ASYMMETRIC, // for CoW on a private page.
         } cow_type : 1;
+        struct context* userContext; // valid if kernelStack != nullptr
     } un;
 } page_range;
 
@@ -139,7 +141,11 @@ typedef struct working_set_node
 
 typedef struct working_set_entry
 {
-    page_info info;
+    struct {
+        uintptr_t virt;
+        page_protection prot;
+        page_range *range;
+    } info;
     struct working_set_node pr_node; // page range node
     uint16_t workingSets;
 #if OBOS_PAGE_REPLACEMENT_AGING

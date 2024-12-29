@@ -95,6 +95,8 @@ OBOS_WEAK size_t CoreS_GetThreadStackSize(const thread_ctx* ctx);
 /// <returns>A pointer to the region..</returns>
 OBOS_WEAK void* CoreS_ThreadAlloca(const thread_ctx* ctx, size_t size, obos_status *status);
 
+OBOS_WEAK void CoreS_SetKernelStack(void* stck /* 0x10000 bytes */);
+
 #ifdef __x86_64__
 #	include <arch/x86_64/thread_ctx.h>
 #elif defined(__m68k__)

@@ -11,6 +11,7 @@ target_compile_options(sanitizers
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-flto>
 #	PRIVATE $<$<COMPILE_LANGUAGE:C>:-g0>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=default> # We should have all its symbols exported
 )

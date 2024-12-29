@@ -26,6 +26,8 @@
 
 #include <irq/irql.h>
 
+#include <asan.h>
+
 #include <locks/spinlock.h>
 #include <locks/pushlock.h>
 
@@ -128,7 +130,7 @@ static bool pages_exist(context* ctx, void* base, size_t size, bool respectUserP
         // continue with our checks.
     }
 
-    size_t rng_size = OBOS_MIN(rng->size - (virt-rng->virt), size);
+    size_t volatile rng_size = OBOS_MIN(rng->size - (virt-rng->virt), size);
 
     if (rng_size >= size)
         return true; // all the pages exist in this region
@@ -342,7 +344,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         // Use anon physical page.
         phys = Mm_AnonPage;
     }
-
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
     {
         bool isPresent = !(rng->hasGuardPage && (base==addr)) && present;
@@ -564,6 +565,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     page_info pg = {};
     pg.prot = new_prot;
     pg.range = nullptr;
+
     for (uintptr_t addr = base; addr < (base+size); addr += new_prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)
     {
         pg.virt = addr;
@@ -786,6 +788,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
     page_info pg = {};
     pg.prot = new_prot;
     pg.range = nullptr;
+
     for (uintptr_t addr = base; addr < (base+size); addr += new_prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)
     {
         pg.virt = addr;
@@ -801,12 +804,12 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
 
 void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kbase_, size_t size, prot_flags prot, bool respectUserProtection, obos_status *status)
 {
-    if (size % OBOS_PAGE_SIZE)
-        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     uintptr_t ubase = (uintptr_t)ubase_;
     uintptr_t kbase = (uintptr_t)kbase_;
-    ubase -= (ubase % OBOS_PAGE_SIZE);
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     kbase -= (kbase % OBOS_PAGE_SIZE);
+    ubase -= (ubase % OBOS_PAGE_SIZE);
     if (!ubase)
     {
         set_statusp(status, OBOS_STATUS_INVALID_ARGUMENT);
@@ -861,6 +864,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     RB_INSERT(page_tree, &Mm_KernelContext.pages, rng);
 
     page_range* user_rng = nullptr;
+
     for (uintptr_t kaddr = kbase, uaddr = ubase; kaddr < (kbase+size); kaddr += OBOS_PAGE_SIZE, uaddr += OBOS_PAGE_SIZE)
     {
         if (!user_rng || (user_rng->virt+user_rng->size) <= kaddr)
@@ -908,4 +912,80 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
 
     set_statusp(status, OBOS_STATUS_SUCCESS);
     return (void*)(kbase + ((uintptr_t)ubase_ % OBOS_PAGE_SIZE));
+}
+
+void* Mm_AllocateKernelStack(context* target_user, obos_status* status)
+{
+    const size_t sz = 0x10000;
+    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, sz, 0, VMA_FLAGS_KERNEL_STACK, nullptr, status);
+    if (!base)
+        return nullptr;
+    page_range what = {.virt=(uintptr_t)base,.size=sz};
+    page_range* rng = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
+    rng->kernelStack = true;
+    rng->un.userContext = target_user;
+
+    for (uintptr_t addr = rng->virt; addr < (rng->virt + rng->size); addr += OBOS_PAGE_SIZE)
+    {
+        page_info info = {};
+        MmS_QueryPageInfo(Mm_KernelContext.pt, addr, &info, nullptr);
+        MmS_SetPageMapping(target_user->pt, &info, info.phys, false);
+    }
+    return base;
+}
+
+void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
+{
+    return Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, sz, 0, non_pageable ? VMA_FLAGS_NON_PAGED : 0, nullptr, nullptr);
+
+    if (sz % OBOS_PAGE_SIZE)
+        sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
+
+    context* ctx = &Mm_KernelContext;
+
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+
+    void* blk = MmH_FindAvailableAddress(ctx, sz, 0, nullptr);
+    if (!blk)
+        return nullptr;
+
+    uintptr_t base = (uintptr_t)blk;
+
+    page_range* rng = Mm_Allocator->Allocate(Mm_Allocator, sizeof(page_range), nullptr);
+    rng->ctx = ctx;
+    rng->cow = !non_pageable;
+    rng->un.cow_type = COW_ASYMMETRIC;
+    rng->size = sz;
+    rng->virt = base;
+    rng->prot.present = true;
+    rng->prot.rw = !rng->cow;
+    rng->prot.ro = false;
+    rng->prot.executable = false;
+    rng->prot.user = false;
+    rng->pageable = !non_pageable;
+
+    RB_INSERT(page_tree, &ctx->pages, rng);
+
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
+
+    for (uintptr_t addr = base; addr < (base+sz); addr += OBOS_PAGE_SIZE)
+    {
+        uintptr_t phys = 0;
+        if (!non_pageable)
+        {
+            phys = Mm_AnonPage->phys;
+            MmH_RefPage(Mm_AnonPage);
+            Mm_AnonPage->pagedCount++;
+        }
+        else
+        {
+            page* pg = MmH_PgAllocatePhysical(false,false);
+            phys = pg->phys;
+            pg->pagedCount++;
+        }
+        page_info info = {.prot=rng->prot,.virt=addr,.phys=phys,.range=rng};
+        MmS_SetPageMapping(ctx->pt, &info, phys, false);
+    }
+
+    return blk;
 }

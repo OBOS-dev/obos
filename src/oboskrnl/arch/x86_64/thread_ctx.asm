@@ -21,6 +21,7 @@ global CoreS_CallFunctionOnStack:function default
 global CoreS_SetThreadIRQL:function hidden
 global CoreS_GetThreadIRQL:function hidden
 global CoreS_ThreadAlloca:function hidden
+global Arch_UserYield:function hidden
 
 %macro popaq 0
 pop rbp
@@ -317,6 +318,17 @@ CoreS_ThreadAlloca:
 .done:
 
 	; return ret;
+	leave
+	ret
+
+extern Core_Yield
+Arch_UserYield:
+	push rbp
+	mov rbp, rsp
+
+; 	lea rsp, [rdi+0x10000]
+	call Core_Yield
+
 	leave
 	ret
 

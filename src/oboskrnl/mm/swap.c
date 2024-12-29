@@ -38,33 +38,31 @@ static spinlock swap_lock;
 static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
 static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
 
-obos_status Mm_SwapOut(page_info* page)
+obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
 {
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
-    if (!page)
+    if (!rng)
         return OBOS_STATUS_INVALID_ARGUMENT;
     // OBOS_ASSERT(!page->reserved);
     // if (page->reserved)
     //     return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(page->range->pageable);
-    if (!page->range->pageable)
+    OBOS_ASSERT(rng->pageable);
+    if (!rng->pageable)
         return OBOS_STATUS_INVALID_ARGUMENT;
     uintptr_t phys = 0;
-    obos_status status = MmS_QueryPageInfo(page->range->ctx->pt, page->virt, nullptr, &phys);
+    page_info page = {};
+    obos_status status = MmS_QueryPageInfo(rng->ctx->pt, virt, &page, &phys);
     if (obos_is_error(status))
         return status;
-    page->prot.present = false;
-    status = MmS_SetPageMapping(page->range->ctx->pt, page, phys, false);
+    page.prot.present = false;
+    status = MmS_SetPageMapping(rng->ctx->pt, &page, phys, false);
     if (obos_is_error(status))
-    {
-        page->prot.present = true;
         return status;
-    }
-    if (page->dirty)
-        Mm_MarkAsDirty(page);
+    if (page.dirty)
+        Mm_MarkAsDirty(&page);
     else
-        Mm_MarkAsStandby(page);
+        Mm_MarkAsStandby(&page);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Mm_SwapIn(page_info* page, fault_type* type)
@@ -98,7 +96,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
             Mm_DirtyPagesBytes -= page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         }
         else if (onStandbyList && !node->pagedCount)
-            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
+            LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
         // else
         //     OBOS_ASSERT(!"Funny business");
         node->pagedCount++;

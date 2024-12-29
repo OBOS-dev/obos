@@ -341,3 +341,9 @@ uintptr_t Arch_GetCPUTempStack()
 {
 	return (uintptr_t)CoreS_GetCPULocalPtr()->arch_specific.ist_stack;
 }
+
+void CoreS_SetKernelStack(void* stck)
+{
+	if (!stck) return;
+	CoreS_GetCPULocalPtr()->arch_specific.tss.rsp0 = (uintptr_t)stck+0x10000;
+}

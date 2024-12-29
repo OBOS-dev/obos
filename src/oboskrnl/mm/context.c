@@ -97,6 +97,7 @@ RB_GENERATE_INTERNAL(phys_page_tree, page, rb_node, phys_page_cmp, OBOS_EXPORT);
 LIST_GENERATE(phys_page_list, struct page, lnk_node);
 phys_page_tree Mm_PhysicalPages;
 size_t Mm_PhysicalMemoryUsage;
+
 page* MmH_PgAllocatePhysical(bool phys32, bool huge)
 {
 	size_t nPages = huge ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
@@ -104,17 +105,20 @@ page* MmH_PgAllocatePhysical(bool phys32, bool huge)
 	uintptr_t phys = phys32 ? Mm_AllocatePhysicalPages32(nPages, nPages, nullptr) : Mm_AllocatePhysicalPages(nPages, nPages, nullptr);
 	return MmH_AllocatePage(phys, huge);
 }
+
 page* MmH_AllocatePage(uintptr_t phys, bool huge)
 {
-	page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
+	page* buf = Mm_Allocator->Allocate(Mm_Allocator, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
 		buf->flags |= PHYS_PAGE_HUGE_PAGE;
-	MmH_RefPage(buf);
+	buf->pagedCount = 0;
+	buf->refcount = 1;
 	RB_INSERT(phys_page_tree, &Mm_PhysicalPages, buf);
 	Mm_PhysicalMemoryUsage += (huge ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 	return buf;
 }
+
 void MmH_RefPage(page* buf)
 {
 	buf->refcount++;

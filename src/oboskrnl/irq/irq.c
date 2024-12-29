@@ -31,12 +31,25 @@ static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
 void Core_IRQDispatcher(interrupt_frame* frame)
 {
-#if !OBOS_ARCH_EMULATED_IRQL
+#if !OBOS_ARCH_EMULATED_IRQL && !OBOS_LAZY_IRQL
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	if (!CoreS_EnterIRQHandler(frame))
 		return;
 	CoreS_SendEOI(frame);
+#elif OBOS_LAZY_IRQL
+	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
+	if (irql_ < CoreS_GetCPULocalPtr()->currentIrql)
+	{
+		CoreS_SetIRQL(irql_, CoreS_GetIRQL());
+		CoreS_DeferIRQ(frame);
+		CoreS_SendEOI(frame);
+		return;
+	}
+	if (!CoreS_EnterIRQHandler(frame))
+		return;
+	CoreS_SendEOI(frame);
+	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #else
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (!CoreS_EnterIRQHandler(frame))

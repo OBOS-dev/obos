@@ -121,6 +121,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     // TODO: Reset extended context info.
 
     uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };
+    CoreS_SetKernelStack(Core_GetCurrentThread()->kernelStack);
     CoreS_CallFunctionOnStack(Arch_GotoUserBootstrap, (uintptr_t)&udata);
     OBOS_UNREACHABLE;
 }

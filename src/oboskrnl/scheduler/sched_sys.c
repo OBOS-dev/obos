@@ -202,7 +202,7 @@ obos_status Sys_ThreadReady(handle thread)
     if (!thr->proc)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!thr->kernelStack)
-        thr->kernelStack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+        thr->kernelStack = Mm_AllocateKernelStack(thr->proc->ctx, nullptr);
     return CoreH_ThreadReady(thr);
 }
 obos_status Sys_ThreadBlock(handle thread)

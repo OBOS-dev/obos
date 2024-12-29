@@ -22,3 +22,5 @@ struct thread_context_info
 	void* stackBase;
 	size_t stackSize;
 } OBOS_ALIGN(8);
+
+extern void Arch_UserYield(void* kstck);

@@ -88,7 +88,8 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         {
             if (addr != base)
             {
-                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+                size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
+                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
                 struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
                 *reg = curr;
                 wroteback = true;
@@ -110,7 +111,8 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     }
     if (!wroteback && curr.phys)
     {
-        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+        size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
+        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
         *reg = curr;
     }

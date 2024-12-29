@@ -68,7 +68,7 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
     context* vmm_ctx = context_from_handle(ctx, true, nullptr, true);
-    prot|= OBOS_PROTECTION_USER_PAGE;
+    prot |= OBOS_PROTECTION_USER_PAGE;
     prot &= ~OBOS_PROTECTION_CACHE_DISABLE;
     flags &= ~VMA_FLAGS_32BITPHYS; // userspace doesn't need this as much as kernel mode
     void* ret = Mm_VirtualMemoryAlloc(vmm_ctx, base, size, prot, flags, file, &status);

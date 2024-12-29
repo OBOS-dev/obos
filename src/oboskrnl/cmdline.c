@@ -112,8 +112,9 @@ static void* cmd_realloc(void* buf, size_t newsize)
         cmd_free(buf); // probably a no-op, but do it anyway.
         return newbuf;
     }
+    size_t oldsz = hdr->alloc_size;
     hdr->alloc_size = newsize;
-    hdr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sizeof(*hdr)+newsize, nullptr);
+    hdr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sizeof(*hdr)+newsize, sizeof(*hdr)+oldsz, nullptr);
     return hdr + 1;
 }
 

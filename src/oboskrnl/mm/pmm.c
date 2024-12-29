@@ -21,19 +21,20 @@
 #include <mm/page.h>
 #include <mm/swap.h>
 
-struct freelist_node
+struct pmm_freelist_node
 {
 	size_t nPages;
-	struct freelist_node *next, *prev;
+	struct pmm_freelist_node *next, *prev;
 };
-static struct freelist_node *s_head;
-static struct freelist_node *s_tail;
+
+static struct pmm_freelist_node *s_head;
+static struct pmm_freelist_node *s_tail;
 #if OBOS_ARCHITECTURE_BITS == 64
 
 // 32-bit region start
-static struct freelist_node *s_head32;
+static struct pmm_freelist_node *s_head32;
 // 32-bit region tail
-static struct freelist_node *s_tail32;
+static struct pmm_freelist_node *s_tail32;
 
 #endif
 static size_t s_nNodes;
@@ -102,7 +103,7 @@ obos_status Mm_InitializePMM()
 #endif
 	return OBOS_STATUS_SUCCESS;
 }
-static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)
+static bool IsRegionSufficient(struct pmm_freelist_node* node, size_t nPages, size_t alignmentMask, size_t *nPagesRequiredP)
 {
 	size_t nPagesRequired = nPages;
 	uintptr_t nodePhys = MmS_UnmapVirtFromPhys(node);
@@ -115,7 +116,7 @@ static bool IsRegionSufficient(struct freelist_node* node, size_t nPages, size_t
 }
 #define MAP_TO_HHDM(addr, type) ((type*)(MmS_MapVirtFromPhys((uintptr_t)(addr))))
 #define UNMAP_FROM_HHDM(addr) (MmS_UnmapVirtFromPhys((void*)(addr)))
-OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, obos_status *status, struct freelist_node** const head, struct freelist_node** const tail)
+OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, obos_status *status, struct pmm_freelist_node** const head, struct pmm_freelist_node** const tail)
 {
 	if (!nPages)
 	{
@@ -142,9 +143,9 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 	size_t alignmentMask = alignmentPages*OBOS_PAGE_SIZE-1;
 	size_t nPagesRequired = 0;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
-	struct freelist_node* node = MAP_TO_HHDM((*head), struct freelist_node);
+	struct pmm_freelist_node* node = MAP_TO_HHDM((*head), struct pmm_freelist_node);
 	while (UNMAP_FROM_HHDM(node) && !IsRegionSufficient(node, nPages, alignmentMask, &nPagesRequired))
-		node = MAP_TO_HHDM(node->next, struct freelist_node);
+		node = MAP_TO_HHDM(node->next, struct pmm_freelist_node);
 	if (!UNMAP_FROM_HHDM(node))
 	{
 		if (status)
@@ -158,9 +159,9 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 	if (!node->nPages)
 	{
 		if (node->next)
-			MAP_TO_HHDM(node->next, struct freelist_node)->prev = node->prev;
+			MAP_TO_HHDM(node->next, struct pmm_freelist_node)->prev = node->prev;
 		if (node->prev)
-			MAP_TO_HHDM(node->prev, struct freelist_node)->next = node->next;
+			MAP_TO_HHDM(node->prev, struct pmm_freelist_node)->next = node->next;
 		if ((uintptr_t)(*head) == UNMAP_FROM_HHDM(node))
 			(*head) = node->next;
 		if ((uintptr_t)(*tail) == UNMAP_FROM_HHDM(node))
@@ -250,20 +251,20 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages32(size_t nPages, size_t alignme
 	return Mm_AllocatePhysicalPages(nPages, alignmentPages, status);
 #endif
 }
-OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct freelist_node** const head, struct freelist_node** const tail)
+OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct pmm_freelist_node** const head, struct pmm_freelist_node** const tail)
 {
 	if (!nPages)
 		return OBOS_STATUS_SUCCESS; // nothing freed, no-op.
 	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
-	struct freelist_node* node = MAP_TO_HHDM(addr, struct freelist_node);
+	struct pmm_freelist_node* node = MAP_TO_HHDM(addr, struct pmm_freelist_node);
 	memzero(node, sizeof(*node));
 	node->nPages = nPages;
 	if ((*tail))
-		MAP_TO_HHDM((*tail), struct freelist_node)->next = (struct freelist_node*)UNMAP_FROM_HHDM(node);
+		MAP_TO_HHDM((*tail), struct pmm_freelist_node)->next = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
 	if (!(*head))
-		(*head) = (struct freelist_node*)UNMAP_FROM_HHDM(node);
+		(*head) = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
 	node->prev = (*tail);
-	(*tail) = (struct freelist_node*)UNMAP_FROM_HHDM(node);
+	(*tail) = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
 	s_nNodes--;
 	Mm_TotalPhysicalPagesUsed -= nPages;
 	Core_SpinlockRelease(&lock, oldIrql);

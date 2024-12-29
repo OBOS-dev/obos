@@ -91,3 +91,9 @@ OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_inf
 		pause();
 	return OBOS_STATUS_SUCCESS;
 }
+
+void CoreS_DeferIRQ(interrupt_frame* frame)
+{
+	Arch_LAPICSendIPI((ipi_lapic_info){.isShorthand=true,.info.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF},
+					  (ipi_vector_info){.deliveryMode=LAPIC_DELIVERY_MODE_FIXED,.info={.vector=frame->intNumber}});
+}

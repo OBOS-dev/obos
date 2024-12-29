@@ -103,3 +103,8 @@ OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz
 // Unlocks pages from base to base+sz from the working-set.
 // If the pages caused the working-set capacity to be inflated, then it is deflated once again.
 OBOS_EXPORT obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base, size_t sz);
+
+OBOS_EXPORT void* Mm_AllocateKernelStack(context* target_user, obos_status* status);
+
+// Optimized version of Mm_VirtualMemoryAlloc that allocates RW, ANON memory.
+OBOS_EXPORT void* Mm_QuickVMAllocate(size_t sz, bool non_pageable);

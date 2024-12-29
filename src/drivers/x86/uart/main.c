@@ -200,7 +200,9 @@ static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *nod
         OBOS_Error("Could not retrieve resources! Status: %s\n", uacpi_status_to_string(ret));
         return UACPI_ITERATION_DECISION_NEXT_PEER;
     }
-    serialPorts = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, serialPorts, (++nSerialPorts)*sizeof(serial_port), nullptr);
+    size_t old_sz = nSerialPorts*sizeof(serial_port);
+    size_t new_sz = (++nSerialPorts)*sizeof(serial_port);
+    serialPorts = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, serialPorts, new_sz, old_sz, nullptr);
     memzero(&serialPorts[nSerialPorts - 1], sizeof(*serialPorts));
     serialPorts[nSerialPorts - 1].com_port = nSerialPorts;
     uacpi_for_each_resource(resources, resource_iterator, &serialPorts[nSerialPorts - 1]);

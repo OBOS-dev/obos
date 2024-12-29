@@ -259,6 +259,7 @@ uacpi_status uacpi_kernel_pci_write(
 }
 // static allocators::BasicAllocator s_uACPIAllocator;
 // static bool s_uACPIAllocatorInitialized = false;
+
 void* uacpi_kernel_alloc(uacpi_size size)
 {
     // logger::debug("Attempting allocation of %lu bytes.\n", size);
@@ -267,21 +268,22 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // new (&s_uACPIAllocator) allocators::BasicAllocator{};
         // s_uACPIAllocatorInitialized = true;
     // }
+
     void* ret = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
     // void* ret = OBOS_BasicMMAllocatePages(size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
     /*else
         OBOS_Debug("Allocated %lu bytes at 0x%p\n", size, ret);*/
-    return ret ? memzero(ret, size) : ret;
+    return ret;
 }
 
 void* uacpi_kernel_alloc_zeroed(uacpi_size count)
 {
-    return uacpi_kernel_alloc(count);
+    return memzero(uacpi_kernel_alloc(count), count);
 }
 
-void uacpi_kernel_free(void* mem)
+void uacpi_kernel_free(void* mem, size_t sz)
 {
     if (!mem)
         return;
@@ -289,14 +291,10 @@ void uacpi_kernel_free(void* mem)
     // if (!s_uACPIAllocatorInitialized)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
         // __func__, __LINE__);
-    size_t sz = 0;
-    OBOS_NonPagedPoolAllocator->QueryBlockSize(OBOS_NonPagedPoolAllocator, mem, &sz);
-    if (sz == SIZE_MAX)
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Function %s, line %d: free of object by uACPI not allocated by uACPI allocator. This is a bug, please report in some way.\n", 
-        __func__, __LINE__);
     OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, mem, sz);
     //logger::debug("Freed 0x%p.\n", mem);
 }
+
 void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 {
     va_list list;
@@ -338,6 +336,7 @@ void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_
     vprintf(format, list);
     OBOS_ResetColor();
 }
+
 timer_tick CoreS_GetNativeTimerTick();
 timer_tick CoreS_GetNativeTimerFrequency();
 uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
@@ -352,6 +351,7 @@ uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
     }
     return CoreS_GetNativeTimerTick() * cached_rate;
 }
+
 void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
 {
 #ifdef __x86_64__

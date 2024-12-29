@@ -15,6 +15,7 @@ option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
 option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" ON)
 option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
+option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
 
 # String options
 
@@ -93,6 +94,13 @@ else()
 	set (OBOS_NVS_SAVE_S3 "0")
 endif()
 add_compile_definitions(OBOS_NVS_SAVE_S3=${OBOS_NVS_SAVE_S3})
+
+if (OBOS_LAZY_IRQL)
+	set (OBOS_LAZY_IRQL "1")
+else()
+	set (OBOS_LAZY_IRQL "0")
+endif()
+add_compile_definitions(OBOS_LAZY_IRQL=${OBOS_LAZY_IRQL})
 
 if (OBOS_ENABLE_LOCK_PROFILING)
 	set (OBOS_ENABLE_LOCK_PROFILING "1")

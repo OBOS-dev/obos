@@ -88,7 +88,8 @@ obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
     {
         Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
         Core_GetCurrentThread()->signal_info->signals[signum] = *act;
-        Core_GetCurrentThread()->signal_info->signals[signum].un.handler = SIG_DFL /* default handler is the kernel */;
+        // what.
+        // Core_GetCurrentThread()->signal_info->signals[signum].un.handler = SIG_DFL /* default handler is the kernel */;
         Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
     }
     return OBOS_STATUS_SUCCESS;

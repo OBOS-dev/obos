@@ -46,6 +46,7 @@ void OBOS_LoadInit()
     process* new = Core_ProcessAllocate(nullptr);
     new->ctx = new_ctx;
     new_ctx->owner = new;
+    new_ctx->workingSet.capacity = 64*1024*1024;
     Core_ProcessStart(new, nullptr);
 
     obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ);
@@ -59,6 +60,8 @@ void OBOS_LoadInit()
     status = OBOS_LoadELF(new_ctx, buf, init_fd.vn->filesize, &aux.elf, false, false);
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load %s. Status: %d\n", init_path, status);
+
+    OBOS_Log("Loaded %s at 0x%p\n", init_path, aux.elf.base);
 
     const Elf_Ehdr* ehdr = buf;
     aux.phdr.ptr = (void*)((uintptr_t)aux.elf.base + ehdr->e_phoff);
@@ -75,8 +78,9 @@ void OBOS_LoadInit()
     thread* thr = CoreH_ThreadAllocate(nullptr);
     thread_ctx thr_ctx = {};
 
-    if (!thr->kernelStack)
-        thr->kernelStack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+    thr->kernelStack = Mm_AllocateKernelStack(new_ctx, &status);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate kernel stack for init program.\n");
 
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 

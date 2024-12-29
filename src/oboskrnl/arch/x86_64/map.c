@@ -148,25 +148,30 @@ bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 
 static obos_status invlpg_impl(uintptr_t at);
 
+static bool has_xd()
+{
+	static bool ret = false, init = false;
+	if (!init)
+		ret = (rdmsr(0xC0000080) & (1 << 11));
+	return ret;
+}
+
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool free_pte)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	bool is_swap_phys = flags & BIT_TYPE(9, UL);
-	if (is_swap_phys)
-		flags &= ~BIT_TYPE(9, UL);
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0xfff || at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!(rdmsr(0xC0000080) & (1 << 11)))
+	if (obos_expect(!has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 3);
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
 	uintptr_t entry = phys | flags;
 	bool shouldInvplg = pm[AddressToIndex(at, 0)] != entry;
 	// for (volatile bool b = !(flags & 1); b; )
 	// 	;
-	pm[AddressToIndex(at, 0)] = entry | (is_swap_phys << 9);
+	pm[AddressToIndex(at, 0)] = entry;
 	if (free_pte && ~flags & BIT_TYPE(0, UL))
 		Arch_FreePageMapAt(cr3, at, 3);
 	if (shouldInvplg)
@@ -178,23 +183,20 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	// flags |= 1;
-	bool is_swap_phys = flags & BIT_TYPE(9, UL);
-	if (is_swap_phys)
-		flags &= ~BIT_TYPE(9, UL);
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0x1fffff || at & 0x1fffff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!(rdmsr(0xC0000080) & (1 << 11)))
+	if (obos_expect(!has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	if (flags & ((uintptr_t)1 << 7))
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 2);
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 2);
 	uintptr_t entry = phys | flags | ((uintptr_t)1 << 7);
 	bool shouldInvplg = (entry != pm[AddressToIndex(at, 1)]);
-	pm[AddressToIndex(at, 1)] = entry | (is_swap_phys << 9);
+	pm[AddressToIndex(at, 1)] = entry;
 	if (free_pte && ~flags & BIT_TYPE(0, UL))
-		Arch_FreePageMapAt(cr3, at, 3);
+		Arch_FreePageMapAt(cr3, at, 2);
 	if (shouldInvplg)
 		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;

@@ -42,9 +42,10 @@ typedef struct allocator_info
 	/// <param name="This">The allocator object used.</param>
 	/// <param name="base">The base of the other allocated block of memory.</param>
 	/// <param name="nBytes">The new byte count.</param>
+	/// <param name="old_size">The old size, if required by the allocator.</param>
 	/// <param name="status">[out,optional] The status code of the function.</param>
 	/// <returns>The new block, or nullptr on failure. This function is allowed to return the same base passed.</returns>
-	void* (*Reallocate)(struct allocator_info* This, void* base, size_t nBytes, obos_status* status);
+	void* (*Reallocate)(struct allocator_info* This, void* base, size_t nBytes, size_t old_size, obos_status* status);
 	/// <summary>
 	/// Frees a previously allocated block of memory.
 	/// </summary>

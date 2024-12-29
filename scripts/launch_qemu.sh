@@ -5,7 +5,7 @@ rm qemu_log.txt
 echo $@
 qemu-system-x86_64 \
 -drive file=out/obos.iso,format=raw \
--m 1G \
+-m 256M \
 -gdb tcp:0.0.0.0:1234 -S \
 -boot d \
 -M q35 \

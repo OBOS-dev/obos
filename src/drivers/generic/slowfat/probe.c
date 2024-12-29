@@ -62,8 +62,9 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
         if ((lfn->order & 0x40))
         {
             // Allocate all the memory we'll need for this LFN chain.
+            size_t old_entry_count = *lfn_entry_count;
             *lfn_entry_count = (lfn->order & ~0x40 /* last entry */);
-            *lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*(*lfn_entry_count), nullptr);
+            *lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*(*lfn_entry_count), old_entry_count*sizeof(lfn_dirent), nullptr);
         }
         (*lfn_entries)[(lfn->order & ~0x40) - 1] = lfn;
         return;

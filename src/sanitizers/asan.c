@@ -29,8 +29,8 @@ uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr);
 uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr);
 uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cpuFlags, uint8_t depth);
 bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth);
-obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
-obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool e);
+obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool e);
 #endif
 
 const uint8_t OBOS_ASANPoisonValues[] = {

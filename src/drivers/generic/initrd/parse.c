@@ -33,19 +33,30 @@ static int cmp(const void *a, const void *b, void *udata)
     const ustar_hdr* pck2 = b;
     return uacpi_strncmp(pck1->filename, pck2->filename, 100);
 }
+
+struct allocation_hdr {
+    size_t sz;
+};
+
 void* malloc(size_t sz)
 {
-    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
+    sz += sizeof(struct allocation_hdr);
+    struct allocation_hdr* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
+    hdr->sz = sz;
+    return hdr+1;
 }
 void* realloc(void* buf, size_t sz)
 {
-    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf, sz, nullptr);
+    struct allocation_hdr* hdr = buf;
+    hdr--;
+    hdr->sz += sz;
+    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf, sz, hdr->sz-sz, nullptr);
 }
 void free(void* buf)
 {
-    size_t blkSize = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, buf, &blkSize);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize);
+    struct allocation_hdr* hdr = buf;
+    hdr--;
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->sz);
 }
 static void initialize_hashmap()
 {

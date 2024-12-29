@@ -185,3 +185,8 @@ OBOS_WEAK bool CoreS_EnterIRQHandler(interrupt_frame* frame);
 /// </summary>
 /// <param name="frame">The interrupt frame.</param>
 OBOS_WEAK void CoreS_ExitIRQHandler(interrupt_frame* frame);
+/// <summary>
+/// Defers an IRQ for future execution.
+/// </summary>
+/// <param name="frame">The interrupt frame.</param>
+OBOS_WEAK void CoreS_DeferIRQ(interrupt_frame* frame);

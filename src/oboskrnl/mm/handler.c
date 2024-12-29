@@ -124,7 +124,9 @@ static obos_status ref_page(context* ctx, page_info *curr)
     if (!ent)
     {
         ent = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
-        ent->info = *curr;
+        ent->info.virt = curr->virt;
+        ent->info.prot = curr->prot;
+        ent->info.range = curr->range;
         allocated_ent = true;
     }
     ent->refs++;
@@ -313,7 +315,7 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
     node->next = nullptr;
     if (!(--ent->workingSets))
     {
-        obos_status status = ent->free ? OBOS_STATUS_ABORTED : Mm_SwapOut(&ent->info);
+        obos_status status = ent->free ? OBOS_STATUS_ABORTED : Mm_SwapOut(ent->info.virt, ent->info.range);
         if (obos_is_success(status))
             ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         if (!ent->free)

@@ -35,7 +35,7 @@ void append_to_buffer_char(buffer* buf, char what)
     if (index >= buf->nAllocated)
     {
         buf->nAllocated += 4; // Reserve 4 more bytes.
-        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), nullptr);
+        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), (buf->nAllocated-4)*sizeof(*buf->buf), nullptr);
         OBOS_ASSERT(buf->buf);
     }
     buf->buf[index] = what;
@@ -45,8 +45,9 @@ void append_to_buffer_str_len(buffer* buf, const char* what, size_t strlen)
     // Reserve enough bytes to prevent a bunch of allocations from being made.
     if (buf->nAllocated < (buf->szBuf + strlen))
     {
+        size_t old_sz = buf->nAllocated;
         buf->nAllocated += ((strlen + 3) & ~3); // Reserve strlen more bytes.
-        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), nullptr);
+        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), old_sz*sizeof(*buf->buf), nullptr);
         OBOS_ASSERT(buf->buf);
     }
     char ch = what[0];

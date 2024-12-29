@@ -52,7 +52,12 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
         nCPUsWithInitializedTimer++;
     }
     else
-        Core_Yield();
+    {
+        if (frame->cs & 0x3)
+            Arch_UserYield(Core_GetCurrentThread()->kernelStack); // switches to the kernel stack passed, then yields, then returns.
+        else
+            Core_Yield();
+    }
 }
 
 HPET* Arch_HPETAddress;

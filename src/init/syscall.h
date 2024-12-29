@@ -76,3 +76,13 @@ extern uintptr_t syscall(uint32_t num, uintptr_t arg0, uintptr_t arg1, uintptr_t
 #define syscall3(num, arg0, arg1, arg2) syscall(num, (uintptr_t)(arg0),(uintptr_t)(arg1),(uintptr_t)(arg2), 0,0)
 #define syscall4(num, arg0, arg1, arg2, arg3) syscall(num, (uintptr_t)(arg0),(uintptr_t)(arg1),(uintptr_t)(arg2),(uintptr_t)(arg3), 0)
 #define syscall5(num, arg0, arg1, arg2, arg3, arg4) syscall(num, (uintptr_t)(arg0),(uintptr_t)(arg1),(uintptr_t)(arg2),(uintptr_t)(arg3),(uintptr_t)(arg4))
+
+#define HANDLE_VALUE_MASK (0xffffff)
+#define HANDLE_TYPE_SHIFT (24UL)
+
+#define HANDLE_TYPE(hnd) (handle_type)((hnd) >> HANDLE_TYPE_SHIFT)
+#define HANDLE_VALUE(hnd) (unsigned int)((hnd) & HANDLE_VALUE_MASK)
+typedef uint32_t handle;
+#define HANDLE_INVALID (handle)((handle)0xff << HANDLE_TYPE_SHIFT)
+#define HANDLE_CURRENT (handle)((handle)0xfe << HANDLE_TYPE_SHIFT)
+#define HANDLE_ANY     (handle)((handle)0xfd     << HANDLE_TYPE_SHIFT)

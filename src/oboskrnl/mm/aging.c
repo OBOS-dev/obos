@@ -68,12 +68,10 @@ obos_status Mm_AgingPRA(context* ctx)
             Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
             continue;
         }
-        if (ent->info.accessed || ent->info.dirty)
-        {
-            ent->info.accessed = false;
-            ent->info.dirty = false;
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, ent->info.virt, &info, nullptr);
+        if (info.accessed || info.dirty)
             ent->age |= 1;
-        }
         ent->age <<= 1;
         if (ent->age)
             continue;
@@ -108,7 +106,7 @@ obos_status Mm_AgingPRA(context* ctx)
         {
             if (!ent->info.range->pageable)
                 ent->info.range->pageable = true;
-            Mm_SwapOut(&ent->info);
+            Mm_SwapOut(ent->info.virt, ent->info.range);
             ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         }
     }

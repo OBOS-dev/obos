@@ -251,10 +251,8 @@ switch_thread:
 	getCurrentThread = chosenThread;
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
-	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;/*
-	if (chosenThread->tid == 6)
-		for (volatile bool b = true; b; )
-			asm volatile ("" :"=r"(b) :"r"(b));*/
+	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;
+	CoreS_SetKernelStack(chosenThread->kernelStack);
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;

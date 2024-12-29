@@ -77,19 +77,31 @@ static uint64_t pnp_acpi_driver_hash(const void *item, uint64_t seed0, uint64_t 
 }
 #endif
 
+struct allocation_header {
+    size_t size;
+};
+
 static void *malloc(size_t sz)
 {
-    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
+    struct allocation_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz+sizeof(struct allocation_header), nullptr);
+    hdr->size = sz+sizeof(struct allocation_header);
+    return hdr + 1;
 }
+
 static void *realloc(void* oldblk, size_t sz)
 {
-    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, oldblk, sz, nullptr);
+    struct allocation_header* hdr = oldblk;
+    hdr--;
+    size_t oldSz = hdr->size;
+    hdr->size += sz;
+    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sz, oldSz, nullptr);
 }
+
 static void free(void* blk)
 {
-    size_t sz = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, blk, &sz);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, blk, sz);
+    struct allocation_header* hdr = blk;
+    hdr--;
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->size);
 }
 
 static void free_pnp_device(struct hashmap* map, pnp_device* dev)

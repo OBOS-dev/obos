@@ -67,7 +67,9 @@ struct copy_reloc_array
 };
 static void append_relocation_table(struct relocation_array* arr, const struct relocation_table* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
     arr->buf[arr->nRelocations - 1] = *what;
     // Note:
@@ -84,7 +86,9 @@ static void free_reloc_array(struct relocation_array* arr)
 }
 static void append_copy_reloc(struct copy_reloc_array* arr, const struct copy_reloc* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
     arr->buf[arr->nRelocations - 1] = *what;
 }
