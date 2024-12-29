@@ -272,7 +272,7 @@ static uacpi_iteration_decision ec_enumerate_resources(void *user, uacpi_resourc
         case UACPI_RESOURCE_TYPE_FIXED_IO:
             current_gas.address = resource->fixed_io.address;
             current_gas.register_bit_width = resource->fixed_io.length*8;
-            break;
+            ;
         default:
             return UACPI_ITERATION_DECISION_CONTINUE;
     }
@@ -299,7 +299,7 @@ static uacpi_iteration_decision ec_match(void* udata, uacpi_namespace_node* node
     struct uacpi_resources *resources = nullptr;
     uacpi_status status = uacpi_get_current_resources(node, &resources);
     if (uacpi_unlikely_error(status))
-        return UACPI_ITERATION_DECISION_BREAK;
+        return UACPI_ITERATION_DECISION_CONTINUE;
 
     uint8_t current_index = 0;
     uacpi_for_each_resource(resources, ec_enumerate_resources, &current_index);
