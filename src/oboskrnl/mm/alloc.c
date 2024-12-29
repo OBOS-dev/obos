@@ -936,8 +936,6 @@ void* Mm_AllocateKernelStack(context* target_user, obos_status* status)
 
 void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 {
-    return Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, sz, 0, non_pageable ? VMA_FLAGS_NON_PAGED : 0, nullptr, nullptr);
-
     if (sz % OBOS_PAGE_SIZE)
         sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
 

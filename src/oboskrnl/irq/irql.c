@@ -18,12 +18,12 @@
 
 #include <utils/list.h>
 
-irql s_irql = IRQL_MASKED;
+irql Core_TempIrql = IRQL_MASKED;
 
-__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql* Core_GetIRQLVar()
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_WEAK irql* Core_GetIRQLVar()
 {
 	if (!CoreS_GetCPULocalPtr())
-		return &s_irql;
+		return &Core_TempIrql;
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 

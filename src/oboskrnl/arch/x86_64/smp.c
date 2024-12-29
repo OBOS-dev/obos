@@ -143,6 +143,7 @@ static void idleTaskBootstrap()
 	CoreS_GetCPULocalPtr()->initialized = true;
 	Arch_IdleTask();
 }
+
 extern void Arch_InitializeMiscFeatures();
 void __attribute__((no_stack_protector)) Arch_APEntry(cpu_local* info)
 {
@@ -208,11 +209,12 @@ void Arch_SMPStartup()
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
 	Core_CpuCount = s_nLAPICIDs;
-	irql oldIrql = Core_RaiseIrql(0xf);
+	// irql oldIrql = Core_RaiseIrql(0xf);
 	for (size_t i = 0; i < s_nLAPICIDs; i++)
 	{
 		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
 		{
+			cpu_info[i].curr = cpu_info + i;
 			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);
 			wrmsr(0xC0000101 /* GS_BASE */, (uintptr_t)&cpu_info[0]);
 			// UC UC- WT WB UC WC WT WB
@@ -230,6 +232,7 @@ void Arch_SMPStartup()
 		cpu_info[i].currentIrql = 0;
 		cpu_info[i].isBSP = false;
 		cpu_info[i].schedulerTicks = 0;
+		cpu_info[i].curr = cpu_info + i;
 		cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr);
 		cpu_info[i].arch_specific.startup_stack = OBOS_BasicMMAllocatePages(0x4000, nullptr);
 		Core_DefaultThreadAffinity |= CoreH_CPUIdToAffinity(cpu_info[i].id);
@@ -264,7 +267,7 @@ void Arch_SMPStartup()
 			pause();
 		atomic_store(&ap_initialized, false);
 	}
-	Core_LowerIrql(oldIrql);
+	// Core_LowerIrql(oldIrql);
 	Arch_SMPInitialized = true;
 	OBOSS_UnmapPage((void*)0x1000);
 	Arch_InitializeMiscFeatures();

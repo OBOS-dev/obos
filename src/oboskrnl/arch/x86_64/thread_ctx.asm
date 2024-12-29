@@ -206,6 +206,7 @@ CoreS_CallFunctionOnStack:
 	ret
 extern Core_Schedule
 extern Core_GetIRQLVar
+extern Arch_cpu_local_curr_offset
 CoreS_SaveRegisterContextAndYield:
 	pushfq
 	cli
@@ -229,10 +230,8 @@ CoreS_SaveRegisterContextAndYield:
 	lea rax, [rsp+0x10] ; skip the return address
 	mov [rdi+thread_ctx.frame+0xC8], rax ; rsp
 	mov qword [rdi+thread_ctx.frame+0xD0], 0x10 ; ss
-	mov ecx, 0xC0000101
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
+	mov rax, [Arch_cpu_local_curr_offset]
+	mov rax, [gs:rax]
 	mov [rdi+thread_ctx.gs_base], rax
 	mov ecx, 0xC0000100
 	rdmsr
@@ -330,6 +329,11 @@ Arch_UserYield:
 	call Core_Yield
 
 	leave
+	ret
+
+global Core_GetCurrentThread
+Core_GetCurrentThread:
+	mov rax, [gs:0x8]
 	ret
 
 section .text

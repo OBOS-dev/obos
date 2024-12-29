@@ -269,7 +269,7 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // s_uACPIAllocatorInitialized = true;
     // }
 
-    void* ret = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
+    void* ret = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, size, nullptr);
     // void* ret = OBOS_BasicMMAllocatePages(size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
@@ -291,7 +291,7 @@ void uacpi_kernel_free(void* mem, size_t sz)
     // if (!s_uACPIAllocatorInitialized)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
         // __func__, __LINE__);
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, mem, sz);
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, sz);
     //logger::debug("Freed 0x%p.\n", mem);
 }
 

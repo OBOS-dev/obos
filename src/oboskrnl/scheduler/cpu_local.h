@@ -40,7 +40,7 @@ typedef struct cpu_local
 	spinlock dpc_queue_lock;
 	void* currentKernelStack; // size: 0x10000
 
-	uint64_t last_sched_algorithm_time;
+	struct cpu_local* curr;
 } cpu_local;
 extern cpu_local* Core_CpuInfo;
 extern size_t Core_CpuCount;

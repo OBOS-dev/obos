@@ -42,19 +42,7 @@ static void set_status(obos_status* p, obos_status to)
 	if (p)
 		*p = to;
 }
-struct safe_spinlock
-{
-	spinlock* lock;
-	uint8_t oldIrql;
-};
-static void Lock(struct safe_spinlock* l)
-{
-	l->oldIrql = Core_SpinlockAcquireExplicit(l->lock, IRQL_DISPATCH, false);
-}
-static void Unlock(struct safe_spinlock* l)
-{
-	Core_SpinlockRelease(l->lock, l->oldIrql);
-}
+
 #define makeSafeLock(name, This) struct safe_spinlock name; name.lock = &((This)->lock); Lock(&name);
 static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum blockSource* blockSource)
 {
@@ -166,6 +154,7 @@ if ((node)->next)\
 				(list).nNodes--;\
 } while(0)
 
+#if 1
 irql lock(cache* c)
 {
 	return Core_SpinlockAcquire(&c->lock);
@@ -174,6 +163,17 @@ void unlock(cache* c, irql oldIrql)
 {
 	Core_SpinlockRelease(&c->lock, oldIrql);
 }
+#else
+irql lock(cache* c)
+{
+	// return Core_SpinlockAcquire(&c->lock);
+	return 0;
+}
+void unlock(cache* c, irql oldIrql)
+{
+	// Core_SpinlockRelease(&c->lock, oldIrql);
+}
+#endif
 
 static int allocate_region(basic_allocator* alloc, cache* c, size_t cache_index)
 {

@@ -35,7 +35,7 @@ const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
 	12, // THREAD_PRIORITY_URGENT
 };
 
-__attribute__((no_instrument_function)) thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
+__attribute__((no_instrument_function)) OBOS_WEAK thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
 
 /*
  * The scheduler is the thing that chooses a thread to run.

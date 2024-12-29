@@ -212,13 +212,17 @@ static void init_serial_log_backend()
 	OBOS_AddLogSource(&serial_out_cb);
 }
 
+uintptr_t Arch_cpu_local_curr_offset;
+
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
+	Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
 	bsp_cpu.id = 0;
 	bsp_cpu.isBSP = true;
 	Core_CpuCount = 1;
 	Core_CpuInfo = &bsp_cpu;
+	Core_CpuInfo->curr = Core_CpuInfo;
 
 	extern uint64_t __stack_chk_guard;
 	Core_CpuInfo->arch_specific.stack_check_guard = __stack_chk_guard;

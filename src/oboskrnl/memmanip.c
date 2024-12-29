@@ -85,10 +85,8 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memzero(void* blk, size_t count)
 }
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memcpy(void* blk1_, const void* blk2_, size_t count)
 {
-    char *blk1 = (char*)blk1_;
-    const char *blk2 = (char*)blk2_;
     for (size_t i = 0; i < count; i++)
-        blk1[i] = blk2[i];
+        ((uint8_t*)blk1_)[i] = ((uint8_t*)blk2_)[i];
     return blk1_;
 }
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp(const void* blk1_, const void* blk2_, size_t count)

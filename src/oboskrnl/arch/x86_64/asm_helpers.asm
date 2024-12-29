@@ -193,15 +193,14 @@ xsave:
 	xsave [rdi]
 	ret
 global CoreS_GetCPULocalPtr:function default
+extern Arch_cpu_local_curr_offset
 extern Arch_SMPInitialized
 CoreS_GetCPULocalPtr:
 	push rbp
 	mov rbp, rsp
 
-	mov ecx, 0xC0000101
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
+	mov rax, [Arch_cpu_local_curr_offset]
+	mov rax, [gs:rax]
 
 	cmp byte [Arch_SMPInitialized], 1
 	jne .done

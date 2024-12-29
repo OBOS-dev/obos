@@ -13,17 +13,17 @@
 #include <irq/irql.h>
 
 typedef struct {
-	atomic_flag val;
-	bool locked;
-	bool irqlNThrVariant; // Value of irqlNthrVariant
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) atomic_flag val;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) bool locked;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) bool irqlNThrVariant; // Value of irqlNthrVariant
 #ifdef OBOS_DEBUG
 	// for debugging purposes only
-	struct thread* owner;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) struct thread* owner;
 #else
-	uintptr_t resv1;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) uintptr_t resv1;
 #endif
 	// The last lock time, in nanoseconds.
-	uint64_t lastLockTimeNS;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) uint64_t lastLockTimeNS;
 } spinlock;
 
 OBOS_EXPORT spinlock Core_SpinlockCreate();
