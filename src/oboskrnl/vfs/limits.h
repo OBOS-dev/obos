@@ -20,7 +20,7 @@ typedef uint64_t uoff_t;
 #define UOFF_T_MAX UINT64_MAX
 typedef enum whence_t
 {
-    SEEK_CUR,
     SEEK_SET,
+    SEEK_CUR,
     SEEK_END,
 } whence_t;

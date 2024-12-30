@@ -214,7 +214,6 @@ static void init_serial_log_backend()
 
 uintptr_t Arch_cpu_local_curr_offset;
 
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
 	Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);

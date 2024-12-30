@@ -210,7 +210,7 @@ uoff_t Sys_FdTellOff(const handle desc)
     if (!fd)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-        return status;
+        return (uoff_t)-1;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 

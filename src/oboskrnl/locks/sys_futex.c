@@ -106,6 +106,8 @@ obos_status Sys_FutexWake(uint32_t *futex, uint32_t nWaiters)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     futex_object* obj = find_futex(futex, false);
+    if (!obj)
+        return OBOS_STATUS_INVALID_ARGUMENT;
 
     if (nWaiters == UINT32_MAX)
         CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*obj), true, false); // wake everyone

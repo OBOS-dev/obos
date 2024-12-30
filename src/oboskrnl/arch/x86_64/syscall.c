@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#include "scheduler/schedule.h"
 #include <int.h>
 #include <syscall.h>
 
@@ -29,3 +30,13 @@ void OBOSS_InitializeSyscallInterface()
     wrmsr(IA32_LSTAR, (uintptr_t)Arch_SyscallTrapHandler);
     Arch_cpu_local_currentKernelStack_offset = offsetof(cpu_local, currentKernelStack);
 }
+
+void Sys_SetFSBase(uintptr_t to)
+{
+    wrmsr(0xC0000100, to);
+    Core_GetCurrentThread()->context.fs_base = to;
+}
+
+uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
+    (uintptr_t)Sys_SetFSBase,
+};

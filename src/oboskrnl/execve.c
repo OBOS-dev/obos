@@ -28,9 +28,9 @@
 #include <asan.h>
 
 // vec is terminated with a nullptr entry.
-static char* const* allocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
+static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
 {
-    char* const* kvec = Mm_MapViewOfUserMemory(ctx, (void*)vec, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
+    char** kvec = Mm_MapViewOfUserMemory(ctx, (void*)vec, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
     if (!kvec)
         return nullptr;
     char* const* iter = kvec;
@@ -53,7 +53,7 @@ static char* const* allocate_user_vector_as_kernel(context* ctx, char* const* ve
     return kvec;
 }
 
-static char* const* reallocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t count, obos_status* statusp)
+static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t count, obos_status* statusp)
 {
     OBOS_UNUSED(ctx);
 
@@ -93,11 +93,11 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
     size_t argc = 0;
     size_t envpc = 0;
 
-    char* const* kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
+    char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
     if (obos_is_error(status))
         return status;
 
-    char* const* knvp = allocate_user_vector_as_kernel(ctx, envp, &envpc, &status);
+    char** knvp = allocate_user_vector_as_kernel(ctx, envp, &envpc, &status);
     if (obos_is_error(status))
         return status;
 
@@ -184,9 +184,9 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kbuf, szBuf);
 
     aux.argc = argc;
-    aux.argv = argv;
+    aux.argv = kargv;
 
-    aux.envp = envp;
+    aux.envp = knvp;
     aux.envpc = envpc;
 
     OBOSS_HandControlTo(ctx, &aux);

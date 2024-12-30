@@ -19,6 +19,7 @@ struct vma_alloc_userspace_args
     prot_flags prot;
     vma_flags flags;
     handle file;
+    uintptr_t offset;
 };
 void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_alloc_userspace_args* args, obos_status* status);
 obos_status Sys_VirtualMemoryFree(handle ctx, void* base, size_t size);

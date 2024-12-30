@@ -821,7 +821,8 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     irql oldIrql2 = Core_SpinlockAcquireExplicit(&user_context->lock, IRQL_DISPATCH, true);
     if (!pages_exist(user_context, (void*)ubase, size, respectUserProtection, prot))
     {
-        Core_SpinlockRelease(&user_context->lock, oldIrql);
+        Core_SpinlockRelease(&user_context->lock, oldIrql2);
+        Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
         set_statusp(status, OBOS_STATUS_PAGE_FAULT);
         return nullptr;
     }
@@ -945,7 +946,10 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     void* blk = MmH_FindAvailableAddress(ctx, sz, 0, nullptr);
     if (!blk)
+    {
+        Core_SpinlockRelease(&ctx->lock, oldIrql);
         return nullptr;
+    }
 
     uintptr_t base = (uintptr_t)blk;
 
@@ -963,8 +967,6 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
     rng->pageable = !non_pageable;
 
     RB_INSERT(page_tree, &ctx->pages, rng);
-
-    Core_SpinlockRelease(&ctx->lock, oldIrql);
 
     for (uintptr_t addr = base; addr < (base+sz); addr += OBOS_PAGE_SIZE)
     {
@@ -984,6 +986,8 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
         page_info info = {.prot=rng->prot,.virt=addr,.phys=phys,.range=rng};
         MmS_SetPageMapping(ctx->pt, &info, phys, false);
     }
+
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
 
     return blk;
 }

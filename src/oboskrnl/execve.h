@@ -28,8 +28,8 @@ struct exec_aux_values {
     // NOTE: Make sure to free the next fields after copying them to whereever the process expects them.
     // Guaranteed to be allocated with OBOS_KernelAllocator.
 
-    char* const* argv;
-    char* const* envp;
+    char** argv;
+    char** envp;
     size_t argc;
     size_t envpc;
 };

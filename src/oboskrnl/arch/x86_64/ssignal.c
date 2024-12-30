@@ -101,7 +101,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         frame->ss = 0x10;
         frame->ds = 0x10;
         frame->cr3 = MmS_GetCurrentPageTable();
-        frame->rsp = (uintptr_t)CoreS_GetCPULocalPtr()->arch_specific.ist_stack + 0x20000;
+        frame->rsp = (uintptr_t)Core_GetCurrentThread()->kernelStack + 0x10000;
         return;
     }
     if (sig->flags & SA_SIGINFO)

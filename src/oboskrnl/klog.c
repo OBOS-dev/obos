@@ -119,6 +119,27 @@ OBOS_EXPORT void OBOS_Log(const char* format, ...)
 	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
 }
+OBOS_EXPORT void OBOS_LibCLog(const char* format, ...)
+{
+	if (!s_loggerLockInitialized)
+	{
+		s_loggerLock = Core_SpinlockCreate();
+		s_loggerLockInitialized = true;
+	}
+	if (s_logLevel > LOG_LEVEL_LOG)
+		return;
+	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+
+	OBOS_SetColor(COLOR_GREEN);
+	printf("[ LIBC  ] ");
+	va_list list;
+	va_start(list, format);
+	vprintf(format, list);
+	va_end(list);
+
+	OBOS_ResetColor();
+	Core_SpinlockRelease(&s_loggerLock, oldIrql);
+}
 OBOS_EXPORT void OBOS_Warning(const char* format, ...)
 {
 	va_list list;

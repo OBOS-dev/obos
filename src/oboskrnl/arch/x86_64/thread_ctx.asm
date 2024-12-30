@@ -56,6 +56,9 @@ align 8
 endstruc
 
 extern Core_GetIRQLVar
+
+extern Arch_HasXSAVE
+
 section .text
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
@@ -63,10 +66,20 @@ CoreS_SwitchToThreadContext:
 	mov rbx, [rdi]
 	cmp rbx, 0
 	je .no_xstate
+
+	mov rax, [Arch_HasXSAVE]
+	cmp rax, 0
+	je .no_xsave
+
 	; Restore the extended state.
 	xor rcx,rcx
 	xgetbv
 	xrstor [rbx]
+	jmp .no_xstate
+
+.no_xsave:
+	fxrstor [rbx]
+
 .no_xstate:
 	add rdi, 8
 
@@ -126,13 +139,21 @@ CoreS_SwitchToThreadContext:
 global CoreS_SwitchToThreadContextEnd: data hidden
 CoreS_SwitchToThreadContextEnd:
 section .pageable.text
+extern Arch_FreeXSAVERegion
 CoreS_FreeThreadContext:
 	push rbp
 	mov rbp, rsp
-	; TODO: Implement.
+
+	mov rdi, [rdi+thread_ctx.extended_ctx_ptr]
+	call Arch_FreeXSAVERegion
+
+	xor rax,rax ; OBOS_STATUS_SUCCESS
 
 	leave
 	ret
+
+extern Arch_AllocateXSAVERegion
+
 CoreS_SetupThreadContext:
 	push rbp
 	mov rbp, rsp
@@ -164,6 +185,11 @@ CoreS_SetupThreadContext:
 .userspace:
 	mov qword [rdi+thread_ctx.frame+0xB8], 0x20|3 ; ctx->frame.cs=user (CPL3) data segment
 	mov qword [rdi+thread_ctx.frame+0xD0], 0x18|3 ; ctx->frame.ss=user (CPL3) code segment
+
+	push rdi
+	call Arch_AllocateXSAVERegion
+	mov qword [rdi+thread_ctx.extended_ctx_ptr], rax
+	pop rdi
 
 .kmode:
 
@@ -199,6 +225,7 @@ CoreS_CallFunctionOnStack:
 	pop rsi
 	pop rdi
 	lea rsp, [rax+0x20000]
+
 	xchg rdi, rsi
 	call rsi
 
@@ -245,7 +272,17 @@ CoreS_SaveRegisterContextAndYield:
 	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
 	jz .call_scheduler
 	mov rax, [rdi+thread_ctx.extended_ctx_ptr]
+
+	mov rbx, [Arch_HasXSAVE]
+	cmp rbx, 0
+	je .no_xsave
+
+	xor rcx,rcx
+	xgetbv
 	xsave [rax]
+
+.no_xsave:
+	fxsave [rax]
 
 .call_scheduler:
 	popfq ; see the rflags saving code at the beginning of the function

@@ -24,6 +24,7 @@
 #include <arch/x86_64/hpet_table.h>
 #include <arch/x86_64/mtrr.h>
 #include <arch/x86_64/ioapic.h>
+#include <arch/x86_64/sse.h>
 #include <arch/x86_64/boot_info.h>
 
 #include <UltraProtocol/ultra_protocol.h>
@@ -285,6 +286,7 @@ static void __attribute__((no_stack_protector)) on_wake(cpu_local* info)
     irql oldIrql = Core_RaiseIrqlNoThread(0xf);
     OBOS_UNUSED(oldIrql);
     Arch_InitializeMiscFeatures();
+    Arch_EnableSIMDFeatures();
     Arch_RestoreMTRRs();
     // UC UC- WT WB UC WC WT WB
     wrmsr(0x277, 0x0001040600070406);

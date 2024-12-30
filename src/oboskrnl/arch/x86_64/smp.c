@@ -15,12 +15,15 @@
 
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/interrupt_frame.h>
-
 #include <arch/x86_64/asm_helpers.h>
-
 #include <arch/x86_64/sdt.h>
 #include <arch/x86_64/madt.h>
 #include <arch/x86_64/mtrr.h>
+#include <arch/x86_64/sse.h>
+#include <arch/x86_64/idt.h>
+#include <arch/x86_64/boot_info.h>
+#include <arch/x86_64/pmm.h>
+#include <arch/x86_64/gdbstub/debug.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
@@ -29,17 +32,9 @@
 
 #include <mm/bare_map.h>
 
-#include <arch/x86_64/idt.h>
-
-#include <arch/x86_64/boot_info.h>
-
-#include <arch/x86_64/pmm.h>
-
 #include <allocators/base.h>
 
 #include <scheduler/process.h>
-
-#include <arch/x86_64/gdbstub/debug.h>
 
 #include <irq/irq.h>
 #include <irq/irql.h>
@@ -164,6 +159,7 @@ void __attribute__((no_stack_protector)) Arch_APEntry(cpu_local* info)
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);
 	Arch_InitializeMiscFeatures();
+	Arch_EnableSIMDFeatures();
 	// UC UC- WT WB UC WC WT WB
 	wrmsr(0x277, 0x0001040600070406);
 	Arch_RestoreMTRRs();
@@ -223,6 +219,8 @@ void Arch_SMPStartup()
 			wbinvd();
 			wrmsr(0xC0000080 /* IA32_EFER */, rdmsr(0xC0000080)|BIT(0));
 			OBOSS_InitializeSyscallInterface();
+			Arch_InitializeMiscFeatures();
+			Arch_EnableSIMDFeatures();
 			continue;
 		}
 		memcpy((void*)0x1000, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);

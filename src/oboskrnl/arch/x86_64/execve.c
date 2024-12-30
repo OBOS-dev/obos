@@ -21,7 +21,8 @@
 
 typedef struct
 {
-    int a_type;
+    OBOS_ALIGNAS(0x8) int a_type;
+    OBOS_ALIGNAS(0x8)
     union {
         long a_val;
         void *a_ptr;
@@ -55,7 +56,7 @@ enum {
     AT_EXECFN = 31,
 };
 
-static void write_vector_to_stack(char* const* vec, char** stck_buf, size_t cnt)
+static void allocate_string_vector_on_stack(char** vec, size_t cnt)
 {
     for (size_t i = 0; i < cnt; i++)
     {
@@ -64,8 +65,16 @@ static void write_vector_to_stack(char* const* vec, char** stck_buf, size_t cnt)
         if (!str)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "obos shat itself: your stack is not big enough to hold all these arguments");
         memcpy_k_to_usr(str, vec[i], str_len);
-        stck_buf[i] = str;
+        // stck_buf[i] = str;
+        vec[i] = str;
     }
+}
+
+static void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
+{
+    for (size_t i = 0; i < cnt; i++)
+        stck_buf[i] = vec[i];
+    stck_buf[cnt] = 0;
 }
 
 OBOS_NORETURN void Arch_GotoUser(uintptr_t rip, uintptr_t cr3, uintptr_t rsp);
@@ -83,11 +92,13 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     Core_GetCurrentThread()->context.frame.rsp = (uintptr_t)Core_GetCurrentThread()->context.stackBase + Core_GetCurrentThread()->context.stackSize;
     // 1+argc+char*[argc]+NULL+char*[envpc]+NULL+4(aux)+1
     // 1+1+argc+1+envpc+1+8+1=9+envpc+argc
-    size_t szAllocation = (13+aux->envpc+aux->argc)*sizeof(uint64_t);
+    size_t szAllocation = (11+aux->envpc+aux->argc)*sizeof(uint64_t);
+    allocate_string_vector_on_stack(aux->argv, aux->argc);
+    allocate_string_vector_on_stack(aux->envp, aux->envpc);
+    Core_GetCurrentThread()->context.frame.rsp &= ~0xf;
     void* uinit_vals = CoreS_ThreadAlloca(&Core_GetCurrentThread()->context, szAllocation, nullptr);
     uint64_t* init_vals = Mm_MapViewOfUserMemory(ctx, uinit_vals, nullptr, szAllocation, 0, false, nullptr);
     init_vals[0] = aux->argc;
-    init_vals[1+aux->argc+1] = 0;
 
     auxv_t* auxv = (auxv_t*)&init_vals[1+aux->argc+1+aux->envpc+1];
 
@@ -107,7 +118,6 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
     write_vector_to_stack(aux->argv, (char**)(init_vals+1), aux->argc);
     write_vector_to_stack(aux->envp, (char**)(init_vals+1+aux->argc+1), aux->envpc);
-    init_vals[1+aux->argc+2+aux->envpc+1] = 0;
 
     // Core_GetCurrentThread()->context.frame.cr3 = ctx->pt;
     // Core_GetCurrentThread()->context.frame.cs = 0x20|3;

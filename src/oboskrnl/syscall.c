@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <syscall.h>
+#include <memmanip.h>
 #include <handle.h>
 #include <partition.h>
 #include <signal.h>
@@ -27,8 +28,6 @@
 
 #include <vfs/fd_sys.h>
 
-#include <asan.h>
-
 // TODO: Check permissions?
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
@@ -44,10 +43,27 @@ obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 
     return OBOS_PartProbeDrive(dent->un.dirent, check_checksum);
 }
+
 obos_status Sys_InvalidSyscall()
 {
     return OBOS_STATUS_NO_SYSCALL;
 }
+
+void Sys_LibCLog(const char* ustr)
+{
+    size_t str_len = 0;
+    obos_status status = OBOSH_ReadUserString(ustr, nullptr, &str_len);
+    if (obos_is_error(status))
+    {
+        OBOS_Error("libc wanted to log, but we got status %d trying to read the message.\n", status);
+        return;
+    }
+    char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
+    OBOSH_ReadUserString(ustr, buf, &str_len);
+    OBOS_LibCLog("%s\n", buf);
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, str_len+1);
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -106,8 +122,20 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_OpenDir,
     (uintptr_t)Sys_ReadEntries, // 55
     (uintptr_t)Sys_ExecVE, // 56
+    (uintptr_t)Sys_LibCLog, // 57
 };
 // Arch syscall table is defined per-arch
+
+#undef OBOS_CROSSES_PAGE_BOUNDARY
+
+bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
+{
+    uintptr_t ptr = (uintptr_t)ptr_;
+    uintptr_t limit = ptr+sz;
+    limit -= (limit % OBOS_PAGE_SIZE);
+    ptr -= (ptr % OBOS_PAGE_SIZE);
+    return ptr != limit;
+}
 
 obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
 {

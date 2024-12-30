@@ -9,7 +9,7 @@ cp out/uart tar
 rm tar/ahci
 cp out/slowfat tar
 cp out/bochs_vbe tar
-cp out/init tar
+#cp out/init tar
 if [[ ! -d tar/dev ]]
 then
     mkdir tar/dev

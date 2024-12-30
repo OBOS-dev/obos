@@ -64,6 +64,12 @@ OBOS_EXPORT void OBOS_Debug(const char* format, ...);
 /// <param name="...">Any variadic arguments.</param>
 OBOS_EXPORT void OBOS_Log(const char* format, ...);
 /// <summary>
+/// Prints a log from the libc.
+/// </summary>
+/// <param name="format">The printf-style format string.</param>
+/// <param name="...">Any variadic arguments.</param>
+OBOS_EXPORT void OBOS_LibCLog(const char* format, ...);
+/// <summary>
 /// Prints a warning.
 /// </summary>
 /// <param name="format">The printf-style format string.</param>

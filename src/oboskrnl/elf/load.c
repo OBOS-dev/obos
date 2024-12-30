@@ -69,9 +69,8 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
 
     switch (ehdr->e_type) {
         case ET_DYN:
-            load_dynld = !noLdr;
-            break;
         case ET_EXEC:
+            load_dynld = !noLdr;
             break;
         default:
             return OBOS_STATUS_INVALID_FILE;
@@ -81,6 +80,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
     (void)0; // thanks clang
     uintptr_t limit = 0;
     uintptr_t base = 0;
+    bool first_load = true;
     const Elf_Phdr* phdrs = (Elf_Phdr*)((const char*)file+ehdr->e_phoff);
     for (size_t i = 0; i < ehdr->e_phnum; i++)
     {
@@ -92,8 +92,9 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             return OBOS_STATUS_INVALID_FILE;
         if ((phdrs[i].p_vaddr+ phdrs[i].p_memsz) > limit)
             limit = phdrs[i].p_vaddr + phdrs[i].p_memsz;
-        if (phdrs[i].p_vaddr <= base || !base)
+        if (phdrs[i].p_vaddr <= base || first_load)
             base = phdrs[i].p_vaddr;
+        first_load = false;
     }
 
     if (dryRun)
@@ -198,6 +199,12 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         uintptr_t real_limit = phdrs[i].p_vaddr+phdrs[i].p_memsz;
         if (real_limit % OBOS_PAGE_SIZE)
             real_limit += (OBOS_PAGE_SIZE-(real_limit%OBOS_PAGE_SIZE));
+        if (require_addend)
+        {
+            real_base += base;
+            real_limit += base;
+        }
+        __builtin_printf("%p %p %p %d\n", (void*)real_base, (void*)real_limit, (void*)base, require_addend);
         kbase = Mm_MapViewOfUserMemory(ctx,
                                        (void*)real_base,
                                        nullptr,
