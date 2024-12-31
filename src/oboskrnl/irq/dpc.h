@@ -28,4 +28,4 @@ typedef struct dpc
 
 OBOS_EXPORT dpc* CoreH_AllocateDPC(obos_status* status);
 OBOS_EXPORT obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* userdata), thread_affinity affinity);
-OBOS_EXPORT obos_status CoreH_FreeDPC(dpc* dpc);
+OBOS_EXPORT obos_status CoreH_FreeDPC(dpc* dpc, bool dealloc);

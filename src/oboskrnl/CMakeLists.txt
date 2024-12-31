@@ -69,9 +69,7 @@ target_link_options(oboskrnl
 )
 
 target_compile_definitions(oboskrnl
-	PRIVATE FIXEDPT_BITS=${OBOS_ARCHITECTURE_BITS}
 	PRIVATE OBOS_KERNEL=1
-	PRIVATE "FIXEDPT_WBITS=(${OBOS_ARCHITECTURE_BITS}-8)"
 )
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

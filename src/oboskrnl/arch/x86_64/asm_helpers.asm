@@ -222,5 +222,13 @@ sti:
 hlt:
 	hlt
 	ret
+global rdtsc
+rdtsc:
+	xor eax,eax
+	xor edx,edx
+	rdtsc
+	shl edx, 32
+	or rax, rdx
+	ret
 MmS_GetCurrentPageTable:
 	jmp getCR3

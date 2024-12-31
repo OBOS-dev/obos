@@ -31,14 +31,14 @@ extern OBOS_EXPORT process* OBOS_KernelProcess;
 /// </summary>
 /// <param name="status">[out,opt] The status of the function.</param>
 /// <returns>The object.</returns>
-process* Core_ProcessAllocate(obos_status* status);
+OBOS_EXPORT process* Core_ProcessAllocate(obos_status* status);
 /// <summary>
 /// Starts a process. Readies the mainThread passed.
 /// </summary>
 /// <param name="proc">A pointer to the process object.</param>
 /// <param name="mainThread">The main thread of the process. Must be initialized, but not readied.</param>
 /// <returns>The status of the function.</returns>
-obos_status Core_ProcessStart(process* proc, thread* mainThread);
+OBOS_EXPORT obos_status Core_ProcessStart(process* proc, thread* mainThread);
 /// <summary>
 /// Appends a thread to a process. Does not ready the thread passed to it.
 /// </summary>

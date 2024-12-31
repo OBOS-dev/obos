@@ -2,7 +2,7 @@
 # 
 # Copyright (c) 2024 Omar Berrow
 
-add_executable(test_driver "main.c")
+add_executable(test_driver "main.c" "fireworks.c" "rand.c")
 
 target_compile_options(test_driver
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
@@ -21,13 +21,12 @@ target_include_directories(test_driver
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
-target_link_options(test_driver
+	target_link_options(test_driver
 	PRIVATE "-nostdlib"
 	PRIVATE "-fPIC"
 	PRIVATE "-Wl,--unresolved-symbols=ignore-all"
 #	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"
-	PRIVATE "-Wl,-T${DRIVER_LINKER_SCRIPT}"
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
 target_link_libraries(test_driver

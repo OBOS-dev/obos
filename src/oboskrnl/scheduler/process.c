@@ -70,6 +70,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 		return status;
 	node->free = free_node;
 	node->data = thread;
+	thread->pnode = node;
 	CoreH_ThreadListAppend(&proc->threads, node);
 	thread->proc = proc;
 	thread->pnode = node;

@@ -125,6 +125,15 @@ void OBOS_AddLogSource(const log_backend *backend);
 void OBOS_SetColor(color c);
 void OBOS_ResetColor();
 
+typedef struct stack_frame *stack_frame;
+
+// if nullptr, use caller's stack frame.
+// Returns nullptr if curr is the last frame.
+OBOS_WEAK stack_frame OBOSS_StackFrameNext(stack_frame curr);
+// if nullptr, use caller's stack frame.
+// Returns zero if curr is the last frame.
+OBOS_WEAK uintptr_t OBOSS_StackFrameGetPC(stack_frame curr);
+
 // printf-Style functions.
 OBOS_EXPORT size_t printf(const char* format, ...);
 OBOS_EXPORT size_t vprintf(const char* format, va_list list);

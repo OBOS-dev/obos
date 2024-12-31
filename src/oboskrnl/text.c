@@ -43,7 +43,7 @@ __attribute__((no_instrument_function)) void OBOS_PlotPixel(uint32_t colour, uin
 static OBOS_NO_UBSAN __attribute__((no_instrument_function)) void putch(text_renderer_state* state, char ch, uint32_t x, uint32_t y, uint32_t fc, uint32_t bc)
 {
 	int cy;
-	int mask[8] = { 128,64,32,16,8,4,2,1 };
+	static const int mask[8] = { 128,64,32,16,8,4,2,1 };
 	const uint8_t* glyph = (uint8_t*)state->font + (int)ch * 16;
 	y = y * 16 + 12;
 	x <<= 3;
@@ -67,7 +67,7 @@ static OBOS_NO_UBSAN __attribute__((no_instrument_function)) void putch(text_ren
 		OBOS_PlotPixel((glyph[cy] & mask[7]) ? fc : bc, framebuffer + ((x + 7) * bytesPerPixel), state->fb.format);
 	}
 }
-static void flush_buffers(text_renderer_state* state)
+void OBOS_FlushBuffers(text_renderer_state* state)
 {
 	if (!state->fb.backbuffer_base)
 		return;
@@ -114,7 +114,7 @@ static void newlineHandler(text_renderer_state* state)
 			state->fb.modified_line_bitmap[get_line_bitmap_size(state->fb.height)-1] &= ~BIT(31);
 		}
 	}
-	flush_buffers(state);
+	OBOS_FlushBuffers(state);
 }
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {

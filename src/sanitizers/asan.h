@@ -31,5 +31,8 @@ enum
 	ASAN_POISON_ANON_PAGE_UNINITED,
 	ASAN_POISON_MAX = ASAN_POISON_ANON_PAGE_UNINITED,
 };
+
 void OBOS_ASANReport(uintptr_t ip, uintptr_t addr, size_t sz, asan_violation_type type, bool rw);
 extern const uint8_t OBOS_ASANPoisonValues[ASAN_POISON_MAX + 1];
+// Note: Still exists without KASAN.
+bool KASAN_IsAllocated(uintptr_t base, size_t size, bool rw);

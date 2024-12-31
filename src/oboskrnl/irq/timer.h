@@ -11,6 +11,7 @@
 
 #include <irq/irql.h>
 #include <irq/irq.h>
+#include <irq/dpc.h>
 
 typedef uint64_t timer_tick;
 typedef uint64_t timer_frequency;
@@ -40,6 +41,8 @@ typedef struct timer {
     timer_mode mode;
     timer_handler handler;
     void* userdata;
+    dpc handler_dpc;
+    uintptr_t dpc_udata;
     struct timer* next;
     struct timer* prev;
 } timer;
@@ -83,15 +86,18 @@ OBOS_EXPORT obos_status Core_CancelTimer(timer* obj);
 /// <returns>The current timer tick.</returns>
 OBOS_EXPORT timer_tick CoreS_GetTimerTick();
 /// <summary>
-/// Gets the current native tick.
+/// Gets the current native timer tick.</para>
+/// For example, on x86-64, this would simply return Arch_HPETAddress->mainCounterValue.</para>
+/// This is allowed to return CoreS_GetTimerTick();
 /// </summary>
 /// <returns>The current native timer tick.</returns>
 OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick();
 /// <summary>
-/// Gets the native timer's frequency.
+/// Gets the current native timer tick.</para>
+/// This is allowed to return CoreS_TimerFrequency
 /// </summary>
-/// <returns>The native timer's frequency..</returns>
-OBOS_EXPORT uint64_t CoreS_GetNativeTimerFrequency();
+/// <returns>The current native timer frequency.</returns>
+OBOS_EXPORT timer_tick CoreS_GetNativeTimerFrequency();
 /// <summary>
 /// Converts a time frame in us to timer ticks.
 /// </summary>

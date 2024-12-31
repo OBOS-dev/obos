@@ -13,6 +13,7 @@
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
 #include <scheduler/thread.h>
+#include <scheduler/process.h>
 
 #include <allocators/base.h>
 
@@ -259,6 +260,9 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 
 void CoreH_VMAStackFree(void* base, size_t sz, void* userdata)
 {
+	OBOS_UNUSED(base);
+	OBOS_UNUSED(sz);
+	OBOS_UNUSED(userdata);
 	Mm_VirtualMemoryFree((context*)userdata, base, sz);
 }
 void CoreH_BasicMMStackFree(void* base, size_t sz, void* userdata)

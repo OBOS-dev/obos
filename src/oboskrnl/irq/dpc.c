@@ -51,7 +51,7 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     Core_SpinlockRelease(&target->dpc_queue_lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_FreeDPC(dpc* dpc)
+obos_status CoreH_FreeDPC(dpc* dpc, bool dealloc)
 {
     if (!dpc)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -64,5 +64,5 @@ obos_status CoreH_FreeDPC(dpc* dpc)
         Core_SpinlockRelease(&dpc->cpu->dpc_queue_lock, oldIrql);
         dpc->cpu = nullptr;
     }
-    return OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, dpc, sizeof(*dpc));
+    return dealloc ? OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, dpc, sizeof(*dpc)) : OBOS_STATUS_SUCCESS;
 }

@@ -119,13 +119,13 @@ static OBOS_NO_KASAN void asan_shadow_space_access(uintptr_t at, size_t size, ui
 	bool isPoisoned = false;
 	bool shortCircuitedFirst = false, shortCircuitedSecond = false;
 	if (OBOS_CROSSES_PAGE_BOUNDARY(at - 16, 16))
-		if ((shortCircuitedFirst = !isAllocated(at - 16, 16, false)))
+		if ((shortCircuitedFirst = !KASAN_IsAllocated(at - 16, 16, false)))
 			goto short_circuit1;
 	isPoisoned = memcmp_b((void*)(at - 16), OBOS_ASANPoisonValues[poisonIndex], 16);
 	short_circuit1:
 	if (!isPoisoned)
 		if (OBOS_CROSSES_PAGE_BOUNDARY(at + size, 16))
-			if ((shortCircuitedSecond = !isAllocated(at + size, 16, false)))
+			if ((shortCircuitedSecond = !KASAN_IsAllocated(at + size, 16, false)))
 				goto short_circuit2;
 	isPoisoned = memcmp_b((void*)(at + size), OBOS_ASANPoisonValues[poisonIndex], 16);
 short_circuit2:
@@ -151,7 +151,7 @@ short_circuit2:
 }
 OBOS_NO_KASAN static void asan_verify(uintptr_t at, size_t size, uintptr_t ip, bool rw, bool abort)
 {
-	/*if (!isAllocated(at, size, rw))
+	/*if (!KASAN_IsAllocated(at, size, rw))
 		asan_report(at, size, ip, rw, InvalidAccess, abort);*/
 #ifdef __x86_64__
 	// Make sure the pointer is valid.

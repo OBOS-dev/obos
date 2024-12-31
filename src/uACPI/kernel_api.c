@@ -586,7 +586,7 @@ static void work_handler(dpc* dpc, void* userdata)
         s_workHead = work->next;
     s_nWork--;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
-    CoreH_FreeDPC(dpc);
+    CoreH_FreeDPC(dpc, true);
 }
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
 {

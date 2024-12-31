@@ -43,5 +43,6 @@ extern OBOS_EXPORT text_renderer_state OBOS_TextRendererState;
 // Plots a pixel at fb. fbFmt is of OBOS_FB_FORMAT_*
 // Colour is RGBX
 void OBOS_PlotPixel(uint32_t colour, uint8_t* fb, uint16_t fbFmt);
+void OBOS_FlushBuffers(text_renderer_state* state);
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch);
 obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row);

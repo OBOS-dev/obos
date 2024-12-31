@@ -25,6 +25,8 @@
 #include <arch/x86_64/pmm.h>
 #include <arch/x86_64/gdbstub/debug.h>
 
+#include <locks/spinlock.h>
+
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
@@ -314,10 +316,12 @@ OBOS_NO_KASAN static void HaltInitializedCPUs()
 		Arch_LAPICSendIPI(lapic, vector);
 	}
 }
+static spinlock halt_cpu_lock;
 OBOS_NO_KASAN void OBOSS_HaltCPUs()
 {
 	if (Core_CpuCount == 1)
 		return;
+	Core_SpinlockAcquire(&halt_cpu_lock);
 	if (!Arch_SMPInitialized)
 	{
 		HaltInitializedCPUs();

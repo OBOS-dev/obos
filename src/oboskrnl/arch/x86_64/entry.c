@@ -106,6 +106,8 @@
 
 #include <elf/load.h>
 
+#include <asan.h>
+
 extern void Arch_InitBootGDT();
 
 static char thr_stack[0x4000];
@@ -131,8 +133,34 @@ void Arch_InstallExceptionHandlers();
 struct stack_frame
 {
 	struct stack_frame* down;
-	void* rip;
-} volatile blahblahblah____;
+	uintptr_t rip;
+};
+
+stack_frame OBOSS_StackFrameNext(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+		return curr;
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->down, sizeof(*curr), false))
+		return nullptr;
+	return curr->down;
+}
+uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->rip, sizeof(*curr), false))
+		return 0;
+	return curr->rip;
+}
 
 static void e9_out(const char *str, size_t sz, void* userdata)
 {
@@ -435,7 +463,6 @@ __asm__(
 allocator_info* OBOS_KernelAllocator;
 static basic_allocator kalloc;
 void Arch_SMPStartup();
-
 extern bool Arch_MakeIdleTaskSleep;
 static void test_allocator(allocator_info* alloc)
 {
@@ -497,9 +524,8 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Setting up uACPI early table access\n", __func__);
 	OBOS_SetupEarlyTableAccess();
 	OBOS_Debug("%s: Initializing kernel process.\n", __func__);
-	OBOS_KernelProcess = Core_ProcessAllocate(&status);
-	if (obos_is_error(status))
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
+	static process proc = {};
+	OBOS_KernelProcess = &proc;
 	OBOS_KernelProcess->pid = Core_NextPID++;
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &bsp_idleThread);
@@ -630,11 +656,9 @@ void Arch_KernelMainBootstrap()
 			case STT_FILE:
 				symbolType = SYMBOL_TYPE_FILE;
 				break;
-			case STT_OBJECT:
+			default:
 				symbolType = SYMBOL_TYPE_VARIABLE;
 				break;
-			default:
-				continue;
 		}
 		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = strtable + esymbol->st_name;
@@ -842,6 +866,7 @@ void Arch_KernelMainBootstrap()
 	// 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
+<<<<<<< HEAD
 
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
@@ -866,14 +891,6 @@ void Arch_KernelMainBootstrap()
 
 	OBOS_LoadInit();
 
-	/*driver_id* test_driver = nullptr;
-	driver_symbol* TestDriver_Fireworks_sym = DrvH_ResolveSymbol("TestDriver_Fireworks", &test_driver);
-	if (TestDriver_Fireworks_sym)
-	{
-		void(*TestDriver_Fireworks)(uint32_t max_iterations, int spawn_min, int spawn_max, bool stress_test) = (void*)TestDriver_Fireworks_sym->address;
-		OBOS_Log("Running Test Driver fireworks test!\n");
-		TestDriver_Fireworks(UINT32_MAX, 1, 4, false);
-	}*/
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400,
