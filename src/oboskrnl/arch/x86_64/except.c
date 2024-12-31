@@ -153,14 +153,14 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASA
 
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASAN void Arch_SegvHandler(interrupt_frame* frame)
 {
-    if (frame->cs & 3)
-    {
-        OBOS_Log("User thread %d SIGSEGV\n", Core_GetCurrentThread()->tid);
-        OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
-        // OBOS_SyncPendingSignal(frame);
-        OBOS_RunSignal(SIGSEGV, frame); // Ensure SIGSEGV runs.
-        return;
-    }
+    // if (frame->cs & 3)
+    // {
+    //     OBOS_Log("User thread %d SIGSEGV\n", Core_GetCurrentThread()->tid);
+    //     OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
+    //     // OBOS_SyncPendingSignal(frame);
+    //     OBOS_RunSignal(SIGSEGV, frame); // Ensure SIGSEGV runs.
+    //     return;
+    // }
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
         "Kernel segmentation fault! Exception code: %d. Error code: 0x%08x\n"
         "Register dump:\n"

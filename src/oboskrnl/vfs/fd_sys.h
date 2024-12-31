@@ -35,3 +35,6 @@ obos_status      Sys_FdFlush(handle desc);
 
 handle Sys_OpenDir(const char* path, obos_status *status);
 obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);
+
+// Opens stdin, stdout, and stderr.
+void OBOS_OpenStandardFDs();

@@ -9,6 +9,7 @@
 #include <handle.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/schedule.h>
 #include <scheduler/process.h>
 
 #include <allocators/base.h>
@@ -41,6 +42,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 		if (!mainThread->affinity || mainThread->masterCPU || mainThread->proc)
 			return OBOS_STATUS_INVALID_ARGUMENT;
 	proc->pid = Core_NextPID++;
+	proc->parent = Core_GetCurrentThread()->proc;
 	OBOS_InitializeHandleTable(&proc->handles);
 	if (!mainThread)
 		return OBOS_STATUS_SUCCESS;

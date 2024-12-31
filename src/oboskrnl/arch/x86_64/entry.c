@@ -843,6 +843,27 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 
+	fd com1 = {};
+	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
+
+	struct {
+		OBOS_ALIGNAS(8) uint8_t id;
+		OBOS_ALIGNAS(8) uint32_t baudRate;
+		OBOS_ALIGNAS(8) uint32_t dataBits;
+		OBOS_ALIGNAS(8) uint32_t stopBits;
+		OBOS_ALIGNAS(8) uint32_t parityBit;
+		OBOS_ALIGNAS(8) dev_desc* connection;
+	} open_serial_connection_argp = {
+		.id=1,
+		.baudRate=9600,
+		.dataBits=3,
+		.stopBits=0,
+		.parityBit=0,
+		.connection=&com1.vn->desc,
+	};
+
+	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
+
 	OBOS_LoadInit();
 
 	/*driver_id* test_driver = nullptr;

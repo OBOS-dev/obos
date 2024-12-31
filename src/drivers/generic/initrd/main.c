@@ -15,9 +15,6 @@
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
 
-#include <stdint.h>
-#include <utils/hashmap.h>
-
 #include <uacpi_libc.h>
 
 #include "name.h"
@@ -52,13 +49,9 @@ OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* 
     OBOS_UNUSED(argp);
     return OBOS_STATUS_INVALID_IOCTL;
 }
-struct hashmap* names;
+
 void driver_cleanup_callback()
-{
-    FreeCache();
-    if (names)
-        hashmap_free(names);
-}
+{}
 
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
@@ -154,45 +147,17 @@ OBOS_PAGEABLE_FUNCTION obos_status read_sync(dev_desc desc, void* buf, size_t bl
     memcpy(buf, iter, nToRead);
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION static uint64_t hash(const void *item, uint64_t seed0, uint64_t seed1)
-{
-    const char* pck = item;
-    return hashmap_sip(pck, uacpi_strnlen(pck, 100), seed0, seed1);
-}
-OBOS_PAGEABLE_FUNCTION static int cmp(const void *a, const void *b, void *udata)
-{
-    OBOS_UNUSED(udata);
-    const char* pck1 = a;
-    const char* pck2 = b;
-    return uacpi_strncmp(pck1, pck2, 100);
-}
+
 OBOS_PAGEABLE_FUNCTION obos_status query_path(dev_desc desc, const char** path)
 {
     const ustar_hdr* hdr = (ustar_hdr*)desc;
     if (!hdr || !path)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    const char* filepath = nullptr;
+    const char* filepath = (const char*)&hdr->filename;
     if(uacpi_strnlen(hdr->filename, 100) == 100)
     {
-        // Shit.
-        if (!names)
-        {
-            names = hashmap_new_with_allocator(
-                malloc, realloc, free,
-                sizeof(char*), 
-                64, 0, 0, 
-                hash, cmp, 
-                free,
-                nullptr);
-        }
-        filepath = malloc(101);
+        filepath = memcpy(malloc(101), &hdr->filename, 100);
         ((char*)filepath)[100] = 0;
-        memcpy(((char*)filepath), hdr->filename, 100);
-        hashmap_set(names, filepath);
-    }
-    else 
-    {
-        filepath = (const char*)&hdr->filename;    
     }
     *path = filepath;
     return OBOS_STATUS_SUCCESS;

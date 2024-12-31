@@ -40,3 +40,20 @@ void Sys_SetFSBase(uintptr_t to)
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SetFSBase,
 };
+
+void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
+{
+    OBOS_UNUSED(rdi);
+    OBOS_UNUSED(rsi);
+    OBOS_UNUSED(rdx);
+    OBOS_UNUSED(r8);
+    OBOS_UNUSED(r9);
+    OBOS_UNUSED(eax);
+    // OBOS_Log("syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", eax, rdi,rsi,rdx,r8,r9);
+}
+void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
+{
+    OBOS_UNUSED(ret);
+    OBOS_UNUSED(eax);
+    // OBOS_Log("syscall %d returned 0x%016x\n", eax, ret);
+}

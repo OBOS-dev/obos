@@ -49,7 +49,7 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
     status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
-    path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path, sizeof(char), nullptr);
+    path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     status = Vfs_FdOpen(fd->un.fd, path, oflags);
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
@@ -285,10 +285,18 @@ obos_status Sys_FdFlush(handle desc)
 }
 
 
-handle Sys_OpenDir(const char* path, obos_status *statusp)
+handle Sys_OpenDir(const char* upath, obos_status *statusp)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
     dirent* dent = VfsH_DirentLookup(path);
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
     if (!dent)
     {
         status = OBOS_STATUS_NOT_FOUND;
@@ -335,4 +343,20 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
         memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
 
     return status;
+}
+
+void OBOS_OpenStandardFDs()
+{
+    handle hnd_stdin = Sys_FdAlloc();
+    handle hnd_stdout = Sys_FdAlloc();
+    handle hnd_stderr = Sys_FdAlloc();
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* stdin = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stdin, HANDLE_TYPE_FD, false, &status);
+    handle_desc* stdout = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stdout, HANDLE_TYPE_FD, false, &status);
+    handle_desc* stderr = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stderr, HANDLE_TYPE_FD, false, &status);
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    Vfs_FdOpen(stdin->un.fd, "/dev/COM1", FD_OFLAGS_READ);
+    Vfs_FdOpen(stdout->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
+    Vfs_FdOpen(stderr->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
 }

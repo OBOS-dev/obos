@@ -14,7 +14,6 @@
 // USTAR is strictly read only (on OBOS).
 
 const ustar_hdr* GetFile(const char* path, obos_status* status);
-void FreeCache();
 inline static uint64_t oct2bin(const char* str, size_t size)
 {
 	uint64_t n = 0;

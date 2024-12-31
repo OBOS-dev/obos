@@ -410,6 +410,24 @@ obos_status Sys_ProcessKill(handle process, bool force)
     return Core_ProcessTerminate(proc, force);
 }
 
+uint64_t Sys_ProcessGetPID(handle process)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    return proc->pid;
+}
+
+uint64_t Sys_ProcessGetPPID(handle process)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    return proc->parent->pid;
+}
+
 void OBOS_ThreadHandleFree(handle_desc *hnd)
 {
     thread* thr = hnd->un.thread;

@@ -61,8 +61,6 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     OBOS_ASSERT(vnode);
     if (vnode->vtype == VNODE_TYPE_DIR)
         return OBOS_STATUS_NOT_A_FILE;
-    if (vnode->vtype == VNODE_TYPE_CHR)
-        oflags |= FD_FLAGS_UNCACHED;
     desc->vn = vnode;
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;
@@ -102,6 +100,8 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_UNCACHED;
     if (oflags & FD_OFLAGS_NOEXEC)
         desc->flags |= FD_FLAGS_NOEXEC;
+    if (vnode->vtype == VNODE_TYPE_CHR)
+        desc->flags |= FD_FLAGS_UNCACHED;
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
     desc->flags |= FD_FLAGS_OPEN;
@@ -207,7 +207,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset))
+    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype != VNODE_TYPE_CHR)
         nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
@@ -315,7 +315,7 @@ obos_status Vfs_FdIoctl(fd* desc, uint64_t request, void* argp)
         return OBOS_STATUS_UNINITIALIZED;
     if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
         return OBOS_STATUS_INVALID_IOCTL;
-    return desc->vn->un.device->driver->header.ftable.ioctl(desc->vn->desc, request, argp);
+    return desc->vn->un.device->driver->header.ftable.ioctl(desc->vn->un.device->desc, request, argp);
 }
 obos_status Vfs_FdFlush(fd* desc)
 {

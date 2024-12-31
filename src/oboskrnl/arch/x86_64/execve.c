@@ -19,6 +19,8 @@
 
 #include <irq/irql.h>
 
+#include <vfs/fd_sys.h>
+
 typedef struct
 {
     OBOS_ALIGNAS(0x8) int a_type;
@@ -73,7 +75,10 @@ static void allocate_string_vector_on_stack(char** vec, size_t cnt)
 static void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
 {
     for (size_t i = 0; i < cnt; i++)
+    {
+        printf("%p\n", vec[i]);
         stck_buf[i] = vec[i];
+    }
     stck_buf[cnt] = 0;
 }
 
@@ -96,6 +101,9 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     allocate_string_vector_on_stack(aux->argv, aux->argc);
     allocate_string_vector_on_stack(aux->envp, aux->envpc);
     Core_GetCurrentThread()->context.frame.rsp &= ~0xf;
+    if (!(aux->argc % 2))
+        Core_GetCurrentThread()->context.frame.rsp -= 8;
+
     void* uinit_vals = CoreS_ThreadAlloca(&Core_GetCurrentThread()->context, szAllocation, nullptr);
     uint64_t* init_vals = Mm_MapViewOfUserMemory(ctx, uinit_vals, nullptr, szAllocation, 0, false, nullptr);
     init_vals[0] = aux->argc;
@@ -130,6 +138,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
     // TODO: Reset extended context info.
 
+    Core_GetCurrentThread()->context.frame.rbp = 0;
     uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };
     CoreS_SetKernelStack(Core_GetCurrentThread()->kernelStack);
     CoreS_CallFunctionOnStack(Arch_GotoUserBootstrap, (uintptr_t)&udata);
@@ -138,6 +147,8 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
 void OBOSS_HandOffToInit(struct exec_aux_values* aux)
 {
+    OBOS_OpenStandardFDs();
+
     (void)Core_RaiseIrql(IRQL_DISPATCH);
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 

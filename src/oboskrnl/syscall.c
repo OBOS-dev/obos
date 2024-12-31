@@ -123,6 +123,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ReadEntries, // 55
     (uintptr_t)Sys_ExecVE, // 56
     (uintptr_t)Sys_LibCLog, // 57
+    (uintptr_t)Sys_ProcessGetPID, // 58
+    (uintptr_t)Sys_ProcessGetPPID, // 59
+    (uintptr_t)Sys_FdOpenAt,
 };
 // Arch syscall table is defined per-arch
 

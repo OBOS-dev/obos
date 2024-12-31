@@ -52,3 +52,5 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects);
 handle Sys_ProcessOpen(uint64_t pid);
 handle Sys_ProcessStart(handle mainThread /* optional, set to HANDLE_INVALID if unwanted */, handle vmm_context);
 obos_status Sys_ProcessKill(handle process, bool force);
+uint64_t Sys_ProcessGetPID(handle process);
+uint64_t Sys_ProcessGetPPID(handle process);

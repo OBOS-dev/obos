@@ -103,10 +103,44 @@ Arch_SyscallTrapHandler:
     ; Maybe we should just do something normal?
     push .finished
     jz Sys_InvalidSyscall
+extern Arch_LogSyscall
+extern Arch_LogSyscallRet
+push rdi
+push rsi
+push rdx
+push rcx
+push r8
+push r9
+push rax
+push r11
+    mov r9, rax
+    call Arch_LogSyscall
+pop r11
+pop rax
+pop r9
+pop r8
+pop rcx
+pop rdx
+pop rsi
+pop rdi
+
+    push rax
+
     call [r11+rax*8]
-    add rsp, 8
 .finished:
     cli
+
+    pop rsi
+    push rax
+    push rdx
+
+    mov rdi, rax
+    call Arch_LogSyscallRet
+
+    pop rdx
+    pop rax
+
+    add rsp, 8
 
     mov r9, gs:0x18
     mov r9, [r9]

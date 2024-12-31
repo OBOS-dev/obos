@@ -107,8 +107,8 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (!port || !buf || !blkCount)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t i = 0;
-    while(port->in_buffer.szBuf < blkCount)
-        ;
+    while(((volatile serial_port*)port)->in_buffer.szBuf < blkCount)
+        OBOSS_SpinlockHint();
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
     const size_t initialBufSize = port->in_buffer.szBuf;
     for (; i < blkCount && i < initialBufSize; i++)
@@ -184,6 +184,12 @@ uacpi_iteration_decision resource_iterator(void *user, uacpi_resource *resource)
             curr->port_top = curr->port_base + resource->io.length;
             break;
         }
+        case UACPI_RESOURCE_TYPE_FIXED_IO:
+        {
+            curr->port_base = resource->fixed_io.address;
+            curr->port_top = curr->port_base + resource->fixed_io.length;
+            break;
+        }
         default: break;
     }
     return UACPI_ITERATION_DECISION_CONTINUE;
@@ -238,15 +244,15 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
             */
 
             uint8_t id = (uint8_t)*(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 4);
+            argp = (void*)((uintptr_t)argp + 8);
             uint32_t baudRate = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 4);
+            argp = (void*)((uintptr_t)argp + 8);
             data_bits dataBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 4);
+            argp = (void*)((uintptr_t)argp + 8);
             stop_bits stopBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 4);
+            argp = (void*)((uintptr_t)argp + 8);
             parity_bit parityBit = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 4);
+            argp = (void*)((uintptr_t)argp + 8);
             dev_desc* connection = (void*)*(uintptr_t*)argp;
             argp = (void*)((uintptr_t)argp + sizeof(dev_desc*));
 
@@ -318,5 +324,5 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         OBOS_Debug("%*s: Registering serial port at %s%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }
-        return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
+    return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

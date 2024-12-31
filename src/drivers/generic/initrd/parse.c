@@ -17,23 +17,6 @@
 
 #include <allocators/base.h>
 
-#include <utils/hashmap.h>
-
-static struct hashmap* cache;
-
-static uint64_t hash(const void *item, uint64_t seed0, uint64_t seed1)
-{
-    const ustar_hdr* pck = item;
-    return hashmap_sip(pck->filename, uacpi_strnlen(pck->filename, 100), seed0, seed1);
-}
-static int cmp(const void *a, const void *b, void *udata)
-{
-    OBOS_UNUSED(udata);
-    const ustar_hdr* pck1 = a;
-    const ustar_hdr* pck2 = b;
-    return uacpi_strncmp(pck1->filename, pck2->filename, 100);
-}
-
 struct allocation_hdr {
     size_t sz;
 };
@@ -58,16 +41,6 @@ void free(void* buf)
     hdr--;
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->sz);
 }
-static void initialize_hashmap()
-{
-    cache = hashmap_new_with_allocator(
-        malloc, realloc, free,
-        sizeof(ustar_hdr), 
-        64, 0, 0, 
-        hash, cmp, 
-        nullptr, 
-        nullptr);
-}
 
 #define set_status(to) status ? (*status = to) : (void)0
 const ustar_hdr* GetFile(const char* path, obos_status* status)
@@ -82,15 +55,8 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
         set_status(OBOS_STATUS_INVALID_ARGUMENT);
         return nullptr;
     }
-    if (!cache)
-        initialize_hashmap();
     set_status(OBOS_STATUS_SUCCESS);
-    ustar_hdr what = {};
-    memcpy(what.filename, path, uacpi_strnlen(path, 100));
-    const ustar_hdr* hdr = (ustar_hdr*)hashmap_get(cache, &what);
-    if (hdr)
-        return hdr;
-    hdr = (ustar_hdr*)OBOS_InitrdBinary;
+    const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
     size_t pathlen = uacpi_strnlen(path, 100);
     char path_slash[100];
     memcpy(path_slash, path, pathlen);
@@ -104,17 +70,10 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
         if (uacpi_strncmp(path_slash, hdr->filename, pathlen) == 0 ||
             uacpi_strncmp(path, hdr->filename, pathlen) == 0
         )
-        {
-            hashmap_set(cache, hdr);
             return hdr;
-        }
         size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
     }
     return nullptr;
-}
-void FreeCache()
-{
-    hashmap_free(cache);
 }

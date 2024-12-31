@@ -20,6 +20,7 @@ typedef struct process
 	uid currentUID;
 	gid currentGID;
 	struct context* ctx;
+	struct process* parent;
 	handle_table handles;
 } process;
 extern uint64_t Core_NextPID;

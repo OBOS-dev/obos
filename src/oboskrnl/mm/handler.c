@@ -208,6 +208,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
     if (rng->mapped_here && !rng->cow)
     {
+        if (ctx != &Mm_KernelContext)
+            OBOS_Debug("Trying file mapping...\n", addr);
         // page_info info = {};
         // MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
@@ -223,8 +225,12 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             type = curr_type;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
-    if (rng->cow && (ec & PF_EC_RW))
+    if (rng->cow)
     {
+        if (rng->un.cow_type == COW_SYMMETRIC && (~ec & PF_EC_RW))
+            goto not_cow;
+        if (ctx != &Mm_KernelContext)
+            OBOS_Debug("Doing CoW...\n", addr);
         // Mooooooooo.
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         switch (rng->un.cow_type) {
@@ -244,8 +250,11 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         goto done;
     }
+    not_cow:
     if (!handled && ~ec & PF_EC_PRESENT && curr.phys != 0)
     {
+        if (ctx != &Mm_KernelContext)
+            OBOS_Debug("Trying a swap in...\n", addr);
         // Try a swap in?
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         fault_type curr_type = SOFT_FAULT;

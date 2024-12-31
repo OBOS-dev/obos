@@ -204,7 +204,6 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             real_base += base;
             real_limit += base;
         }
-        __builtin_printf("%p %p %p %d\n", (void*)real_base, (void*)real_limit, (void*)base, require_addend);
         kbase = Mm_MapViewOfUserMemory(ctx,
                                        (void*)real_base,
                                        nullptr,
