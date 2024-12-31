@@ -6,12 +6,15 @@
 
 #include <int.h>
 #include <error.h>
+#include <handle.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/schedule.h>
 #include <scheduler/process.h>
 
 #include <allocators/base.h>
 
+process* OBOS_KernelProcess;
 uint64_t Core_NextPID = 1;
 static OBOS_PAGEABLE_FUNCTION void free_node(thread_node* n)
 {
@@ -33,11 +36,16 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	if (!proc || !mainThread)
+	if (!proc)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!mainThread->affinity || mainThread->masterCPU || mainThread->proc)
-		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (mainThread)
+		if (!mainThread->affinity || mainThread->masterCPU || mainThread->proc)
+			return OBOS_STATUS_INVALID_ARGUMENT;
 	proc->pid = Core_NextPID++;
+	proc->parent = Core_GetCurrentThread()->proc;
+	OBOS_InitializeHandleTable(&proc->handles);
+	if (!mainThread)
+		return OBOS_STATUS_SUCCESS;
 	obos_status status = OBOS_STATUS_SUCCESS;
 	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
 	if (obos_is_error(status))
@@ -65,6 +73,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 	thread->pnode = node;
 	CoreH_ThreadListAppend(&proc->threads, node);
 	thread->proc = proc;
+	thread->pnode = node;
 	return OBOS_STATUS_SUCCESS;
 }
 OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessTerminate(process* proc, bool forced)

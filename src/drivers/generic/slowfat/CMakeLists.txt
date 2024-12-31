@@ -25,7 +25,7 @@ target_include_directories(slowfat
 
 target_link_options(slowfat
 	PRIVATE "-nostdlib"
-	PRIVATE "-Wl,-pic"
+	PRIVATE "-fPIC"
 	PRIVATE "-T${DRIVER_LINKER_SCRIPT}"
 	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"

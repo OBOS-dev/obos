@@ -11,6 +11,8 @@
 
 #include <irq/irql.h>
 
+#include <mm/page_table.h>
+
 /// <summary>
 /// This structure is architecture dependant, but should save at least the following:
 /// Thread GPR context.
@@ -20,8 +22,6 @@
 /// </summary>
 typedef struct thread_context_info thread_ctx;
 
-
-// TODO: Add a way to specify the address space of the thread.
 /// <summary>
 /// Sets up the context of a thread.
 /// </summary>
@@ -33,6 +33,9 @@ typedef struct thread_context_info thread_ctx;
 /// <param name="stackSize">The size of the stack.</param>
 /// <returns>The status code of the function.</returns>
 OBOS_EXPORT obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
+// pretty self-explanatory.
+// on x86_64, this sets the context's cr3
+void CoreS_SetThreadPageTable(thread_ctx* ctx, page_table pt);
 /// <summary>
 /// Switches to a different thread's context.
 /// </summary>
@@ -57,7 +60,7 @@ OBOS_WEAK obos_status CoreS_FreeThreadContext(thread_ctx* ctx);
 /// <param name="func">The function to be called.</param>
 /// <param name="userdata">The parameter to be passed to the function.</param>
 /// <returns>The callback's return value.</returns>
-OBOS_WEAK uintptr_t CoreS_CallFunctionOnStack(uintptr_t(*func)(uintptr_t), uintptr_t userdata);
+OBOS_EXPORT uintptr_t CoreS_CallFunctionOnStack(uintptr_t(*func)(uintptr_t), uintptr_t userdata);
 
 /// <summary>
 /// Sets the IRQL of a thread. This function should be infallible if the parameters are correct.
@@ -83,6 +86,16 @@ OBOS_WEAK void* CoreS_GetThreadStack(const thread_ctx* ctx);
 /// <param name="ctx">The thread's context.</param>
 /// <returns>The thread's stack size.</returns>
 OBOS_WEAK size_t CoreS_GetThreadStackSize(const thread_ctx* ctx);
+/// <summary>
+/// Allocates space on a thread's stack. Calling this after the thread has started running can be catastrophic.
+/// </summary>
+/// <param name="ctx">The thread's context.</param>
+/// <param name="size">The of the stack region.</param>
+/// <param name="status">The status of the function.</param>
+/// <returns>A pointer to the region..</returns>
+OBOS_WEAK void* CoreS_ThreadAlloca(const thread_ctx* ctx, size_t size, obos_status *status);
+
+OBOS_WEAK void CoreS_SetKernelStack(void* stck /* 0x10000 bytes */);
 
 #ifdef __x86_64__
 #	include <arch/x86_64/thread_ctx.h>

@@ -4,10 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/spinlock.h"
-#include "utils/tree.h"
 #include <int.h>
 #include <klog.h>
+#include <memmanip.h>
 #include <error.h>
 
 #include <mm/bare_map.h>
@@ -15,134 +14,287 @@
 #include <mm/context.h>
 #include <mm/page.h>
 #include <mm/pmm.h>
+#include <mm/alloc.h>
+#include <mm/handler.h>
+
+#include <scheduler/thread.h>
+#include <scheduler/thread_context_info.h>
+
+#include <locks/event.h>
+#include <locks/spinlock.h>
+#include <locks/wait.h>
+#include <locks/mutex.h>
+
+#include <utils/tree.h>
+#include <utils/list.h>
+
+#include <irq/irql.h>
 
 swap_dev* Mm_SwapProvider;
 
-obos_status Mm_SwapOut(page* page)
+static thread page_writer_thread;
+static thread_node page_writer_thread_node;
+static spinlock swap_lock;
+static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
+static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
+
+obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
 {
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
-    if (!page)
+    if (!rng)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!page->reserved);
-    if (page->reserved)
+    // OBOS_ASSERT(!page->reserved);
+    // if (page->reserved)
+    //     return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(rng->pageable);
+    if (!rng->pageable)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!page->workingSets);
-    if (!page->pageable || page->workingSets > 0)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    size_t nPages = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE : 1;
-    uintptr_t id;
     uintptr_t phys = 0;
-    // TODO: Use a function that takes in a context.
-    obos_status status = OBOSS_GetPagePhysicalAddress((void*)page->addr, &phys);
+    page_info page = {};
+    obos_status status = MmS_QueryPageInfo(rng->ctx->pt, virt, &page, &phys);
     if (obos_is_error(status))
         return status;
-    // Reserve swap space, then write the page to the reserved swap space.
-    status = Mm_SwapProvider->swap_resv(Mm_SwapProvider, &id, nPages);
+    page.prot.present = false;
+    status = MmS_SetPageMapping(rng->ctx->pt, &page, phys, false);
     if (obos_is_error(status))
         return status;
-    status = Mm_SwapProvider->swap_write(Mm_SwapProvider, id, phys, nPages, 0);
-    if (obos_is_error(status))
-    {
-        if (obos_is_error(Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages)))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        return status;
-    }
-    // Page the page out, and free the backing page.
-    page->prot.present = false;
-    page->swapId = id;
-    status = MmS_SetPageMapping(page->owner->pt, page, 0);
-    if (obos_is_error(status))
-    {
-        if (obos_is_error(Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages)))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        return status;
-    }
-    if (phys)
-    {
-        // FIXME: Why is phys sometimes set to zero?
-        status = Mm_FreePhysicalPages(phys, nPages);
-        if (obos_is_error(status))
-        {
-            if (obos_is_error(Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages)))
-                return OBOS_STATUS_INTERNAL_ERROR;
-            page->prot.present = true;
-            if (obos_is_error(MmS_SetPageMapping(page->owner->pt, page, phys)))
-                return OBOS_STATUS_INTERNAL_ERROR;
-            return status;
-        }
-    }
-    page->pagedOut = true;
+    if (page.dirty)
+        Mm_MarkAsDirty(&page);
+    else
+        Mm_MarkAsStandby(&page);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Mm_SwapIn(page* page)
+obos_status Mm_SwapIn(page_info* page, fault_type* type)
 {
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!page)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!page->reserved);
-    if (page->reserved)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!page->pageable || !page->pagedOut)
+    OBOS_ASSERT(page->phys);
+    // OBOS_ASSERT(!page->reserved);
+    // if (page->reserved)
+    //     return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!page->range->pageable)
+        return OBOS_STATUS_UNPAGED_POOL;
+    irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+    page_info arch_pg_info = {.virt=page->virt};
+    MmS_QueryPageInfo(page->range->ctx->pt, arch_pg_info.virt, &arch_pg_info, nullptr);
+    if (arch_pg_info.prot.is_swap_phys)
+        goto down;
+    struct page what = {.phys=page->phys};
+    struct page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    const bool onDirtyList = (node->flags & PHYS_PAGE_DIRTY);
+    const bool onStandbyList = (node->flags & PHYS_PAGE_STANDBY);
+    if ((onDirtyList||onStandbyList))
+    {
+        // Simply remap the page.
+        if (onDirtyList)
+        {
+            if (!node->pagedCount)
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
+            Mm_DirtyPagesBytes -= page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        }
+        else if (onStandbyList && !node->pagedCount)
+            LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
+        // else
+        //     OBOS_ASSERT(!"Funny business");
+        node->pagedCount++;
+        page->prot.present = true;
+        obos_status status = MmS_SetPageMapping(page->range->ctx->pt, page, node->phys, false);
+        // Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
+        if (obos_expect(obos_is_error(status), false))
+        {
+            // Unlikely error.
+            Core_SpinlockRelease(&swap_lock, oldIrql);
+            return status;
+        }
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        if (type)
+            *type = SOFT_FAULT;
         return OBOS_STATUS_SUCCESS;
-    size_t nPages = page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE : 1;
-    uintptr_t id = page->swapId;
-    // Allocate a physical page.
+    }
+    else 
+    {
+        // Not swapped out.
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return OBOS_STATUS_NOT_FOUND; 
+    }
+    down:
+    OBOS_UNUSED(0);
+    size_t nPages = (page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE;
     obos_status status = OBOS_STATUS_SUCCESS;
-    uintptr_t phys = Mm_AllocatePhysicalPages(nPages, nPages, &status);
-    if (obos_is_error(status))
-        return status;
-    // Read the page from the swap.
-    status = Mm_SwapProvider->swap_read(Mm_SwapProvider, id, phys, nPages, 0);
-    if (obos_is_error(status))
+    uintptr_t phys = 0;
+    swap_allocation* alloc = MmH_LookupSwapAllocation(page->phys);
+    if (!alloc)
     {
-        if (obos_is_error(Mm_FreePhysicalPages(phys, nPages)))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        return status;
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return OBOS_STATUS_NOT_FOUND;
     }
-    // Free the swap space.
-    status = Mm_SwapProvider->swap_free(Mm_SwapProvider, id, nPages);
-    if (obos_is_error(status))
+    if (!alloc->phys)
     {
-        if (obos_is_error(Mm_FreePhysicalPages(phys, nPages)))
+        alloc->phys = MmH_PgAllocatePhysical(page->range->phys32, page->range->prot.huge_page);
+        if (obos_is_error(alloc->provider->swap_read(alloc->provider, alloc->id, alloc->phys)))
+        {
+            Core_SpinlockRelease(&swap_lock, oldIrql);
+            if (type)
+                *type = ACCESS_FAULT /* maybe don't do this? TODO */;
             return OBOS_STATUS_INTERNAL_ERROR;
-        return status;
+        }
     }
-    // Re-map the page.
+    phys = alloc->phys->phys;
     page->prot.present = true;
-    status = MmS_SetPageMapping(page->owner->pt, page, phys);
-    if (obos_is_error(status)) // Give up if this fails.
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not remap page 0x%p. Status: %d.\n", page->addr, status);
-    page->pagedOut = false;
+    page->phys = phys;
+    status = MmS_SetPageMapping(page->range->ctx->pt, page, phys, false);
+    if (obos_is_error(status))
+    {
+        Mm_FreePhysicalPages(phys, nPages);
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return status;
+    }
+    Core_SpinlockRelease(&swap_lock, oldIrql);
+    if (type)
+        *type = HARD_FAULT;
     return OBOS_STATUS_SUCCESS;
 }
 
 obos_status Mm_ChangeSwapProvider(swap_dev* to)
 {
-    if (!to)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!Mm_SwapProvider || to == Mm_SwapProvider)
+    OBOS_UNUSED(to);
+    return OBOS_STATUS_UNIMPLEMENTED;
+}
+static void mark_standby(page* pg);
+
+static __attribute__((no_instrument_function)) void page_writer()
+{
+    // const char* const This = "Page Writer";
+    while (1)
     {
-        Mm_SwapProvider = to;
-        return OBOS_STATUS_SUCCESS;
+        Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
+        Core_EventClear(&page_writer_done);
+        // FOR EACH dirty page.
+        // Write them back :)
+        // also while we're at it, we'll make them standby
+        irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+        {
+            page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
+            {
+                pg = next;
+                continue;
+            }
+            swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
+            alloc->refs = pg->virt_pages.nNodes;
+            if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
+            {
+                alloc->refs = 1;
+                MmH_DerefSwapAllocation(alloc);
+                pg = next;
+                continue;
+            }
+            pg->flags &= ~PHYS_PAGE_DIRTY;
+            mark_standby(pg);
+            pg = next;
+        }
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        Core_EventSet(&page_writer_done, false);
     }
-    page* curr = nullptr;
-    // FIXME: Use each context instead of just the kernel context.
-    irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
-    uintptr_t inter = Mm_AllocatePhysicalPages(OBOS_HUGE_PAGE_SIZE/OBOS_PAGE_SIZE, 1, nullptr);
-    RB_FOREACH(curr, page_tree, &Mm_KernelContext.pages)
+}
+
+phys_page_list Mm_DirtyPageList;
+phys_page_list Mm_StandbyPageList;
+size_t Mm_DirtyPagesBytes;
+size_t Mm_DirtyPagesBytesThreshold = OBOS_PAGE_SIZE * 50;
+void Mm_MarkAsDirty(page_info* pg)
+{
+    OBOS_ASSERT(pg->phys);
+    irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+    page what = {.phys=pg->phys};
+    page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    OBOS_ASSERT(node);
+
+    if (--node->pagedCount)
     {
-        if (!curr->pagedOut)
-            continue;
-        Mm_SwapProvider->swap_read(Mm_SwapProvider, curr->swapId, inter, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE, 0);
-        Mm_SwapProvider->swap_free(Mm_SwapProvider, curr->swapId, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
-        uintptr_t id = 0;
-        to->swap_resv(to, &id, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE);
-        curr->swapId = id;
-        to->swap_write(to, curr->swapId, inter, (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)/OBOS_PAGE_SIZE, 0);
+        node->flags |= PHYS_PAGE_DIRTY;
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return;
     }
-    Mm_SwapProvider = to;
-    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
-    return OBOS_STATUS_SUCCESS;
+
+    page_info* pg_copy = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_info), nullptr);
+    *pg_copy = *pg;
+    APPEND_PAGE_NODE(node->virt_pages, &pg_copy->ln_node);
+    node->flags |= PHYS_PAGE_DIRTY;
+    LIST_APPEND(phys_page_list, &Mm_DirtyPageList, node);
+    Mm_DirtyPagesBytes += pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    Core_SpinlockRelease(&swap_lock, oldIrql);
+    if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold)
+        Mm_WakePageWriter(true);
+}
+
+static void mark_standby(page* pg)
+{
+    // if (pg->virt == 0xffffff0000200000)
+    //     OBOS_Debug("hi");
+    Mm_DirtyPagesBytes -= (pg->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+    pg->flags |= PHYS_PAGE_STANDBY;
+}
+
+void Mm_MarkAsStandby(page_info* pg)
+{
+    page what = {.phys=pg->phys};
+    page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    OBOS_ASSERT(node);
+    if (node->flags & PHYS_PAGE_STANDBY)
+        return;
+    irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+
+    if (--node->pagedCount)
+    {
+        node->flags |= PHYS_PAGE_DIRTY;
+        Core_SpinlockRelease(&swap_lock, oldIrql);
+        return;
+    }
+
+    if (node->flags & PHYS_PAGE_DIRTY)
+        LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
+    else
+    {
+        page_info* pg_copy = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_info), nullptr);
+        *pg_copy = *pg;
+        APPEND_PAGE_NODE(node->virt_pages, &pg_copy->ln_node);
+    }
+    mark_standby(node);
+    Core_SpinlockRelease(&swap_lock, oldIrql);
+}
+
+void Mm_InitializePageWriter()
+{
+    // page_writer_wake = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    // page_writer_done = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    thread_ctx ctx = {};
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)page_writer, 0, false,  Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x20000);
+    CoreH_ThreadInitialize(&page_writer_thread, THREAD_PRIORITY_LOW, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadReadyNode(&page_writer_thread, &page_writer_thread_node);
+}
+
+// Wakes up the page writer to free up memory
+// Set 'wait' to true to wait for the page writer to release
+void Mm_WakePageWriter(bool wait)
+{
+    OBOS_ASSERT(page_writer_thread.status);
+    Core_EventPulse(&page_writer_wake, true);
+    if (wait)
+        Core_WaitOnObject(WAITABLE_OBJECT(page_writer_done));
+}
+
+irql Mm_TakeSwapLock()
+{
+    return Core_SpinlockAcquire(&swap_lock);
+}
+
+void Mm_ReleaseSwapLock(irql oldIrql)
+{
+    Core_SpinlockRelease(&swap_lock, oldIrql);
 }

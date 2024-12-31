@@ -1,5 +1,3 @@
-clear
-
 cd ..
 export address=$1
 export exe=$2

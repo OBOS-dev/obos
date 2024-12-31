@@ -32,14 +32,12 @@ typedef struct gpt_header
     uint32_t partition_entry_checksum;
     // rest of fields are reserved.
 } OBOS_PACK gpt_header;
-typedef enum gpt_partition_attrib
-{
-    GPT_ATTRIB_REQUIRED = BIT_TYPE(0, UL),
-    GPT_NO_BLOCK_IO = BIT_TYPE(1, UL),
-    GPT_LEGACY_BIOS_BOOTABLE = BIT_TYPE(2, UL),
-    GPT_TYPE_UUID_START = BIT_TYPE(48, UL),
-    GPT_TYPE_UUID_END = BIT_TYPE(63, UL),
-} gpt_partition_attrib;
+typedef uint64_t gpt_partition_attrib;
+#define GPT_ATTRIB_REQUIRED = BIT_TYPE(0, UL)
+#define GPT_NO_BLOCK_IO = BIT_TYPE(1, UL)
+#define GPT_LEGACY_BIOS_BOOTABLE = BIT_TYPE(2, UL)
+#define GPT_TYPE_UUID_START = BIT_TYPE(48, UL)
+#define GPT_TYPE_UUID_END = BIT_TYPE(63, UL)
 typedef struct gpt_partition_entry
 {
     char     uuid[16];

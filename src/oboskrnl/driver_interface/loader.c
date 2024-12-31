@@ -17,6 +17,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+#include <scheduler/cpu_local.h>
 
 #include <allocators/base.h>
 
@@ -28,7 +29,10 @@
 #include <mm/context.h>
 #include <mm/page.h>
 
-#   include <elf/elf.h>
+#include <irq/dpc.h>
+#include <irq/irql.h>
+
+#include <elf/elf.h>
 
 // Do it in two passes so that any macros can be expanded
 #define token_concat_impl(tok1, tok2) tok1 ##tok2
@@ -55,6 +59,24 @@ static OBOS_NO_UBSAN driver_header* find_header(void* file, size_t szFile)
             return curr;
     }
     return nullptr;
+}
+static size_t get_header_size(driver_header* header)
+{
+    size_t sizeof_header = 0;
+    if (~header->flags & DRIVER_HEADER_HAS_VERSION_FIELD)
+        sizeof_header = sizeof(*header)-0x100; // An old-style driver.
+    else
+    {
+        switch (header->version)
+        {
+            case CURRENT_DRIVER_HEADER_VERSION:
+                sizeof_header = sizeof(*header);
+                break;
+            default:
+                return SIZE_MAX;
+        }
+    }
+    return sizeof_header;
 }
 OBOS_NO_UBSAN obos_status Drv_LoadDriverHeader(const void* file_, size_t szFile, driver_header* header)
 {
@@ -119,7 +141,11 @@ OBOS_NO_UBSAN obos_status Drv_LoadDriverHeader(const void* file_, size_t szFile,
     // Verify its contents.
     if (header_->magic != OBOS_DRIVER_MAGIC)
         return OBOS_STATUS_INVALID_HEADER;
-    memcpy(header, header_, sizeof(*header));
+    size_t sizeof_header = get_header_size(header_);
+    if (sizeof_header == SIZE_MAX)
+        return OBOS_STATUS_INVALID_HEADER;
+    memcpy(header, header_, sizeof_header);
+    memzero((void*)((uintptr_t)header + sizeof_header), sizeof(*header) - sizeof_header);
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_status* status)
@@ -138,6 +164,10 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     size_t nEntriesDynamicSymbolTable = 0;
     const char* dynstrtab = nullptr;
     void* top = nullptr;
+    // Temporarily do this.
+    driver->header.flags = header_.flags;
+    if (header_.flags & DRIVER_HEADER_HAS_VERSION_FIELD && header_.version >= 1)
+        driver->header.uacpi_init_level_required = header_.uacpi_init_level_required;
     driver->base = DrvS_LoadRelocatableElf(driver, file_, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
     if (!driver->base)
     {
@@ -179,7 +209,10 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             OBOS_ASSERT(header); // If this fails, something scuffed has happened.
         }
     }
-    driver->header = *header;
+    //driver->header = *header;
+    size_t sizeof_header = get_header_size(header);
+    memcpy(&driver->header, header, sizeof_header);
+    memzero((void*)((uintptr_t)&driver->header + sizeof_header), sizeof(*header) - sizeof_header);
     if (!(header->flags & DRIVER_HEADER_FLAGS_NO_ENTRY))
         driver->entryAddr = OffsetPtr(driver->base, ehdr->e_entry, uintptr_t);
     for (size_t i = 0; i < nEntriesDynamicSymbolTable; i++)
@@ -191,6 +224,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             "OBOS_DriverEntry",
             "Drv_Base",
             "Drv_Top",
+            "Drv_Header",
         };
         int symbolType = -1;
 		switch (ELF_ST_TYPE(esymbol->st_info)) 
@@ -251,10 +285,17 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     if (driver->header.ftable.probe)
         APPEND_DRIVER_NODE(Drv_LoadedFsDrivers, &driver->other_node); // pretty high chance it is a fs driver
     if (strlen(driver->header.driverName))
-        OBOS_Debug("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+        OBOS_Log("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     else
-        OBOS_Debug("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+        OBOS_Log("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     return driver;
+}
+typedef driver_init_status(*driver_entry)(driver_id* id);
+__attribute__((no_instrument_function)) static void driver_trampoline(driver_id* id)
+{
+    OBOS_Debug("calling driver entry %p\n", id->entryAddr);
+    driver_init_status status = ((driver_entry)id->entryAddr)(id);
+    Drv_ExitDriver(id, &status);
 }
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
 {
@@ -277,7 +318,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         stackSize = 0x20000;
     void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, stackSize, 0, VMA_FLAGS_KERNEL_STACK, nullptr, &status);
     status = CoreS_SetupThreadContext(&ctx, 
-        driver->entryAddr,
+        (uintptr_t)driver_trampoline,
         (uintptr_t)driver,
         false,
         stack,
@@ -298,8 +339,8 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
     thr->stackFreeUserdata = &Mm_KernelContext;
     if (mainThread)
     {
-        *mainThread = thr;
         thr->references++;
+        *mainThread = thr;
     }
     driver->main_thread = thr;
     thr->references++;
@@ -362,6 +403,46 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
     *driver = nullptr;
     return nullptr; // symbol unresolved.
 }
+
+static __attribute__((no_instrument_function)) void unload_driver_dpc(dpc* unused, void* userdata)
+{
+    Drv_UnloadDriver(userdata);
+    CoreH_FreeDPC(unused);
+}
+
+void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status)
+{
+    if (!id || !status)
+        return;
+    if (id->main_thread != Core_GetCurrentThread())
+        return;
+    if (obos_is_error(status->status))
+    {
+        if (OBOS_GetLogLevel() <= LOG_LEVEL_WARNING)
+        {
+            OBOS_Warning("Initialization of driver %d (%s) failed with status %d.\n", 
+                id->id, 
+                uacpi_strnlen(id->header.driverName, 64) ? id->header.driverName : "Unknown",
+                status->status
+            );
+            if (status->context)
+                printf("Note: %s\n", status->context);
+            if (status->fatal)
+                printf("Note: Fatal error. Unloading the driver.\n");
+        }
+    }
+    if (!status->fatal || obos_is_success(status->status))
+        Core_ExitCurrentThread();
+    dpc* dpc = CoreH_AllocateDPC(nullptr);
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    OBOS_ASSERT(dpc);
+    dpc->userdata = id;
+    CoreH_InitializeDPC(dpc, unload_driver_dpc, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id) /* make sure this runs on this CPU. */);
+    Core_ExitCurrentThread();
+    OBOS_UNREACHABLE;
+    OBOS_UNUSED(oldIrql);
+}
+
 driver_symbol* DrvH_ResolveSymbolReverse(uintptr_t addr, struct driver_id** driver)
 {
     OBOS_ASSERT(driver);

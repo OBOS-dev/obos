@@ -24,6 +24,7 @@
 
 #include <driver_interface/header.h>
 
+#include "locks/mutex.h"
 #include "structs.h"
 #include "alloc.h"
 
@@ -49,7 +50,7 @@ static size_t lfn_strlen(const lfn_dirent* lfn)
     return ret;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster);
-static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
+static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, const void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
 {
     OBOS_UNUSED(cluster);
     if ((uint8_t)curr->filename_83[0] == 0xE5)
@@ -61,8 +62,9 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
         if ((lfn->order & 0x40))
         {
             // Allocate all the memory we'll need for this LFN chain.
+            size_t old_entry_count = *lfn_entry_count;
             *lfn_entry_count = (lfn->order & ~0x40 /* last entry */);
-            *lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*(*lfn_entry_count), nullptr);
+            *lfn_entries = FATAllocator->Reallocate(FATAllocator, lfn_entries, sizeof(lfn_dirent)*(*lfn_entry_count), old_entry_count*sizeof(lfn_dirent), nullptr);
         }
         (*lfn_entries)[(lfn->order & ~0x40) - 1] = lfn;
         return;
@@ -74,7 +76,7 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
         return;
     if (curr->filename_83[0] == '.')
         return;
-    if (lfn_entry_count)
+    if (*lfn_entry_count)
     {
         for (size_t i = 0; i < (*lfn_entry_count); i++)
         {
@@ -149,9 +151,10 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
         return ITERATE_DECISION_STOP;
     fat_cache* cache = (void*)((uintptr_t*)udata)[0];
     fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
-    void* buff = (void*)((uintptr_t*)udata)[2];
-    Vfs_FdSeek(cache->volume, ClusterToSector(cache, current_cluster)*cache->blkSize, SEEK_SET);
-    Vfs_FdRead(cache->volume, buff, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
+    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
+    pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize);
+    if (dr)
+        Core_MutexAcquire(&dr->lock);
     fat_dirent* curr = buff;
     string current_filename = {};
     lfn_dirent **lfn_entries = nullptr;
@@ -164,21 +167,23 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
             curr, &lfn_entries, &lfn_entry_count, &current_filename);
         curr += 1;
         if ((uintptr_t)curr >= ((uintptr_t)buff + cache->blkSize))
+        {
+            if (dr)
+                Core_MutexRelease(&dr->lock);
             return ITERATE_DECISION_CONTINUE;
+        }
     }
+    if (dr)
+        Core_MutexRelease(&dr->lock);
     return ITERATE_DECISION_STOP;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster)
 {
-    uintptr_t udata[3] = {
+    uintptr_t udata[2] = {
         (uintptr_t)cache,
         (uintptr_t)parent,
-        (uintptr_t)FATAllocator->Allocate(FATAllocator, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr)
     };
-    uoff_t oldOffset = Vfs_FdTellOff(cache->volume);
     FollowClusterChain(cache, cluster, dir_iterate_impl, udata);
-    FATAllocator->Free(FATAllocator, (void*)udata[2], cache->blkSize);
-    Vfs_FdSeek(cache->volume, oldOffset, SEEK_SET);
 }
 #undef read_next_sector
 
@@ -191,7 +196,7 @@ bool probe(void* vn_)
     fd *volume = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fd), nullptr);
     // *volume = (fd){ .vn=vn, .flags=FD_FLAGS_READ|FD_FLAGS_WRITE|FD_FLAGS_OPEN, .offset=0 };
     // LIST_APPEND(fd_list, &vn->opened, volume);
-    Vfs_FdOpenVnode(volume, vn, 0);
+    Vfs_FdOpenVnode(volume, vn, FD_OFLAGS_READ|FD_OFLAGS_WRITE);
     if (!(volume->flags & FD_FLAGS_READ))
         return false;
     size_t blkSize = Vfs_FdGetBlkSz(volume);
@@ -210,7 +215,7 @@ bool probe(void* vn_)
         memcmp((uint8_t*)bpb + 0x36, "FAT", 3) ^
         memcmp((uint8_t*)bpb + 0x52, "FAT", 3);
     if (bpb->totalSectors16 > 0 && bpb->totalSectors32 > 0)
-        ret = false; // fnuy buisness
+        ret = false; // fnuy business
     if (!ret)
     {
         FATAllocator->Free(FATAllocator, bpb, blkSize == 1 ? sizeof(struct bpb) : blkSize);
@@ -258,16 +263,17 @@ bool probe(void* vn_)
         dir_iterate(cache, cache->root, cache->root_cluster);
     else
     {
-        void* buff = FATAllocator->Allocate(FATAllocator, cache->blkSize, nullptr);
-        lfn_dirent** lfn_entries;
+        lfn_dirent** lfn_entries = nullptr;
         size_t lfn_entry_count = 0;
         string current_filename = {};
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
+            void* buff = VfsH_PageCacheGetEntry(&((vnode*)volume->vn)->pagecache, i*cache->blkSize, cache->blkSize, nullptr);
+            pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize);
+            if (dr)
+                Core_MutexAcquire(&dr->lock);
             fat_dirent* curr = buff;
-            Vfs_FdSeek(cache->volume, i*cache->blkSize, SEEK_SET);
-            Vfs_FdRead(cache->volume, buff, cache->blkSize, nullptr);
             for (size_t j = 0; j < (cache->blkSize/sizeof(lfn_dirent)); j++, curr++)
             {
                 if (curr->filename_83[0] == (char)0xe5)
@@ -281,6 +287,8 @@ bool probe(void* vn_)
                     cache, cache->root, 0, buff, curr, 
                     &lfn_entries, &lfn_entry_count, &current_filename);
             }
+            if (dr)
+                Core_MutexRelease(&dr->lock);
             if (!curr)
                 break;
         }
@@ -291,6 +299,7 @@ bool probe(void* vn_)
     OBOS_Debug("FAT: blkSize: 0x%08x\n", blkSize);
     OBOS_Debug("FAT: fatSz: 0x%08x\n", fatSz);
     OBOS_Debug("FAT: nFats: 0x%08x\n", cache->bpb->nFATs);
+    OBOS_Debug("FAT: FAT Type: %s\n", (cache->fatType == FAT32_VOLUME) ? "FAT32" : ((cache->fatType == FAT16_VOLUME)) ? "FAT16" : "FAT12");
     return true;
 }
 LIST_GENERATE(fat_cache_list, struct fat_cache, node);

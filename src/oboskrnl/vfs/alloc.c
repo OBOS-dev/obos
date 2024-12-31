@@ -4,13 +4,18 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "utils/tree.h"
 #include <int.h>
+
+#include <vfs/alloc.h>
 
 #include <allocators/base.h>
 #include <allocators/basic_allocator.h>
 
 allocator_info* Vfs_Allocator;
+
+struct allocation_hdr {
+    size_t sz;
+};
 
 static basic_allocator alloc;
 void* Vfs_Malloc(size_t cnt)
@@ -20,8 +25,12 @@ void* Vfs_Malloc(size_t cnt)
         OBOSH_ConstructBasicAllocator(&alloc);
         Vfs_Allocator = (allocator_info*)&alloc;
     }
-    return Vfs_Allocator->Allocate(Vfs_Allocator, cnt, nullptr);
+    cnt += sizeof(struct allocation_hdr);
+    struct allocation_hdr *hdr = Vfs_Allocator->ZeroAllocate(Vfs_Allocator, 1, cnt, nullptr);
+    hdr->sz = cnt-sizeof(struct allocation_hdr);
+    return hdr+1;
 }
+
 void* Vfs_Calloc(size_t nObjs, size_t szObj)
 {
     if (!Vfs_Allocator)
@@ -29,21 +38,25 @@ void* Vfs_Calloc(size_t nObjs, size_t szObj)
         OBOSH_ConstructBasicAllocator(&alloc);
         Vfs_Allocator = (allocator_info*)&alloc;
     }
-    return Vfs_Allocator->ZeroAllocate(Vfs_Allocator, nObjs, szObj, nullptr);
+    return Vfs_Malloc(nObjs*szObj);
 }
+
 void* Vfs_Realloc(void* what, size_t cnt)
 {
     if (!Vfs_Allocator)
         return nullptr;
-    return Vfs_Allocator->Reallocate(Vfs_Allocator, what, cnt, nullptr);
+    struct allocation_hdr* hdr = what;
+    hdr--;
+    hdr->sz += cnt;
+    hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt, hdr->sz-cnt, nullptr);
+    return hdr+1;
 }
+
 void Vfs_Free(void* what)
 {
     if (!Vfs_Allocator)
         return;
-    size_t szBlk = 0;
-    Vfs_Allocator->QueryBlockSize(Vfs_Allocator, what, &szBlk);
-    if (szBlk == SIZE_MAX)
-        return;
-    Vfs_Allocator->Free(Vfs_Allocator, what, szBlk);
+    struct allocation_hdr* hdr = what;
+    hdr--;
+    Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz);
 }

@@ -348,7 +348,7 @@ extern irq HbaIrq;
 #elif OBOS_IRQL_COUNT == 2
 #	define IRQL_AHCI (0)
 #else
-#	error Funny buisness.
+#	error Funny business.
 #endif
 
 #if OBOS_ARCHITECTURE_BITS == 64

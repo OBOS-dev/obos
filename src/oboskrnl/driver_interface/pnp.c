@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "scheduler/thread.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -34,9 +33,11 @@
 #include <uacpi/namespace.h>
 #include <uacpi/utilities.h>
 
+#include <scheduler/thread.h>
+
 typedef struct pnp_device
 {
-    pci_device pci_key; // the class code, subclass, etc.
+    pci_hid pci_key; // the class code, subclass, etc.
     char acpi_key[8]; // acpi pnp id
     driver_header_list headers;
 } pnp_device;
@@ -45,8 +46,8 @@ static int pnp_pci_driver_cmp(const void* a_, const void* b_, void* udata)
 {
     OBOS_UNUSED(udata);
     // NOTE(oberrow): If this fails, gl and have fun.
-    const pci_device* a = &((struct pnp_device*)a_)->pci_key;
-    const pci_device* b = &((struct pnp_device*)b_)->pci_key;
+    const pci_hid* a = &((struct pnp_device*)a_)->pci_key;
+    const pci_hid* b = &((struct pnp_device*)b_)->pci_key;
     if (((int8_t)a->indiv.classCode - (int8_t)b->indiv.classCode) != 0)
         return (int8_t)a->indiv.classCode - (int8_t)b->indiv.classCode;
     if (((int8_t)a->indiv.subClass - (int8_t)b->indiv.subClass) != 0)
@@ -55,6 +56,7 @@ static int pnp_pci_driver_cmp(const void* a_, const void* b_, void* udata)
         return (int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf;
     return 0;
 }
+
 static uint64_t pnp_pci_driver_hash(const void *item, uint64_t seed0, uint64_t seed1) 
 {
     const struct pnp_device* drv = item;
@@ -75,19 +77,31 @@ static uint64_t pnp_acpi_driver_hash(const void *item, uint64_t seed0, uint64_t 
 }
 #endif
 
+struct allocation_header {
+    size_t size;
+};
+
 static void *malloc(size_t sz)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+    struct allocation_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz+sizeof(struct allocation_header), nullptr);
+    hdr->size = sz+sizeof(struct allocation_header);
+    return hdr + 1;
 }
+
 static void *realloc(void* oldblk, size_t sz)
 {
-    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, oldblk, sz, nullptr);
+    struct allocation_header* hdr = oldblk;
+    hdr--;
+    size_t oldSz = hdr->size;
+    hdr->size += sz;
+    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sz, oldSz, nullptr);
 }
+
 static void free(void* blk)
 {
-    size_t sz = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, blk, &sz);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, blk, sz);
+    struct allocation_header* hdr = blk;
+    hdr--;
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->size);
 }
 
 static void free_pnp_device(struct hashmap* map, pnp_device* dev)
@@ -137,7 +151,7 @@ static obos_status acpi_driver_helper(struct hashmap* acpi_drivers, driver_heade
 }
 #endif
 
-static obos_status pci_driver_helper(struct hashmap* pci_drivers, driver_header* drv, pci_device key)
+static obos_status pci_driver_helper(struct hashmap* pci_drivers, driver_header* drv, pci_hid key)
 {
     pnp_device what = {
         .pci_key = key,
@@ -159,11 +173,11 @@ struct callback_userdata
     struct hashmap* acpi_drivers;
     driver_header_list* detected;
 };
-static pci_iteration_decision pci_driver_callback(void* udata_, pci_device_node device)
+static pci_iteration_decision pci_driver_callback(void* udata_, pci_device *device)
 {
     struct callback_userdata* udata = (struct callback_userdata*)udata_;
     pnp_device what = {
-        .pci_key = device.device,
+        .pci_key = device->hid,
     };
     pnp_device *dev = (pnp_device*)hashmap_get(udata->pci_drivers, &what);
     if (!dev)
@@ -177,7 +191,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device_node 
         bool shouldAdd = false;
         if ((hdr->flags & DRIVER_HEADER_PCI_HAS_VENDOR_ID))
         {
-            if (hdr->pciId.indiv.vendorId == device.device.indiv.vendorId)
+            if (hdr->pciId.indiv.vendorId == device->hid.indiv.vendorId)
                 shouldAdd = true;
         }
         else
@@ -187,7 +201,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device_node 
         shouldAdd = false;
         if ((hdr->flags & DRIVER_HEADER_PCI_HAS_DEVICE_ID))
         {
-            if (hdr->pciId.indiv.deviceId == device.device.indiv.deviceId)
+            if (hdr->pciId.indiv.deviceId == device->hid.indiv.deviceId)
                 shouldAdd = true;
         }
         else
@@ -269,20 +283,22 @@ static obos_status probe_hid(const uacpi_id_string *hid, struct callback_userdat
     }
     return OBOS_STATUS_SUCCESS;
 }
-static uacpi_ns_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespace_node *node)
+static uacpi_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespace_node *node, uint32_t max_depth)
 {
+    OBOS_UNUSED(max_depth);
+
     struct callback_userdata* userdata = (struct callback_userdata*)ctx;
 
     uacpi_namespace_node_info *info;
 
     uacpi_status ret = uacpi_get_namespace_node_info(node, &info);
     if (uacpi_unlikely_error(ret))
-        return UACPI_NS_ITERATION_DECISION_CONTINUE;
+        return UACPI_ITERATION_DECISION_CONTINUE;
     
     if (info->type != UACPI_OBJECT_DEVICE) 
     {
         uacpi_free_namespace_node_info(info);
-        return UACPI_NS_ITERATION_DECISION_CONTINUE;
+        return UACPI_ITERATION_DECISION_CONTINUE;
     }
 
     if (info->flags & UACPI_NS_NODE_INFO_HAS_HID) 
@@ -292,7 +308,7 @@ static uacpi_ns_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_name
             probe_hid(&info->cid.ids[i], userdata); // the result of this doesn't really matter.
 
     uacpi_free_namespace_node_info(info);
-    return UACPI_NS_ITERATION_DECISION_CONTINUE;
+    return UACPI_ITERATION_DECISION_CONTINUE;
 }
 #endif
 obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *toLoad)
@@ -328,9 +344,16 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
     for (driver_header_node* node = what.head; node; )
     {
         if (!node->data)
+        {
+            node = node->next;
             continue;
+        }
         driver_header* drv = node->data;
-        OBOS_UNUSED(drv);
+        if (drv->flags & DRIVER_HEADER_PNP_IGNORE)
+        {
+            node = node->next;
+            continue;
+        }
 #if OBOS_ARCHITECTURE_HAS_ACPI
         if ((drv->flags & DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI))
             for (size_t i = 0; i < drv->acpiId.nPnpIds; i++) 
@@ -352,13 +375,33 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
 #if OBOS_ARCHITECTURE_HAS_PCI
     udata.pci_drivers = pci_drivers;
     // Enumerate the PCI bus.
-    DrvS_EnumeratePCI(pci_driver_callback, &udata);
+    // DrvS_EnumeratePCI(pci_driver_callback, &udata);
+    do {
+        bool abort = false;
+        for (size_t curr = 0; curr < Drv_PCIBusCount && !abort; curr++)
+        {
+            pci_bus* bus = &Drv_PCIBuses[curr];
+            for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev && !abort; )
+            {
+                switch (pci_driver_callback(&udata, dev))
+                {
+                    case PCI_ITERATION_DECISION_ABORT:
+                        abort = true;
+                        break;
+                    default:
+                        break;
+                }
+
+                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+            }
+        }
+    } while(0);
     // Free the pci driver map.
     free_map(pci_drivers);
 #endif
 #if OBOS_ARCHITECTURE_HAS_ACPI
     // Enumerate ACPI
-    uacpi_namespace_for_each_node_depth_first(
+    uacpi_namespace_for_each_child_simple(
         uacpi_namespace_root(),
         acpi_enumerate_callback,
         &udata
@@ -417,7 +460,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     for (dirent* ent = directory->d_children.head; ent; )
     {
         fd* file = Vfs_Calloc(1, sizeof(fd));
-        obos_status status = Vfs_FdOpenDirent(file, ent, FD_OFLAGS_READ_ONLY);
+        obos_status status = Vfs_FdOpenDirent(file, ent, FD_OFLAGS_READ);
         if (obos_is_error(status))
         {
             if (status != OBOS_STATUS_NOT_A_FILE)
@@ -439,10 +482,11 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             continue;
         }
         driver_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header), nullptr);
-        Drv_LoadDriverHeader(buf, filesize, hdr);
+        status = Drv_LoadDriverHeader(buf, filesize, hdr);
         if (obos_is_error(status))
         {
-            OBOS_Warning("Could not load driver header. Status: %d.\n", status);
+            if (status != OBOS_STATUS_INVALID_FILE)
+                OBOS_Warning("Could not load driver header. Status: %d.\n", status);
             Mm_VirtualMemoryFree(&Mm_KernelContext, buf, filesize);
             Vfs_FdClose(file);
             Vfs_Free(file);
@@ -486,41 +530,41 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             driver_id* drv = Drv_LoadDriver(file->base, filesize, &loadStatus);
             if (obos_is_error(loadStatus))
             {
-                OBOS_Warning("Could not load '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+                OBOS_Warning("Could not load '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 continue;
             }
             loadStatus = Drv_StartDriver(drv, &file->main);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
             {
-                OBOS_Warning("Could not start '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+                OBOS_Warning("Could not start '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 Drv_UnloadDriver(drv);
                 continue;
             }
         }
-    }
-    if (wait)
-    {
-        bool done = true;
-        while (1)
+        if (wait)
         {
-            done = true;
-            size_t i = 0;
-            void* item = nullptr;
-            while (hashmap_iter(drivers, &i, &item))
+            bool done = true;
+            while (1)
             {
-                if (!item)
-                    continue; // fnuy
-                struct driver_file* file = item;
-                if (!file->main)
-                    continue;
-                if (!(file->main->flags & THREAD_FLAGS_DIED))
+                done = true;
+                size_t i = 0;
+                void* item = nullptr;
+                while (hashmap_iter(drivers, &i, &item))
                 {
-                    done = false;
-                    break;
+                    if (!item)
+                        continue; // fnuy
+                    struct driver_file* file = item;
+                    if (!file->main)
+                        continue;
+                    if (!(file->main->flags & THREAD_FLAGS_DIED))
+                    {
+                        done = false;
+                        break;
+                    }
                 }
+                if (done)
+                    break;
             }
-            if (done)
-                break;
         }
     }
     for (driver_header_node* node = what.head; node; )

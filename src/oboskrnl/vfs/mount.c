@@ -77,6 +77,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     }
     vn->mount_point = mountpoint;
     vn->desc = desc;
+    vn->pagecache.owner = vn;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
     VfsH_PageCacheRef(&vn->pagecache);
     if (t)
@@ -163,6 +164,8 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
 
         tok += str_search(tok, '/');
         size_t currentPathLen = strlen(tok)-1;
+        if (currentPathLen == (size_t)-1)
+            currentPathLen = 0;
         if (tok[currentPathLen] != '/')
             currentPathLen++;
         while (tok[currentPathLen] == '/')
@@ -272,8 +275,8 @@ static void deref_vnode(vnode* vn)
 {
     if (!(--vn->refs))
     {
-        if (vn->pagecache.dirty_regions.nNodes)
-            OBOS_Warning("Freeing a vnode before dirty regions are freed. All cached writes will be dropped.\n");
+        // if (vn->pagecache.dirty_regions.nNodes)
+            // OBOS_Warning("Freeing a vnode before dirty regions are freed. All cached writes will be dropped.\n");
         VfsH_PageCacheUnref(&vn->pagecache);
         if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
             if (!(vn->un.device->refs--))
@@ -316,7 +319,7 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
 {
     OBOS_UNUSED(unused);
     OBOS_UNUSED(userdata);
-    VfsH_PageCacheFlush(&ent->vnode->pagecache, ent->vnode);
+    VfsH_PageCacheFlush(&ent->vnode->pagecache);
     deref_vnode(ent->vnode);
     OBOS_FreeString(&ent->name);
     Vfs_Free(ent);

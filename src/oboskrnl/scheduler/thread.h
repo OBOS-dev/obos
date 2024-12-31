@@ -13,6 +13,10 @@
 
 #include <locks/spinlock.h>
 
+#if OBOS_ENABLE_PROFILING && defined(OBOS_KERNEL)
+#	include <prof.h>
+#endif
+
 typedef enum
 {
 	THREAD_PRIORITY_INVALID = -1,
@@ -49,7 +53,8 @@ typedef enum
 } thread_flags;
 typedef enum
 {
-	THREAD_STATUS_READY = 0,
+	THREAD_STATUS_INVALID = 0,
+	THREAD_STATUS_READY = 1,
 	THREAD_STATUS_RUNNING,
 	THREAD_STATUS_BLOCKED,
 } thread_status;
@@ -94,8 +99,22 @@ typedef struct thread
 	size_t nWaiting; // the count of objects the thread is waiting on.
 	size_t nSignaled; // the count of objects that have signaled the thread.
 
-	thread_node phys_mem_node;
-	size_t nBytesWaitingFor;
+	struct signal_header* signal_info;
+
+	void* kernelStack; // size: 0x10000 bytes
+
+	// Thread profiling info
+
+#if OBOS_ENABLE_PROFILING && defined(OBOS_KERNEL)
+	call_frame_t frames[MAX_FRAMES];
+	size_t cur_frame;
+#else
+	uintptr_t resv1[2];
+	uint64_t resv2[2];
+#endif
+
+	// The amount of quantums the thread has ever ran for.
+	uint8_t total_quantums;
 } thread;
 typedef struct thread_list
 {

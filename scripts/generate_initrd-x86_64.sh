@@ -5,8 +5,11 @@ then
     mkdir tar
 fi
 cp out/uart tar
-cp out/ahci tar
+# cp out/ahci tar
+rm tar/ahci
 cp out/slowfat tar
+cp out/bochs_vbe tar
+#cp out/init tar
 if [[ ! -d tar/dev ]]
 then
     mkdir tar/dev

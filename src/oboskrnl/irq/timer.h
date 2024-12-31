@@ -102,8 +102,15 @@ OBOS_EXPORT timer_tick CoreS_GetNativeTimerFrequency();
 /// Converts a time frame in us to timer ticks.
 /// </summary>
 /// <param name="us">The time frame in microseconds.</param>
-/// <returns>The object, or nullptr on failure.</returns>
+/// <returns>The tick.</returns>
 OBOS_EXPORT timer_tick CoreH_TimeFrameToTick(uint64_t us);
+/// <summary>
+/// Converts a time frame in us to timer ticks.
+/// </summary>
+/// <param name="tick">The tick to be converted.</param>
+/// <param name="native_tick">Whether the tick passed is a native tick or a normal tick.</param>
+/// <returns>The tick count in nanoseconds..</returns>
+OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, uint64_t native_tick);
 
 /// <summary>
 /// Initializes the timer irq (should already be allocated) and the timer.

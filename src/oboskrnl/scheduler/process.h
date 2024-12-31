@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <handle.h>
 
 #include <scheduler/thread.h>
 
@@ -19,6 +20,8 @@ typedef struct process
 	uid currentUID;
 	gid currentGID;
 	struct context* ctx;
+	struct process* parent;
+	handle_table handles;
 } process;
 extern uint64_t Core_NextPID;
 // The first thread in this process must be the kernel main thread.
@@ -49,4 +52,4 @@ OBOS_EXPORT obos_status Core_ProcessAppendThread(process* proc, thread* thread);
 /// <param name="proc">The process to terminate.</param>
 /// <param name="forced">Whether to forcefully terminate the process.</param>
 /// <returns>The status of the function.</returns>
-OBOS_EXPORT obos_status Core_ProcessTerminate(process* proc, bool forced);
+obos_status Core_ProcessTerminate(process* proc, bool forced);

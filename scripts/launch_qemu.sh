@@ -2,12 +2,10 @@ cd ../
 
 rm qemu_log.txt
 
+echo $@
 qemu-system-x86_64 \
--drive id=disk2,file=out/obos.iso,if=none,format=raw \
--device ahci,id=ahci \
--device ide-hd,drive=disk2,bus=ahci.0,bootindex=1 \
--drive file=disk.img,format=raw \
--m 1G \
+-drive file=out/obos.iso,format=raw \
+-m 256M \
 -gdb tcp:0.0.0.0:1234 -S \
 -boot d \
 -M q35 \
@@ -15,7 +13,10 @@ qemu-system-x86_64 \
 -accel kvm \
 -debugcon file:/dev/stdout \
 -monitor stdio \
+-smp cores=1,threads=1,sockets=1 \
 -serial tcp:0.0.0.0:1534,server,nowait \
+-d int \
+-D qemu_log.txt "$@"
 -smp cores=$(nproc),threads=1,sockets=1 \
 -M smm=off \
 -D qemu_log.txt

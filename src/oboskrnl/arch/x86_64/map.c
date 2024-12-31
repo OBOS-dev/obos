@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <syscall.h>
 #include <klog.h>
 #include <memmanip.h>
 #include <error.h>
@@ -30,23 +31,27 @@
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
 
+#include <mm/page.h>
+
 #include <irq/irq.h>
 #include <irq/irql.h>
 
-static OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
+// Abandon all hope, ye who enter here.
 
-OBOS_NO_KASAN uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
+static __attribute__((no_instrument_function)) OBOS_NO_KASAN size_t AddressToIndex(uintptr_t address, uint8_t level) { return (address >> (9 * level + 12)) & 0x1FF; }
+
+OBOS_NO_KASAN __attribute__((no_instrument_function)) uintptr_t Arch_MaskPhysicalAddressFromEntry(uintptr_t phys)
 {
 	return phys & 0xffffffffff000;
 }
-OBOS_NO_KASAN uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN __attribute__((no_instrument_function)) uintptr_t Arch_GetPML4Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	if (!pml4Base)
 		return 0;
 	uintptr_t* arr = (uintptr_t*)MmS_MapVirtFromPhys(Arch_MaskPhysicalAddressFromEntry(pml4Base));
 	return arr[AddressToIndex(addr, 3)];
 }
-OBOS_NO_KASAN uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN __attribute__((no_instrument_function)) uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML4Entry(pml4Base, addr));
 	if (!phys)
@@ -54,7 +59,7 @@ OBOS_NO_KASAN uintptr_t Arch_GetPML3Entry(uintptr_t pml4Base, uintptr_t addr)
 	uintptr_t* arr = (uintptr_t*)MmS_MapVirtFromPhys(phys);
 	return arr[AddressToIndex(addr, 2)];
 }
-OBOS_NO_KASAN uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN __attribute__((no_instrument_function)) uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML3Entry(pml4Base, addr));
 	if (!phys)
@@ -62,7 +67,7 @@ OBOS_NO_KASAN uintptr_t Arch_GetPML2Entry(uintptr_t pml4Base, uintptr_t addr)
 	uintptr_t* arr = (uintptr_t*)MmS_MapVirtFromPhys(phys);
 	return arr[AddressToIndex(addr, 1)];
 }
-OBOS_NO_KASAN uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
+OBOS_NO_KASAN __attribute__((no_instrument_function)) uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
 {
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML2Entry(pml4Base, addr));
 	if (!phys)
@@ -71,7 +76,7 @@ OBOS_NO_KASAN uintptr_t Arch_GetPML1Entry(uintptr_t pml4Base, uintptr_t addr)
 	return arr[AddressToIndex(addr, 0)];
 }
 
-static uintptr_t GetPageMapEntryForDepth(uintptr_t pml4Base, uintptr_t addr, uint8_t depth)
+static __attribute__((no_instrument_function)) uintptr_t GetPageMapEntryForDepth(uintptr_t pml4Base, uintptr_t addr, uint8_t depth)
 {
 	switch (depth)
 	{
@@ -143,40 +148,55 @@ bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 
 static obos_status invlpg_impl(uintptr_t at);
 
-obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
+static bool has_xd()
+{
+	static bool ret = false, init = false;
+	if (!init)
+		ret = (rdmsr(0xC0000080) & (1 << 11));
+	return ret;
+}
+
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool free_pte)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	flags |= 1;
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0xfff || at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!(rdmsr(0xC0000080) & (1 << 11)))
+	if (obos_expect(!has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 3);
-	bool shouldInvplg = pm[AddressToIndex(at, 0)] & 0b1;
-	pm[AddressToIndex(at, 0)] = phys | flags;
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
+	uintptr_t entry = phys | flags;
+	bool shouldInvplg = pm[AddressToIndex(at, 0)] != entry;
+	// for (volatile bool b = !(flags & 1); b; )
+	// 	;
+	pm[AddressToIndex(at, 0)] = entry;
+	if (free_pte && ~flags & BIT_TYPE(0, UL))
+		Arch_FreePageMapAt(cr3, at, 3);
 	if (shouldInvplg)
 		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags)
+obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool free_pte)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	flags |= 1;
+	// flags |= 1;
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0x1fffff || at & 0x1fffff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!(rdmsr(0xC0000080) & (1 << 11)))
+	if (obos_expect(!has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	if (flags & ((uintptr_t)1 << 7))
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags, 2);
-	bool shouldInvplg = pm[AddressToIndex(at, 1)] & 0b1;
-	pm[AddressToIndex(at, 1)] = phys | flags | ((uintptr_t)1 << 7);
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 2);
+	uintptr_t entry = phys | flags | ((uintptr_t)1 << 7);
+	bool shouldInvplg = (entry != pm[AddressToIndex(at, 1)]);
+	pm[AddressToIndex(at, 1)] = entry;
+	if (free_pte && ~flags & BIT_TYPE(0, UL))
+		Arch_FreePageMapAt(cr3, at, 2);
 	if (shouldInvplg)
 		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
@@ -204,7 +224,7 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	return true;
 }
 extern bool Arch_SMPInitialized;
-obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
+obos_status Arch_UnmapPage(uintptr_t cr3, void* at_, bool free_pte)
 {
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -221,8 +241,9 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_)
 		return OBOS_STATUS_SUCCESS;
 	uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	uintptr_t* pt = (uintptr_t*)MmS_MapVirtFromPhys(phys);
-	pt[AddressToIndex(at, (uint8_t)isHugePage)] = 0;
-	Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
+	pt[AddressToIndex(at, (uint8_t)isHugePage)] &= ~BIT(0);
+	if (free_pte)
+		Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
 	return invlpg_impl(at);
 }
 static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql) 
@@ -254,10 +275,12 @@ static obos_status invlpg_impl(uintptr_t at)
 		if (oldIrql >= IRQL_INVLPG_IPI)
 		{
 			Core_LowerIrql(IRQL_DISPATCH);
-			Core_RaiseIrql(oldIrql);
+			irql unused = Core_RaiseIrql(oldIrql);
+			OBOS_UNUSED(unused);
 		}
 	}
-	while (invlpg_ipi_packet.active)
+	size_t spin = 0;
+	while (invlpg_ipi_packet.active && ++spin <= 10000)
 		pause();
 	Arch_HaltCPUs = false;
 	irql oldIrql = Core_SpinlockAcquireExplicit(&invlpg_ipi_packet.lock, IRQL_MASKED, false);
@@ -293,11 +316,11 @@ static obos_status invlpg_impl(uintptr_t at)
 }
 obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 {
-	return Arch_MapPage(getCR3(), at_, phys, 0x8000000000000003);
+	return Arch_MapPage(getCR3(), at_, phys, 0x8000000000000003, false);
 }
 obos_status OBOSS_UnmapPage(void* at_)
 {
-	return Arch_UnmapPage(getCR3(), at_);
+	return Arch_UnmapPage(getCR3(), at_, true);
 	
 }
 obos_status OBOSS_GetPagePhysicalAddress(void* at_, uintptr_t* oPhys)
@@ -374,12 +397,12 @@ obos_status Arch_InitializeKernelPageTable()
 		{
 			uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(oldCR3, virt));
 			OBOS_ASSERT(phys);
-			Arch_MapPage(newCR3, (void*)virt, phys, flags);
+			Arch_MapPage(newCR3, (void*)virt, phys, flags, false);
 		}
 	}
 	OBOS_Debug("%s: Mapping HHDM.\n", __func__);
 	for (uintptr_t off = 0; off < Mm_PhysicalMemoryBoundaries; off += 0x200000)
-		Arch_MapHugePage(newCR3, MmS_MapVirtFromPhys(off), off, 0x8000000000000003 /* XD, Write, Present */);
+		Arch_MapHugePage(newCR3, MmS_MapVirtFromPhys(off), off, 0x8000000000000003 /* XD, Write, Present */, false);
 	asm volatile("mov %0, %%cr3;" : :"r"(newCR3));
 	// Reclaim old page tables.
 	uint32_t indices[4] = { 0,0,0,0 };
@@ -390,18 +413,27 @@ obos_status Arch_InitializeKernelPageTable()
 	Arch_KernelCR3 = newCR3;
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
+obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, uintptr_t* phys)
 {
-	if (!pt || !ppage)
+	if (!pt)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	page page;
+	if (!ppage && !phys)
+		return OBOS_STATUS_SUCCESS;
+	page_info page;
 	memzero(&page, sizeof(page));
 	uintptr_t pml2Entry = Arch_GetPML2Entry(pt, addr);
 	uintptr_t pml1Entry = Arch_GetPML1Entry(pt, addr);
 	page.prot.present = pml2Entry & BIT_TYPE(0, UL);
 	if (!page.prot.present)
 	{
-		ppage->prot = page.prot;
+		if (ppage)
+		{
+			ppage->prot = page.prot;
+			ppage->virt = addr & ~0xfff;
+			ppage->phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
+		}
+		if (phys)
+			*phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
 		return OBOS_STATUS_SUCCESS;
 	}
 	page.prot.huge_page = pml2Entry & BIT_TYPE(7, UL) /* Huge page */;
@@ -417,10 +449,11 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 		page.prot.present = pml1Entry & BIT_TYPE(0, UL);
 		entry = pml1Entry;
 	}
-	page.addr = addr;
+	page.virt = addr;
 	page.prot.rw = entry & BIT_TYPE(1, UL);
 	page.prot.user = entry & BIT_TYPE(2, UL);
-	page.prot.touched = entry & (BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
+	page.accessed = entry & BIT_TYPE(5, UL);
+	page.dirty = entry & BIT_TYPE(6, UL);
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
     // page.prot.uc = (entry & BIT_TYPE(4, UL));
 	if (page.prot.huge_page)
@@ -435,26 +468,86 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page* ppage)
 		pml2Entry = (uintptr_t)MmS_MapVirtFromPhys(pml2Entry);
 		((uintptr_t*)pml2Entry)[AddressToIndex(addr, 0)] &= ~(BIT_TYPE(5, UL) | BIT_TYPE(6, UL));
 	}
-	ppage->addr = addr;
-	memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
+	if (ppage)
+	{
+		ppage->virt = addr;
+		ppage->phys = Arch_MaskPhysicalAddressFromEntry(entry);
+		memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
+	}
+	if (phys)
+		*phys = Arch_MaskPhysicalAddressFromEntry(entry);
 	return OBOS_STATUS_SUCCESS;	
 }
-obos_status MmS_SetPageMapping(page_table pt, const page* page, uintptr_t phys)
+obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t phys, bool free_pte)
 {
 	if (!page || !pt)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!page->prot.present)
-		return Arch_UnmapPage(pt, (void*)page->addr);
-	uintptr_t flags = 1;
+	// if (!page->prot.present)
+	// 	return Arch_UnmapPage(pt, (void*)page->virt, free_pte);
+	uintptr_t flags = 0;
 	if (page->prot.rw)
 		flags |= BIT_TYPE(1, UL);
 	if (page->prot.user)
 		flags |= BIT_TYPE(2, UL);
 	if (!page->prot.executable)
 		flags |= BIT_TYPE(63, UL);
+	if (page->prot.present)
+		flags |= BIT_TYPE(0, UL);
+	if (page->prot.is_swap_phys)
+		flags |= BIT_TYPE(9, UL); /* Available bit */
 	// if (page->prot.uc)
 	// 	flags |= BIT_TYPE(4, UL);
 	return !page->prot.huge_page ? 
-		Arch_MapPage(pt, (void*)(page->addr & ~0xfff), phys, flags) : 
-		Arch_MapHugePage(pt, (void*)(page->addr & ~0x1fffff), phys, flags);
+		Arch_MapPage(pt, (void*)(page->virt & ~0xfff), phys, flags, free_pte) : 
+		Arch_MapHugePage(pt, (void*)(page->virt & ~0x1fffff), phys, flags, free_pte);
+}
+
+page_table cached_root = {};
+extern char Arch_StartISRHandlersText;
+extern char Arch_EndISRHandlersText;
+extern char CoreS_SwitchToThreadContextEnd;
+static void map_range(uintptr_t cached_root, uintptr_t base, uintptr_t top, uintptr_t flags)
+{
+	base &= ~0xfff;
+	top += 0xfff;
+	top &= ~0xfff;
+	for (uintptr_t addr = base; addr < top; addr += 0x1000)
+	{
+		uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+		Arch_MapPage(cached_root, (void*)addr, phys, flags, false);
+	}
+}
+page_table MmS_AllocatePageTable()
+{
+	page_table root = Mm_AllocatePhysicalPages(1, 1, nullptr);
+	if (!cached_root)
+	{
+		cached_root = Mm_AllocatePhysicalPages(1, 1, nullptr);
+		memzero(Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
+		// Map the ISR handlers.
+		map_range(cached_root, (uintptr_t)&Arch_StartISRHandlersText, (uintptr_t)&Arch_EndISRHandlersText, BIT(0));
+		// Map Arch_KernelCR3
+		map_range(cached_root, (uintptr_t)&Arch_KernelCR3, (uintptr_t)(&Arch_KernelCR3 + 1), BIT(0) | BIT_TYPE(63, UL));
+		// Map CoreS_SwitchToThreadContext
+		map_range(cached_root, (uintptr_t)&CoreS_SwitchToThreadContext, (uintptr_t)&CoreS_SwitchToThreadContextEnd, BIT(0));
+		// Map kernel stacks.
+		for (size_t i = 0; i < Core_CpuCount; i++)
+		{
+			cpu_local* const cpu = Core_CpuInfo + i;
+			map_range(cached_root, (uintptr_t)cpu->arch_specific.ist_stack, (uintptr_t)cpu->arch_specific.ist_stack + 0x20000, 1|BIT_TYPE(63, UL)|2);
+		}
+		// Map cpu local structs.
+		map_range(cached_root, (uintptr_t)Core_CpuInfo, (uintptr_t)(Core_CpuInfo + Core_CpuCount), 1|BIT_TYPE(63, UL)|2);
+		// Map IDT
+		extern char g_idtEntries;
+		map_range(cached_root, (uintptr_t)&g_idtEntries, ((uintptr_t)&g_idtEntries) + 0x1000, 1|BIT_TYPE(63, UL)|2);
+		extern uintptr_t Arch_IRQHandlers[256];
+		map_range(cached_root, (uintptr_t)&Arch_IRQHandlers, ((uintptr_t)&Arch_IRQHandlers) + sizeof(Arch_IRQHandlers), 1|BIT_TYPE(63, UL)|2);
+		// Map syscall trap handler.
+		extern char Arch_SyscallTrapHandlerEnd;
+		extern char Arch_SyscallTrapHandler;
+		map_range(cached_root, (uintptr_t)&Arch_SyscallTrapHandler, (uintptr_t)&Arch_SyscallTrapHandlerEnd, 1|2);
+	}
+	memcpy(Arch_MapToHHDM(root), Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
+	return root;
 }

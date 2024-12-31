@@ -46,118 +46,89 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
     *count = port->nSectors;
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data, bool wasPageable, bool wasUC);
+static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data);
 #pragma GCC push_options
 #pragma GCC optimize ("-O0")
-static obos_status populate_physical_regions(uintptr_t base, size_t size, struct command_data* data, bool* wasPageable, bool *wasUC)
+static OBOS_NO_KASAN void page_in(uintptr_t base, size_t sz)
 {
-    bool tried = false;
-    page what = { .addr=(base - (base%OBOS_PAGE_SIZE)) };
-    try_again:
-    OBOS_ASSERT(data);
-    context* volatile context = CoreS_GetCPULocalPtr()->currentContext;
-    page* volatile found = RB_NFIND(page_tree, &context->pages, &what);
-    if (!found)
+    uintptr_t curr_base = base;
+    for (size_t i = 0; i < sz; i += OBOS_PAGE_SIZE)
     {
-        if (OBOS_PAGE_SIZE == OBOS_HUGE_PAGE_SIZE || tried)
-            return OBOS_STATUS_NOT_FOUND;
-        tried = true;
-        what.addr -= (what.addr % OBOS_HUGE_PAGE_SIZE);
-        goto try_again;
+        volatile char prev = ((char*)curr_base)[i];
+        ((volatile char*)curr_base)[i] = prev;
     }
-    if (found->addr != what.addr) // the address is the key
-        found = RB_PREV(page_tree, &context->pages, found);
-    *wasPageable = found->pageable;
-    *wasUC = found->prot.uc;
-    obos_status status = 
-        *wasPageable ?
-            Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)(base - base % OBOS_PAGE_SIZE), size, OBOS_PROTECTION_SAME_AS_BEFORE|OBOS_PROTECTION_CACHE_DISABLE, 0) :
-            OBOS_STATUS_SUCCESS;
-    if (obos_is_error(status))
-        return status;
+}
+static obos_status populate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
+{
+    // obos_status status = 
+    //     *wasPageable ?
+    //         Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)(base - base % OBOS_PAGE_SIZE), size, OBOS_PROTECTION_SAME_AS_BEFORE|OBOS_PROTECTION_CACHE_DISABLE, 0) :
+    //         OBOS_STATUS_SUCCESS;
+    // if (obos_is_error(status))
+    //     return status;
+    page_in(base, size);
     base &= ~1;
     const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
-    uintptr_t reg_base = 0;
-    uintptr_t physical_page = 0;
-    uintptr_t prev_phys = 0;
-    int64_t reg_size = 0;
-    int64_t pg_size = 0;
-    int64_t bytesLeft = size;
-    int64_t bytesInPage = 0;
-    // int64_t initialBytesInPage = 0;
-    bool trunc = false;
-    for (uintptr_t addr = base; bytesLeft && (addr == base || (bytesInPage > 0)); addr += bytesInPage)
+/*
+    data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+    struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
+*/
+    long bytesLeft = size;
+    size_t pgSize = 0;
+    uintptr_t lastPhys = 0;
+    struct ahci_phys_region curr = {};
+    bool wroteback = false;
+    for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
     {
-        // if (data->physRegionCount == 38)
-        //     for (volatile bool b = true; b; );
-        OBOS_ASSERT(!found->reserved);
-        if (found->reserved)
-            continue;
-        pg_size = found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
         if (data->physRegionCount >= MAX_PRDT_COUNT)
-        {
-            unpopulate_physical_regions(base, size, data, *wasPageable, *wasUC);
             return OBOS_STATUS_INTERNAL_ERROR;
-        }
-        OBOSS_GetPagePhysicalAddress((void*)addr, &physical_page);
-        physical_page += addr % pg_size;
-        if (bytesLeft < pg_size)
-            bytesInPage = bytesLeft;
-        else
-            bytesInPage = pg_size - (addr % pg_size);
-        if (((addr + (bytesInPage - 1)) & ~(OBOS_PAGE_SIZE-1)) != (addr & ~(OBOS_PAGE_SIZE-1)))
+        page_info info = {};
+        MmS_QueryPageInfo(CoreS_GetCPULocalPtr()->currentContext->pt, addr, &info, nullptr);
+        if ((lastPhys + pgSize) != info.phys)
         {
-            trunc = true;
-            bytesInPage = pg_size - (addr % pg_size);
-        }
-        else
-            trunc = false;
-        if (addr == base)
-        {
-            // initialBytesInPage = bytesInPage;
-            reg_base = trunc ? 0 : physical_page;
-        }
-        // What does this even do?!?!?!?!??!?!
-        // if (bytesLeft <= pg_size && ((int64_t)size) > pg_size)
-        //     bytesInPage -= initialBytesInPage;
-        if ((addr != base) && (prev_phys + pg_size) == physical_page && reg_size < (1024*1024*4 /* Hard limit imposed by AHCI */))
-        {
-            reg_size += (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
-        }
-        else
-        {
-            if (addr != base || ((int64_t)size) <= pg_size)
+            if (addr != base)
             {
-                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+                size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
+                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
                 struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-                reg->phys = reg_base ? reg_base : physical_page;
-                reg->sz = reg_size ? reg_size : (bytesLeft > bytesInPage ? bytesInPage : bytesLeft);
+                *reg = curr;
+                wroteback = true;
             }
-            reg_base = !trunc ? physical_page : 0;
-            reg_size = !trunc ? (bytesLeft > bytesInPage ? bytesInPage : bytesLeft) : 0;
+            pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            curr.phys = info.phys + (addr % pgSize);
+            curr.sz = 0;
         }
-        prev_phys = physical_page;
-        bytesLeft -= bytesInPage;
-        found = RB_NEXT(page_tree, &context->pages, found);
+        pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        size_t addend = (bytesLeft > (long)pgSize ? pgSize : (size_t)bytesLeft);
+        curr.sz += addend;
+        if (curr.sz > (pgSize-(addr % pgSize)))
+        {
+            curr.sz -= addend;
+            curr.sz += pgSize-(addr % pgSize);
+        }
+        lastPhys = info.phys;
+        wroteback = false;
     }
-    if (!data->physRegionCount)
+    if (!wroteback && curr.phys)
     {
-        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+        size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
+        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-        reg->phys = reg_base;
-        reg->sz = reg_size;
+        *reg = curr;
     }
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data, bool wasPageable, bool wasUC)
+static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
 {
     OBOS_ASSERT(data);
-    obos_status status =
-        wasPageable ?
-            Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)base, size, OBOS_PROTECTION_SAME_AS_BEFORE|(!wasUC ? OBOS_PROTECTION_CACHE_ENABLE : OBOS_PROTECTION_CACHE_DISABLE), true) :
-            OBOS_STATUS_SUCCESS;
-    if (obos_is_error(status))
-        return status;
+    OBOS_ASSERT(base);
+    OBOS_ASSERT(size);
+    // obos_status status =
+    //     wasPageable ?
+    //         Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)base, size, OBOS_PROTECTION_SAME_AS_BEFORE|(!wasUC ? OBOS_PROTECTION_CACHE_ENABLE : OBOS_PROTECTION_CACHE_DISABLE), true) :
+    //         OBOS_STATUS_SUCCESS;
+    // if (obos_is_error(status))
+    //     return status;
     return OBOS_STATUS_SUCCESS;
 }
 #pragma GCC pop_options
@@ -165,7 +136,6 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 {
     if (!desc || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // FIXME: Allow for reads greater than 0x10000 sectors.
     if (blkCount > 0x10000)
     {
         size_t nSectorBlocks = blkCount / 0x10000;
@@ -204,8 +174,10 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
             *nBlkRead = 0;
         return OBOS_STATUS_SUCCESS;
     }
+    if (blkOffset > port->nSectors)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if ((blkOffset + blkCount) > port->nSectors)
-        blkCount = (blkOffset + blkCount) - port->nSectors;
+        blkCount = blkOffset - port->nSectors;
     if (!blkCount)
     {
         if (nBlkRead)
@@ -214,12 +186,12 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     }
     obos_status status = OBOS_STATUS_SUCCESS;
     struct command_data data = { .direction=COMMAND_DIRECTION_READ, .cmd=(port->supports48bitLBA ? ATA_READ_DMA_EXT : ATA_READ_DMA ) };
-    bool wasPageable = false;
-    bool wasUC = false;
     data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, &wasPageable, &wasUC);
+    status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
     if (obos_is_error(status))
         return status;
+    // for (size_t i = 0; i < data.physRegionCount; i++)
+    //     printf("%d: 0x%p 0x%08x\n", i, data.phys_regions[i].phys, data.phys_regions[i].sz);
     for (uint8_t try = 0; try < 5; try++)
     {
         HBA->ghc |= BIT(1);
@@ -231,7 +203,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         if (!port->works)
         {
             Core_SemaphoreRelease(&port->lock);
-            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, wasPageable, wasUC);
+            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
             status = OBOS_STATUS_ABORTED; // oops
             break;
         }
@@ -243,7 +215,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
             break;
         }
     }
-    unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, wasPageable, wasUC);
+    unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
     if (nBlkRead)
         *nBlkRead = blkCount;
     return status;
@@ -279,9 +251,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     obos_status status = OBOS_STATUS_SUCCESS;
     struct command_data data = { .direction=COMMAND_DIRECTION_WRITE, .cmd=(port->supports48bitLBA ? ATA_WRITE_DMA_EXT : ATA_WRITE_DMA ) };
     data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    bool wasPageable = false;
-    bool wasUC = false;
-    status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, &wasPageable, &wasUC);
+    status = populate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
     if (obos_is_error(status))
         return status;
     for (uint8_t try = 0; try < 5; try++)
@@ -293,7 +263,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         if (!port->works)
         {
             Core_SemaphoreRelease(&port->lock);
-            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, wasPageable, wasUC);
+            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
             status = OBOS_STATUS_ABORTED; // oops
             break;
         }
@@ -305,7 +275,6 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
             break;
         }
     }
-    unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data, wasPageable, wasUC);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
     return status;

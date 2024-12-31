@@ -25,7 +25,8 @@ typedef enum vma_flags
 	VMA_FLAGS_PRIVATE = BIT(6), // only applies when mapping a file.
 	VMA_FLAGS_PREFAULT = BIT(7), // only applies when mapping a file.
 	VMA_FLAGS_RESERVE = BIT(8), // Registers the pages, but does not back them by anything. If this is set, the VMA ignores the 'file' parameter.
-    VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_NON_PAGED,
+	VMA_FLAGS_32BITPHYS = BIT(9), // 32-bit physical addresses should be allocated. Best to use with VMA_FLAGS_NON_PAGED. Ignored if file != nullptr.
+	VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE,
 } vma_flags;
 typedef enum prot_flags
 {
@@ -64,14 +65,46 @@ typedef enum prot_flags
 
 extern OBOS_EXPORT allocator_info* Mm_Allocator;
 
+// flags: PHYS_PAGE_HUGE_PAGE
+// phys32: true
+extern OBOS_EXPORT page* Mm_AnonPage;
+
 OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.
 OBOS_EXPORT void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status);
-// Note: base must be the exact address as returned by AllocateVirtualMemory.
 OBOS_EXPORT obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t size);
-// Note: base must be the exact address as returned by AllocateVirtualMemory.
+// Note: base must be the exact address as returned by VirtualMemoryAlloc.
 // isPageable values:
 // 0: Non-pageable
 // 1: Pageable
 // >1: Same as previous value.
 OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t size, prot_flags newProt, int isPageable);
+
+// Maps user pages into the kernel address space. This can be used in syscalls to avoid copying large amounts of memory.
+// returns OBOS_STATUS_PAGE_FAULT when a portion of the user memory requested is not mapped.
+// NOTE: The returned address is not aligned down to the page size.
+OBOS_EXPORT void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool respectUserProtection, obos_status* status);
+
+typedef enum unmap_behavior {
+	// Default behavior.
+	// Allow the pages to be unmapped from the address space, but do not unlock the backing memory.
+	UNMAP_FLAGS_ALLOW = 0,
+	// Defers the unmap until the pages are unlocked manually.
+	UNMAP_FLAGS_DEFER,
+	// Unlocks the pages on unmap, then unmaps them.
+	UNMAP_FLAGS_UNLOCK,
+} unmap_behavior;
+
+// Locks pages from base to base+sz in the working-set.
+// If space is not avaliable in the working-set, pages are removed until space can be satisified.
+// If the working-set's capacity is too small, then it can be inflated until the pages are unlocked.
+// The unmap_
+OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz, unmap_behavior unmap_action);
+// Unlocks pages from base to base+sz from the working-set.
+// If the pages caused the working-set capacity to be inflated, then it is deflated once again.
+OBOS_EXPORT obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base, size_t sz);
+
+OBOS_EXPORT void* Mm_AllocateKernelStack(context* target_user, obos_status* status);
+
+// Optimized version of Mm_VirtualMemoryAlloc that allocates RW, ANON memory.
+OBOS_EXPORT void* Mm_QuickVMAllocate(size_t sz, bool non_pageable);

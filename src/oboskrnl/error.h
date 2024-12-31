@@ -137,4 +137,34 @@ typedef enum
 	/// The operation was aborted.
 	/// </summary>
 	OBOS_STATUS_ABORTED,
+	/// <summary>
+	/// A page fault happened accessing user memory passed in a syscall or anywhere similar.
+	/// </summary>
+	OBOS_STATUS_PAGE_FAULT,
+	/// <summary>
+	/// A driver timed out.
+	/// </summary>
+	OBOS_STATUS_TIMED_OUT,
+	/// <summary>
+	/// The pipe has no more readers.<para/>
+	/// Only returned if SIGPIPE is ignored by a process.
+	/// </summary>
+	OBOS_STATUS_PIPE_CLOSED,
+	/// <summary>
+	/// Returned if the write request could not be completed, as there is simply not enough space in the device<para/>
+	/// For example, this can happen if the size of a write to a pipe is greater than the pipe's size.'
+	/// </summary>
+	OBOS_STATUS_NO_SPACE,
+	/// <summary>
+	/// There is no syscall at this syscall number :(
+	/// </summary>
+	OBOS_STATUS_NO_SYSCALL,
+	/// <summary>
+	/// The ACPI device is not capable to wake the system from the requested sleep state.
+	/// </summary>
+	OBOS_STATUS_WAKE_INCAPABLE,
+	/// <summary>
+	/// The ELF file has an invalid, or unsupported elf type in it's header.
+	/// </summary>
+	OBOS_STATUS_INVALID_ELF_TYPE,
 } obos_status;

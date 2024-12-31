@@ -15,10 +15,12 @@
 struct thread_context_info
 {
 	void* extended_ctx_ptr;
-	uintptr_t cr3;
 	uint8_t irql;
+	uintptr_t cr3;
 	uint64_t gs_base, fs_base;
 	interrupt_frame frame;
 	void* stackBase;
 	size_t stackSize;
 } OBOS_ALIGN(8);
+
+extern void Arch_UserYield(void* kstck);

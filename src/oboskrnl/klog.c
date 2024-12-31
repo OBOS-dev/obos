@@ -7,8 +7,9 @@
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
+#include <stdarg.h>
+#include <memmanip.h>
 #include <text.h>
-
 #include <locks/spinlock.h>
 
 #include <scheduler/cpu_local.h>
@@ -21,17 +22,19 @@
 
 #include <irq/irql.h>
 
-#include <uacpi_libc.h>
+// #define STB_SPRINTF_NOFLOAT 1
+// #define STB_SPRINTF_IMPLEMENTATION 1
+// #define STB_SPRINTF_MIN 8
+// #include <external/stb_sprintf.h>
 
-#include <stdarg.h>
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-compare"
-#define STB_SPRINTF_NOFLOAT 1
-#define STB_SPRINTF_IMPLEMENTATION 1
-#define STB_SPRINTF_MIN 8
-#include <external/stb_sprintf.h>
-#pragma GCC diagnostic pop
+#define NANOPRINTF_USE_FIELD_WIDTH_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_PRECISION_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_FLOAT_FORMAT_SPECIFIERS 0
+#define NANOPRINTF_USE_LARGE_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_BINARY_FORMAT_SPECIFIERS 1
+#define NANOPRINTF_USE_WRITEBACK_FORMAT_SPECIFIERS 0
+#define NANOPRINTF_IMPLEMENTATION
+#include <external/nanoprintf.h>
 
 #ifdef __x86_64__
 #	include <arch/x86_64/asm_helpers.h>
@@ -68,6 +71,15 @@ OBOS_EXPORT log_level OBOS_GetLogLevel()
 }
 static spinlock s_loggerLock; bool s_loggerLockInitialized = false;
 static spinlock s_printfLock; bool s_printfLockInitialized = false;
+color OBOS_LogLevelToColor[LOG_LEVEL_NONE] = {
+	COLOR_LIGHT_BLUE,
+	COLOR_LIGHT_GREEN,
+	COLOR_YELLOW,
+	COLOR_RED,
+};
+#define CALLBACK_COUNT (8)
+static log_backend outputCallbacks[CALLBACK_COUNT];
+static size_t nOutputCallbacks;
 static void common_log(log_level minimumLevel, const char* log_prefix, const char* format, va_list list)
 {
 	if (!s_loggerLockInitialized)
@@ -77,10 +89,24 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	}
 	if (s_logLevel > minimumLevel)
 		return;
-	uint8_t oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+	OBOS_SetColor(OBOS_LogLevelToColor[minimumLevel]);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
+	OBOS_ResetColor();
 	Core_SpinlockRelease(&s_loggerLock, oldIrql);
+}
+void OBOS_SetColor(color c)
+{
+	for (size_t i = 0; i < nOutputCallbacks; i++)
+		if (outputCallbacks[i].set_color)
+			outputCallbacks[i].set_color(c, outputCallbacks[i].userdata);
+}
+void OBOS_ResetColor()
+{
+	for (size_t i = 0; i < nOutputCallbacks; i++)
+		if (outputCallbacks[i].reset_color)
+			outputCallbacks[i].reset_color(outputCallbacks[i].userdata);
 }
 OBOS_EXPORT void OBOS_Debug(const char* format, ...)
 {
@@ -95,6 +121,27 @@ OBOS_EXPORT void OBOS_Log(const char* format, ...)
 	va_start(list, format);
 	common_log(LOG_LEVEL_LOG, " LOG ", format, list);
 	va_end(list);
+}
+OBOS_EXPORT void OBOS_LibCLog(const char* format, ...)
+{
+	if (!s_loggerLockInitialized)
+	{
+		s_loggerLock = Core_SpinlockCreate();
+		s_loggerLockInitialized = true;
+	}
+	if (s_logLevel > LOG_LEVEL_LOG)
+		return;
+	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
+
+	OBOS_SetColor(COLOR_GREEN);
+	printf("[ LIBC  ] ");
+	va_list list;
+	va_start(list, format);
+	vprintf(format, list);
+	va_end(list);
+
+	OBOS_ResetColor();
+	Core_SpinlockRelease(&s_loggerLock, oldIrql);
 }
 OBOS_EXPORT void OBOS_Warning(const char* format, ...)
 {
@@ -134,9 +181,9 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
-OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, const char* format, ...)
+OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
-	const char* ascii_art =
+	static const char ascii_art[] =
 		"       )\r\n"
         "    ( /(                        (\r\n"
         "    )\\())  (   (             (  )\\             )        (\r\n"
@@ -150,11 +197,19 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 	if (OBOSS_HaltCPUs)
 		OBOSS_HaltCPUs();
 #endif
-	Core_SpinlockForcedRelease(&s_printfLock);
-	Core_SpinlockForcedRelease(&s_loggerLock);
+
+#if OBOS_ENABLE_PROFILING
+	prof_stop();
+#endif
+
+	/*	Core_SpinlockForcedRelease(&s_printfLock);
+	Core_SpinlockForcedRelease(&s_loggerLock);*/
+	Core_SpinlockRelease(&s_printfLock, Core_GetIrql());
+	Core_SpinlockRelease(&s_loggerLock, Core_GetIrql());
 	OBOS_TextRendererState.fb.backbuffer_base = nullptr; // the back buffer might cause some trouble.
-	uint8_t oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_MASKED);
 	OBOS_UNUSED(oldIrql);
+	OBOS_ResetColor();
 	printf("\n%s\n", ascii_art);
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
@@ -237,22 +292,18 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT void OBOS_Panic(panic_reason reason, con
 		asm volatile("");
 }
 
-
-static char* outputCallback(const char* buf, void* a, int len)
+static void outputCallback(int val, void* a)
 {
 	OBOS_UNUSED(a);
-	for (size_t i = 0; i < (size_t)len; i++)
-	{
-		OBOS_WriteCharacter(&OBOS_TextRendererState, buf[i]);
-#ifdef __x86_64__
-		outb(0xE9, buf[i]);
-#elif defined(__m68k__)
-	extern uintptr_t Arch_TTYBase;
-	if (Arch_TTYBase)
-	    ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
-#endif
-	}
-	return (char*)buf;
+	// Cast val to a char for big endian systems.
+	char c = val;
+	for (size_t j = 0; j < nOutputCallbacks; j++)
+		outputCallbacks[j].write(&c, 1, outputCallbacks[j].userdata);
+}
+void OBOS_AddLogSource(const log_backend* backend)
+{
+	if (nOutputCallbacks++ < CALLBACK_COUNT)
+		outputCallbacks[nOutputCallbacks - 1] = *backend;
 }
 OBOS_EXPORT size_t printf(const char* format, ...)
 {
@@ -269,9 +320,8 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 		s_printfLockInitialized = true;
 		s_printfLock = Core_SpinlockCreate();
 	}
-	char ch[8];
-	uint8_t oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
-	size_t ret = stbsp_vsprintfcb(outputCallback, nullptr, ch, format, list);
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
+	size_t ret = npf_vpprintf(outputCallback, nullptr, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;
 }
@@ -285,5 +335,59 @@ OBOS_EXPORT size_t snprintf(char* buf, size_t bufSize, const char* format, ...)
 }
 OBOS_EXPORT size_t vsnprintf(char* buf, size_t bufSize, const char* format, va_list list)
 {
-	return stbsp_vsnprintf(buf, bufSize, format, list);
+	return npf_vsnprintf(buf, bufSize, format, list);
 }
+OBOS_EXPORT size_t puts(const char *s)
+{
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
+	size_t i = 0;
+	for (; s[i]; i++)
+		outputCallback(s[i], nullptr);
+	Core_SpinlockRelease(&s_printfLock, oldIrql);
+	return i;
+}
+
+static void con_output(const char *str, size_t sz, void* userdata)
+{
+	if (userdata)
+		for (size_t i = 0; i < sz; i++)
+			OBOS_WriteCharacter((text_renderer_state*)userdata, str[i]);
+}
+static void con_set_color(color c, void* userdata)
+{
+	if (userdata)
+	{
+#define RGBX(r,g,b) (((uint32_t)(r) << 24) | ((uint32_t)(g) << 16) | ((uint32_t)(b) << 8))
+		static color color_to_rgbx[16] = {
+			RGBX(0x00,0x00,0x00), // COLOR_BLACK
+			RGBX(0x00,0x00,0xff), // COLOR_BLUE
+			RGBX(0x00,0x80,0x00), // COLOR_GREEN
+			RGBX(0x00,0xff,0xff), // COLOR_CYAN
+			RGBX(0xff,0x00,0x00), // COLOR_RED
+			RGBX(0xff,0x00,0xff), // COLOR_MAGENTA
+			RGBX(0x8b,0x45,0x13), // COLOR_BROWN
+			RGBX(0xd3,0xd3,0xd3), // COLOR_LIGHT_GREY
+			RGBX(0xa9,0xa9,0xa9), // COLOR_DARK_GREY
+			RGBX(0x00,0xbf,0xff), // COLOR_LIGHT_BLUE
+			RGBX(0x90,0xee,0x90), // COLOR_LIGHT_GREEN
+			RGBX(0xe0,0xff,0xff), // COLOR_LIGHT_CYAN
+			RGBX(0xf0,0x80,0x80), // COLOR_LIGHT_RED
+			RGBX(0xff,0x80,0xff), // COLOR_LIGHT_MAGENTA
+			RGBX(0xff,0xff,0x00), // COLOR_YELLOW
+			RGBX(0xff,0xff,0xff), // COLOR_WHITE
+		};
+		uint32_t new_color = color_to_rgbx[c];
+		text_renderer_state* state = userdata;
+		state->fg_color = new_color;
+	}
+}
+static void con_reset_color(void *userdata)
+{
+	con_set_color(COLOR_WHITE, userdata);
+}
+log_backend OBOS_ConsoleOutputCallback = {
+	.write=con_output,
+	.set_color=con_set_color,
+	.reset_color=con_reset_color,
+	.userdata=&OBOS_TextRendererState
+};

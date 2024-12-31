@@ -6,6 +6,10 @@ if (NOT HAS_CROSS_COMPILER)
 	message(FATAL_ERROR "No m68k-obos cross compiler in the PATH!")
 endif()
 
+if (OBOS_USE_CLANG)
+	message(WARNING "OBOS does not support m68k clang")
+endif()
+
 set(CMAKE_C_COMPILER "m68k-obos-gcc")
 set(CMAKE_CXX_COMPILER "m68k-obos-g++")
 set(CMAKE_ASM-ATT_COMPILER ${CMAKE_C_COMPILER})
@@ -45,10 +49,10 @@ endif()
 add_compile_options("-mcpu=68040")
 
 list (APPEND oboskrnl_sources 
-	"arch/m68k/entry.c" "arch/m68k/memmanip.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c"
+	"arch/m68k/entry.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c" "arch/m68k/driver_loader.c"
 	"arch/m68k/irq.c" "arch/m68k/isr.S" "arch/m68k/thread_ctx.S" "arch/m68k/thread_ctx.c"
-	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/initial_swap.c"
-	"arch/m68k/goldfish_pic.c" "arch/m68k/goldfish_rtc.c" "arch/m68k/driver_loader.c"
+	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/goldfish_rtc.c"
+	"arch/m68k/goldfish_pic.c"
 )
 
 add_compile_definitions(

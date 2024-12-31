@@ -126,7 +126,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
             return; // don't add an already added dependency to the list
         cur = cur->next;
     }
-    driver_node* node = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(driver_node), nullptr);
+    driver_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sizeof(driver_node), nullptr);
     node->data = dependency;
     driver_list* list = &depends->dependencies;
     if (!list->head)

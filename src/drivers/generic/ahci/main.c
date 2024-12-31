@@ -13,6 +13,7 @@
 
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
+#include <driver_interface/driverId.h>
 
 #include <mm/context.h>
 #include <mm/alloc.h>
@@ -42,9 +43,13 @@
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 
+#include <utils/list.h>
+
 #if defined(__x86_64__)
 #include <arch/x86_64/ioapic.h>
 #endif
+
+pci_resource* PCIIrqResource = nullptr;
 
 OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
@@ -52,20 +57,12 @@ OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_
 OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
-OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(nParameters);
+    OBOS_UNUSED(what);
     OBOS_UNUSED(request);
-    OBOS_UNUSED(list);
-    return OBOS_STATUS_INVALID_IOCTL; // we don't support any
-}
-OBOS_WEAK OBOS_PAGEABLE_FUNCTION obos_status ioctl(size_t nParameters, uint64_t request, ...)
-{
-    va_list list;
-    va_start(list, request);
-    obos_status status = ioctl_var(nParameters, request, list);
-    va_end(list);
-    return status;
+    OBOS_UNUSED(argp);
+    return OBOS_STATUS_INVALID_IOCTL;
 }
 void driver_cleanup_callback()
 {
@@ -83,14 +80,18 @@ void driver_cleanup_callback()
         for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
             ClearCommand(port, port->PendingCommands[i]);
     }
-    Drv_MaskPCIIrq(&PCIIrqHandle, true);
+    if (PCIIrqResource)
+    {
+        PCIIrqResource->irq->masked = true;
+        Drv_PCISetResource(PCIIrqResource);
+    }
     Core_IrqObjectFree(&HbaIrq);
     // TODO: Free HBA, port clb, and fb
     
 }
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI|DRIVER_HEADER_HAS_VERSION_FIELD,
     .acpiId.nPnpIds = 0,
     .pciId.indiv = {
         .classCode = 0x01, // mass storage controller
@@ -100,7 +101,6 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
-        .ioctl_var = ioctl_var,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
@@ -108,7 +108,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .read_sync = read_sync,
         .write_sync = write_sync,
     },
-    .driverName = "AHCI Driver"
+    .driverName = "AHCI Driver",
+    .version=1,
+    .uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL
 };
 
 volatile HBA_MEM* HBA;
@@ -116,47 +118,33 @@ volatile HBA_MEM* HBA;
 uint32_t HbaIrqNumber;
 Port Ports[32];
 size_t PortCount;
-pci_device_node PCINode;
+// TODO: Make AHCI driver support multiple controllers.
+pci_device* PCINode;
 bool FoundPCINode;
-pci_irq_handle PCIIrqHandle;
-pci_iteration_decision find_pci_node(void* udata, pci_device_node node)
+
+static void* map_registers(uintptr_t phys, size_t size, bool uc)
 {
-    OBOS_UNUSED(udata);
-    if (node.device.indiv.classCode == drv_hdr.pciId.indiv.classCode && 
-        node.device.indiv.subClass == drv_hdr.pciId.indiv.subClass &&
-        node.device.indiv.progIf == drv_hdr.pciId.indiv.progIf)
-    {
-        PCINode = node;
-        FoundPCINode = true;
-        return PCI_ITERATION_DECISION_ABORT;
-    }
-    return PCI_ITERATION_DECISION_CONTINUE;
-}
-uacpi_ns_iteration_decision pci_bus_match(void *user, uacpi_namespace_node *node)
-{
-    uacpi_namespace_node** pNode = (uacpi_namespace_node**)user;
-    *pNode = node;
-    return UACPI_NS_ITERATION_DECISION_BREAK;
-}
-void* map_registers(uintptr_t phys, size_t size, bool uc)
-{
+    size_t phys_page_offset = (phys % OBOS_PAGE_SIZE);
+    phys -= phys_page_offset;
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
+    size += phys_page_offset;
     void* virt = Mm_VirtualMemoryAlloc(
         &Mm_KernelContext, 
         nullptr, size,
         uc ? OBOS_PROTECTION_CACHE_DISABLE : 0, VMA_FLAGS_NON_PAGED,
         nullptr, 
         nullptr);
-    page what = {.addr=(uintptr_t)virt};
     for (uintptr_t offset = 0; offset < size; offset += OBOS_PAGE_SIZE)
     {
-        what.addr = (uintptr_t)virt + offset;
-        page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        page->prot.uc = uc;
-        MmS_SetPageMapping(Mm_KernelContext.pt, page, phys + offset);
+        page_info page = {.virt=offset+(uintptr_t)virt};
+        MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
+        page.prot.uc = uc;
+        page.phys = phys+offset;
+        MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
-    return virt;
+    return virt+phys_page_offset;
 }
+
 uintptr_t HBAAllocate(size_t size, size_t alignment)
 {
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
@@ -169,6 +157,7 @@ uintptr_t HBAAllocate(size_t size, size_t alignment)
         return Mm_AllocatePhysicalPages32(size, alignment, nullptr);
     OBOS_UNREACHABLE;
 }
+
 const char* const DeviceNames[32] = {
     "sda", "sdb", "sdc", "sdd",
     "sde", "sdf", "sdg", "sdh",
@@ -179,44 +168,73 @@ const char* const DeviceNames[32] = {
     "sdy", "sdz", "sd1", "sd2",
     "sd3", "sd4", "sd5", "sd6",
 };
-// https://forum.osdev.org/viewtopic.php?t=40969
-void OBOS_DriverEntry(driver_id* this)
+
+static void search_bus(pci_bus* bus)
 {
-    DrvS_EnumeratePCI(find_pci_node, nullptr);
-    if (!FoundPCINode)
+    for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev; )
     {
-        OBOS_Error("%*s: Could not find PCI Node. Aborting...\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
-        Core_ExitCurrentThread();
+        if ((dev->hid.id & 0xffffffff) == (drv_hdr.pciId.id & 0xffffffff))
+        {
+            PCINode = dev;
+            FoundPCINode = true;
+            break;
+        }
+
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
     }
-    uintptr_t bar = PCINode.bars.indiv32.bar5;
-    // for (volatile bool b = true; b; )
-    //     ;
-    uint64_t pciCommand = 0;
-    size_t barlen = DrvS_GetBarSize(PCINode.info, 5, false, nullptr);
-    barlen = barlen + (OBOS_PAGE_SIZE - (barlen % OBOS_PAGE_SIZE));
+}
+// https://forum.osdev.org/viewtopic.php?t=40969
+driver_init_status OBOS_DriverEntry(driver_id* this)
+{
+    for (size_t i = 0; i < Drv_PCIBusCount; i++)
+        search_bus(&Drv_PCIBuses[i]);
+    if (!FoundPCINode)
+        return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find PCI Device."};
+    //uintptr_t bar = PCINode.bars.indiv32.bar5;
+    // Look for BAR 5.
+    pci_resource* bar = nullptr;
+    for (pci_resource* curr = LIST_GET_HEAD(pci_resource_list, &PCINode->resources); curr; )
+    {
+        if (curr->type == PCI_RESOURCE_BAR)
+        {
+            if (curr->bar->idx == 5)
+                bar = curr;
+        } else if (curr->type == PCI_RESOURCE_IRQ)
+            PCIIrqResource = curr;
+
+        if (bar && PCIIrqResource)
+            break;
+
+        curr = LIST_GET_NEXT(pci_resource_list, &PCINode->resources, curr);
+    }
+
+    size_t barlen = bar->bar->size;
     OBOS_Log("%*s: Initializing AHCI controller at %02x:%02x:%02x. HBA at 0x%p-0x%p.\n",
         uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName,
-        PCINode.info.bus, PCINode.info.slot, PCINode.info.function, 
+        PCINode->location.bus, PCINode->location.slot, PCINode->location.function,
         bar, bar+barlen);
+
     OBOS_Debug("Enabling bus master and memory space access in PCI command.\n");
-    DrvS_ReadPCIRegister(PCINode.info, 1*4, 2, &pciCommand);
-    pciCommand |= 6; // memory space + bus master
-    DrvS_WritePCIRegister(PCINode.info, 1*4, 2, pciCommand);
+    PCINode->resource_cmd_register->cmd_register |= 6; // memory space + bus master
+    Drv_PCISetResource(PCINode->resource_cmd_register);
     OBOS_Debug("Mapping HBA memory.\n");
-    HBA = map_registers(bar, barlen, true);
+    HBA = map_registers(bar->bar->phys, barlen, true);
     // OBOS_Log("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "%*s: Could not initialize IRQ object with IRQL %d.\nStatus: %d\n", uacpi_strnlen(drv_hdr.driverName, 64), IRQL_AHCI, status);
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize IRQ object."};
     OBOS_Debug("Enabling IRQs...\n");
-    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
+/*    status = Drv_RegisterPCIIrq(&HbaIrq, &PCINode, &PCIIrqHandle);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize HBA Irq. Status: %d.\n", status);
-    HbaIrq.irqChecker = ahci_irq_checker;
-    HbaIrq.handler = ahci_irq_handler;
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize HBA Irq."};
     status = Drv_MaskPCIIrq(&PCIIrqHandle, false);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not unmask HBA Irq. Status: %d.\n", status);
+        return (driver_init_status){.status=status,.fatal=true,.context="Could not unmask HBA Irq."};*/
+    PCIIrqResource->irq->irq = &HbaIrq;
+    PCIIrqResource->irq->masked = false;
+    Drv_PCISetResource(PCIIrqResource);
+    HbaIrq.irqChecker = ahci_irq_checker;
+    HbaIrq.handler = ahci_irq_handler;
     OBOS_Debug("Enabled IRQs.\n");
     HBA->ghc |= BIT(31);
     while (!(HBA->ghc & BIT(31)))
@@ -294,14 +312,17 @@ void OBOS_DriverEntry(driver_id* this)
         if (HBA->cap & BIT(27) /* CapSSS */)
             hPort->cmd |= BIT(1);
         timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
-        while ((hPort->ssts & 0xf) != 0x3 && deadline < CoreS_GetTimerTick())
+        while ((hPort->ssts & 0xf) != 0x3 && CoreS_GetTimerTick() < deadline)
             OBOSS_SpinlockHint();
         curr->hbaPortIndex = port;
         if ((hPort->ssts & 0xf) != 0x3)
             continue;
         hPort->serr = 0xffffffff;
-        while (hPort->tfd & 0x80 && hPort->tfd & 0x8)
+        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(10000);
+        while (hPort->tfd & 0x80 && hPort->tfd & 0x8 && CoreS_GetTimerTick() < deadline)
             OBOSS_SpinlockHint();
+        if ((hPort->tfd & 0x88) != 0)
+            continue;
         OBOS_Debug("Done port init for port %d.\n", port);
         StartCommandEngine(hPort);
         curr->works = true;
@@ -310,9 +331,9 @@ void OBOS_DriverEntry(driver_id* this)
     for (uint8_t i = 0; i < PortCount; i++)
     {
         Port* port = Ports + i;
-        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         if (!port->works)
             continue;
+        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         HBA->ports[port->hbaPortIndex].is = 0xffffffff;
         HBA->ports[port->hbaPortIndex].ie = 0xffffffff;
         HBA->ports[port->hbaPortIndex].serr = 0xffffffff;
@@ -393,7 +414,7 @@ void OBOS_DriverEntry(driver_id* this)
         Drv_RegisterVNode(port->vn, port->dev_name);
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
-    Core_ExitCurrentThread();
+    return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }
 
 // hexdump clone lol

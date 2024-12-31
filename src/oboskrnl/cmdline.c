@@ -11,13 +11,112 @@
 
 #include <allocators/base.h>
 
+#include <mm/bare_map.h>
+
 #include <uacpi_libc.h>
 
-const char* OBOS_KernelCmdLine;
-const char* OBOS_InitrdBinary;
-size_t OBOS_InitrdSize;
-char** OBOS_argv;
-size_t OBOS_argc;
+OBOS_PAGEABLE_VARIABLE const char* OBOS_KernelCmdLine;
+OBOS_PAGEABLE_VARIABLE const char* volatile OBOS_InitrdBinary;
+OBOS_PAGEABLE_VARIABLE size_t volatile OBOS_InitrdSize;
+OBOS_PAGEABLE_VARIABLE char** OBOS_argv;
+OBOS_PAGEABLE_VARIABLE size_t OBOS_argc;
+
+static const char* const help_message =
+"OBOSKRNL usage:\n"
+"NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
+"--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
+"--initrd-module=name: The name or path of the initrd module.\n"
+"--initrd-driver-module=name: The name or path of the initrd driver module.\n"
+"--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"
+"                            in the initrd, otherwise it is the name of a module to load as a driver.\n"
+"--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted\n"
+"                         when 'init' is called.\n"
+"--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+"                     is used as root.\n"
+"--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+"--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
+"--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
+"--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
+"--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
+"--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
+"--help: Displays this help message.\n";
+
+struct cmd_allocation_header
+{
+    size_t alloc_size;
+    // set to true if the bump allocator (OBOS_BasicMMAllocatePages) was used.
+    bool basicmm;
+};
+
+static void* cmd_malloc(size_t sz)
+{
+    struct cmd_allocation_header* blk = nullptr;
+    if (OBOS_KernelAllocator)
+    {
+        blk = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz+sizeof(*blk), nullptr);
+        blk->basicmm = false;
+        blk->alloc_size = sz;
+        return blk + 1;
+    }
+    sz += sizeof(*blk);
+    if (sz % OBOS_PAGE_SIZE)
+        sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
+    blk = OBOS_BasicMMAllocatePages(sz, nullptr);
+    blk->basicmm = true;
+    blk->alloc_size = sz;
+    return blk + 1;
+}
+
+static void* cmd_calloc(size_t nobj, size_t szobj)
+{
+    size_t sz = nobj * szobj;
+    return memzero(cmd_malloc(sz), sz);
+}
+
+static void cmd_free(void* buf)
+{
+    struct cmd_allocation_header* hdr = buf;
+    hdr--;
+    if (hdr->basicmm)
+    {
+        memset(buf, 0x11, hdr->alloc_size);
+        return;
+    }
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->alloc_size+sizeof(*hdr));
+}
+
+static void* cmd_realloc(void* buf, size_t newsize)
+{
+    if (!buf)
+        return cmd_malloc(newsize);
+    if (!newsize)
+    {
+        cmd_free(buf);
+        return nullptr;
+    }
+    struct cmd_allocation_header* hdr = buf;
+    hdr--;
+    if (hdr->basicmm)
+    {
+        newsize += sizeof(*hdr);
+        if (newsize % OBOS_PAGE_SIZE)
+            newsize += (OBOS_PAGE_SIZE-(newsize%OBOS_PAGE_SIZE));
+        if (newsize == hdr->alloc_size)
+            return buf;
+        hdr->alloc_size = newsize;
+        void* newbuf = cmd_malloc(newsize);
+        if (newsize < hdr->alloc_size)
+            memcpy(newbuf, hdr, newsize);
+        else
+            memcpy(newbuf, hdr, hdr->alloc_size+sizeof(*hdr));
+        cmd_free(buf); // probably a no-op, but do it anyway.
+        return newbuf;
+    }
+    size_t oldsz = hdr->alloc_size;
+    hdr->alloc_size = newsize;
+    hdr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sizeof(*hdr)+newsize, sizeof(*hdr)+oldsz, nullptr);
+    return hdr + 1;
+}
 
 // Parses the command line into argv and argc
 void OBOS_ParseCMDLine()
@@ -28,7 +127,8 @@ void OBOS_ParseCMDLine()
     
     for (const char* iter = OBOS_KernelCmdLine; iter < (OBOS_KernelCmdLine + cmdlinelen); )
     {
-        OBOS_argv = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, OBOS_argv, (++OBOS_argc)*sizeof(const char* const), nullptr);
+        OBOS_argv = cmd_realloc(OBOS_argv, (++OBOS_argc)*sizeof(const char* const));
+        printf("argv=%p\n", OBOS_argv);
         size_t arg_len = 0;
         if (*iter == '\"' || *iter == '\'')
         {
@@ -49,28 +149,12 @@ void OBOS_ParseCMDLine()
             if (arg_len != cmdlinelen-(iter-OBOS_KernelCmdLine))
                 arg_len--;
         }
-        OBOS_argv[OBOS_argc - 1] = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, arg_len + 1, sizeof(char), nullptr), iter, arg_len);
+        OBOS_argv[OBOS_argc - 1] = memcpy(cmd_calloc(arg_len + 1, sizeof(char)), iter, arg_len);
+        printf("argv[i]=%p\n", OBOS_argv[OBOS_argc-1]);
         iter += arg_len+1;
     }
     if (OBOS_GetOPTF("help"))
-    {
-        static const char* const help_message = 
-            "OBOSKRNL usage:\n"
-            "NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
-            "--enable-kdbg: Enables the kernel debugger at boot. Not all architectures support this.\n"
-            "--initrd-module=name: The name or path of the initrd module.\n"
-            "--initrd-driver-module=name: The name or path of the initrd driver module.\n"
-            "--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"
-            "                            in the initrd, otherwise it is the name of a module to load as a driver.\n"
-            "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted\n"
-            "                         when 'init' is called.\n"
-            "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
-            "                     is used as root.\n"
-            "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
-            "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
-            "--help: Displays this help message.\n";
         printf("%s", help_message);
-    }
 }
 char* OBOS_GetOPTS(const char* opt)
 {
@@ -96,11 +180,11 @@ char* OBOS_GetOPTS(const char* opt)
             if (optlen == arglen)
             {
                 size_t valuelen = strlen(OBOS_argv[i+1]);
-                return memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, valuelen+1, sizeof(char), nullptr), OBOS_argv[i+1], valuelen);
+                return memcpy(cmd_calloc(valuelen+1, sizeof(char)), OBOS_argv[i+1], valuelen);
             }
             size_t valuelen = arglen-optlen;
             arg += optlen+1;
-            return memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, valuelen+1, sizeof(char), nullptr), arg, valuelen);
+            return memcpy(cmd_calloc(valuelen+1, sizeof(char)), arg, valuelen);
         }
     }
     return nullptr;
@@ -208,17 +292,21 @@ static uint64_t strtoull(const char* str, char** endptr, int base)
 	}
 	return 0xffffffffffffffff;
 }
+
 uint64_t OBOS_GetOPTD(const char* opt)
+{
+    return OBOS_GetOPTD_Ex(opt, UINT64_MAX);
+}
+uint64_t OBOS_GetOPTD_Ex(const char* opt, uint64_t default_value)
 {
     char* val = OBOS_GetOPTS(opt);
     if (!val)
-        return 0;
+        return default_value;
     uint64_t dec = strtoull(val, nullptr, 0);
-    size_t val_len = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, val, &val_len);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, val, val_len);
+    cmd_free(val);
     return dec;
 }
+
 bool OBOS_GetOPTF(const char* opt)
 {
     for (size_t i = 0; i < OBOS_argc; i++)

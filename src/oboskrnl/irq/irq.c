@@ -31,12 +31,25 @@ static spinlock s_lock;
 static bool s_irqInterfaceInitialized;
 void Core_IRQDispatcher(interrupt_frame* frame)
 {
-#if !OBOS_ARCH_EMULATED_IRQL
+#if !OBOS_ARCH_EMULATED_IRQL && !OBOS_LAZY_IRQL
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 	if (!CoreS_EnterIRQHandler(frame))
 		return;
 	CoreS_SendEOI(frame);
+#elif OBOS_LAZY_IRQL
+	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
+	if (irql_ < CoreS_GetCPULocalPtr()->currentIrql)
+	{
+		CoreS_SetIRQL(irql_, CoreS_GetIRQL());
+		CoreS_DeferIRQ(frame);
+		CoreS_SendEOI(frame);
+		return;
+	}
+	if (!CoreS_EnterIRQHandler(frame))
+		return;
+	CoreS_SendEOI(frame);
+	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #else
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (!CoreS_EnterIRQHandler(frame))
@@ -46,9 +59,9 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	CoreS_SendEOI(frame);
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
-	context* oldCtx = CoreS_GetCPULocalPtr()->currentContext;
-	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
+	//if (frame->vector == 0x60)
+	//	printf("sci received\n");
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
@@ -72,21 +85,25 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	}
 	if (!irq_obj)
 	{
+		//if (frame->vector == 0x60)
+			//printf("could not resolve irq object\n");
 		// Spooky actions from a distance...
-		CoreS_GetCPULocalPtr()->currentContext = oldCtx;
 		Core_LowerIrqlNoDPCDispatch(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
 	}
 	if (irq_obj->handler)
 	{
+		//if (frame->vector == 0x60)
+			//printf("handling sci\n");
 		irq_obj->handler(
 			irq_obj,
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
 	}
-	CoreS_GetCPULocalPtr()->currentContext = oldCtx;
+	//else if (frame->vector == 0x60)
+		//printf("no irq handler\n");
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);
 }
@@ -108,7 +125,7 @@ static void append_irq_to_vector(irq_vector* This, irq* what)
 {
 	OBOS_ASSERT(This);
 	OBOS_ASSERT(what);
-	irq_node* node = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(irq_node), nullptr);
+	irq_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq_node), nullptr);
 	OBOS_ASSERT(node);
 	node->data = what;
 	if (!This->irqObjects.head)

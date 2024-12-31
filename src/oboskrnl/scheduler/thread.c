@@ -11,6 +11,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
+#include <scheduler/process.h>
 #include <scheduler/thread.h>
 #include <scheduler/process.h>
 
@@ -32,19 +33,26 @@ static void free_thr(thread* thr)
 {
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, thr, sizeof(*thr));
 }
+static void free_thr_kalloc(thread* thr)
+{
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, thr, sizeof(*thr));
+}
 static void free_node(thread_node* node)
 {
 	OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
 }
+static void free_node_kalloc(thread_node* node)
+{
+	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+}
 thread* CoreH_ThreadAllocate(obos_status* status)
 {
-	thread* thr = nullptr;
-	if (!OBOS_NonPagedPoolAllocator)
-		thr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread), status);
-	else
-		thr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread), status);
+	allocator_info* info = OBOS_NonPagedPoolAllocator;
+	if (!info)
+		info = OBOS_KernelAllocator;
+	thread* thr = info->ZeroAllocate(info, 1, sizeof(thread), status);
 	if (thr)
-		thr->free = free_thr;
+		thr->free = info == OBOS_KernelAllocator ? free_thr_kalloc : free_thr;
 	return thr;
 }
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx)
@@ -64,12 +72,14 @@ obos_status CoreH_ThreadReady(thread* thr)
 {
 	if (!OBOS_KernelAllocator)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	allocator_info* alloc = OBOS_NonPagedPoolAllocator ? OBOS_NonPagedPoolAllocator : OBOS_KernelAllocator;
-	thread_node* node = (thread_node*)alloc->ZeroAllocate(alloc, 1, sizeof(thread_node), nullptr);
-	node->free = free_node;
+	allocator_info* info = OBOS_NonPagedPoolAllocator;
+	if (!info)
+		info = OBOS_KernelAllocator;
+	thread_node* node = (thread_node*)OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), nullptr);
+	node->free = info == OBOS_KernelAllocator ? free_node : free_node_kalloc;
 	obos_status status = CoreH_ThreadReadyNode(thr, node);
 	if (status != OBOS_STATUS_SUCCESS)
-		free_node(node);
+		node->free(node);
 	return status;
 }
 obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
@@ -158,7 +168,8 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
+
+__attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -172,14 +183,11 @@ obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 	node->prev = list->tail;
 	list->tail = node;
 	list->nNodes++;
-	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
-	{
-		Core_LowerIrql(oldIrql);
-		Core_SpinlockForcedRelease(&list->lock);
-	}
+	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
-obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
+
+__attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 {
 	if (!list || !node)
 		return OBOS_STATUS_INVALID_ARGUMENT;
@@ -207,11 +215,7 @@ obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 	list->nNodes--;
 	node->next = nullptr;
 	node->prev = nullptr;
-	if (Core_SpinlockRelease(&list->lock, oldIrql) != OBOS_STATUS_SUCCESS)
-	{
-		Core_LowerIrql(oldIrql);
-		Core_SpinlockForcedRelease(&list->lock);
-	}
+	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
 thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
@@ -219,7 +223,7 @@ thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 	return ((thread_affinity)1 << cpuId);
 }
 
-OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_t unused)
+OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) static uintptr_t ExitCurrentThread(uintptr_t unused)
 {
 	OBOS_UNUSED(unused);
 	thread* currentThread = Core_GetCurrentThread();
@@ -228,7 +232,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 	CoreH_ThreadBlock(currentThread, false);
 	if (currentThread->proc)
 		CoreH_ThreadListRemove(&currentThread->proc->threads, currentThread->pnode);
-	if (currentThread->pnode->free)
+	if (currentThread->pnode && currentThread->pnode->free)
 		currentThread->pnode->free(currentThread->pnode);
 	currentThread->flags |= THREAD_FLAGS_DIED;
 	CoreS_FreeThreadContext(&currentThread->context);
@@ -240,17 +244,18 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION static uintptr_t ExitCurrentThread(uintptr_
 								 CoreS_GetThreadStackSize(&currentThread->context),
 								currentThread->stackFreeUserdata);
 	}
-	if (!currentThread->references && currentThread->free)
-		currentThread->free(currentThread);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
+	if (!(--currentThread->references) && currentThread->free)
+		currentThread->free(currentThread);
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	(void)Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
+	OBOS_UNUSED(oldIrql);
 }
 
 void CoreH_VMAStackFree(void* base, size_t sz, void* userdata)

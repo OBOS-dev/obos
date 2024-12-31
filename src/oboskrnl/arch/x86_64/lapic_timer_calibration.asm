@@ -24,7 +24,7 @@ Arch_FindCounter:
 	mov r11, [Arch_HPETAddress]
 
 	mov r13, [Arch_LAPICAddress]
-	mov dword [r13+0x3E0], 0xD ; DIVISOR_ONE
+	mov dword [r13+0x3E0], 0xB ; DIVISOR_ONE
 	mov dword [r13+0x380], 0xffffffff
 
 	; Start the HPET timer.

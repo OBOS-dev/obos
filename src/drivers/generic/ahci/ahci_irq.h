@@ -15,4 +15,4 @@
 
 bool ahci_irq_checker(struct irq* i, void* userdata);
 void ahci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
-extern pci_irq_handle PCIIrqHandle;
+extern pci_resource* PCIIrqResource;

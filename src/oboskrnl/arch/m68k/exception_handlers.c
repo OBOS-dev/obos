@@ -28,11 +28,12 @@ void Arch_PageFaultHandler(interrupt_frame* frame)
     if (Mm_IsInitialized())
     {
         mm_ec &= ~PF_EC_PRESENT;
-        page what = {.addr=frame->format_7.fa & ~0xfff};
-        page* page = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        if (page && page->prot.present)
+        page_info curr = {};
+        context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+        MmS_QueryPageInfo(ctx->pt, frame->format_7.fa & ~0xfff, &curr, nullptr);
+        if (curr.prot.present)
             mm_ec |= PF_EC_PRESENT;
-        obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, frame->format_7.fa & ~0xfff, mm_ec);
+        obos_status status = Mm_HandlePageFault(ctx, frame->format_7.fa & ~0xfff, mm_ec);
         switch (status)
         {
             case OBOS_STATUS_SUCCESS:

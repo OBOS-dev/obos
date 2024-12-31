@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/interrupt_frame.h>
@@ -20,7 +21,7 @@
 #define APIC_BSP 0x100
 #define APIC_ENABLE 0x800
 
-obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool e);
 
 lapic* Arch_LAPICAddress;
 static basicmm_region lapic_region;
@@ -36,7 +37,7 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	{
 		uintptr_t phys = lapic_msr & ~0xfff;
 		Arch_LAPICAddress = (lapic*)(0xffffffffffffe000);
-		Arch_MapPage(getCR3(), Arch_LAPICAddress, phys, 0x8000000000000013);
+		Arch_MapPage(getCR3(), Arch_LAPICAddress, phys, 0x8000000000000013, false);
 		lapic_region.mmioRange = true;
 		OBOSH_BasicMMAddRegion(&lapic_region, Arch_LAPICAddress, 0x1000);
 	}
@@ -44,6 +45,8 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	if (isBSP)
 		lapic_msr |= APIC_BSP;
 	wrmsr(IA32_APIC_BASE, lapic_msr);
+	if (isBSP)
+		Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
 	Arch_LAPICAddress->spuriousInterruptVector = 0x1ff /* LAPIC Enabled, spurious vector 0xff */;
 	Arch_LAPICAddress->lvtLINT0 = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	if (isBSP)
@@ -54,10 +57,10 @@ OBOS_PAGEABLE_FUNCTION void Arch_LAPICInitialize(bool isBSP)
 	Arch_LAPICAddress->lvtPerformanceMonitoringCounters = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtThermalSensor = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
 	Arch_LAPICAddress->lvtTimer = 0xfe /* Vector 0xFE, Fixed, Unmasked */;
-	Arch_RawRegisterInterrupt(0xfe, (uintptr_t)LAPIC_DefaultIrqHandler);
 }
 void Arch_LAPICSendEOI()
 {
+	OBOS_ASSERT(Arch_LAPICAddress);
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;
 }
@@ -87,4 +90,10 @@ OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_inf
 	while (Arch_LAPICAddress->interruptCommand0_31 & (1<<12))
 		pause();
 	return OBOS_STATUS_SUCCESS;
+}
+
+void CoreS_DeferIRQ(interrupt_frame* frame)
+{
+	Arch_LAPICSendIPI((ipi_lapic_info){.isShorthand=true,.info.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF},
+					  (ipi_vector_info){.deliveryMode=LAPIC_DELIVERY_MODE_FIXED,.info={.vector=frame->intNumber}});
 }

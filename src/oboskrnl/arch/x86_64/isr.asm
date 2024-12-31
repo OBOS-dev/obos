@@ -4,9 +4,17 @@
 
 bits 64
 
+section .data
+global Arch_KernelCR3:data hidden
+Arch_KernelCR3:
+	dq 0
+
 section .text
 default rel
 
+global Arch_StartISRHandlersText: data hidden
+global Arch_EndISRHandlersText: data hidden
+Arch_StartISRHandlersText:
 align 32
 global Arch_b_isr_handler:function hidden
 global Arch_e_isr_handler:function hidden
@@ -114,11 +122,6 @@ pop rax
 %endmacro
 
 extern Arch_IRQHandlers
-section .data
-global Arch_KernelCR3:data hidden
-Arch_KernelCR3:
-	dq 0
-section .text
 
 int_handler_common:
 	pushaq
@@ -130,10 +133,20 @@ int_handler_common:
 	mov rax, cr3
 	push rax
 
-	test qword [rsp+0xB8], 0x3 ; User code
-	je .no_swapgs1
+; If we are not using the kernel's CR3
 	mov rax, [Arch_KernelCR3]
+	mov rdx, cr3
+	cmp rdx, rax
+	je .no_switch_cr3
+
+; Then switch to the kernel cr3
 	mov cr3, rax
+.no_switch_cr3:
+
+; If we were interrupted in user code
+	test qword [rsp+0xB8], 0x3 ; User code
+	jz .no_swapgs1
+; Then swapgs
 	swapgs
 .no_swapgs1:
 	mov rax, [rsp+0xA0]
@@ -148,11 +161,17 @@ int_handler_common:
 	call rax
 
 .finished:
-	test qword [rsp+0xB8], 0x3 ; User code
 
 	pop rax
-	je .no_swapgs2
+	cmp rax, [Arch_KernelCR3]
+	je .no_switch_cr3_2
+	; Switch to the old cr3
 	mov cr3, rax
+
+.no_switch_cr3_2:
+
+	test qword [rsp+0xB0], 0x3 ; User code
+	je .no_swapgs2
 	swapgs
 .no_swapgs2:
 
@@ -162,6 +181,7 @@ int_handler_common:
 	add rsp, 0x18
 
 	iretq
+Arch_EndISRHandlersText:
 section .text
 Arch_FlushIDT:
 	lidt [rdi]

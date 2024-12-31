@@ -6,6 +6,7 @@
 #   ifdef __x86_64__
 #       define UACPI_ARCH_FLUSH_CPU_CACHE() asm volatile ("wbinvd")
 #       define UACPI_ARCH_DISABLE_INTERRUPTS() asm volatile ("cli")
+#       define UACPI_ARCH_ENABLE_INTERRUPTS() asm volatile ("sti") /* not actually used by uacpi */
 #   else
 #       error Invalid architecture.
 #   endif
@@ -19,7 +20,7 @@
 #endif
 
 typedef uint8_t uacpi_cpu_flags;
-typedef uint32_t uacpi_thread_id;
+typedef uintptr_t uacpi_thread_id;
 
 #ifndef UACPI_THREAD_ID_NONE
 #    define UACPI_THREAD_ID_NONE ((uacpi_thread_id)-1)

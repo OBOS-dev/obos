@@ -1,5 +1,5 @@
 /*
-	libs/uACPI/kernel_api.cpp
+	uACPI/kernel_api.c
 	
 	Copyright (c) 2024 Omar Berrow
 */
@@ -18,7 +18,6 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
-#include <irq/dpc.h>
 
 #include <locks/spinlock.h>
 #include <locks/mutex.h>
@@ -30,11 +29,13 @@
 #include <irq/irq.h>
 #include <irq/irql.h>
 #include <irq/timer.h>
+#include <irq/dpc.h>
 
 #include <allocators/base.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+#include <mm/bare_map.h>
 
 #include <driver_interface/pci.h>
 
@@ -43,6 +44,7 @@
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/ioapic.h>
+#include <arch/x86_64/boot_info.h>
 #endif
 
 #if OBOS_ARCHITECTURE_HAS_ACPI
@@ -117,7 +119,7 @@ void spin_hung()
 {
     // Use to report a lock hanging.
 }
-uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
+uacpi_status io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
 {
     uint8_t (*readB)(uacpi_io_addr address) = raw_io_readB;
     uint16_t(*readW)(uacpi_io_addr address) = raw_io_readW;
@@ -156,6 +158,7 @@ uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth,
         else
             status = UACPI_STATUS_INVALID_ARGUMENT;
     }
+    // printf("read 0x%0*x from I/O Port 0x%04x\n", byteWidth*2, (uint32_t)*out_value, address);
     return status;
 }
 #ifdef __x86_64__
@@ -167,8 +170,9 @@ uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byteWidth,
     static void(*raw_io_writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD_impl;
     static void(*raw_io_writeQ)(uacpi_io_addr address, uint64_t val) = nullptr;
 #endif
-uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
+uacpi_status io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
 {
+    // printf("writing 0x%0*x to I/O Port 0x%04x\n", byteWidth*2, in_value, address);
     void(*writeB)(uacpi_io_addr address, uint8_t  val) = raw_io_writeB;
     void(*writeW)(uacpi_io_addr address, uint16_t val) = raw_io_writeW;
     void(*writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD;
@@ -208,11 +212,25 @@ uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byteWidth
     }
     return status;
 }
+
+uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
+{
+    *out_handle = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uacpi_pci_address), nullptr);
+    memcpy(*out_handle, &address, sizeof(address));
+    return UACPI_STATUS_OK;
+}
+
+void uacpi_kernel_pci_device_close(uacpi_handle hnd)
+{
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(uacpi_pci_address));
+}
+
 uacpi_status uacpi_kernel_pci_read(
-    uacpi_pci_address *address, uacpi_size offset,
+    uacpi_handle device, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 *value
 )
 {
+    uacpi_pci_address* address = device;
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
     pci_device_location loc = {
@@ -224,10 +242,11 @@ uacpi_status uacpi_kernel_pci_read(
     return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
 uacpi_status uacpi_kernel_pci_write(
-    uacpi_pci_address *address, uacpi_size offset,
+    uacpi_handle device, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 value
 )
 {
+    uacpi_pci_address* address = device;
     if (address->segment)
         return UACPI_STATUS_UNIMPLEMENTED;
     pci_device_location loc = {
@@ -240,6 +259,7 @@ uacpi_status uacpi_kernel_pci_write(
 }
 // static allocators::BasicAllocator s_uACPIAllocator;
 // static bool s_uACPIAllocatorInitialized = false;
+
 void* uacpi_kernel_alloc(uacpi_size size)
 {
     // logger::debug("Attempting allocation of %lu bytes.\n", size);
@@ -248,35 +268,33 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // new (&s_uACPIAllocator) allocators::BasicAllocator{};
         // s_uACPIAllocatorInitialized = true;
     // }
+
     void* ret = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, size, nullptr);
+    // void* ret = OBOS_BasicMMAllocatePages(size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
     /*else
         OBOS_Debug("Allocated %lu bytes at 0x%p\n", size, ret);*/
     return ret;
 }
-void* uacpi_kernel_calloc(uacpi_size count, uacpi_size size)
+
+void* uacpi_kernel_alloc_zeroed(uacpi_size count)
 {
-    return memzero(uacpi_kernel_alloc(count * size), count * size);
+    return memzero(uacpi_kernel_alloc(count), count);
 }
-void uacpi_kernel_free(void* mem)
+
+void uacpi_kernel_free(void* mem, size_t sz)
 {
     if (!mem)
         return;
-    if (mem == (void*)0xffff8000feed50f0)
-        asm volatile("nop");
     // logger::debug("Attempt free of 0x%p\n", mem);
     // if (!s_uACPIAllocatorInitialized)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
         // __func__, __LINE__);
-    size_t sz = 0;
-    OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, mem, &sz);
-    if (sz == SIZE_MAX)
-        OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Function %s, line %d: free of object by uACPI not allocated by uACPI allocator. This is a bug, please report in some way.\n", 
-        __func__, __LINE__);
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, sz);
     //logger::debug("Freed 0x%p.\n", mem);
 }
+
 void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 {
     va_list list;
@@ -287,39 +305,53 @@ void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_list list)
 {
     const char* prefix = "UNKNOWN";
+    color c = 0;
     switch (level)
     {
+    case UACPI_LOG_DEBUG:
+        prefix = "DEBUG";
+        c = OBOS_LogLevelToColor[LOG_LEVEL_DEBUG];
+        break;
     case UACPI_LOG_TRACE:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_DEBUG];
         prefix = "TRACE";
         break;
     case UACPI_LOG_INFO:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_LOG];
         prefix = "INFO";
         break;
     case UACPI_LOG_WARN:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_WARNING];
         prefix = "WARN";
         break;
     case UACPI_LOG_ERROR:
+        c = OBOS_LogLevelToColor[LOG_LEVEL_ERROR];
         prefix = "ERROR";
         break;
     default:
         break;
     }
-    printf("uACPI, %s: ", prefix);
+    OBOS_SetColor(c);
+    printf("[uACPI][%s]: ", prefix);
     vprintf(format, list);
+    OBOS_ResetColor();
 }
-uint64_t CoreS_TimerTickToNS(timer_tick tp);
-uacpi_u64 uacpi_kernel_get_ticks(void)
+
+timer_tick CoreS_GetNativeTimerTick();
+timer_tick CoreS_GetNativeTimerFrequency();
+uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
 {
-    // This value is strictly monotonic, so in the case that the tick counter doesn't change,
-    // we need to account for that.
-    static uint64_t cached = 0;
-    static uint64_t offset = 0;
-    if (cached == CoreS_TimerTickToNS(CoreS_GetTimerTick())/100)
-        return cached + (++offset);
-    cached = CoreS_TimerTickToNS(CoreS_GetTimerTick())/100;
-    offset = 0;
-    return cached;
+    static uint64_t cached_rate = 0;
+    // NOTE: If our frequency is greater than 1 GHZ, we get zero for our rate.
+    if (obos_expect(!cached_rate, false))
+    {
+        cached_rate = (1*1000000000)/CoreS_GetNativeTimerFrequency();
+        if (!cached_rate)
+            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "uACPI: Conversion from a native timer tick to NS failed.\nNative timer frequency was greater than 1GHZ, which is unsupported. This is a bug, report it.\n");
+    }
+    return CoreS_GetNativeTimerTick() * cached_rate;
 }
+
 void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
 {
 #ifdef __x86_64__
@@ -330,25 +362,25 @@ void uacpi_kernel_unmap(void* b, uacpi_size s)
 { OBOS_UNUSED(b); OBOS_UNUSED(s); /* Does nothing. */}
 uacpi_handle uacpi_kernel_create_spinlock(void)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(spinlock), nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(spinlock), nullptr);
 }
 void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 {
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(spinlock));
 }
-uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle hnd)
+uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
     spinlock* lock = (spinlock*)hnd;
     return Core_SpinlockAcquire(lock);
 }
-void uacpi_kernel_spinlock_unlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
+void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
 }
 uacpi_handle uacpi_kernel_create_event(void)
 {
-    return OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(size_t), nullptr);
+    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(size_t), nullptr);
 }
 void uacpi_kernel_free_event(uacpi_handle e)
 {
@@ -380,47 +412,37 @@ void uacpi_kernel_reset_event(uacpi_handle _e)
     volatile size_t* e = (size_t*)_e;
     __atomic_store_n(e, 0, __ATOMIC_SEQ_CST);
 }
-typedef struct io_range
-{
-    uacpi_io_addr base;
-    uacpi_size len;
-} io_range;
 uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle *out_handle)
 {
 #if defined(__x86_64__) || defined(__i386__)
     if (base > 0xffff)
         return UACPI_STATUS_INVALID_ARGUMENT;
 #endif
-    io_range* rng = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(io_range), nullptr);
-    rng->base = base;
-    rng->len = len;
-    *out_handle = (uacpi_handle)rng;
+    OBOS_UNUSED(len);
+    *out_handle = (uacpi_handle)base;
     return UACPI_STATUS_OK;
 }
 void uacpi_kernel_io_unmap(uacpi_handle handle)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, handle, sizeof(io_range));
+    OBOS_UNUSED(handle);
 }
 uacpi_status uacpi_kernel_io_read(
     uacpi_handle hnd, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 *value
 )
 {
-    io_range* rng = (io_range*)hnd;
-    if (offset >= rng->len)
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    return uacpi_kernel_raw_io_read(rng->base + offset, byte_width, value);
+    uintptr_t base = (uintptr_t)hnd;
+    return io_read(base + offset, byte_width, value);
 }
 uacpi_status uacpi_kernel_io_write(
     uacpi_handle hnd, uacpi_size offset,
     uacpi_u8 byte_width, uacpi_u64 value
 )
 {
-    io_range* rng = (io_range*)hnd;
-    if (offset >= rng->len)
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    return uacpi_kernel_raw_io_write(rng->base + offset, byte_width, value);
+    uintptr_t base = (uintptr_t)hnd;
+    return io_write(base + offset, byte_width, value);
 }
+
 uacpi_handle uacpi_kernel_create_mutex(void)
 {
     mutex* mut = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
@@ -429,14 +451,14 @@ uacpi_handle uacpi_kernel_create_mutex(void)
 }
 void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(mutex));
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(struct mutex));
 }
-uacpi_bool uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
+uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
     OBOS_UNUSED(t);
-    mutex *mut = (mutex*)hnd;
+    mutex *mut = hnd;
     Core_MutexAcquire(mut);
-    return UACPI_TRUE;
+    return UACPI_STATUS_OK;
 }
 void uacpi_kernel_release_mutex(uacpi_handle hnd)
 {
@@ -445,7 +467,7 @@ void uacpi_kernel_release_mutex(uacpi_handle hnd)
 }
 uacpi_thread_id uacpi_kernel_get_thread_id()
 {
-    return Core_GetCurrentThread()->tid;
+    return (uacpi_thread_id)Core_GetCurrentThread();
 }
 uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
 {
@@ -464,30 +486,42 @@ uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
     }
     return UACPI_STATUS_OK;
 }
+uint64_t CoreS_TimerTickToNS(timer_tick tp);
 void uacpi_kernel_stall(uacpi_u8 usec)
 {
     uint64_t ns = usec*1000;
     uint64_t deadline = CoreS_TimerTickToNS(CoreS_GetTimerTick()) + ns;
     while (CoreS_TimerTickToNS(CoreS_GetTimerTick()) < deadline)
-        Core_Yield();
+        OBOSS_SpinlockHint();
 }
 void uacpi_kernel_sleep(uacpi_u64 msec)
 {
     uint64_t ns = msec*1000000;
     uint64_t deadline = CoreS_TimerTickToNS(CoreS_GetTimerTick()) + ns;
     while (CoreS_TimerTickToNS(CoreS_GetTimerTick()) < deadline)
-        Core_Yield();
+        OBOSS_SpinlockHint();
+}
+uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr* out)
+{
+    uintptr_t rsdp = 0;
+#ifdef __x86_64__
+    rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
+#endif
+    *out = rsdp;
+    return UACPI_STATUS_OK;
 }
 
-void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql oldIrql)
+static void bootstrap_irq_handler(irq* i, interrupt_frame* frame, void* udata, irql oldIrql)
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
     OBOS_UNUSED(oldIrql);
     uacpi_handle ctx = *((void**)udata);
     uacpi_interrupt_handler handler = (uacpi_interrupt_handler)((void**)udata)[1];
+    //printf("%s calling 0x%p(0x%p)\n", __func__, handler, ctx);
     handler(ctx);
 }
+
 uacpi_status uacpi_kernel_install_interrupt_handler(
     uacpi_u32 irq, uacpi_interrupt_handler handler, uacpi_handle ctx,
     uacpi_handle *out_irq_handle
@@ -500,7 +534,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
         OBOS_Error("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
-    uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uintptr_t), nullptr);
+    uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(uintptr_t), nullptr);
     udata[0] = (uintptr_t)ctx;
     udata[1] = (uintptr_t)handler;
     irqHnd->handler = bootstrap_irq_handler;
@@ -508,9 +542,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 #if defined(__x86_64__)
     if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
         return UACPI_STATUS_INTERNAL_ERROR;
-    // TODO: Fix issue where some hardware gets infinite GPEs.
-    // NOTE(oberrow): It's quite a funny issue, except it's kinda annoying.
-    Arch_IOAPICMaskIRQ(irq, /* false */ true);
+    Arch_IOAPICMaskIRQ(irq, false);
 #endif
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;
@@ -589,7 +621,7 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
 	size_t spin = 0;
     while (s_nWork > 0)
     {
-        if (spin++ > 10000)
+        if (spin++ > 1000000)
 			spin_hung();
         spinlock_hint();
     }
@@ -597,7 +629,7 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
 }
 
 #endif
-// So we use the uACPI stdlib in some places in the kernel.
+// So we use the uACPI stdlib in some places in the kernel...
 
 // uacpi_stdlib
 void *uacpi_memcpy(void *dest, const void* src, size_t sz)
@@ -662,9 +694,7 @@ void *uacpi_memmove(void *dest, const void* src, size_t len)
 }
 size_t uacpi_strnlen(const char *src, size_t maxcnt)
 {
-    size_t i = 0;
-    for (; i < maxcnt && src[i]; i++);
-    return i;
+    return strnlen(src, maxcnt);
 }
 size_t uacpi_strlen(const char *src)
 {

@@ -4,42 +4,47 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/spinlock.h"
 #include <int.h>
 #include <klog.h>
 
 #include <irq/irql.h>
+#include <irq/dpc.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
-#include <irq/dpc.h>
+
+#include <locks/spinlock.h>
 
 #include <utils/list.h>
 
-irql s_irql = IRQL_MASKED;
+irql Core_TempIrql = IRQL_MASKED;
 
-OBOS_NO_UBSAN OBOS_NO_KASAN irql* Core_GetIRQLVar()
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_WEAK irql* Core_GetIRQLVar()
 {
 	if (!CoreS_GetCPULocalPtr())
-		return &s_irql;
+		return &Core_TempIrql;
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 
-OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrql(irql to)
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrql(irql to)
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 	return oldIrql;
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrql(irql to)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrql(irql to)
 {
+	if (to == *Core_GetIRQLVar())
+		return;
 	Core_LowerIrqlNoThread(to);
 	if (Core_GetCurrentThread())
 		CoreS_SetThreadIRQL(&Core_GetCurrentThread()->context, to);
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
 {
 	// Run pending DPCs on the current CPU.
 	for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
@@ -51,8 +56,11 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
 		cur = next;
 	}
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoThread(irql to)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoThread(irql to)
 {
+	if (to == *Core_GetIRQLVar())
+		return;
 	Core_LowerIrqlNoDPCDispatch(to);
 	if (to < IRQL_DISPATCH && CoreS_GetCPULocalPtr())
 	{
@@ -63,34 +71,46 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoThread(irql to)
 		CoreS_SetIRQL(to, IRQL_DISPATCH);
 	}
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)
 {
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return;
+	if (to == *Core_GetIRQLVar())
+		return;
 	if (to > *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
+	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	uint8_t old = *Core_GetIRQLVar();
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to, old);
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
 {
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return IRQL_INVALID;
+	if (to == *Core_GetIRQLVar())
+		return to;
 	if (to < *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
+	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	irql oldIRQL = Core_GetIrql();
+#if !OBOS_LAZY_IRQL
 	CoreS_SetIRQL(to, *Core_GetIRQLVar());
+// #else
+// 	if (to == IRQL_DISPATCH)
+// 		CoreS_SetIRQL(to, *Core_GetIRQLVar());
+#endif
 	*Core_GetIRQLVar() = to;
 	return oldIRQL;
 }
-OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_GetIrql()
+
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_GetIrql()
 {
 	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
 		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());

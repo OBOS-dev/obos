@@ -74,7 +74,7 @@ void OBOS_SetCapacityString(string* obj, size_t cap)
     cap = (cap + 0x1f) & ~0x1f;
     size_t oldCap = obj->cap;
     obj->cap = cap;
-    obj->ls = obj->allocator->Reallocate(obj->allocator, obj->ls, obj->cap, nullptr);
+    obj->ls = obj->allocator->Reallocate(obj->allocator, obj->ls, obj->cap, oldCap, nullptr);
     if (oldCap <= 32)
         memcpy(obj->ls, obj->sso, oldCap);
     memzero(obj->ls + oldCap, cap-oldCap);

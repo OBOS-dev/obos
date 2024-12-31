@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <memmanip.h>
+#include <cmdline.h>
 #include <error.h>
 #include <klog.h>
 
@@ -53,6 +54,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, 
 	irql oldIrql = Lock();
 	if (!bump_region.addr)
 	{
+		// OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[256*1024*1024]; // 256M
 		OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[4*1024*1024]; // 4M
 		bump_region.size = sizeof(region);
 		bump_region.addr = (uintptr_t)region;
@@ -163,7 +165,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION obos_status OBOS_BasicMMFreePages(void* bas
 	// s_regionList.nNodes--;
 	// Unlock(oldIrql);
 	// // Unmap the basicmm_region.
-	// base &= ~0xfff;;
+	// base &= ~0xfff;
 	// for (uintptr_t addr = base; addr < (base + sz); addr += OBOS_PAGE_SIZE)
 	// {
 	// 	uintptr_t phys = 0;
@@ -254,7 +256,7 @@ OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMAddRegion(basicmm_region*
 OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata)
 {
 	// callback(&bump_region, udata);
-	irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
+	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_regionListLock, IRQL_DISPATCH, false);
 	for (basicmm_region* cur = s_regionList.head; cur; )
 	{
 		if (cur->mmioRange)
@@ -262,11 +264,11 @@ OBOS_PAGEABLE_FUNCTION void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_
 		
 		if (!callback(cur, udata))
 		{
-			Core_SpinlockRelease(&s_regionListLock, oldIrql);
+			// Core_SpinlockRelease(&s_regionListLock, oldIrql);
 			return;
 		}
 		next:
 		cur = cur->next;
 	}
-	Core_SpinlockRelease(&s_regionListLock, oldIrql);
+	// Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }

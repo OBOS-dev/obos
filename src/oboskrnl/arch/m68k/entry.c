@@ -37,6 +37,7 @@
 #include <mm/swap.h>
 #include <mm/bare_map.h>
 #include <mm/context.h>
+#include <mm/initial_swap.h>
 #include <mm/pmm.h>
 
 #include <vfs/init.h>
@@ -45,7 +46,6 @@
 #include <driver_interface/driverId.h>
 
 allocator_info* OBOS_KernelAllocator;
-process *OBOS_KernelProcess;
 timer_frequency CoreS_TimerFrequency;
 
 OBOS_ALIGNAS(0x10) volatile struct limine_memmap_request Arch_MemmapRequest = {
@@ -137,7 +137,6 @@ void Arch_KernelEntryBootstrap()
     Core_Yield();
 }
 void Arch_InitializePageTables();
-obos_status Arch_InitializeInitialSwapDevice(swap_dev* dev, void* buf, size_t size);
 obos_status Arch_MapPage(uint32_t pt_root, uintptr_t virt, uintptr_t phys, uintptr_t ptFlags);
 void Arch_PageFaultHandler(interrupt_frame* frame);
 static basic_allocator kalloc;
@@ -176,6 +175,11 @@ asm (
 extern const char Arch_ModuleStart[];
 extern const char Arch_ModuleEnd[];
 
+void tty_print(char ch, void *data)
+{
+    OBOS_UNUSED(data);
+    ((uint32_t*)Arch_TTYBase)[0] = ch; // Enable device through CMD register
+}
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
@@ -197,6 +201,7 @@ void Arch_KernelEntry()
         static basicmm_region tty_region = {};
         OBOSH_BasicMMAddRegion(&tty_region, (void*)Arch_TTYBase, 0x1000);
         tty_region.mmioRange = true;
+        OBOS_AddLogSource(tty_print, nullptr);
     }
     OBOS_Debug("%s: Initializing allocator.\n", __func__);
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -214,12 +219,13 @@ void Arch_KernelEntry()
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kmain_thread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &idle_thread);
     OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
-    Core_InitializeIRQInterface();
+Core_InitializeIRQInterface();
     OBOS_Debug("%s: Initializing VMM.\n", __func__);
     static swap_dev swap;
-    size_t swap_size = 16777216 /* 16 MiB */;
-    uintptr_t swap_buf = Mm_AllocatePhysicalPages(swap_size/OBOS_PAGE_SIZE, 1, nullptr);
-    Arch_InitializeInitialSwapDevice(&swap, Arch_MapToHHDM(swap_buf), swap_size);
+    size_t swap_size = OBOS_GetOPTD("initial-swap-size");
+    if (!swap_size)
+        swap_size = 16*1024*1024 /* 16 MiB */;
+    Mm_InitializeInitialSwapDevice(&swap, swap_size);
 	Mm_SwapProvider = &swap;
 	Mm_Initialize();
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
@@ -307,21 +313,29 @@ void Arch_KernelEntry()
     OBOS_InitrdSize = Arch_InitrdRequest.response->modules[0]->size;
     Vfs_Initialize();
     OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged.\n", 
+	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged, and %ld KiB uncommitted. Page faulted %ld times (%ld hard, %ld soft).\n", 
 		Mm_KernelContext.stat.committedMemory/0x400, 
 		Mm_KernelContext.stat.pageable/0x400, 
 		Mm_KernelContext.stat.paged/0x400,
-		Mm_KernelContext.stat.nonPaged/0x400);
+		Mm_KernelContext.stat.nonPaged/0x400,
+		Mm_KernelContext.stat.reserved/0x400,
+		Mm_KernelContext.stat.pageFaultCount,
+		Mm_KernelContext.stat.hardPageFaultCount,
+		Mm_KernelContext.stat.softPageFaultCount
+    );
     Core_ExitCurrentThread();
 }
+
 void Arch_IdleTask()
 {
     while(1);
 }
+
 cpu_local* CoreS_GetCPULocalPtr()
 {
     return &bsp_cpu;
 }
+
 BootInfoTag* Arch_GetBootInfo(BootInfoType type)
 {
     return Arch_GetBootInfoFrom(type, nullptr);

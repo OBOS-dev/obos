@@ -1,16 +1,42 @@
 set(CMAKE_SYSTEM_NAME "Generic")
 set(CMAKE_SYSTEM_PROCESSOR "x86-64")
 
-find_program(HAS_CROSS_COMPILER "x86_64-elf-g++")
-if (NOT HAS_CROSS_COMPILER)
-	message(FATAL_ERROR "No x86_64-elf cross compiler in the PATH!")
+if (NOT OBOS_USE_CLANG)
+	find_program(HAS_CROSS_COMPILER "x86_64-elf-g++")
+	if (NOT HAS_CROSS_COMPILER)
+		message(FATAL_ERROR "No x86_64-elf cross compiler in the PATH!")
+	endif()
+
+	set(CMAKE_C_COMPILER "x86_64-elf-gcc")
+	set(CMAKE_CXX_COMPILER "x86_64-elf-g++")
+	set(CMAKE_C_COMPILER_WORKS true)
+	set(CMAKE_CXX_COMPILER_WORKS true)
+else()
+	set (CMAKE_C_COMPILER "clang${OBOS_CLANG_SUFFIX}")
+	set (CMAKE_CXX_COMPILER "clang++${OBOS_CLANG_SUFFIX}")
+
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C,CXX>:-target>
+		$<$<COMPILE_LANGUAGE:C,CXX>:x86_64-unknown-linux-elf>
+		$<$<COMPILE_LANGUAGE:C,CXX>:-mstack-protector-guard-offset=552>
+		$<$<COMPILE_LANGUAGE:C,CXX>:-mstack-protector-guard-reg=gs>
+	)
+
+	add_link_options("-static" "-target" "x86_64-unknown-linux-elf" "-ffreestanding")
+
+	if (CMAKE_HOST_UNIX)
+		set (LLD "ld.lld${OBOS_CLANG_SUFFIX}")
+	elseif(CMAKE_HOST_WIN32)
+		set (LLD "lld-link${OBOS_CLANG_SUFFIX}")
+	endif()
+
+	find_program(HAS_LLD ${LLD})
+	if (HAS_LLD)
+		add_link_options("-fuse-ld=lld")
+	endif()
 endif()
 
-set(CMAKE_C_COMPILER "x86_64-elf-gcc")
-set(CMAKE_CXX_COMPILER "x86_64-elf-g++")
 set(CMAKE_ASM_NASM_COMPILER "nasm")
-set(CMAKE_C_COMPILER_WORKS true)
-set(CMAKE_CXX_COMPILER_WORKS true)
 set(CMAKE_ASM_NASM_COMPILER_WORKS true)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
@@ -21,7 +47,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_ASM_NASM_OBJECT_FORMAT "elf64")
 
 execute_process(COMMAND x86_64-elf-gcc -print-file-name=no-red-zone/libgcc.a OUTPUT_VARIABLE LIBGCC)
-if (LIBGCC STREQUAL "no-red-zone/libgcc.a")
+if (LIBGCC STREQUAL "no-red-zone/libgcc.a" OR LIBGCC STREQUAL "")
 	# Use normal libgcc
 	execute_process(COMMAND x86_64-elf-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC)
 endif()
@@ -46,8 +72,8 @@ set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set(TARGET_DRIVER_LINKER_OPTIONS)
 
 set(gdbstub_source
-	"arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
-	"arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
+	# "arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
+	# "arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
 )
 
 list (APPEND oboskrnl_sources 
@@ -55,8 +81,10 @@ list (APPEND oboskrnl_sources
 	"arch/x86_64/asm_helpers.asm" "arch/x86_64/thread_ctx.asm" "arch/x86_64/memmanip.asm"
 	"arch/x86_64/pmm.c" "arch/x86_64/map.c" "arch/x86_64/isr.asm" "arch/x86_64/lapic.c"
 	"arch/x86_64/smp.c" "arch/x86_64/smp.asm" "arch/x86_64/lapic_timer_calibration.asm"
-	"arch/x86_64/ioapic.c" "arch/x86_64/initial_swap.c" "arch/x86_64/drv_loader.c"
-	"arch/x86_64/pci.c" ${gdbstub_source}
+	"arch/x86_64/ioapic.c" "arch/x86_64/drv_loader.c" "arch/x86_64/ssignal.c" "arch/x86_64/except.c" 
+	"arch/x86_64/pci.c" "arch/x86_64/syscall.c" "arch/x86_64/syscall.asm" "arch/x86_64/wake.c"
+	"arch/x86_64/mtrr.c" "arch/x86_64/timer.c" "arch/x86_64/execve.c" "arch/x86_64/sse.c"
+	${gdbstub_source}
 )
 
 # set_source_files_properties(
@@ -69,7 +97,7 @@ list (APPEND oboskrnl_sources
 add_compile_definitions(
 	__x86_64__=1 
 	OBOS_PAGE_SIZE=4096 OBOS_HUGE_PAGE_SIZE=2097152 
-	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xffffff0000000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffffffffffff000 
+	OBOS_KERNEL_ADDRESS_SPACE_BASE=0xffff900000000000 OBOS_KERNEL_ADDRESS_SPACE_LIMIT=0xfffffffffffff000
 	OBOS_USER_ADDRESS_SPACE_BASE=0x1000 OBOS_USER_ADDRESS_SPACE_LIMIT=0x7FFFFFFFFFFF
 	OBOS_ARCH_USES_SOFT_FLOAT=0
 	OBOS_ARCH_EMULATED_IRQL=0

@@ -23,7 +23,7 @@ target_include_directories(initrd
 
 target_link_options(initrd
 	PRIVATE "-nostdlib"
-	PRIVATE "-Wl,-pic"
+	PRIVATE "-fPIC"
 	PRIVATE "-T${DRIVER_LINKER_SCRIPT}"
 	PRIVATE "-Wl,-shared"
 #	PRIVATE "-Wl,--allow-shlib-undefined"

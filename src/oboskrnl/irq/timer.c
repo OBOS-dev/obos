@@ -211,3 +211,31 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us)
     return fixedpt_toint(tp)+1 /* add one to account for rounding issues. */;
 // #endif
 }
+
+OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, uint64_t native_tick)
+{
+    if (native_tick)
+    {
+        static uint64_t cached_rate = 0;
+        // NOTE: If our frequency is greater than 1 GHZ, we get zero for our rate.
+        if (obos_expect(!cached_rate, false))
+        {
+            cached_rate = (1*1000000000)/CoreS_GetNativeTimerFrequency();
+            if (!cached_rate)
+                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Conversion from a native timer tick to NS failed.\nNative timer frequency was greater than 1GHZ, which is unsupported. This is a bug, report it.\n");
+        }
+        return tick * cached_rate;
+    }
+    else
+    {
+        static uint64_t cached_rate = 0;
+        // NOTE: If our frequency is greater than 1 GHZ, we get zero for our rate.
+        if (obos_expect(!cached_rate, false))
+        {
+            cached_rate = (1*1000000000)/CoreS_TimerFrequency;
+            if (!cached_rate)
+                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Conversion from a timer tick to NS failed.\nTimer frequency was greater than 1GHZ, which is unsupported. This is a bug, report it.\n");
+        }
+        return tick * cached_rate;
+    }
+}

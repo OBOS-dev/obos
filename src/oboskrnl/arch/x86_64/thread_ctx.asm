@@ -20,6 +20,8 @@ global CoreS_FreeThreadContext:function hidden
 global CoreS_CallFunctionOnStack:function default
 global CoreS_SetThreadIRQL:function hidden
 global CoreS_GetThreadIRQL:function hidden
+global CoreS_ThreadAlloca:function hidden
+global Arch_UserYield:function hidden
 
 %macro popaq 0
 pop rbp
@@ -44,8 +46,8 @@ pop rax
 struc thread_ctx
 align 8
 .extended_ctx_ptr: resq 1
-.cr3: resq 1
 .irql: resq 1
+.cr3: resq 1
 .gs_base: resq 1
 .fs_base: resq 1
 .frame: resq 0x1b
@@ -54,6 +56,9 @@ align 8
 endstruc
 
 extern Core_GetIRQLVar
+
+extern Arch_HasXSAVE
+
 section .text
 CoreS_SwitchToThreadContext:
 	; Disable interrupts, getting an interrupt in the middle of execution of this function can be deadly.
@@ -61,17 +66,24 @@ CoreS_SwitchToThreadContext:
 	mov rbx, [rdi]
 	cmp rbx, 0
 	je .no_xstate
+
+	mov rax, [Arch_HasXSAVE]
+	cmp rax, 0
+	je .no_xsave
+
 	; Restore the extended state.
 	xor rcx,rcx
 	xgetbv
 	xrstor [rbx]
+	jmp .no_xstate
+
+.no_xsave:
+	fxrstor [rbx]
+
 .no_xstate:
 	add rdi, 8
-	; Restore CR3 (address space)
-	mov rax, [rdi]
-	mov cr3, rax
-	add rdi, 8
-	; Restore IRQL.
+
+; Restore IRQL.
 	mov rax, [rdi]
 	mov cr8, rax
 	push rdi
@@ -80,14 +92,36 @@ CoreS_SwitchToThreadContext:
 	mov rcx, [rdi]
 	mov [rax], rcx
 	add rdi, 8
+
+	; Restore CR3 (address space)
+	mov rax, [rdi]
+	mov rdx, cr3
+	cmp rax, rdx
+	je .kernel_cr3
+
+; We won't be able to use kernel memory anymore, so copy the context to the stack.
+	mov rsi, rdi
+	sub rsp, 272 - 8 ; push that many bytes
+	mov rdi, rsp
+	mov rcx, 272 - 8 ; sizeof(thread_ctx) - 8 (the amount of bytes already accessed)
+	rep movsb
+	sub rdi, 272 - 8
+
+.kernel_cr3:
+	mov cr3, rax
+	add rdi, 8
+
 	; Restore GS_BASE
 	test qword [rdi+16+0xB8], 0x3
 	je .restore_fs_base
+	swapgs
 	mov eax, [rdi]
 	mov edx, [rdi+4]
 	mov ecx, 0xC0000101
 	wrmsr
+
 .restore_fs_base:
+
 	add rdi, 0x8
 	; Restore FS_BASE
 	mov eax, [rdi]
@@ -95,20 +129,31 @@ CoreS_SwitchToThreadContext:
 	mov ecx, 0xC0000100
 	wrmsr
 	add rdi, 8
+
 	; Restore thread GPRs.
 	mov rsp, rdi
 	add rsp, 0x10 ; Skip the saved DS and CR3
 	popaq
 	add rsp, 0x18
 	iretq
+global CoreS_SwitchToThreadContextEnd: data hidden
+CoreS_SwitchToThreadContextEnd:
 section .pageable.text
+extern Arch_FreeXSAVERegion
 CoreS_FreeThreadContext:
 	push rbp
 	mov rbp, rsp
-	; TODO: Implement.
+
+	mov rdi, [rdi+thread_ctx.extended_ctx_ptr]
+	call Arch_FreeXSAVERegion
+
+	xor rax,rax ; OBOS_STATUS_SUCCESS
 
 	leave
 	ret
+
+extern Arch_AllocateXSAVERegion
+
 CoreS_SetupThreadContext:
 	push rbp
 	mov rbp, rsp
@@ -141,6 +186,11 @@ CoreS_SetupThreadContext:
 	mov qword [rdi+thread_ctx.frame+0xB8], 0x20|3 ; ctx->frame.cs=user (CPL3) data segment
 	mov qword [rdi+thread_ctx.frame+0xD0], 0x18|3 ; ctx->frame.ss=user (CPL3) code segment
 
+	push rdi
+	call Arch_AllocateXSAVERegion
+	mov qword [rdi+thread_ctx.extended_ctx_ptr], rax
+	pop rdi
+
 .kmode:
 
 	; Setup the IRQL.
@@ -149,15 +199,19 @@ CoreS_SetupThreadContext:
 	mov rax, cr3
 	mov qword [rdi+thread_ctx.cr3], rax
 	; Setup GS_BASE.
-	mov rcx, 0xC0000101 ; GS.Base
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
-	mov qword [rdi+thread_ctx.gs_base], rax
+	;mov rcx, 0xC0000101 ; GS.Base
+	;rdmsr
+	;shl rdx, 32
+	;or rax, rdx
+	;mov qword [rdi+thread_ctx.gs_base], rax
 
 	xor rax, rax ; OBOS_STATUS_SUCCESS
 .finish:
 	leave
+	ret
+global CoreS_SetThreadPageTable
+CoreS_SetThreadPageTable:
+	mov qword [rdi+thread_ctx.cr3], rsi
 	ret
 section .text
 extern Arch_GetCPUTempStack
@@ -171,6 +225,7 @@ CoreS_CallFunctionOnStack:
 	pop rsi
 	pop rdi
 	lea rsp, [rax+0x20000]
+
 	xchg rdi, rsi
 	call rsi
 
@@ -178,6 +233,7 @@ CoreS_CallFunctionOnStack:
 	ret
 extern Core_Schedule
 extern Core_GetIRQLVar
+extern Arch_cpu_local_curr_offset
 CoreS_SaveRegisterContextAndYield:
 	pushfq
 	cli
@@ -201,10 +257,8 @@ CoreS_SaveRegisterContextAndYield:
 	lea rax, [rsp+0x10] ; skip the return address
 	mov [rdi+thread_ctx.frame+0xC8], rax ; rsp
 	mov qword [rdi+thread_ctx.frame+0xD0], 0x10 ; ss
-	mov ecx, 0xC0000101
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
+	mov rax, [Arch_cpu_local_curr_offset]
+	mov rax, [gs:rax]
 	mov [rdi+thread_ctx.gs_base], rax
 	mov ecx, 0xC0000100
 	rdmsr
@@ -218,7 +272,17 @@ CoreS_SaveRegisterContextAndYield:
 	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
 	jz .call_scheduler
 	mov rax, [rdi+thread_ctx.extended_ctx_ptr]
+
+	mov rbx, [Arch_HasXSAVE]
+	cmp rbx, 0
+	je .no_xsave
+
+	xor rcx,rcx
+	xgetbv
 	xsave [rax]
+
+.no_xsave:
+	fxsave [rax]
 
 .call_scheduler:
 	popfq ; see the rflags saving code at the beginning of the function
@@ -262,4 +326,51 @@ CoreS_GetThreadStack:
 
 	leave
 	ret
+
+CoreS_ThreadAlloca:
+	push rbp
+	mov rbp, rsp
+
+	cmp rdx, 0
+	jz .status_nullptr1
+	mov dword [rdx], 0 ; OBOS_STATUS_SUCCESS
+.status_nullptr1:
+
+	; ret = ctx->frame.rsp -= size
+	mov rax, [rdi+thread_ctx.frame+0xc8]
+	sub rax, rsi
+	mov [rdi+thread_ctx.frame+0xc8], rax
+	; if (ret < ctx->stackBase)
+	cmp rax, [rdi+thread_ctx.stackBase]
+	jae .done
+
+	cmp rdx, 0
+	jz .status_nullptr2
+	; if (status) *status = OBOS_STATUS_NOT_ENOUGH_MEMORY
+	mov dword [rdx], 6 ; OBOS_STATUS_NOT_ENOUGH_MEMORY
+.status_nullptr2:
+	; ret = nullptr
+	xor rax,rax
+.done:
+
+	; return ret;
+	leave
+	ret
+
+extern Core_Yield
+Arch_UserYield:
+	push rbp
+	mov rbp, rsp
+
+; 	lea rsp, [rdi+0x10000]
+	call Core_Yield
+
+	leave
+	ret
+
+global Core_GetCurrentThread
+Core_GetCurrentThread:
+	mov rax, [gs:0x8]
+	ret
+
 section .text

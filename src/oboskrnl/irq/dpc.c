@@ -25,12 +25,8 @@ LIST_GENERATE(dpc_queue, dpc, node);
 dpc* CoreH_AllocateDPC(obos_status* status)
 {
     if (!OBOS_NonPagedPoolAllocator)
-    {
-        if (status)
-            *status = OBOS_STATUS_INVALID_INIT_PHASE;
-        return nullptr;
-    }
-    return OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, sizeof(dpc), status);
+        return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(dpc), status);
+    return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(dpc), status);
 }
 obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* userdata), thread_affinity affinity)
 {
@@ -50,7 +46,7 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     // If this fails, something stupid has happened.
     OBOS_ASSERT(target);
     dpc->cpu = target;
-    irql oldIrql = Core_SpinlockAcquire(&target->dpc_queue_lock);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&target->dpc_queue_lock, IRQL_MASKED, false);
     LIST_PREPEND(dpc_queue, &target->dpcs, dpc);
     Core_SpinlockRelease(&target->dpc_queue_lock, oldIrql);
     return OBOS_STATUS_SUCCESS;

@@ -26,12 +26,14 @@ size_t Arch_IOAPICCount;
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
 #define NextMADTEntry(cur) OffsetPtr(cur, cur->length, MADT_EntryHeader)
 #define MADTEntryStruct(entry_type) MADT_EntryType ##entry_type
-#define OffsetOfReg(reg) ((uintptr_t)&(((ioapic_registers*)nullptr)->reg))
+// #define OffsetOfReg(reg) ((uintptr_t)&(((ioapic_registers*)nullptr)->reg))
+#define OffsetOfReg(reg) offsetof(ioapic_registers, reg)
+
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 {
 	// Find the MADT in the ACPI tables.
 	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
-	bool tables32 = rsdp->Revision == 0;
+	bool tables32 = rsdp->Revision < 2;
 	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
 	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
 	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
@@ -97,9 +99,9 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
             OBOS_ASSERT(polarity != 0b10);
             bool res = false;
             if (polarity == 0b1 || polarity == 0)
-                res = true;
+                res = PolarityActiveHigh;
             else if (polarity == 0b11)
-                res = false;
+                res = PolarityActiveLow;
             ioapic_trigger_mode tm = TriggerModeLevelSensitive;
             uint8_t tmFlg = (ent->flags >> 2) & 0b11;
             OBOS_ASSERT(tmFlg != 0b10);
@@ -116,6 +118,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 	}
     return OBOS_STATUS_SUCCESS;
 }
+
 // FIXME: Optimizations break things for some reason.
 #pragma GCC optimize("-O0")
 OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
@@ -130,7 +133,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
         ioapic_descriptor* ioapic = &Arch_IOAPICs[i];
         ArchH_IOAPICWriteRegister(ioapic->address, 0, i<<24);
         for (uint32_t gsi = ioapic->gsi; gsi <= ioapic->gsi+ioapic->maxRedirectionEntries; gsi++)
-            OBOS_ASSERT(obos_is_success(Arch_IOAPICMapIRQToVector(gsi, 0, false, TriggerModeEdgeSensitive)));
+            OBOS_ASSERT(obos_is_success(Arch_IOAPICMapIRQToVector(gsi, 0, PolarityActiveHigh, TriggerModeEdgeSensitive)));
     }
     return status;
 }
@@ -169,11 +172,11 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask)
     if (!entry->vector)
         return OBOS_STATUS_UNINITIALIZED;
     entry->mask = mask;
-    ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4, ent[1]);
+    ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, bool polarity, ioapic_trigger_mode tm)
+OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8_t vector, ioapic_polarity polarity, ioapic_trigger_mode tm)
 {
     if (tm < 0 || tm > 1)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -214,8 +217,8 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8
     }
     // Mask the IRQ.
     entry->mask = true;
-    ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4, ent[1]);
+    ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICGSIUsed(uint32_t gsi)

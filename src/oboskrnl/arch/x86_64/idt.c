@@ -6,9 +6,17 @@
 
 #include <int.h>
 #include <error.h>
+#include <signal.h>
 #include <struct_packing.h>
 
 #include <irq/irq.h>
+
+#include <mm/context.h>
+#include <mm/init.h>
+
+#include <scheduler/cpu_local.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
 
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/lapic.h>
@@ -100,7 +108,7 @@ obos_status CoreS_RegisterIRQHandler(irq_vector_id vector, void(*handler)(interr
 }
 obos_status CoreS_IsIRQVectorInUse(irq_vector_id vector)
 {
-	if (vector > 224)
+	if (vector > 223)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	return Arch_IRQHandlers[vector+32] ? OBOS_STATUS_IN_USE : OBOS_STATUS_SUCCESS;
 }
@@ -109,5 +117,18 @@ void CoreS_SendEOI(interrupt_frame* unused)
 	OBOS_UNUSED(unused);
 	Arch_LAPICSendEOI();
 }
-bool CoreS_EnterIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); sti(); return true; }
-void CoreS_ExitIRQHandler(interrupt_frame* frame) { OBOS_UNUSED(frame); cli(); }
+bool CoreS_EnterIRQHandler(interrupt_frame* frame)
+{
+	sti();
+	if (CoreS_GetCPULocalPtr() && Mm_IsInitialized() && ~frame->cs & 0x3 /* kernel mode */)
+		CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
+	return true;
+}
+void CoreS_ExitIRQHandler(interrupt_frame* frame)
+{
+	if (~frame->cs & 0x3 && CoreS_GetCPULocalPtr()->currentThread)
+		CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc ? CoreS_GetCPULocalPtr()->currentThread->proc->ctx : &Mm_KernelContext;
+	else
+		OBOS_SyncPendingSignal(frame);
+	cli();
+}

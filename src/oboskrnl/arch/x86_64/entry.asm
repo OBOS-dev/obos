@@ -4,6 +4,8 @@
 
 [BITS 64]
 
+default rel
+
 ; Bootstrap code to initialize the stack guard.
 
 extern __stack_chk_guard

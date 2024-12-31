@@ -19,6 +19,7 @@ struct waitable_header
     spinlock lock;
     bool signaled : 1;
     bool use_signaled : 1;
+    bool interrupted : 1;
 };
 
 #define WAITABLE_HEADER_INITIALIZE(s, use) (struct waitable_header){ .waiting={}, .signaled=(s), .use_signaled=(use) }
@@ -29,6 +30,7 @@ struct waitable_header
 
 OBOS_EXPORT obos_status Core_WaitOnObject(struct waitable_header* obj);
 OBOS_EXPORT obos_status Core_WaitOnObjects(size_t nObjects, ...);
-OBOS_EXPORT obos_status Core_WaitOnObjectsPtr(size_t nObjects, size_t stride, struct waitable_header* objs);
+OBOS_EXPORT obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs);
 OBOS_EXPORT obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bool boostPriority);
 OBOS_EXPORT void        CoreH_ClearSignaledState(struct waitable_header* obj);
+OBOS_EXPORT obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj);

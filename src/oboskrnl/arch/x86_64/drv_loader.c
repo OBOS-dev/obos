@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "driver_interface/pci.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -23,6 +24,13 @@
 #include <elf/elf.h>
 
 #include <allocators/base.h>
+
+#include <uacpi/uacpi.h>
+#include <uacpi/internal/context.h>
+#include <uacpi/types.h>
+#include <uacpi_libc.h>
+
+// Abandon all hope, ye who enter here.
 
 #define OffsetPtr(ptr, off, type) (type)(((uintptr_t)ptr) + ((intptr_t)off))
 // Please forgive me for this
@@ -59,9 +67,11 @@ struct copy_reloc_array
 };
 static void append_relocation_table(struct relocation_array* arr, const struct relocation_table* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
-    arr->buf[arr->nRelocations - 1] = *what; 
+    arr->buf[arr->nRelocations - 1] = *what;
     // Note:
     // Since you'll probably forget what you were doing:
     // You were making relocation tables in the array be stored as the struct relocation_table instead of Elf64_Dyn.
@@ -76,9 +86,11 @@ static void free_reloc_array(struct relocation_array* arr)
 }
 static void append_copy_reloc(struct copy_reloc_array* arr, const struct copy_reloc* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
-    arr->buf[arr->nRelocations - 1] = *what; 
+    arr->buf[arr->nRelocations - 1] = *what;
 }
 static void free_copy_reloc_array(struct copy_reloc_array* arr)
 {
@@ -86,6 +98,68 @@ static void free_copy_reloc_array(struct copy_reloc_array* arr)
     memzero(arr, sizeof(*arr));
 }
 
+static uint32_t GnuHash(const char* name)
+{
+    uint32_t h = 5381 /* oooo magic number */;
+
+    while (*name)
+        h = ((h<<5)+h) + *name++; // h*33 + *name++
+
+    return h;
+}
+
+#define getEntryOffset(ptr, type, offset) (*((type*)((uintptr_t)(ptr) + (offset))))
+static OBOS_NO_UBSAN Elf64_Sym* GetSymbolFromGnuTable(
+			uint8_t* fileStart,
+			uint8_t* baseAddress,
+			Elf64_Sym* symbolTable,
+            uintptr_t gnuHashTableOffset,
+			Elf64_Off stringTable,
+            const char* _symbol)
+{
+    void* base = baseAddress+gnuHashTableOffset;
+
+    uint32_t nbuckets = getEntryOffset(base, uint32_t, 0);
+    uint32_t symoffset = getEntryOffset(base, uint32_t , 4);
+    uint32_t bloom_size = getEntryOffset(base, uint32_t, 8);
+    uint32_t bloom_shift = getEntryOffset(base, uint32_t, 12);
+    // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
+    uint64_t* bloom = &getEntryOffset(base, uint64_t, 16);
+    uint32_t* buckets = &getEntryOffset(base, uint32_t, 16+bloom_size);
+    uint32_t* chain = &getEntryOffset(base, uint32_t, 16+bloom_size+nbuckets*sizeof(uint32_t));
+
+    uint32_t hash = GnuHash(_symbol);
+
+    // Look at the bloom table (ooo fancy)
+    uint32_t bloom_value = bloom[hash/64 % bloom_size];
+
+    // OpenBSD, you confuse me greatly.
+    uint32_t h1 = hash % 64;
+    uint32_t h2 = (hash >> bloom_shift) % 64;
+
+    if (((bloom_value >> h1) & (bloom_value >> h2) & 1) == 0)
+        return nullptr; // The symbol definitely does not exist.
+
+    // First, fetch the bucket.
+    uint32_t bucket = buckets[hash % nbuckets];
+    if (bucket < symoffset)
+        return nullptr; // bruh
+
+
+    for (uint32_t currhash = chain[bucket-symoffset]; ~currhash & 1; currhash = chain[++bucket-symoffset])
+    {
+        Elf64_Sym* symbol = &symbolTable[bucket];
+        const char* name = stringTable + (char*)fileStart + symbol->st_name;
+
+        if (((hash|1) == (currhash|1)) && strcmp(name, _symbol))
+            return symbol;
+
+        if (currhash & 1)
+            return nullptr;
+    }
+
+    return nullptr;
+}
 // From https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-48031.html#scrolltoc
 static uint32_t ElfHash(const char* name)
 {
@@ -105,9 +179,12 @@ static Elf64_Sym* GetSymbolFromTable(
 			uint8_t* baseAddress,
 			Elf64_Sym* symbolTable,
 			uintptr_t hashTableOff,
+            uintptr_t gnuHashTableOffset,
 			Elf64_Off stringTable,
 			const char* _symbol)
 {
+    if (gnuHashTableOffset)
+        return GetSymbolFromGnuTable(fileStart, baseAddress, symbolTable, gnuHashTableOffset, stringTable, _symbol);
     Elf64_Word* hashTableBase = (Elf64_Word*)(baseAddress + hashTableOff);
     Elf64_Word nBuckets = hashTableBase[0];
     uint32_t currentBucket = ElfHash(_symbol) % nBuckets;
@@ -120,7 +197,7 @@ static Elf64_Sym* GetSymbolFromTable(
         const char* symbolName = (char*)(fileStart + stringTable + symbol->st_name);
         if (strcmp(symbolName, _symbol))
             return symbol;
-        
+
         index = firstChain[index];
     }
     return nullptr;
@@ -137,7 +214,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
             return; // don't add an already added dependency to the list
         cur = cur->next;
     }
-    driver_node* node = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sizeof(driver_node), nullptr);
+    driver_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_node), nullptr);
     node->data = dependency;
     driver_list* list = &depends->dependencies;
     if (!list->head)
@@ -149,7 +226,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
     list->nNodes++;
     dependency->refCnt++;
 }
-static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset)
+static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym* symbolTable, Elf64_Off stringTable, const void* file, struct relocation i, void* base, size_t szProgram, Elf64_Addr* GOT, struct copy_reloc_array* copy_relocations, uintptr_t hashTableOffset, uintptr_t gnuHashTableOffset, bool *usesUacpiSymbol)
 {
     driver_symbol* Symbol = nullptr;
     driver_symbol internal_symbol = {};
@@ -172,7 +249,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         if (!Symbol)
         {
             Elf64_Sym* sym = GetSymbolFromTable(
-                (uint8_t*)file, base, symbolTable, hashTableOffset, stringTable,
+                (uint8_t*)file, base, symbolTable, hashTableOffset, gnuHashTableOffset, stringTable,
                 OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*)
             );
             if (!obos_expect((uintptr_t)sym != 0, 1))
@@ -182,7 +259,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             internal_symbol.address = OffsetPtr(base, sym->st_value, uintptr_t);
             internal_symbol.size = sym->st_size;
             internal_symbol.visibility = SYMBOL_VISIBILITY_DEFAULT;
-            switch (ELF64_ST_TYPE(sym->st_info)) 
+            switch (ELF64_ST_TYPE(sym->st_info))
             {
                 case STT_FUNC:
                     internal_symbol.type = SYMBOL_TYPE_FUNCTION;
@@ -199,7 +276,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             Symbol = &internal_symbol;
         }
         unresolved:
-        if (!Symbol && ELF64_ST_BIND(Unresolved_Symbol->st_info) != STB_WEAK) 
+        if (!Symbol && ELF64_ST_BIND(Unresolved_Symbol->st_info) != STB_WEAK)
         {
             if (status)
                 *status = OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL;
@@ -207,12 +284,57 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
             return false;
         }
+        // If this is a uacpi symbol, then we want to check against the init level, if valid.
+        if (!(*usesUacpiSymbol) && (Symbol && (uacpi_strncmp(Symbol->name, "uacpi_", 6) == 0)))
+        {
+            static const char* const uacpi_stdlib_symbols[] = {
+                "uacpi_memcpy",
+                "uacpi_memset",
+                "uacpi_memmove",
+                "uacpi_memcmp",
+                "uacpi_strcmp",
+                "uacpi_strncmp",
+                "uacpi_strnlen",
+                "uacpi_strlen",
+                "uacpi_snprintf",
+            };
+            for (size_t i = 0; i < sizeof(uacpi_stdlib_symbols)/sizeof(uacpi_stdlib_symbols[0]); i++)
+                if (strcmp(Symbol->name, uacpi_stdlib_symbols[i]))
+                    goto cont;
+            // Zeroed [by the kernel] if it does not exist.
+            if (drv->header.uacpi_init_level_required && drv->header.uacpi_init_level_required > uacpi_get_current_init_level())
+            {
+                if (status)
+                    *status = OBOS_STATUS_INVALID_INIT_PHASE;
+                OBOS_Debug("Driver attempted to use uacpi symbol %s. Note: Requested init level is %s.\n", Symbol->name, uacpi_init_level_to_string(drv->header.uacpi_init_level_required));
+                Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
+                return false;
+            }
+            *usesUacpiSymbol = true;
+        }
+#if PCI_IRQ_CAN_USE_ACPI
+        if ((!(*usesUacpiSymbol) || (PCI_IRQ_UACPI_INIT_LEVEL > drv->header.uacpi_init_level_required)) && (Symbol && strcmp(Symbol->name, "Drv_RegisterPCIIrq")))
+        {
+            uint32_t uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL;
+            if (drv->header.uacpi_init_level_required >= uacpi_init_level_required)
+                uacpi_init_level_required = drv->header.uacpi_init_level_required;
+            if (uacpi_init_level_required > uacpi_get_current_init_level())
+            {
+                if (status)
+                    *status = OBOS_STATUS_INVALID_INIT_PHASE;
+                Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
+                return false;
+            }
+            *usesUacpiSymbol = true;
+        }
+#endif
+        cont:
         add_dependency(drv, dependency);
         if (ELF64_ST_BIND(Unresolved_Symbol->st_info) == STB_WEAK)
         {
             internal_symbol.size = Unresolved_Symbol->st_size;
             internal_symbol.address = 0;
-            switch (ELF64_ST_TYPE(Unresolved_Symbol->st_info)) 
+            switch (ELF64_ST_TYPE(Unresolved_Symbol->st_info))
             {
                 case STT_FUNC:
                     internal_symbol.type = SYMBOL_TYPE_FUNCTION;
@@ -400,7 +522,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
 			end = (void*)(curr->p_vaddr+curr->p_memsz);
     }
     szProgram = (size_t)end;
-    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, VMA_FLAGS_GUARD_PAGE, nullptr, status);
+    void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, 0, nullptr, status);
     if (!base)
         return nullptr;
     // The pages are mapped in.
@@ -412,7 +534,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         Elf64_Phdr* curr = &phdr_table[i];
         memcpy(OffsetPtr(base, curr->p_vaddr, void*), OffsetPtr(file, curr->p_offset, void*), curr->p_filesz);
         // NOTE: Possible buffer overflow
-        memzero(OffsetPtr(base, curr->p_vaddr + curr->p_offset, void*), curr->p_memsz - curr->p_filesz); 
+        memzero(OffsetPtr(base, curr->p_vaddr + curr->p_offset, void*), curr->p_memsz - curr->p_filesz);
     }
     OBOS_ASSERT(obos_expect((uintptr_t)dynamic != 0, 1));
     // Apply relocations.
@@ -420,6 +542,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     Elf64_Sym* symbolTable = 0;
 	Elf64_Off stringTable = 0;
 	uintptr_t hashTableOffset = 0;
+	uintptr_t gnuHashTableOffset = 0;
 	Elf64_Addr* GOT = nullptr;
     Elf64_Dyn* currentDynamicHeader = OffsetPtr(file, dynamic->p_offset, Elf64_Dyn*);
     size_t last_dtrelasz = 0, last_dtrelsz = 0, last_dtpltrelsz = 0;
@@ -427,14 +550,20 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     Elf64_Dyn* dynEntryAwaitingRelaSz = nullptr;
     bool awaitingRelSz = false, foundRelSz = false;
     Elf64_Dyn* dynEntryAwaitingRelSz = nullptr;
-    uint64_t last_dlpltrel = 0;
+    bool awaitingPltRelSz = false, foundPltRelSz = false;
+    Elf64_Dyn* dynEntryAwaitingPltRelSz = nullptr;
+    uint64_t last_dlpltrel = 0xffffffff;
     struct relocation_table current = {};
 	for (size_t i = 0; currentDynamicHeader->d_tag != DT_NULL; i++, currentDynamicHeader++)
 	{
+        OBOS_UNUSED(i);
         switch (currentDynamicHeader->d_tag)
         {
         case DT_HASH:
             hashTableOffset = currentDynamicHeader->d_un.d_ptr;
+            break;
+        case DT_GNU_HASH:
+            gnuHashTableOffset = currentDynamicHeader->d_un.d_ptr;
             break;
         case DT_PLTGOT:
             // TODO: Find out whether this is the PLT or GOT (if possible).
@@ -469,6 +598,12 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             last_dtrelasz = 0;
             break;
         case DT_JMPREL:
+            if (!foundPltRelSz)
+            {
+                awaitingPltRelSz = true;
+                dynEntryAwaitingPltRelSz = currentDynamicHeader;
+                break;
+            }
             switch (last_dlpltrel)
             {
             case DT_REL:
@@ -513,9 +648,53 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
             break;
         case DT_PLTREL:
             last_dlpltrel = currentDynamicHeader->d_un.d_val;
+            if (awaitingPltRelSz)
+            {
+                switch (last_dlpltrel)
+                {
+                    case DT_REL:
+                        current.rel = true;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    case DT_RELA:
+                        current.rel = false;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    default:
+                        break;
+                }
+                awaitingPltRelSz = false;
+            }
+            foundPltRelSz = true;
             break;
         case DT_PLTRELSZ:
             last_dtpltrelsz = currentDynamicHeader->d_un.d_val;
+            if (awaitingPltRelSz && (last_dlpltrel != UINT32_MAX))
+            {
+                switch (last_dlpltrel)
+                {
+                    case DT_REL:
+                        current.rel = true;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    case DT_RELA:
+                        current.rel = false;
+                        current.table = dynEntryAwaitingPltRelSz;
+                        current.sz = last_dtpltrelsz;
+                        append_relocation_table(&relocations, &current);
+                        break;
+                    default:
+                        break;
+                }
+                awaitingPltRelSz = false;
+            }
+            foundPltRelSz = (last_dlpltrel != UINT32_MAX);
             break;
         case DT_STRTAB:
             stringTable = currentDynamicHeader->d_un.d_ptr;
@@ -529,12 +708,13 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     }
 
     struct copy_reloc_array copy_relocations = {0,0};
+    bool usesUacpiSymbol = false;
     for (size_t index = 0; index < relocations.nRelocations; index++)
     {
         struct relocation_table table = relocations.buf[index];
         Elf64_Rel* relTable = (Elf64_Rel*)(base + table.table->d_un.d_ptr);
         Elf64_Rela* relaTable = (Elf64_Rela*)(base + table.table->d_un.d_ptr);
-        for (size_t i = 0; i < table.sz / (table.rel ? sizeof(Elf64_Rel) : sizeof(Elf64_Rela)); i++)  
+        for (size_t i = 0; i < table.sz / (table.rel ? sizeof(Elf64_Rel) : sizeof(Elf64_Rela)); i++)
         {
             struct relocation cur;
             if (!table.rel)
@@ -551,17 +731,19 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
                 cur.relocationType = (uint16_t)(relTable[i].r_info & 0xffff),
                 cur.addend = 0;
             }
-            if (!calculate_relocation(status, 
+            if (!calculate_relocation(status,
                                       driver,
                                       symbolTable,
                                       stringTable,
-                                      file, 
-                                      cur, 
+                                      file,
+                                      cur,
                                       base,
                                       szProgram,
                                       GOT,
                                       &copy_relocations,
-                                      hashTableOffset))
+                                      hashTableOffset,
+                                      gnuHashTableOffset,
+                                      &usesUacpiSymbol))
                 return nullptr;
         }
     }
@@ -599,16 +781,21 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         *dynamicSymbolTable = symbolTable;
     if (nEntriesDynamicSymbolTable)
     {
-        if (!hashTableOffset)
+        if (gnuHashTableOffset)
+        {
+            Elf64_Word* hashTable = OffsetPtr(file, gnuHashTableOffset, Elf64_Word*);
+            *nEntriesDynamicSymbolTable = hashTable[0]+hashTable[1];
+        }
+        else if (hashTableOffset)
+        {
+            Elf64_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf64_Word*);
+            *nEntriesDynamicSymbolTable = hashTable[1];
+        }
+        else
         {
             // There is no possible way to know the size without a hash table.
 
             *nEntriesDynamicSymbolTable = 0;
-        }
-        else 
-        {
-            Elf64_Word* hashTable = OffsetPtr(base, hashTableOffset, Elf64_Word*);
-            *nEntriesDynamicSymbolTable = hashTable[1];
         }
     }
     if (dynstrtab)

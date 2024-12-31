@@ -114,7 +114,7 @@ namespace sl
     template<typename T>
     constexpr T&& Forward(RemoveReferenceType<T>&& param)
     {
-        static_assert(!IsLValueReference<T>, "Cant forward rvalue as lvalue.");;
+        static_assert(!IsLValueReference<T>, "Cant forward rvalue as lvalue.");
         return static_cast<T&&>(param);
     }
 

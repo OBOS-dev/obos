@@ -36,10 +36,12 @@ typedef struct cpu_local_arch
 		uint16_t rsv4;
 		uint16_t iopb;
 	} OBOS_PACK tss;
-	void* ist_stack; // Size: 0x20000 bytes, divided into the IST1 stack (offset 0 to 0x10000), and the cpu temp stack (offset 0x10000 to 0x20000)
+	// Size: 0x20000 bytes, divided into the IST1 stack (offset 0 to 0x10000), and the cpu temp stack (offset 0x10000 to 0x20000)
+	void* ist_stack;
 	void* startup_stack; // Size: 0x4000 bytes, freed after smp initialization.
 	bool initializedSchedulerTimer;
 	bool pf_handler_running;
 	gdb_ctx dbg_ctx;
 	dpc dbg_dpc;
+	uint64_t stack_check_guard;
 } cpu_local_arch;
