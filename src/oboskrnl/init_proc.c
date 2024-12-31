@@ -69,9 +69,8 @@ void OBOS_LoadInit()
     aux.phdr.phnum = ehdr->e_phnum;
 
     aux.argv = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(char*), nullptr);
-    aux.argc = 2;
+    aux.argc = 1;
     aux.argv[0] = init_path;
-    aux.argv[1] = memcpy(OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 10, nullptr), "--verbose", 10);
 
     aux.envp = nullptr;
     aux.envpc = 0;
