@@ -286,18 +286,18 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 
 static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, size_t nBytes)
 {
-	OBOS_UNUSED(nBytes);
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 
-	if (!blk)
+	if (!blk || !nBytes)
 		return OBOS_STATUS_SUCCESS;
 
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
-	if (nBytes > (4*1024*1024))
+
+    if (nBytes > (4*1024*1024))
 		return OBOS_STATUS_INVALID_ARGUMENT; // invalid argument
 
 	basic_allocator* alloc = (basic_allocator*)This_;
