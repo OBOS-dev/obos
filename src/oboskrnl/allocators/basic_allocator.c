@@ -2,7 +2,7 @@
  * oboskrnl/allocators/basic_allocator.c
  *
  * Copyright (c) 2024 Omar Berrow
-*/
+ */
 
 #include <int.h>
 #include <klog.h>
@@ -30,14 +30,14 @@
 #	include <arch/m68k/pmm.h>
 #endif
 
-static uintptr_t round_up(uintptr_t x, size_t to)
+static OBOS_NO_KASAN uintptr_t round_up(uintptr_t x, size_t to)
 {
 	if (x % to)
 		return x + (to - (x % to));
 	return x;
 }
 
-static void set_status(obos_status* p, obos_status to)
+static OBOS_NO_KASAN  void set_status(obos_status* p, obos_status to)
 {
 	if (p)
 		*p = to;
@@ -64,15 +64,15 @@ static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum bl
 			// Map the physical address to virtual addresses without the need of page nodes.
 			// On x86-64, this is done using the HHDM.
 			void* ret = nullptr;
-#ifdef __x86_64__
+			#ifdef __x86_64__
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
-#elif defined(__m68k__)
+			#elif defined(__m68k__)
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
-#else
-#	error Unknown architecture
-#endif
+			#else
+			#	error Unknown architecture
+			#endif
 			memzero(ret, size);
 			return ret;
 		}
@@ -112,13 +112,13 @@ static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block,
 		case BLOCK_SOURCE_PHYSICAL_MEMORY:
 		{
 			uintptr_t phys = 0;
-#ifdef __x86_64__
+			#ifdef __x86_64__
 			phys = Arch_UnmapFromHHDM(block);
-#elif defined(__m68k__)
+			#elif defined(__m68k__)
 			phys = Arch_UnmapFromHHDM(block);
-#else
-#	error Unknown architecture
-#endif
+			#else
+			#	error Unknown architecture
+			#endif
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
@@ -133,33 +133,33 @@ static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block,
 #define ALLOCATOR_ALIGNMENT 0x10
 
 #define append_node(list, node) do {\
-if (!(list).head)\
-	(list).head = (node);\
+	if (!(list).head)\
+		(list).head = (node);\
 	if ((list).tail)\
 		(list).tail->next = (node);\
-		(node)->prev = (list).tail;\
-		(list).tail = (node);\
-		(list).nNodes++; \
+	(node)->prev = (list).tail;\
+	(list).tail = (node);\
+	(list).nNodes++; \
 } while(0)
 
 #define remove_node(list, node) do {\
-if ((node)->next)\
+	if ((node)->next)\
 	(node)->next->prev = (node)->prev;\
 	if ((node)->prev)\
 		(node)->prev->next = (node)->next;\
-		if ((list).head == (node))\
-			(list).head = (node)->next;\
-			if ((list).tail == (node))\
-				(list).tail = (node)->prev;\
-				(list).nNodes--;\
+	if ((list).head == (node))\
+		(list).head = (node)->next;\
+	if ((list).tail == (node))\
+		(list).tail = (node)->prev;\
+	(list).nNodes--;\
 } while(0)
 
 #if 1
-irql lock(cache* c)
+OBOS_NO_KASAN irql lock(cache* c)
 {
 	return Core_SpinlockAcquire(&c->lock);
 }
-void unlock(cache* c, irql oldIrql)
+OBOS_NO_KASAN void unlock(cache* c, irql oldIrql)
 {
 	Core_SpinlockRelease(&c->lock, oldIrql);
 }
@@ -175,7 +175,7 @@ void unlock(cache* c, irql oldIrql)
 }
 #endif
 
-static int allocate_region(basic_allocator* alloc, cache* c, size_t cache_index)
+static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_t cache_index)
 {
 	size_t sz = 1 << (cache_index+4);
 	size_t sz_node = sz;
@@ -186,10 +186,14 @@ static int allocate_region(basic_allocator* alloc, cache* c, size_t cache_index)
 	region* reg = init_mmap(sz, alloc, &src);
 	if (!reg)
 		return 0;
+#if OBOS_KASAN_ENABLED
+	memzero(reg, sz);
+#endif
 	reg->block_source = src;
 	reg->start = (void*)((uintptr_t)reg + init_pgsize());
 	reg->sz = sz-sizeof(region);
 	reg->magic = REGION_MAGIC;
+	reg->alloc = alloc;
 	append_node(c->region_list, reg);
 	if (sz_node == reg->sz)
 	{
@@ -211,7 +215,7 @@ static int allocate_region(basic_allocator* alloc, cache* c, size_t cache_index)
 	return 1;
 }
 
-static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
+static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
 {
 	if (!This_ || This_->magic != OBOS_BASIC_ALLOCATOR_MAGIC || !nBytes)
 	{
@@ -224,30 +228,38 @@ static OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
-		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
+		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 	if (nBytes > (4*1024*1024))
 		return NULL; // invalid argument
 
 	size_t cache_index = __builtin_ctzll(nBytes)-4;
-	cache* c = &This->caches[cache_index];
+	volatile cache* c = &This->caches[cache_index];
 
-	irql oldIrql = lock(c);
+	irql oldIrql = lock((cache*)c);
 
 	void* ret = c->free.tail;
 	if (!ret)
 	{
-		if (!allocate_region(This, c, cache_index))
+		if (!allocate_region(This, (cache*)c, cache_index))
 		{
-			unlock(c, oldIrql);
+			unlock((cache*)c, oldIrql);
 			return NULL; // OOM
 		}
 
 		ret = c->free.tail;
 	}
 
-	remove_node(c->free, c->free.tail);
+	OBOS_Debug ("%p %p %p\n", c, c->free, c->free.tail ? c->free.tail->prev : c->free.tail);
+	// remove_node(c->free, c->free.tail);
+	OBOS_ENSURE(!(c->free.tail)->next);
+	if ((c->free.tail)->prev)\
+		(c->free.tail)->prev->next = (c->free.tail)->next;\
+	if ((c->free).head == (c->free.tail))\
+		(c->free).head = (c->free.tail)->next;\
+	(c->free).tail = (c->free.tail)->prev;\
+	(c->free).nNodes--;\
 
-	unlock(c, oldIrql);
+	unlock((cache*)c, oldIrql);
 	return ret;
 }
 static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
@@ -295,9 +307,9 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
-		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
+		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 
-    if (nBytes > (4*1024*1024))
+	if (nBytes > (4*1024*1024))
 		return OBOS_STATUS_INVALID_ARGUMENT; // invalid argument
 
 	basic_allocator* alloc = (basic_allocator*)This_;
@@ -311,6 +323,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	{
 		region* reg = (void*)((uintptr_t)blk - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
+		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
 
 		irql oldIrql = lock(c);
 		remove_node(c->region_list, reg);
@@ -323,6 +336,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		const uintptr_t blki = (uintptr_t)blk;
 		region* volatile reg = (void*)((blki - (blki % init_pgsize())) - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
+		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
 
 		irql oldIrql = lock(c);
 

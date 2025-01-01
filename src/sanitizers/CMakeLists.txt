@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Omar Berrow
 
-add_library(sanitizers STATIC "asan.c" "stack.c" "ubsan.c" "prof.c")
+add_library(sanitizers STATIC "asan.c" "stack.c" "ubsan.c" "prof.c" "asan_memory.c")
 
 target_compile_options(sanitizers
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -11,9 +11,8 @@ target_compile_options(sanitizers
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-flto>
 #	PRIVATE $<$<COMPILE_LANGUAGE:C>:-g0>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=default> # We should have all its symbols exported
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=default> # We should have all symbols exported
 )
 
 target_include_directories(sanitizers PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")

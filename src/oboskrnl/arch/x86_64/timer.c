@@ -180,14 +180,14 @@ __attribute__((no_instrument_function)) timer_tick CoreS_GetTimerTick()
     return Arch_HPETAddress->mainCounterValue/cached_divisor;
 }
 
-__attribute__((no_instrument_function)) OBOS_EXPORT timer_tick CoreS_GetNativeTimerTick()
+__attribute__((no_instrument_function)) timer_tick CoreS_GetNativeTimerTick()
 {
     if (obos_expect(!Arch_HPETAddress, false))
         return 0;
     return Arch_HPETAddress->mainCounterValue;
 }
 
-__attribute__((no_instrument_function)) OBOS_EXPORT uint64_t CoreS_GetNativeTimerFrequency()
+__attribute__((no_instrument_function)) uint64_t CoreS_GetNativeTimerFrequency()
 {
     return Arch_HPETFrequency;
 }

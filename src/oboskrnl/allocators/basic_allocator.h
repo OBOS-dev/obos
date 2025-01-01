@@ -50,6 +50,7 @@ typedef struct region {
 	size_t nBlocks;
 	uint64_t magic;
 	enum blockSource block_source;
+	struct basic_allocator* alloc;
 	struct region *next, *prev;
 } region;
 

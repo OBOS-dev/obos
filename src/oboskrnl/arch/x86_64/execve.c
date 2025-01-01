@@ -9,6 +9,7 @@
 #include <klog.h>
 #include <execve.h>
 #include <init_proc.h>
+#include <handle.h>
 
 #include <scheduler/thread_context_info.h>
 #include <scheduler/thread.h>
@@ -147,7 +148,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
 void OBOSS_HandOffToInit(struct exec_aux_values* aux)
 {
-    OBOS_OpenStandardFDs();
+    OBOS_OpenStandardFDs(OBOS_CurrentHandleTable());
 
     (void)Core_RaiseIrql(IRQL_DISPATCH);
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;

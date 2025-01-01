@@ -24,7 +24,7 @@
 void cleanup()
 { /* Nothing to do */ }
 DRV_EXPORT void TestDriver_Fireworks(uint32_t max_iterations, int spawn_min, int spawn_max, bool stress_test);
-obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
+/*obos_status ioctl_var(size_t nParameters, uint64_t request, va_list list)
 {
     switch(request)
     {
@@ -49,13 +49,12 @@ obos_status ioctl(size_t nParameters, uint64_t request, ...)
     obos_status status = ioctl_var(nParameters, request, list);
     va_end(list);
     return status;
-}
+}*/
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) volatile driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = 0,
     .ftable.driver_cleanup_callback = cleanup,
-    .ftable.ioctl = ioctl,
-    .ftable.ioctl_var = ioctl_var,
+    //.ftable.ioctl = ioctl,
     .driverName = "Test driver"
 };
 
@@ -72,13 +71,14 @@ OBOS_PAGEABLE_FUNCTION void OBOS_DriverEntry(driver_id* this)
     this_driver = this;
     OBOS_Log("%s: Hello from test driver #1. Driver base: %p. Driver id: %d.\n", __func__, this->base, this->id);
     TestDriver_Test(this);
+    TestDriver_Fireworks(UINT32_MAX, 1, 3, false);
     OBOS_Log("Exiting from main thread.\n");
     Core_ExitCurrentThread();
 }
 
 #ifdef __x86_64__
 extern uint64_t random_seed_x86_64();
-uintptr_t random_seed()
+__attribute__((optimize("-O0"))) uintptr_t random_seed()
 {
     uint64_t seed = random_seed_x86_64();
     if (!seed)
@@ -90,7 +90,7 @@ asm (
     .intel_syntax noprefix;\
     .global random_seed_x86_64;\
     random_seed_x86_64:;\
-    push rbp; mov rbp, rsp;\
+    push rbp; mov rbp, rsp; push rbx;\
     .rdrand:;\
 	    mov eax, 1;\
 	    xor ecx,ecx;\
@@ -109,7 +109,7 @@ asm (
     	rdseed rax;\
     	jnc .rdseed;\
     .done:;\
-    leave; ret;\
+    pop rbx; leave; ret;\
     .att_syntax prefix;\
     "
 );

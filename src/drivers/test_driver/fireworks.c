@@ -31,6 +31,8 @@
 
 #include "rand.h"
 
+#undef OBOS_TEXT_BACKGROUND
+
 #ifndef OBOS_TEXT_BACKGROUND
 #   define OBOS_TEXT_BACKGROUND 0x00000000
 #endif
@@ -148,28 +150,7 @@ void plot_pixel(uint32_t rgbx, int32_t x, int32_t y)
 	// uint8_t* fb = OBOS_TextRendererState.fb.backbuffer_base ? OBOS_TextRendererState.fb.backbuffer_base : OBOS_TextRendererState.fb.base;
     uint8_t* fb = OBOS_TextRendererState.fb.base;
     fb += (y*OBOS_TextRendererState.fb.pitch+x*OBOS_TextRendererState.fb.bpp/8);
-    switch (OBOS_TextRendererState.fb.format)
-	{
-	case OBOS_FB_FORMAT_RGB888:
-		*fb++ = rgbx & 0xff;
-		*fb++ = (rgbx >> 8) & 0xff;
-		*fb++ = (rgbx >> 16) & 0xff;
-		break;
-	case OBOS_FB_FORMAT_BGR888:
-		*fb++ = (rgbx >> 16) & 0xff;
-		*fb++ = (rgbx >> 8) & 0xff;
-		*fb++ = rgbx & 0xff;
-		break;
-	case OBOS_FB_FORMAT_RGBX8888:
-		*(uint32_t*)fb = rgbx;
-		break;
-	case OBOS_FB_FORMAT_XRGB8888:
-		rgbx >>= 8;
-		*(uint32_t*)fb = rgbx;
-		break;
-	default:
-		break;
-	}
+    OBOS_PlotPixel(rgbx, fb, OBOS_TextRendererState.fb.format);
 }
 uint32_t random_pixel()
 {
@@ -285,7 +266,7 @@ void particle_handler(void* udata)
 	int ExplosionRange = parent->explosion_range;
 	if (!(--parent->refcount) && parent->can_free)
 	{
-		OBOS_KernelAllocator->Free(OBOS_KernelAllocator, parent, sizeof(*parent));
+		OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, parent, sizeof(*parent));
 		parent = nullptr;
 	}
 	int Angle = mt_random() % 65536;

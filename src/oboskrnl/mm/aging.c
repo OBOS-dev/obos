@@ -118,7 +118,7 @@ obos_status Mm_AgingPRA(context* ctx)
     if (ctx->workingSet.size > ctx->workingSet.capacity)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Pages in working-set exceeded its size. Size of pages: %lu, size of working set: %lu.\n", ctx->workingSet.size, ctx->workingSet.capacity);
 
-    return OBOS_STATUS_UNIMPLEMENTED;
+    return OBOS_STATUS_SUCCESS;
 }
 obos_status Mm_AgingReferencePage(context* ctx, working_set_node* node)
 {

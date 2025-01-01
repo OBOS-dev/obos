@@ -32,7 +32,7 @@ target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/sanitizers")
 target_include_directories(uacpi PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 target_include_directories(uacpi PUBLIC "${CMAKE_SOURCE_DIR}/src/uACPI")
 
-target_link_libraries(uacpi PRIVATE ${LIBGCC})
+target_link_libraries(uacpi PRIVATE ${LIBGCC} PRIVATE sanitizers)
 
 target_compile_definitions(uacpi
 	PRIVATE $<$<CONFIG:Debug>:OBOS_DEBUG>

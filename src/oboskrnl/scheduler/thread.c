@@ -75,8 +75,8 @@ obos_status CoreH_ThreadReady(thread* thr)
 	allocator_info* info = OBOS_NonPagedPoolAllocator;
 	if (!info)
 		info = OBOS_KernelAllocator;
-	thread_node* node = (thread_node*)OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), nullptr);
-	node->free = info == OBOS_KernelAllocator ? free_node : free_node_kalloc;
+	thread_node* node = (thread_node*)info->ZeroAllocate(info, 1, sizeof(thread_node), nullptr);
+	node->free = info == OBOS_KernelAllocator ? free_node_kalloc : free_node;
 	obos_status status = CoreH_ThreadReadyNode(thr, node);
 	if (status != OBOS_STATUS_SUCCESS)
 		node->free(node);

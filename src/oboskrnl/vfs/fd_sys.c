@@ -345,17 +345,27 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
     return status;
 }
 
-void OBOS_OpenStandardFDs()
+static handle alloc_fd(handle_table* tbl)
 {
-    handle hnd_stdin = Sys_FdAlloc();
-    handle hnd_stdout = Sys_FdAlloc();
-    handle hnd_stderr = Sys_FdAlloc();
-    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* desc = nullptr;
+    OBOS_LockHandleTable(tbl);
+    handle ret = OBOS_HandleAllocate(tbl, HANDLE_TYPE_FD, &desc);
+    desc->un.fd = Vfs_Calloc(1, sizeof(fd));
+    OBOS_UnlockHandleTable(tbl);
+    return ret;
+}
+
+void OBOS_OpenStandardFDs(handle_table* tbl)
+{
+    handle hnd_stdin = alloc_fd(tbl);
+    handle hnd_stdout = alloc_fd(tbl);
+    handle hnd_stderr = alloc_fd(tbl);
+    OBOS_LockHandleTable(tbl);
     obos_status status = OBOS_STATUS_SUCCESS;
-    handle_desc* stdin = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stdin, HANDLE_TYPE_FD, false, &status);
-    handle_desc* stdout = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stdout, HANDLE_TYPE_FD, false, &status);
-    handle_desc* stderr = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd_stderr, HANDLE_TYPE_FD, false, &status);
-    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* stdin = OBOS_HandleLookup(tbl, hnd_stdin, HANDLE_TYPE_FD, false, &status);
+    handle_desc* stdout = OBOS_HandleLookup(tbl, hnd_stdout, HANDLE_TYPE_FD, false, &status);
+    handle_desc* stderr = OBOS_HandleLookup(tbl, hnd_stderr, HANDLE_TYPE_FD, false, &status);
+    OBOS_UnlockHandleTable(tbl);
     Vfs_FdOpen(stdin->un.fd, "/dev/COM1", FD_OFLAGS_READ);
     Vfs_FdOpen(stdout->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
     Vfs_FdOpen(stderr->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);

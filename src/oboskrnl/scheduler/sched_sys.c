@@ -26,6 +26,8 @@
 #include <locks/pushlock.h>
 #include <locks/wait.h>
 
+#include <vfs/fd_sys.h>
+
 // scheduler/thread_context_info.h
 
 handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, size_t stack_size, handle vmm_context)
@@ -385,6 +387,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext)
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_PROCESS, &desc);
     desc->un.process = new;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    OBOS_OpenStandardFDs(&new->handles);
 
     return hnd;
 }

@@ -407,7 +407,7 @@ driver_symbol* DrvH_ResolveSymbol(const char* name, struct driver_id** driver)
 static __attribute__((no_instrument_function)) void unload_driver_dpc(dpc* unused, void* userdata)
 {
     Drv_UnloadDriver(userdata);
-    CoreH_FreeDPC(unused);
+    CoreH_FreeDPC(unused, true);
 }
 
 void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status)

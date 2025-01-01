@@ -52,8 +52,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() < minIrql)
 		oldIrql = irqlNthrVariant ?
-		Core_RaiseIrqlNoThread(minIrql) :
-		Core_RaiseIrql(minIrql);
+			Core_RaiseIrqlNoThread(minIrql) :
+			Core_RaiseIrql(minIrql);
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
 		OBOSS_SpinlockHint();
 	// lock->nCPUsWaiting--;

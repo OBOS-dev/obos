@@ -27,7 +27,7 @@ add_executable(oboskrnl)
 set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
 set_source_files_properties("klog.c" PROPERTIES COMPILE_OPTIONS "-Wno-error")
 set_source_files_properties("vfs/mount.c" PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
-set_source_files_properties("allocators/basic_allocator.c" PROPERTIES COMPILE_OPTIONS "-fno-lto")
+set_source_files_properties("allocators/basic_allocator.c" PROPERTIES COMPILE_OPTIONS "-fanalyzer")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>
@@ -64,12 +64,15 @@ target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
 #	PRIVATE "-fvisibility=hidden"
 	PRIVATE "-Wl,--export-dynamic"
+	PRIVATE "-flto"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )
 
 target_compile_definitions(oboskrnl
+	PRIVATE FIXEDPT_BITS=${OBOS_ARCHITECTURE_BITS}
 	PRIVATE OBOS_KERNEL=1
+	PRIVATE "FIXEDPT_WBITS=(${OBOS_ARCHITECTURE_BITS}-8)"
 )
 
 target_sources(oboskrnl PRIVATE ${oboskrnl_sources})

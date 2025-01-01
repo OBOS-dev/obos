@@ -272,7 +272,7 @@ static uacpi_iteration_decision ec_enumerate_resources(void *user, uacpi_resourc
         case UACPI_RESOURCE_TYPE_FIXED_IO:
             current_gas.address = resource->fixed_io.address;
             current_gas.register_bit_width = resource->fixed_io.length*8;
-            ;
+            break;
         default:
             return UACPI_ITERATION_DECISION_CONTINUE;
     }

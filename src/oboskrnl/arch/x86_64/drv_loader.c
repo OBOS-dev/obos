@@ -312,22 +312,6 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
             }
             *usesUacpiSymbol = true;
         }
-#if PCI_IRQ_CAN_USE_ACPI
-        if ((!(*usesUacpiSymbol) || (PCI_IRQ_UACPI_INIT_LEVEL > drv->header.uacpi_init_level_required)) && (Symbol && strcmp(Symbol->name, "Drv_RegisterPCIIrq")))
-        {
-            uint32_t uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL;
-            if (drv->header.uacpi_init_level_required >= uacpi_init_level_required)
-                uacpi_init_level_required = drv->header.uacpi_init_level_required;
-            if (uacpi_init_level_required > uacpi_get_current_init_level())
-            {
-                if (status)
-                    *status = OBOS_STATUS_INVALID_INIT_PHASE;
-                Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
-                return false;
-            }
-            *usesUacpiSymbol = true;
-        }
-#endif
         cont:
         add_dependency(drv, dependency);
         if (ELF64_ST_BIND(Unresolved_Symbol->st_info) == STB_WEAK)

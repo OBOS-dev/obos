@@ -74,8 +74,6 @@ SECTIONS
         *(.comment)
     }
     
-    Drv_Top = .;
-    
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     .dynamic : {
         *(.dynamic)
