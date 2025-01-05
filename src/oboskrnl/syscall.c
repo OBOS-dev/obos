@@ -1,7 +1,7 @@
 /*
  * oboskrnl/syscall.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -16,13 +16,15 @@
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
-
 #include <scheduler/sched_sys.h>
+#include <scheduler/process.h>
 
 #include <power/shutdown.h>
 #include <power/suspend.h>
 
 #include <mm/mm_sys.h>
+#include <mm/context.h>
+#include <mm/fork.h>
 
 #include <locks/sys_futex.h>
 
@@ -64,6 +66,29 @@ void Sys_LibCLog(const char* ustr)
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, str_len+1);
 }
 
+static handle Sys_MmFork()
+{
+    // Zeroed in Mm_ConstructContext
+    context* ctx = Mm_Allocator->Allocate(Mm_Allocator, sizeof(context), nullptr);
+    Mm_ConstructContext(ctx);
+    Mm_ForkContext(ctx, Core_GetCurrentThread()->proc->ctx);
+    ctx->workingSet.capacity = Core_GetCurrentThread()->proc->ctx->workingSet.capacity;
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* desc = nullptr;
+    handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_VMM_CONTEXT, &desc);
+    desc->un.vmm_context = ctx;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return hnd;
+
+}
+
+void Sys_ExitCurrentProcess(uint32_t exitCode)
+{
+    Core_ExitCurrentProcess((exitCode & 0xff) << 8);
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -86,7 +111,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_WaitOnObjects,
     (uintptr_t)Sys_ProcessOpen,  // Unimplemented
     (uintptr_t)Sys_ProcessStart,
-    (uintptr_t)Sys_ProcessKill,  // Unimplemented
+    (uintptr_t)Sys_KillProcess,  // signal-related
     (uintptr_t)Sys_VirtualMemoryAlloc, // 22
     (uintptr_t)Sys_VirtualMemoryFree,
     (uintptr_t)Sys_VirtualMemoryProtect,
@@ -126,6 +151,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ProcessGetPID, // 58
     (uintptr_t)Sys_ProcessGetPPID, // 59
     (uintptr_t)Sys_FdOpenAt,
+    (uintptr_t)Sys_MmFork,
+    (uintptr_t)Sys_ExitCurrentProcess,
+    (uintptr_t)Sys_ProcessGetStatus,
+    (uintptr_t)Sys_WaitProcess,
 };
 // Arch syscall table is defined per-arch
 

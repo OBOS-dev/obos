@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/execve.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -18,14 +18,15 @@
 #include <mm/context.h>
 #include <mm/alloc.h>
 
+#include <arch/x86_64/sse.h>
+
 #include <irq/irql.h>
 
 #include <vfs/fd_sys.h>
 
 typedef struct
 {
-    OBOS_ALIGNAS(0x8) int a_type;
-    OBOS_ALIGNAS(0x8)
+    OBOS_ALIGNAS(0x8) uint64_t a_type;
     union {
         long a_val;
         void *a_ptr;
@@ -95,10 +96,12 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 {
     if (Core_GetIrql() < IRQL_DISPATCH)
         (void)Core_RaiseIrql(IRQL_DISPATCH);
+    Core_GetCurrentThread()->context.extended_ctx_ptr = Arch_AllocateXSAVERegion();
+
     Core_GetCurrentThread()->context.frame.rsp = (uintptr_t)Core_GetCurrentThread()->context.stackBase + Core_GetCurrentThread()->context.stackSize;
     // 1+argc+char*[argc]+NULL+char*[envpc]+NULL+4(aux)+1
     // 1+1+argc+1+envpc+1+8+1=9+envpc+argc
-    size_t szAllocation = (11+aux->envpc+aux->argc)*sizeof(uint64_t);
+    size_t szAllocation = (13+aux->envpc+aux->argc)*sizeof(uint64_t);
     allocate_string_vector_on_stack(aux->argv, aux->argc);
     allocate_string_vector_on_stack(aux->envp, aux->envpc);
     Core_GetCurrentThread()->context.frame.rsp &= ~0xf;
@@ -111,19 +114,23 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
     auxv_t* auxv = (auxv_t*)&init_vals[1+aux->argc+1+aux->envpc+1];
 
-    auxv[0].a_type = AT_PHDR;
-    auxv[0].a_un.a_ptr = aux->phdr.ptr;
+    (*auxv).a_type = AT_PHDR;
+    (*auxv).a_un.a_ptr = aux->phdr.ptr;
+    auxv++;
 
-    auxv[1].a_type = AT_PHENT;
-    auxv[1].a_un.a_val = aux->phdr.phent;
+    (*auxv).a_type = AT_PHENT;
+    (*auxv).a_un.a_val = aux->phdr.phent;
+    auxv++;
 
-    auxv[2].a_type = AT_PHNUM;
-    auxv[2].a_un.a_val = aux->phdr.phnum;
+    (*auxv).a_type = AT_PHNUM;
+    (*auxv).a_un.a_val = aux->phdr.phnum;
+    auxv++;
 
-    auxv[3].a_type = AT_ENTRY;
-    auxv[3].a_un.a_ptr = (void*)aux->elf.entry;
+    (*auxv).a_type = AT_ENTRY;
+    (*auxv).a_un.a_ptr = (void*)aux->elf.entry;
+    auxv++;
 
-    auxv[4].a_type = AT_NULL;
+    (*auxv).a_type = AT_NULL;
 
     write_vector_to_stack(aux->argv, (char**)(init_vals+1), aux->argc);
     write_vector_to_stack(aux->envp, (char**)(init_vals+1+aux->argc+1), aux->envpc);

@@ -124,6 +124,8 @@ bool MmH_IsAddressUnPageable(uintptr_t addr);
 
 // Constructs a new (user-mode) context.
 void Mm_ConstructContext(context* ctx);
+
 // Allocates a page table for a new user-mode context.
 // Must have enough of the kernel mapped for a userspace -> kernel mode switch to work.
 page_table MmS_AllocatePageTable();
+void MmS_FreePageTable(page_table pt);

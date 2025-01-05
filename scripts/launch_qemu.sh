@@ -5,7 +5,7 @@ rm qemu_log.txt
 echo $@
 qemu-system-x86_64 \
 -drive file=out/obos.iso,format=raw \
--m 256M \
+-m 2G \
 -gdb tcp:0.0.0.0:1234 -S \
 -boot d \
 -M q35 \
@@ -14,7 +14,7 @@ qemu-system-x86_64 \
 -debugcon file:/dev/stdout \
 -monitor stdio \
 -serial tcp:0.0.0.0:1534,server,nowait \
--smp cores=$(nproc),threads=1,sockets=1 \
+-smp cores=1,threads=1,sockets=1 \
 -d int \
 -D qemu_log.txt "$@"
 

@@ -38,8 +38,14 @@ signal_header* OBOSH_AllocateSignalHeader()
 
 obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
+    if (sigval == 0)
+        return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
     if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (thr->proc->pid == 0)
+        return OBOS_STATUS_INVALID_OPERATION;
+
+    OBOS_ENSURE(thr->signal_info);
 
     if (thr->signal_info->pending & BIT(sigval - 1))
         return OBOS_STATUS_SUCCESS;
@@ -76,6 +82,12 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     // thr->signal_info->signals[sigval].sigcode = 0;
     thr->signal_info->signals[sigval].sender = as;
     Core_MutexRelease(&thr->signal_info->lock);
+    if (thr->status == THREAD_STATUS_BLOCKED)
+    {
+        // TODO: Use CoreH_AbortWaitingThreads instead of this?
+        thr->interrupted = true;
+        CoreH_ThreadReady(thr);
+    }
     return OBOS_STATUS_SUCCESS;
 }
 obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
@@ -173,12 +185,12 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 }
 void OBOS_SyncPendingSignal(interrupt_frame* frame)
 {
-    if (!Core_GetCurrentThread()->signal_info->pending)
+    if (!(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask))
         return;
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
-    int sigval = __builtin_ctzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
+    int sigval = __builtin_clzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
+    Core_GetCurrentThread()->signal_info->pending &= ~BIT(sigval - 1);
     sigval += 1;
-    Core_GetCurrentThread()->signal_info->pending &= ~BIT(sigval);
     OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
 }
@@ -204,7 +216,7 @@ void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown)
     OBOS_UNUSED(unknown);
     switch (OBOS_SignalDefaultActions[signum]) {
         case SIGNAL_DEFAULT_TERMINATE_PROC:
-            OBOS_Debug("Exitting thread %ld of process %ld after receiving signal %d\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, signum);
+            OBOS_Debug("Exitting process %ld after receiving signal %d\n", Core_GetCurrentThread()->proc->pid, signum);
             break;
         case SIGNAL_DEFAULT_IGNORE:
         case SIGNAL_DEFAULT_STOP:
@@ -216,5 +228,5 @@ void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown)
     }
     OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, info, sizeof(*info));
     OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, unknown, sizeof(ucontext_t));
-    Core_ExitCurrentThread();
+    Core_ExitCurrentProcess(signum | (signum << 8));
 }

@@ -1,6 +1,6 @@
 # oboskrnl/CMakeLists.txt
 
-# Copyright (c) 2024 Omar Berrow
+# Copyright (c) 2024-2025 Omar Berrow
 
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
@@ -64,7 +64,6 @@ target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
 #	PRIVATE "-fvisibility=hidden"
 	PRIVATE "-Wl,--export-dynamic"
-	PRIVATE "-flto"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
 )

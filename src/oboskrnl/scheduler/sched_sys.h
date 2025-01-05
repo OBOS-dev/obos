@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/sched_sys.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #pragma once
@@ -23,6 +23,8 @@ typedef struct thread_ctx_handle
     pushlock lock;
     // If false, this thread context cannot be used in a new thread creation.
     bool canFree;
+
+    struct context* vmm_ctx;
 } thread_ctx_handle;
 
 // scheduler/thread_context_info.h
@@ -50,7 +52,17 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects);
 // scheduler/process.h
 
 handle Sys_ProcessOpen(uint64_t pid);
-handle Sys_ProcessStart(handle mainThread /* optional, set to HANDLE_INVALID if unwanted */, handle vmm_context);
-obos_status Sys_ProcessKill(handle process, bool force);
+handle Sys_ProcessStart(handle mainThread /* optional, set to HANDLE_INVALID if unwanted */, handle vmm_context, bool is_fork);
+uint32_t Sys_ProcessGetStatus(handle process);
 uint64_t Sys_ProcessGetPID(handle process);
 uint64_t Sys_ProcessGetPPID(handle process);
+// Gets a handle to any arbitrary child process.
+handle Sys_ProcessGetChildHandle();
+
+#define WNOHANG 1
+#define WSTOPPED 2
+#define WEXITED 4
+#define WCONTINUED 8
+
+// If HANDLE_ANY to make it choose an arbitrary child process.
+obos_status Sys_WaitProcess(handle proc, int* status, int options, uint32_t* ret_pid);

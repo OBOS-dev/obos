@@ -10,21 +10,39 @@
 #include <error.h>
 #include <handle.h>
 
+#include <locks/spinlock.h>
+#include <locks/wait.h>
+
 #include <scheduler/thread.h>
 
 typedef struct process
 {
-	// If pid==1, this is the kernel process.
-	uint64_t pid;
+	// Processes waiting for a status update.
+	struct waitable_header waiting_threads;
+
+	// If pid==0, this is the kernel process.
+	uint32_t pid;
 	thread_list threads;
+	struct context* ctx;
+	handle_table handles;
+	_Atomic(size_t) refcount;
+
 	uid currentUID;
 	gid currentGID;
-	struct context* ctx;
+	uint32_t exitCode;
+	bool dead;
+
 	struct process* parent;
-	handle_table handles;
+	struct {
+		struct process *head, *tail;
+		size_t nChildren;
+	} children;
+	spinlock children_lock;
+	struct process *next, *prev;
 } process;
-extern uint64_t Core_NextPID;
-// The first thread in this process must be the kernel main thread.
+extern uint32_t Core_NextPID;
+
+// The first thread in this process must be the kernel main thread, until the thread exits.
 extern OBOS_EXPORT process* OBOS_KernelProcess;
 /// <summary>
 /// Allocates a process object.
@@ -47,9 +65,7 @@ OBOS_EXPORT obos_status Core_ProcessStart(process* proc, thread* mainThread);
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status Core_ProcessAppendThread(process* proc, thread* thread);
 /// <summary>
-/// Terminates a process.
+/// Terminates the current process.
 /// </summary>
-/// <param name="proc">The process to terminate.</param>
-/// <param name="forced">Whether to forcefully terminate the process.</param>
-/// <returns>The status of the function.</returns>
-obos_status Core_ProcessTerminate(process* proc, bool forced);
+/// <param name="code">The exit code of the process.</param>
+OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code);

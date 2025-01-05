@@ -45,7 +45,7 @@ void OBOSS_SigReturn(interrupt_frame* frame)
     frame->ss = 0x20|3;
     frame->ds = 0x20|3;
     frame->rflags |= RFLAGS_INTERRUPT_ENABLE;
-    frame->rflags &= ~ALLOWED_FLAGS;
+    frame->rflags &= ALLOWED_FLAGS;
     frame->cr3 = CoreS_GetCPULocalPtr()->currentContext->pt;
     // TODO: Restore extended context.
 }

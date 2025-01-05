@@ -113,7 +113,7 @@ CoreS_SwitchToThreadContext:
 
 	; Restore GS_BASE
 	test qword [rdi+16+0xB8], 0x3
-	je .restore_fs_base
+	jz .restore_fs_base
 	swapgs
 	mov eax, [rdi]
 	mov edx, [rdi+4]
@@ -183,8 +183,8 @@ CoreS_SetupThreadContext:
 	jne .kmode
 
 .userspace:
-	mov qword [rdi+thread_ctx.frame+0xB8], 0x20|3 ; ctx->frame.cs=user (CPL3) data segment
-	mov qword [rdi+thread_ctx.frame+0xD0], 0x18|3 ; ctx->frame.ss=user (CPL3) code segment
+	mov qword [rdi+thread_ctx.frame+0xB8], 0x20|3 ; ctx->frame.cs=user (CPL3) code segment
+	mov qword [rdi+thread_ctx.frame+0xD0], 0x18|3 ; ctx->frame.ss=user (CPL3) data segment
 
 	push rdi
 	call Arch_AllocateXSAVERegion
@@ -271,7 +271,6 @@ CoreS_SaveRegisterContextAndYield:
 	
 	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
 	jz .call_scheduler
-	mov rax, [rdi+thread_ctx.extended_ctx_ptr]
 
 	mov rbx, [Arch_HasXSAVE]
 	cmp rbx, 0
@@ -279,9 +278,13 @@ CoreS_SaveRegisterContextAndYield:
 
 	xor rcx,rcx
 	xgetbv
-	xsave [rax]
+
+	mov rbx, [rdi+thread_ctx.extended_ctx_ptr]
+	xsave [rbx]
+	jmp .call_scheduler
 
 .no_xsave:
+	mov rbx, [rdi+thread_ctx.extended_ctx_ptr]
 	fxsave [rax]
 
 .call_scheduler:

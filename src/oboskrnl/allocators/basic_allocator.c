@@ -1,7 +1,7 @@
 /*
  * oboskrnl/allocators/basic_allocator.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -249,7 +249,6 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 		ret = c->free.tail;
 	}
 
-	OBOS_Debug ("%p %p %p\n", c, c->free, c->free.tail ? c->free.tail->prev : c->free.tail);
 	// remove_node(c->free, c->free.tail);
 	OBOS_ENSURE(!(c->free.tail)->next);
 	if ((c->free.tail)->prev)\

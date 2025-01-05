@@ -1,9 +1,10 @@
 /*
  * oboskrnl/scheduler/sched_sys.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "vfs/mount.h"
 #include <int.h>
 #include <error.h>
 #include <signal.h>
@@ -60,6 +61,7 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
     ctx->ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
     ctx->canFree = true;
     ctx->lock = PUSHLOCK_INITIALIZE();
+    ctx->vmm_ctx = vmm_ctx;
 
     CoreS_SetupThreadContext(ctx->ctx, entry, arg1, true, stack, stack_size);
     CoreS_SetThreadPageTable(ctx->ctx, vmm_ctx->pt);
@@ -176,6 +178,8 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     thr->references++;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+
     return hnd;
 }
 #define thread_object_from_handle(hnd, return_status, use_curr) \
@@ -285,6 +289,7 @@ obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */)
         case HANDLE_TYPE_PUSHLOCK:
         case HANDLE_TYPE_EVENT:
         case HANDLE_TYPE_SEMAPHORE:
+        case HANDLE_TYPE_PROCESS:
             break;
         default:
             return OBOS_STATUS_INVALID_ARGUMENT;
@@ -324,6 +329,7 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
             case HANDLE_TYPE_PUSHLOCK:
             case HANDLE_TYPE_EVENT:
             case HANDLE_TYPE_SEMAPHORE:
+            case HANDLE_TYPE_PROCESS:
                 break;
             default:
                 OBOS_KernelAllocator->Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
@@ -347,13 +353,46 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
 
 // scheduler/process.h
 
+static process* lookup_proc(uint64_t pid)
+{
+    process* root = OBOS_KernelProcess;
+    while(root)
+    {
+        process* curr = root;
+        if (root->pid == pid)
+            return root;
+        for (curr = root->children.head; curr;)
+        {
+            if (curr->pid == pid)
+                return curr;
+
+            // root = curr->fdc_children.head ? curr->fdc_children.head : root;
+            curr = curr->next;
+        }
+        if (!curr)
+            root = root->parent;
+    }
+    return nullptr;
+}
+
 handle Sys_ProcessOpen(uint64_t pid)
 {
     OBOS_UNUSED(pid);
-    // Unimplemented.
-    return HANDLE_INVALID;
+    if (pid > Core_NextPID)
+        return HANDLE_INVALID;
+    process* proc = lookup_proc(pid);
+    if (!proc)
+        return HANDLE_INVALID;
+    proc->refcount++;
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* desc = nullptr;
+    handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_PROCESS, &desc);
+    desc->un.process = proc;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    return hnd;
 }
-handle Sys_ProcessStart(handle mainThread, handle vmmContext)
+
+handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
 {
     // oh boy...
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -362,7 +401,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext)
         HANDLE_TYPE(mainThread) == HANDLE_TYPE_INVALID ?
             nullptr :
             OBOS_HandleLookup(OBOS_CurrentHandleTable(), mainThread, HANDLE_TYPE_THREAD, false, &status);
-    if (!main_desc)
+    if (!main_desc && HANDLE_TYPE(mainThread) != HANDLE_TYPE_INVALID)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         return HANDLE_INVALID;
@@ -375,11 +414,54 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     thread* main = main_desc->un.thread;
-    context* vmm_ctx = main_desc->un.vmm_context;
+    context* vmm_ctx = vmm_ctx_desc->un.vmm_context;
 
     process* new = Core_ProcessAllocate(nullptr);
     new->ctx = vmm_ctx;
     vmm_ctx->owner = new;
+    if (is_fork)
+    {
+        // Clone current file handles, as well as dirent handles.
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+
+        for (size_t i = 0; i < OBOS_CurrentHandleTable()->size; i++)
+        {
+            handle_desc* hnd = OBOS_CurrentHandleTable()->arr + i;
+            switch (hnd->type)
+            {
+                case HANDLE_TYPE_FD:
+                {
+                    if (!hnd->un.fd)
+                        continue;
+                    if (!hnd->un.fd->vn)
+                        continue;
+                    if (!VfsH_LockMountpoint(hnd->un.fd->vn->mount_point))
+                        continue;
+                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
+                    handle_desc* new_hnd = &new->handles.arr[i];
+                    new_hnd->type = HANDLE_TYPE_FD;
+                    new_hnd->un.fd = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
+                    new_hnd->un.fd->flags = hnd->un.fd->flags;
+                    new_hnd->un.fd->offset = hnd->un.fd->offset;
+                    new_hnd->un.fd->vn = hnd->un.fd->vn;
+                    LIST_APPEND(fd_list, &new_hnd->un.fd->vn->opened, new_hnd->un.fd);
+                    VfsH_UnlockMountpoint(hnd->un.fd->vn->mount_point);
+                    break;
+                }
+                case HANDLE_TYPE_DIRENT:
+                {
+                    handle_desc* new_hnd = &new->handles.arr[i];
+                    new_hnd->type = HANDLE_TYPE_DIRENT;
+                    new_hnd->un.dirent = hnd->un.dirent;
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
     Core_ProcessStart(new, main);
 
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
@@ -387,11 +469,31 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext)
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_PROCESS, &desc);
     desc->un.process = new;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-    OBOS_OpenStandardFDs(&new->handles);
+
+    if (!is_fork)
+        OBOS_OpenStandardFDs(&new->handles);
 
     return hnd;
 }
-obos_status Sys_ProcessKill(handle process, bool force)
+
+uint32_t Sys_ProcessGetStatus(handle process)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+    if (!desc)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return UINT32_MAX;
+    }
+    struct process* proc = desc->un.process;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return proc->exitCode;
+}
+
+uint64_t Sys_ProcessGetPID(handle process)
 {
     struct process* proc =
         HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
@@ -405,20 +507,11 @@ obos_status Sys_ProcessKill(handle process, bool force)
         if (!desc)
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return status;
+            return UINT32_MAX;
         }
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
-    return Core_ProcessTerminate(proc, force);
-}
-
-uint64_t Sys_ProcessGetPID(handle process)
-{
-    struct process* proc =
-        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
-            Core_GetCurrentThread()->proc :
-            nullptr;
     return proc->pid;
 }
 
@@ -428,6 +521,19 @@ uint64_t Sys_ProcessGetPPID(handle process)
         HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
             Core_GetCurrentThread()->proc :
             nullptr;
+    if (!proc)
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return UINT32_MAX;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
     return proc->parent->pid;
 }
 
@@ -438,4 +544,61 @@ void OBOS_ThreadHandleFree(handle_desc *hnd)
         thr->snode->free(thr->snode);
     if (!(--thr->references) && thr->free)
         thr->free(thr);
+}
+
+obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pid)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    process* process = nullptr;
+
+    if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
+    {
+        process = Core_GetCurrentThread()->proc->children.head;
+        while (process && process->dead)
+            process = process->next;
+        status = process ? OBOS_STATUS_NOT_FOUND : OBOS_STATUS_SUCCESS;
+        if (!process)
+            return status;
+        printf("%d\n", process->pid);
+        process->refcount++;
+    }
+    else
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), proc, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        process = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    status = memcpy_k_to_usr(pid, &process->pid, sizeof(uint32_t));
+
+    if (obos_is_error(status))
+        return status;
+
+    if (options & WNOHANG && !process->waiting_threads.signaled)
+        return OBOS_STATUS_RETRY;
+
+    again:
+    status = Core_WaitOnObject(WAITABLE_OBJECT(*process));
+    if (obos_is_error(status))
+        return status;
+
+    if ((process->exitCode == 0xffff) && ~options & WCONTINUED)
+        goto again;
+
+    if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
+        process->refcount--;
+
+    CoreH_ClearSignaledState(WAITABLE_OBJECT(*process));
+
+    if (obos_expect(wstatus != nullptr, true))
+        return memcpy_k_to_usr(wstatus, &process->exitCode, sizeof(uint32_t));
+
+    return OBOS_STATUS_SUCCESS;
 }

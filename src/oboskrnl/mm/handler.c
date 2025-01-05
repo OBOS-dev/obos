@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/handler.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -22,6 +22,7 @@
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
+#include <scheduler/process.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
@@ -82,10 +83,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
 }
 static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page_info* info) 
 {
-    if (~ec & PF_EC_PRESENT)
-        return false;
-    if (rng->prot.ro)
-            return false; // whoops
+    info->prot.present = true;
     page what = {.phys=info->phys};
     page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
     if (pg->refcount == 1 /* we're the only one left */)
@@ -196,7 +194,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     bool handled = false;
     page_range what = {.virt=addr,.size=OBOS_PAGE_SIZE};
     if (ctx != &Mm_KernelContext)
-        OBOS_Debug("Handling page fault at 0x%p...\n", addr);
+        OBOS_Debug("(pid %d) Handling page fault at 0x%p...\n", ctx->owner->pid, addr);
     fault_type type = INVALID_FAULT;
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
@@ -227,8 +225,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     }
     if (rng->cow)
     {
-        if (rng->un.cow_type == COW_SYMMETRIC && (~ec & PF_EC_RW))
-            goto not_cow;
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Doing CoW...\n", addr);
         // Mooooooooo.

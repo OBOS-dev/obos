@@ -1,7 +1,7 @@
 /*
 	oboskrnl/irq/irql.c
 
-	Copyright (c) 2024 Omar Berrow
+	Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -81,8 +81,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_Lo
 		return;
 	if (to > *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is greater than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
+//	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+//		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	uint8_t old = *Core_GetIRQLVar();
 	*Core_GetIRQLVar() = to;
 	CoreS_SetIRQL(to, old);
@@ -97,8 +97,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_Ra
 		return to;
 	if (to < *Core_GetIRQLVar())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
+//	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+//		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	irql oldIRQL = Core_GetIrql();
 #if !OBOS_LAZY_IRQL
 	CoreS_SetIRQL(to, *Core_GetIRQLVar());

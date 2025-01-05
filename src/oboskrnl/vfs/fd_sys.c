@@ -126,6 +126,9 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     if (nWritten)
         memcpy_k_to_usr(nWritten, &nWritten_, sizeof(size_t));
 
+    if (desc == 1 || desc == 2)
+        printf("%.*s", nBytes, kbuf);
+
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
@@ -214,6 +217,7 @@ uoff_t Sys_FdTellOff(const handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    OBOS_ENSURE(fd->un.fd);
     return Vfs_FdTellOff(fd->un.fd);
 }
 

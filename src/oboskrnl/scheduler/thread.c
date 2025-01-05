@@ -244,6 +244,8 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 								 CoreS_GetThreadStackSize(&currentThread->context),
 								currentThread->stackFreeUserdata);
 	}
+	if (currentThread->kernelStack)
+		Mm_VirtualMemoryFree(&Mm_KernelContext, currentThread->kernelStack, 0x10000);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);

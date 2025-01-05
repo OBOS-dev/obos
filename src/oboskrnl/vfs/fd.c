@@ -279,7 +279,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
 }
 uoff_t Vfs_FdTellOff(const fd* desc)
 {
-    if (desc && desc->vn->vtype != VNODE_TYPE_FIFO)
+    if (desc && desc->vn && desc->vn->vtype != VNODE_TYPE_FIFO)
         return desc->offset;
     return (uoff_t)(-1);
 }

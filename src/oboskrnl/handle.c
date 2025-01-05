@@ -1,7 +1,7 @@
 /*
  * oboskrnl/handle.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -19,18 +19,21 @@
 
 #include <allocators/base.h>
 
-void expand_handle_table(handle_table* table, size_t size)
+void OBOS_ExpandHandleTable(handle_table* table, size_t size)
 {
-    const size_t oldSize= table->size;
+    if (size <= table->size)
+        return;
+    const size_t oldSize = table->size;
     table->size = size;
     table->arr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*table->size, sizeof(*table->arr)*oldSize, nullptr);
     memzero(table->arr + oldSize, sizeof(handle_desc)*(table->size-oldSize));
     table->last_handle = oldSize;
 }
+
 void OBOS_InitializeHandleTable(handle_table* table)
 {
     table->lock = MUTEX_INITIALIZE();
-    expand_handle_table(table, 64);
+    OBOS_ExpandHandleTable(table, 64);
 }
 handle_table* OBOS_CurrentHandleTable()
 {
@@ -88,6 +91,7 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
         return nullptr; // use-after-free; it is impossible for a handle in-use to be nullptr
     }
     *status = OBOS_STATUS_SUCCESS;
+    OBOS_ASSERT(table->arr[hnd].type == type);
     return &table->arr[hnd];
 }
 handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** const desc)
@@ -104,7 +108,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     {
         hnd = table->last_handle++;
         if (hnd >= table->size)
-            expand_handle_table(table, OBOS_MAX(table->size + (table->size / 4), hnd));
+            OBOS_ExpandHandleTable(table, OBOS_MAX(table->size + (table->size / 4), hnd));
     }
     *desc = &table->arr[hnd];
     table->arr[hnd].type = type;

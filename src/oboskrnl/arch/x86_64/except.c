@@ -28,6 +28,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
 {
     sti();
     uintptr_t virt = getCR2();
+    // for (volatile bool b = (virt == 0x412134fa); b; )
+    //     asm volatile ("" : "=r"(b) : "r"(b) :"memory");
     virt &= ~0xfff;
     if (!CoreS_GetCPULocalPtr())
         goto down;
@@ -75,7 +77,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     }
     if (frame->cs & 3)
     {
-        OBOS_Log("User thread %d SIGSEGV\n", Core_GetCurrentThread()->tid);
+        OBOS_Log("User thread %d SIGSEGV (rip %p, cr2 %p)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2());
         Core_GetCurrentThread()->signal_info->signals[SIGSEGV].addr = (void*)getCR2();
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
         // OBOS_SyncPendingSignal(frame);

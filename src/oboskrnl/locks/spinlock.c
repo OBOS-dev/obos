@@ -1,7 +1,7 @@
 /*
 	oboskrnl/locks/spinlock.c
 
-	Copyright (c) 2024 Omar Berrow
+	Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -54,8 +54,11 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
 		oldIrql = irqlNthrVariant ?
 			Core_RaiseIrqlNoThread(minIrql) :
 			Core_RaiseIrql(minIrql);
-	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+	//if (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+    //    goto done_wait;
+    while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
 		OBOSS_SpinlockHint();
+    //done_wait:
 	// lock->nCPUsWaiting--;
 	lock->irqlNThrVariant = irqlNthrVariant;
 #ifdef OBOS_DEBUG
@@ -68,9 +71,14 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
 
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(spinlock* const lock)
 {
-	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = IRQL_INVALID;
+    if (Core_GetIrql() < IRQL_DISPATCH)
+        oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    //if (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+    //    goto locked;
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
 		OBOSS_SpinlockHint();
+    //locked:
 	lock->irqlNThrVariant = false;
 #ifdef OBOS_DEBUG
 	lock->owner = Core_GetCurrentThread();
@@ -102,6 +110,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
 #endif
 	return OBOS_STATUS_SUCCESS;
 }
+
 /*
  * No.
 OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)

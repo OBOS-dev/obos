@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/page.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -56,7 +56,7 @@ typedef struct page
 {
     RB_ENTRY(page) rb_node;
     // only valid if the page is dirty/standby.
-    LIST_NODE(phys_page_list, struct page) lnk_node; 
+    LIST_NODE(phys_page_list, struct page) lnk_node;
     uintptr_t phys;
 
     _Atomic(size_t) refcount;
@@ -121,7 +121,7 @@ typedef struct page_range
     bool hasGuardPage : 1;
     bool reserved : 1;
     bool cow : 1;
-    bool can_fork; // see madvise(MADV_DONTFORK)
+    bool can_fork : 1; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
     bool kernelStack : 1; // See Mm_AllocateKernelStack
     union {

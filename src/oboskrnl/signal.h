@@ -153,6 +153,7 @@ typedef struct stack {
 
 // Syscalls
 obos_status Sys_Kill(handle thr, int sigval);
+obos_status Sys_KillProcess(handle proc, int sigval);
 obos_status Sys_SigAction(int signum, const user_sigaction* act, user_sigaction* oldact);
 obos_status Sys_SigPending(sigset_t* mask);
 obos_status Sys_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset);

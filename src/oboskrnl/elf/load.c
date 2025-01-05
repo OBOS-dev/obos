@@ -1,7 +1,7 @@
 /*
  * oboskrnl/elf/load.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -204,6 +204,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             real_base += base;
             real_limit += base;
         }
+
         kbase = Mm_MapViewOfUserMemory(ctx,
                                        (void*)real_base,
                                        nullptr,

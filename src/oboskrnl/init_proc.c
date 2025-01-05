@@ -46,7 +46,7 @@ void OBOS_LoadInit()
     process* new = Core_ProcessAllocate(nullptr);
     new->ctx = new_ctx;
     new_ctx->owner = new;
-    new_ctx->workingSet.capacity = 64*1024*1024;
+    // new_ctx->workingSet.capacity = 64*1024*1024;
     Core_ProcessStart(new, nullptr);
 
     obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ);

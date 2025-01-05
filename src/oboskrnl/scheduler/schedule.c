@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/schedule.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -253,6 +253,8 @@ switch_thread:
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
 	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;
 	CoreS_SetKernelStack(chosenThread->kernelStack);
+	// for (volatile bool b = (chosenThread->tid == 7); b; )
+	// 	asm volatile ("":"=r"(b) :"r"(b) :"memory");
 	CoreS_SwitchToThreadContext(&chosenThread->context);
 }
 struct irq* Core_SchedulerIRQ;

@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/entry.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -303,7 +303,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
-		OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+		// OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
@@ -892,7 +892,8 @@ void Arch_KernelMainBootstrap()
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
 
-	// OBOS_LoadInit();
+    //OBOS_Suspend();
+	OBOS_LoadInit();
 
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 

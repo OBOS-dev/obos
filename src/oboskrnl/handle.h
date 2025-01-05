@@ -1,7 +1,7 @@
 /*
  * oboskrnl/handle.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #pragma once
@@ -69,7 +69,7 @@ typedef struct handle_desc
 } handle_desc;
 
 #define HANDLE_VALUE_MASK (0xffffff)
-#define HANDLE_TYPE_SHIFT (24UL)
+#define HANDLE_TYPE_SHIFT (24U)
 
 #define HANDLE_TYPE(hnd) (handle_type)((hnd) >> HANDLE_TYPE_SHIFT)
 #define HANDLE_VALUE(hnd) (unsigned int)((hnd) & HANDLE_VALUE_MASK)
@@ -85,6 +85,8 @@ typedef struct handle_table {
     size_t size;
     mutex lock;
 } handle_table;
+
+void OBOS_ExpandHandleTable(handle_table* table, size_t size);
 
 // Call before manipulating a handle descriptor, or calling a handle table manipulation (allocate, free, lookup) function.
 void OBOS_LockHandleTable(handle_table* table);

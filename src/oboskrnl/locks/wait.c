@@ -52,6 +52,11 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
     CoreH_ThreadBlock(curr, true);
     Core_LowerIrql(oldIrql);
+    if (curr->interrupted)
+    {
+        curr->interrupted = false;
+        return OBOS_STATUS_ABORTED;
+    }
     if (obj->interrupted)
         return OBOS_STATUS_ABORTED;
     return OBOS_STATUS_SUCCESS;
@@ -98,7 +103,15 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
     va_end(list);
 
     if (curr->nWaiting)
+    {
         CoreH_ThreadBlock(curr, true);
+        if (curr->interrupted)
+        {
+            curr->interrupted = false;
+            return OBOS_STATUS_ABORTED;
+        }
+        // TODO: Remove the current thread from the waitable headers.
+    }
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -135,7 +148,15 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs
     }
 
     if (curr->nWaiting)
+    {
         CoreH_ThreadBlock(curr, true);
+        if (curr->interrupted)
+        {
+            curr->interrupted = false;
+            return OBOS_STATUS_ABORTED;
+        }
+        // TODO: Remove the current thread from the waitable headers.
+    }
 
     return OBOS_STATUS_SUCCESS;
 }

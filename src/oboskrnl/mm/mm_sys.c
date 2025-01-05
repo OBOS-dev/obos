@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/mm_sys.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include "locks/spinlock.h"
@@ -163,11 +163,3 @@ obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info)
     return memcpy_k_to_usr(info, &tmp, sizeof(tmp));
 }
 
-void Sys_VMMContextClone(handle_desc *hnd, handle_desc *new)
-{
-    // We quite shrimply need to construct a new context then fork it.
-    context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
-    Mm_ConstructContext(new_ctx);
-    Mm_ForkContext(new_ctx, hnd->un.vmm_context);
-    new->un.vmm_context = new_ctx;
-}

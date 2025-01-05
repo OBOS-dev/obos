@@ -551,3 +551,9 @@ page_table MmS_AllocatePageTable()
 	memcpy(Arch_MapToHHDM(root), Arch_MapToHHDM(cached_root), OBOS_PAGE_SIZE);
 	return root;
 }
+void MmS_FreePageTable(page_table pt)
+{
+	// uint32_t indices[4] = {};
+	// FreePageTables(MmS_MapVirtFromPhys(pt), 3, 0, indices);
+	// Mm_FreePhysicalPages(pt, 1);
+}
