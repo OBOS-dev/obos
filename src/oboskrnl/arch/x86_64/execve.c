@@ -105,7 +105,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     allocate_string_vector_on_stack(aux->argv, aux->argc);
     allocate_string_vector_on_stack(aux->envp, aux->envpc);
     Core_GetCurrentThread()->context.frame.rsp &= ~0xf;
-    if (!(aux->argc % 2))
+    if (!((aux->argc+aux->envpc) % 2))
         Core_GetCurrentThread()->context.frame.rsp -= 8;
 
     void* uinit_vals = CoreS_ThreadAlloca(&Core_GetCurrentThread()->context, szAllocation, nullptr);

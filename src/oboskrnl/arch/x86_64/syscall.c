@@ -87,6 +87,8 @@ handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, han
     ctx->ctx->fs_base = rdmsr(0xC0000100);
     ctx->ctx->extended_ctx_ptr = Arch_AllocateXSAVERegion();
     ctx->vmm_ctx = vmm_ctx;
+    ctx->ctx->stackBase = Core_GetCurrentThread()->context.stackBase;
+    ctx->ctx->stackSize = Core_GetCurrentThread()->context.stackSize;
 
     return hnd;
 }
@@ -172,11 +174,11 @@ void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, 
     OBOS_UNUSED(r8);
     OBOS_UNUSED(r9);
     OBOS_UNUSED(eax);
-    OBOS_Log("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
+    // OBOS_Log("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
 void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
 {
     OBOS_UNUSED(ret);
     OBOS_UNUSED(eax);
-    OBOS_Log("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+    // OBOS_Log("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
 }

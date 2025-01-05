@@ -1,7 +1,7 @@
 /*
 	oboskrnl/arch/x86_64/map.c
 
-	Copyright (c) 2024 Omar Berrow
+	Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -555,5 +555,5 @@ void MmS_FreePageTable(page_table pt)
 {
 	// uint32_t indices[4] = {};
 	// FreePageTables(MmS_MapVirtFromPhys(pt), 3, 0, indices);
-	// Mm_FreePhysicalPages(pt, 1);
+	Mm_FreePhysicalPages(pt, 1);
 }

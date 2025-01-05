@@ -91,7 +91,8 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
         return nullptr; // use-after-free; it is impossible for a handle in-use to be nullptr
     }
     *status = OBOS_STATUS_SUCCESS;
-    OBOS_ASSERT(table->arr[hnd].type == type);
+    if (!ignoreType)
+        OBOS_ASSERT(table->arr[hnd].type == type);
     return &table->arr[hnd];
 }
 handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** const desc)

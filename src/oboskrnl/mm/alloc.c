@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/alloc.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 #include <int.h>
 #include <klog.h>
@@ -582,8 +582,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             pg->pagedCount--;
             MmH_DerefPage(pg);
         }
-        // for(volatile bool b = (addr == 0xffffff0000039000); b; );
-        // printf("unmapping %p\n", addr);
         MmS_SetPageMapping(ctx->pt, &pg, 0, true);
     }
 
@@ -603,14 +601,14 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 
     if (full)
     {
-        for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-        {
-            working_set_node* next = curr->next;
-            REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-            curr->data->free = true;
-            Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
-            curr = next;
-        }
+        // for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+        // {
+        //     working_set_node* next = curr->next;
+        //     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+        //     curr->data->free = true;
+        //     Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+        //     curr = next;
+        // }
         RB_REMOVE(page_tree, &ctx->pages, rng);
         Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
     }

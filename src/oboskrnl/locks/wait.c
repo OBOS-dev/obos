@@ -1,7 +1,7 @@
 /*
  * oboskrnl/locks/wait.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -177,6 +177,11 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     {
         thread_node* next = curr->next;
         CoreH_ThreadListRemove(&obj->waiting, curr);
+        if (!curr->data)
+        {
+            curr = next;
+            continue;
+        }
         if ((++curr->data->nSignaled) == curr->data->nWaiting)
         {
             if (boostPriority)

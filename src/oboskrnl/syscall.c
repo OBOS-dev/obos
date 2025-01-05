@@ -160,7 +160,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
 
 #undef OBOS_CROSSES_PAGE_BOUNDARY
 
-bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
+static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
 {
     uintptr_t ptr = (uintptr_t)ptr_;
     uintptr_t limit = ptr+sz;
@@ -188,7 +188,7 @@ obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
     size_t str_len = 0;
     while ((*iter++) != 0)
     {
-        if (OBOS_CROSSES_PAGE_BOUNDARY(iter, sizeof(*iter)*2))
+        if (!((uintptr_t)iter % OBOS_PAGE_SIZE) && str_len)
         {
             Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kstr, currSize);
             currSize += OBOS_PAGE_SIZE;

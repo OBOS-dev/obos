@@ -195,12 +195,22 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	}
 
 	// Free all memory (TODO: Better strategy?)
-	// page_range *curr = nullptr, *next = nullptr;
-	// RB_FOREACH_SAFE(curr, page_tree, &proc->ctx->pages, next)
-	// 	Mm_VirtualMemoryFree(proc->ctx, (void*)curr->virt, curr->size);
+	page_range* rng = nullptr;
+	page_range* next = nullptr;
 
-	// MmS_FreePageTable(proc->ctx->pt);
-	// Mm_Allocator->Free(Mm_Allocator, proc->ctx, sizeof(context));
+	for ((rng) = RB_MIN(page_tree, &proc->ctx->pages); (rng) != nullptr; )
+	{
+		next = RB_NEXT(page_tree, &ctx->pages, rng);
+		uintptr_t virt = rng->virt;
+		if (rng->hasGuardPage)
+			virt += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+		uintptr_t limit = rng->virt+rng->size;
+		Mm_VirtualMemoryFree(proc->ctx, (void*)virt, limit-virt);
+		rng = next;
+	}
+
+	MmS_FreePageTable(proc->ctx->pt);
+	Mm_Allocator->Free(Mm_Allocator, proc->ctx, sizeof(context));
 
 	thread* ready = nullptr;
 	thread* running = nullptr;

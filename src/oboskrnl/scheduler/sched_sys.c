@@ -450,13 +450,23 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                 }
                 case HANDLE_TYPE_DIRENT:
                 {
+                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_DIRENT;
                     new_hnd->un.dirent = hnd->un.dirent;
                     break;
                 }
                 default:
+                {
+                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
+                    handle_desc* new_hnd = &new->handles.arr[i];
+                    new_hnd->type = HANDLE_TYPE_INVALID;
+                    if (new->handles.head)
+                        new->handles.head->un.next = new_hnd;
+                    new->handles.head = new_hnd;
+                    new_hnd->un.as_int = 0;
                     break;
+                }
             }
         }
 

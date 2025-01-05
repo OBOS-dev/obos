@@ -4,7 +4,6 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "scheduler/thread.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -17,6 +16,7 @@
 #include <vfs/pagecache.h>
 
 #include <scheduler/schedule.h>
+#include <scheduler/thread.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>

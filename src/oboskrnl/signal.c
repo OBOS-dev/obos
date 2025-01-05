@@ -1,7 +1,7 @@
 /*
  * oboskrnl/signal.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 // Something close enough to POSIX Signals
@@ -99,7 +99,7 @@ obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
     if (act)
     {
         Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
-        Core_GetCurrentThread()->signal_info->signals[signum] = *act;
+        Core_GetCurrentThread()->signal_info->signals[signum - 1] = *act;
         // what.
         // Core_GetCurrentThread()->signal_info->signals[signum].un.handler = SIG_DFL /* default handler is the kernel */;
         Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
@@ -174,7 +174,7 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 {
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval];
     if (!(sig->flags & SA_NODEFER))
-        Core_GetCurrentThread()->signal_info->mask |= BIT(sigval);
+        Core_GetCurrentThread()->signal_info->mask |= BIT_TYPE(sigval-1, L);
     Core_EventSet(&Core_GetCurrentThread()->signal_info->event, false);
     OBOSS_RunSignalImpl(sigval, frame);
     if (sig->flags & SA_RESETHAND && sigval != SIGILL && sigval != SIGTRAP)
@@ -189,7 +189,7 @@ void OBOS_SyncPendingSignal(interrupt_frame* frame)
         return;
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
     int sigval = __builtin_clzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
-    Core_GetCurrentThread()->signal_info->pending &= ~BIT(sigval - 1);
+    Core_GetCurrentThread()->signal_info->pending &= ~BIT_TYPE(sigval, L);
     sigval += 1;
     OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);

@@ -1,7 +1,7 @@
 /*
  * oboskrnl/execve.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -17,6 +17,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
 
 #include <locks/mutex.h>
 #include <locks/wait.h>
@@ -27,30 +28,44 @@
 
 #include <asan.h>
 
+#undef OBOS_CROSSES_PAGE_BOUNDARY
+
+static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
+{
+    uintptr_t ptr = (uintptr_t)ptr_;
+    uintptr_t limit = ptr+sz;
+    limit -= (limit % OBOS_PAGE_SIZE);
+    ptr -= (ptr % OBOS_PAGE_SIZE);
+    return ptr != limit;
+}
+
 // vec is terminated with a nullptr entry.
 static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
 {
-    char** kvec = Mm_MapViewOfUserMemory(ctx, (void*)vec, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
-    if (!kvec)
+    char** kstr = Mm_MapViewOfUserMemory(ctx, (void*)vec, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
+    if (!kstr)
         return nullptr;
-    char* const* iter = kvec;
-    uintptr_t offset = (uintptr_t)kvec-(uintptr_t)iter;
+
+    char** iter = kstr;
+    uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
     size_t currSize = OBOS_PAGE_SIZE;
+
     while ((*iter++) != 0)
     {
         if (OBOS_CROSSES_PAGE_BOUNDARY(iter, sizeof(*iter)*2))
         {
-            Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kvec, currSize);
+            Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kstr, currSize);
             currSize += OBOS_PAGE_SIZE;
-            kvec = Mm_MapViewOfUserMemory(ctx, (void*)(iter+1), nullptr, currSize, OBOS_PROTECTION_READ_ONLY, true, status);
-            if (!kvec)
+            kstr = Mm_MapViewOfUserMemory(ctx, (void*)(iter+1), nullptr, currSize, OBOS_PROTECTION_READ_ONLY, true, status);
+            if (!kstr)
                 return nullptr;
-            iter = (char**)((uintptr_t)kvec + offset);
+            iter = (char**)((uintptr_t)kstr + offset);
         }
         offset += 8;
         (*szvec)++;
     }
-    return kvec;
+
+    return kstr;
 }
 
 static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t count, obos_status* statusp)
@@ -64,6 +79,11 @@ static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, s
     for (size_t i = 0; i < count; i++)
     {
         size_t str_len = 0;
+        if (!vec[i])
+        {
+            ret[i] = 0;
+            break;
+        }
         obos_status status = OBOSH_ReadUserString(vec[i], nullptr, &str_len);
         if (obos_is_error(status))
         {
@@ -73,6 +93,7 @@ static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, s
         }
         char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
         OBOSH_ReadUserString(vec[i], buf, &str_len);
+        buf[str_len] = 0;
         ret[i] = buf;
     }
     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)vec, count*sizeof(char*));
@@ -157,6 +178,8 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
                 Sys_HandleClose(i | (tbl->arr[i].type << HANDLE_TYPE_SHIFT));
                 break;
             case HANDLE_TYPE_FD:
+                if (!tbl->arr[i].un.fd)
+                    break;
                 if (tbl->arr[i].un.fd->flags & FD_FLAGS_NOEXEC)
                     Sys_HandleClose(i | (tbl->arr[i].type << HANDLE_TYPE_SHIFT));
                 break;
@@ -168,8 +191,22 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
     // Free all memory
     page_range* rng = nullptr;
     page_range* next = nullptr;
-    RB_FOREACH_SAFE(rng, page_tree, &ctx->pages, next)
-        Mm_VirtualMemoryFree(ctx, (void*)rng->virt, rng->size);
+
+    uintptr_t stack_base = 0, stack_limit = 0;
+    stack_base = (uintptr_t)CoreS_GetThreadStack(&Core_GetCurrentThread()->context);
+    stack_limit = stack_base + CoreS_GetThreadStackSize(&Core_GetCurrentThread()->context);
+
+    for ((rng) = RB_MIN(page_tree, &ctx->pages); (rng) != nullptr; )
+    {
+        next = RB_NEXT(page_tree, &ctx->pages, rng);
+        uintptr_t virt = rng->virt;
+        if (rng->hasGuardPage)
+            virt += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        uintptr_t limit = rng->virt+rng->size;
+        if (!(virt >= stack_base && limit <= stack_limit))
+            Mm_VirtualMemoryFree(ctx, (void*)virt, limit-virt);
+        rng = next;
+    }
 
     // Load the ELF into the process.
     elf_info info = {};
