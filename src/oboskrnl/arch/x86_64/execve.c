@@ -68,7 +68,7 @@ static void allocate_string_vector_on_stack(char** vec, size_t cnt)
         char* str = CoreS_ThreadAlloca(&Core_GetCurrentThread()->context, str_len+1, nullptr);
         if (!str)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "obos shat itself: your stack is not big enough to hold all these arguments");
-        memcpy_k_to_usr(str, vec[i], str_len);
+        memcpy_k_to_usr(str, vec[i], str_len+1);
         // stck_buf[i] = str;
         vec[i] = str;
     }

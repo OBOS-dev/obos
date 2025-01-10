@@ -33,7 +33,7 @@
 static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
 {
     uintptr_t ptr = (uintptr_t)ptr_;
-    uintptr_t limit = ptr+sz;
+    uintptr_t limit = ptr+(sz-1);
     limit -= (limit % OBOS_PAGE_SIZE);
     ptr -= (ptr % OBOS_PAGE_SIZE);
     return ptr != limit;
