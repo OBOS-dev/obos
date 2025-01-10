@@ -53,7 +53,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
 {
     if (!(frame->cs & 0x3))
         return;
-    sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval];
+    sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval-1];
     ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(KERNEL_GS_BASE),.fs_base=rdmsr(FS_BASE) };
     if (Core_GetCurrentThread()->context.extended_ctx_ptr)
     {

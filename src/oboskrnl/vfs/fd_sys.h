@@ -33,6 +33,37 @@ obos_status      Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t s
 
 obos_status      Sys_FdFlush(handle desc);
 
+enum {
+    FSFDT_PATH = 1,
+    FSFDT_FD,
+    FSFDT_FD_PATH,
+};
+
+struct stat {
+    uint64_t st_dev;
+    uint64_t st_ino;
+    unsigned long st_nlink;
+    int st_mode;
+    uid st_uid;
+    gid st_gid;
+    unsigned int __pad0;
+    uint64_t st_rdev;
+    off_t st_size;
+    long st_blksize;
+    int64_t st_blocks;
+    // struct timespec st_atim;
+    // struct timespec st_mtim;
+    // struct timespec st_ctim;
+    long resv[6];
+    long __unused[3];
+};
+
+#define AT_EMPTY_PATH 0x1000
+#define AT_NO_AUTOMOUNT 0x800
+#define AT_SYMLINK_NOFOLLOW 0x100
+
+obos_status Sys_Stat(int fsfdt, handle fd, const char* path, int flags, struct stat* target);
+
 handle Sys_OpenDir(const char* path, obos_status *status);
 obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);
 

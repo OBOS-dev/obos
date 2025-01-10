@@ -19,8 +19,11 @@
 
 #include <vfs/limits.h>
 #include <vfs/fd.h>
+#include <vfs/fd_sys.h>
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
+#include <vfs/vnode.h>
+#include <vfs/mount.h>
 
 handle Sys_FdAlloc()
 {
@@ -192,6 +195,9 @@ obos_status Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt)
 
 obos_status Sys_FdSeek(handle desc, off_t off, whence_t whence)
 {
+    // for (volatile bool b = (desc == 0x1); b;)
+    //     OBOSS_SpinlockHint();
+
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
@@ -288,6 +294,72 @@ obos_status Sys_FdFlush(handle desc)
     return Vfs_FdFlush(fd->un.fd);
 }
 
+obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struct stat* target)
+{
+    if (!target || !fsfdt)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    struct stat st = {};
+    obos_status status = memcpy_k_to_usr(target, &st, sizeof(st));
+    if (obos_is_error(status))
+        return status;
+    struct vnode* to_stat = nullptr;
+    switch (fsfdt) {
+        case FSFDT_FD:
+        {
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            status = OBOS_STATUS_SUCCESS;
+            handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+            if (!fd)
+            {
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                return status;
+            }
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            to_stat = fd->un.fd->vn;
+            break;
+        }
+        case FSFDT_PATH:
+            // path is relative to the CWD (TODO)
+            // just fallthrough until that gets implemented
+        case FSFDT_FD_PATH:
+        {
+            char* path = nullptr;
+            size_t sz_path = 0;
+            status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+            if (obos_is_error(status))
+                return status;
+            path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+            OBOSH_ReadUserString(upath, path, nullptr);
+            dirent* dent = VfsH_DirentLookup(path);
+            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
+            if (dent)
+                to_stat = dent->vnode;
+            else
+                status = OBOS_STATUS_NOT_FOUND;
+            break;
+        }
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    if (!to_stat)
+        return status;
+    st.st_size = to_stat->filesize;
+    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
+    const driver_header* driver = to_stat->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK)
+        driver = &to_stat->un.device->driver->header;
+    size_t blkSize = 0;
+    size_t blocks = 0;
+    driver->ftable.get_blk_size(to_stat->desc, &blkSize);
+    driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
+    st.st_blksize = blkSize;
+    st.st_blocks = blocks;
+    st.st_gid = to_stat->group_uid;
+    st.st_uid = to_stat->owner_uid;
+    // TODO: Inode numbers.
+    st.st_ino = 0;
+    memcpy_k_to_usr(target, &st, sizeof(struct stat));
+    return OBOS_STATUS_SUCCESS;
+}
 
 handle Sys_OpenDir(const char* upath, obos_status *statusp)
 {
