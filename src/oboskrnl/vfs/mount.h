@@ -43,3 +43,5 @@ bool VfsH_UnlockMountpoint(mount* point);
 obos_status Vfs_Mount(const char* at, vnode* on, vdev* fs_driver, mount** mountpoint);
 obos_status Vfs_Unmount(mount* what);
 obos_status Vfs_UnmountP(const char* at);
+
+obos_status Vfs_StatFSInfo(struct vnode* vn, struct drv_fs_info* out);

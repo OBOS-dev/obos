@@ -50,6 +50,7 @@ OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 OBOS_WEAK bool probe(void* vn);
+OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -75,6 +76,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .set_file_perms = set_file_perms,
         .get_file_type = get_file_type,
         .list_dir = list_dir,
+        .stat_fs_info = stat_fs_info,
         .probe = probe,
     },
     .driverName = "FAT Driver",

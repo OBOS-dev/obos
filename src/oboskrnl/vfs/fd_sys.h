@@ -12,6 +12,8 @@
 
 #include <vfs/limits.h>
 
+#include <driver_interface/header.h>
+
 handle           Sys_FdAlloc();
 
 obos_status       Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
@@ -63,6 +65,7 @@ struct stat {
 #define AT_SYMLINK_NOFOLLOW 0x100
 
 obos_status Sys_Stat(int fsfdt, handle fd, const char* path, int flags, struct stat* target);
+obos_status Sys_StatFSInfo(handle dent, drv_fs_info* info);
 
 handle Sys_OpenDir(const char* path, obos_status *status);
 obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);

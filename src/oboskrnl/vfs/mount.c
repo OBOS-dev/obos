@@ -373,3 +373,12 @@ obos_status Vfs_UnmountP(const char* at)
 
 RB_GENERATE(namecache, namecache_ent, rb_cache, cmp_namecache_ent);
 LIST_GENERATE(mount_list, mount, node);
+
+obos_status Vfs_StatFSInfo(struct vnode* vn, struct drv_fs_info* out)
+{
+    if (!vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (vn->flags & VFLAGS_MOUNTPOINT || !out)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    return vn->un.mounted->fs_driver->driver->header.ftable.stat_fs_info(vn->un.mounted->device, out);
+}

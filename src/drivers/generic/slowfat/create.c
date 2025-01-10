@@ -59,11 +59,11 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
     if (!valid_filename(name, false))
         return OBOS_STATUS_INVALID_ARGUMENT;
     fat_dirent_cache* parent = (fat_dirent_cache*)parent_desc;
+    fat_cache* cache = nullptr;
     if (parent_desc == UINTPTR_MAX)
     {
         if (!vn_)
             return OBOS_STATUS_INVALID_ARGUMENT;
-        fat_cache* cache = nullptr;
         for (cache = LIST_GET_HEAD(fat_cache_list, &FATVolumes); cache; )
         {
             if (cache->vn == vn_)
@@ -75,6 +75,8 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
             return OBOS_STATUS_INVALID_OPERATION; // not a fat volume we have probed
         parent = cache->root;
     }
+    if (!cache)
+        cache = parent->owner;
     if (!(parent->data.attribs & DIRECTORY))
         return OBOS_STATUS_INVALID_ARGUMENT;
     for (fat_dirent_cache* curr = parent->fdc_children.head; curr; )
@@ -85,6 +87,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
     }
     fat_dirent_cache* new = FATAllocator->ZeroAllocate(FATAllocator, 1, sizeof(fat_dirent_cache), nullptr);
     *newDesc = (dev_desc)new;
+    cache->fileCount++;
     new->data.creation_date = (fat_date){};
     new->data.last_mod_date = new->data.creation_date;
     new->data.creation_time = (fat_time){};
@@ -620,6 +623,7 @@ obos_status remove_file(dev_desc desc)
     const uint32_t szClusters = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
     FreeClusters(cache, (uint32_t)cache_entry->data.first_cluster_low|((uint32_t)cache_entry->data.first_cluster_high<<16), szClusters);
     CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
+    cache->fileCount--;
     FATAllocator->Free(FATAllocator, cache_entry, sizeof(*cache_entry));
     Vfs_FdFlush(cache->volume);
     return OBOS_STATUS_SUCCESS;

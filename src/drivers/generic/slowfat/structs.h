@@ -176,6 +176,7 @@ typedef struct fat_cache {
     uint64_t root_sector;
     uint32_t CountofClusters;
     size_t blkSize;
+    size_t fileCount;
     uint32_t fatSz;
     mutex fat_lock;
     struct {

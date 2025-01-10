@@ -156,6 +156,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ProcessGetStatus,
     (uintptr_t)Sys_WaitProcess,
     (uintptr_t)Sys_Stat, // 65
+    (uintptr_t)Sys_StatFSInfo,
 };
 // Arch syscall table is defined per-arch
 

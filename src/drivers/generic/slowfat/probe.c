@@ -144,6 +144,8 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
             cluster |= ((uint32_t)curr->first_cluster_high << 16);
         dir_iterate(cache, dir_cache, cluster);
     }
+
+    cache->fileCount++;
 }
 static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status stat, void* udata)
 {
@@ -302,6 +304,37 @@ bool probe(void* vn_)
     OBOS_Debug("FAT: FAT Type: %s\n", (cache->fatType == FAT32_VOLUME) ? "FAT32" : ((cache->fatType == FAT16_VOLUME)) ? "FAT16" : "FAT12");
     return true;
 }
+
+obos_status stat_fs_info(void *vn, drv_fs_info *info)
+{
+    if (!vn || !info)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    fat_cache* cache = nullptr;
+    for (cache = LIST_GET_HEAD(fat_cache_list, &FATVolumes); cache; )
+    {
+        if (cache->vn == vn)
+            break;
+
+        cache = LIST_GET_NEXT(fat_cache_list, &FATVolumes, cache);
+    }
+    if (!cache)
+        return OBOS_STATUS_INVALID_OPERATION; // not a fat volume we have probed
+
+    info->fsBlockSize = cache->blkSize*cache->bpb->sectorsPerCluster;
+    info->partBlockSize = cache->blkSize;
+    info->szFs = (cache->CountofClusters*info->fsBlockSize)/info->partBlockSize;
+
+    info->nameMax = 255;
+    info->flags = FS_FLAGS_NOEXEC;
+
+    info->fileCount = cache->fileCount;
+    info->freeBlocks = cache->freelist.freeClusterCount;
+    // TODO: Avaliable file count.
+    info->availableFiles = SIZE_MAX;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 LIST_GENERATE(fat_cache_list, struct fat_cache, node);
 fat_cache_list FATVolumes;
 void GetFatEntryAddrForCluster(fat_cache* cache, uint32_t cluster, fat_entry_addr* out)

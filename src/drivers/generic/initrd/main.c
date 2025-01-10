@@ -84,6 +84,7 @@ OBOS_PAGEABLE_FUNCTION obos_status set_file_perms(dev_desc desc, driver_file_per
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -252,5 +253,40 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
     }
+    return OBOS_STATUS_SUCCESS;
+}
+
+static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata)
+{
+    OBOS_UNUSED(blkSize);
+    OBOS_UNUSED(blkCount);
+
+    size_t* const fileCount = userdata;
+    (*fileCount)++;
+
+    const ustar_hdr* hdr = (ustar_hdr*)desc;
+    if (hdr->type == DIRTYPE)
+        list_dir(desc, nullptr, cb, userdata);
+    return ITERATE_DECISION_CONTINUE;
+}
+
+obos_status stat_fs_info(void *vn, drv_fs_info *info)
+{
+    OBOS_UNUSED(vn);
+    static size_t fileCount = SIZE_MAX;
+    if (fileCount == SIZE_MAX)
+    {
+        fileCount = 0;
+        list_dir(UINTPTR_MAX, vn, cb, &fileCount);
+    }
+    info->partBlockSize = 1;
+    info->fsBlockSize = 1;
+    info->availableFiles = 0;
+    info->freeBlocks = 0;
+    info->fileCount = fileCount;
+    info->szFs = OBOS_InitrdSize;
+    info->flags = FS_FLAGS_RDONLY;
+    // TODO: Is there a proper value for this?
+    info->nameMax = 100;
     return OBOS_STATUS_SUCCESS;
 }

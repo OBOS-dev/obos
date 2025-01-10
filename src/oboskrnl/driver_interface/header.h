@@ -92,6 +92,27 @@ typedef enum file_type
 // This could be a disk, partition, file, etc.
 // This must be unique per-driver.
 typedef uintptr_t dev_desc;
+
+enum {
+    FS_FLAGS_NOEXEC = BIT(0),
+    FS_FLAGS_RDONLY = BIT(1),
+};
+
+typedef struct drv_fs_info {
+    size_t fsBlockSize;
+    size_t freeBlocks; // in units of 'fsBlockSize'
+
+    size_t partBlockSize;
+    size_t szFs; // in units of 'partBlockSize'
+
+    size_t fileCount;
+    size_t availableFiles; // the count of files that can be made until the partition cannot hold anymore
+
+    size_t nameMax;
+
+    uint32_t flags;
+} drv_fs_info;
+
 typedef struct driver_ftable
 {
     // Note: If there is not an OBOS_STATUS for an error that a driver needs to return, choose the error closest to the error that you want to report,
@@ -129,20 +150,25 @@ typedef struct driver_ftable
     // get_max_blk_count is the equivalent to get_filesize
     // NOTE: Every function here must be pointing to something if the driver is an fs driver, otherwise they must be pointing to nullptr.
 
-    // lifetime of *path is dicated by the driver.
+    // lifetime of *path is dictated by the driver.
     obos_status(*query_path)(dev_desc desc, const char** path);
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
     obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
-    obos_status(*move_desc_to)(dev_desc desc, const char* where);
-    // vn is optional if parent is UINTPTR_MAX (root directory).
+
+    // vn is optional if parent is not UINTPTR_MAX (root directory).
     obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type);
+    obos_status(*move_desc_to)(dev_desc desc, const char* where);
     obos_status(*remove_file)(dev_desc desc);
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
+
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
+
     // If dir is UINTPTR_MAX, it refers to the root directory.
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+    obos_status(*stat_fs_info)(void *vn, drv_fs_info *info);
+
     // Can only be nullptr for the InitRD driver.
     // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
     bool(*probe)(void* vn);

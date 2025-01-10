@@ -361,6 +361,34 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status Sys_StatFSInfo(handle desc, drv_fs_info* info)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (!info)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    drv_fs_info out = {};
+    status = memcpy_k_to_usr(info, &out, sizeof(out));
+    if (obos_is_error(status))
+        return status;
+
+    vnode* vn = dent->un.dirent->vnode;
+    status = Vfs_StatFSInfo(vn, &out);
+    if (obos_is_error(status))
+        return status;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 handle Sys_OpenDir(const char* upath, obos_status *statusp)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
