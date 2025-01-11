@@ -100,6 +100,8 @@ static __attribute__((target("xsave"))) __attribute__((target("avx"))) void rese
         __builtin_ia32_xrstor(Core_GetCurrentThread()->context.extended_ctx_ptr, __builtin_ia32_xgetbv(0));
     else
         __builtin_ia32_fxrstor(Core_GetCurrentThread()->context.extended_ctx_ptr);
+    static const uint32_t mxcsr = 0x1f80;
+    asm volatile ("ldmxcsr (%0)" : :"r"(&mxcsr));
 }
 
 OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
