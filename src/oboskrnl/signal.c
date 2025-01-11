@@ -185,6 +185,8 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 }
 void OBOS_SyncPendingSignal(interrupt_frame* frame)
 {
+    if (!Core_GetCurrentThread()->signal_info)
+        return;
     if (!(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask))
         return;
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);

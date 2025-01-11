@@ -883,7 +883,7 @@ void Arch_KernelMainBootstrap()
 		OBOS_ALIGNAS(8) dev_desc* connection;
 	} open_serial_connection_argp = {
 		.id=1,
-		.baudRate=9600,
+		.baudRate=115200,
 		.dataBits=3,
 		.stopBits=0,
 		.parityBit=0,

@@ -247,7 +247,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 			uintptr_t pc = OBOSS_StackFrameGetPC(curr);
 			driver_id* drv = nullptr;
 			driver_symbol* sym = DrvH_ResolveSymbolReverse(pc, &drv);
-			printf("%p        ", (void*)pc);
+			printf("%0*p        ", sizeof(uintptr_t)*2, (void*)pc);
 			if (sym)
 			{
 				if (drv)
@@ -263,31 +263,31 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 	}
 	// unsafe to do unfortunately
 	// todo: make safer
-// 	printf("\n\tAddress");
-// #if UINTPTR_MAX == UINT64_MAX
-// 	// We want 8+9 bytes of padding
-// 	printf("                  ");
-// #elif UINTPTR_MAX == UINT32_MAX
-// 	// We want 8+2 bytes of padding
-// 	printf("          ");
-// #endif
-// 	printf("Main TID");
-// 	// We want 4+1 bytes of padding
-// 	printf("     ");
-// 	printf("Driver Name\n");
-// 	for (driver_node *node = Drv_LoadedDrivers.head; node; )
-// 	{
-// 		if (!node->data)
-// 			goto next;
-// 		printf("\t%p     ", node->data->base);
-// 		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : -1);
-// 		if (uacpi_strnlen(node->data->header.driverName, 64))
-// 			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
-// 		else
-// 		 	printf("Unknown\n");
-// 		next:
-// 		node = node->next;
-// 	}
+	printf("\n\tAddress");
+#if UINTPTR_MAX == UINT64_MAX
+	// We want 8+9 bytes of padding
+	printf("                  ");
+#elif UINTPTR_MAX == UINT32_MAX
+	// We want 8+2 bytes of padding
+	printf("          ");
+#endif
+	printf("Main TID");
+	// We want 4+1 bytes of padding
+	printf("     ");
+	printf("Driver Name\n");
+	for (driver_node *node = Drv_LoadedDrivers.head; node; )
+	{
+		if (!node->data)
+			goto next;
+		printf("\t%p     ", node->data->base);
+		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : -1);
+		if (uacpi_strnlen(node->data->header.driverName, 64))
+			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
+		else
+		 	printf("Unknown\n");
+		next:
+		node = node->next;
+	}
 	while (1)
 		asm volatile("");
 }

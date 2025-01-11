@@ -12,6 +12,7 @@ void* Arch_AllocateXSAVERegion();
 void  Arch_FreeXSAVERegion(void* reg);
 // Enables stuff such as XSAVE, SSE(2), AVX, AVX512, etc.
 void Arch_EnableSIMDFeatures();
+size_t Arch_GetXSaveRegionSize();
 
 // Set to false if the thread context code should fallback to fxsave/fxrstor,
 // otherwise, the thread context code can and should use xsave/xrstor

@@ -35,10 +35,10 @@ void append_to_buffer_char(buffer* buf, char what)
     if (index >= buf->nAllocated)
     {
         buf->nAllocated += 4; // Reserve 4 more bytes.
-        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), (buf->nAllocated-4)*sizeof(*buf->buf), nullptr);
+        buf->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), index*sizeof(*buf->buf), nullptr);
         OBOS_ASSERT(buf->buf);
     }
-    buf->buf[index] = what;
+    buf->buf[index+buf->offset] = what;
 }
 void append_to_buffer_str_len(buffer* buf, const char* what, size_t strlen)
 {
@@ -144,6 +144,16 @@ static void dpc_handler(dpc* obj, void* userdata)
         flush_out_buffer(port);
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
+    // Receive all the avaliable data.
+    irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+    while (inb(port->port_base + LINE_STATUS) & BIT(0))
+    {
+        char ch = inb(port->port_base+IO_BUFFER);
+        append_to_buffer_char(&port->in_buffer, ch);
+        // if (ch == '\x03')
+        //     should_break = Kdbg_CurrentConnection->connection_active;
+    }
+    Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
     if (should_break)
     {
         // OBOS_Debug("GDB requested break.\n");
@@ -160,16 +170,6 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     dpc* com_dpc = &port->com_dpc;
     com_dpc->userdata = userdata;
     CoreH_InitializeDPC(com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
-    // Receive all the avaliable data.
-    irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
-    while (inb(port->port_base + LINE_STATUS) & BIT(0))
-    {
-        char ch = inb(port->port_base+IO_BUFFER);
-        append_to_buffer_char(&port->in_buffer, ch);
-        // if (ch == '\x03')
-        //     should_break = Kdbg_CurrentConnection->connection_active;
-    }
-    Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

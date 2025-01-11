@@ -55,3 +55,6 @@ __attribute__((target("xsave"))) void Arch_EnableSIMDFeatures()
     if (eax & (0x7<<5))
         __builtin_ia32_xsetbv(0, __builtin_ia32_xgetbv(0) | (0x7<<5));
 }
+
+size_t Arch_GetXSaveRegionSize()
+{return xsave_size;}

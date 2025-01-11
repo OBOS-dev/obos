@@ -64,23 +64,22 @@ static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum bl
 			// Map the physical address to virtual addresses without the need of page nodes.
 			// On x86-64, this is done using the HHDM.
 			void* ret = nullptr;
-			#ifdef __x86_64__
+#ifdef __x86_64__
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
-			#elif defined(__m68k__)
+#elif defined(__m68k__)
 			*blockSource = BLOCK_SOURCE_PHYSICAL_MEMORY;
 			ret = Arch_MapToHHDM(phys);
-			#else
-			#	error Unknown architecture
-			#endif
+#else
+#	error Unknown architecture
+#endif
 			memzero(ret, size);
 			return ret;
 		}
 		void* ret = Mm_QuickVMAllocate(size, (void*)This == (void*)OBOS_NonPagedPoolAllocator);
 		if (!ret)
 			return nullptr;
-		if ((allocator_info*)This == OBOS_NonPagedPoolAllocator) // To avoid unneccessary page faults.
-			memzero(ret, size);
+		memzero(ret, size);
 		*blockSource = BLOCK_SOURCE_VMA;
 		return ret;
 	}
@@ -122,6 +121,7 @@ static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block,
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
+			memset(block, 0xcc, size);
 			Mm_FreePhysicalPages(phys, nPages);
 			break;
 		}
@@ -249,14 +249,8 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 		ret = c->free.tail;
 	}
 
-	// remove_node(c->free, c->free.tail);
 	OBOS_ENSURE(!(c->free.tail)->next);
-	if ((c->free.tail)->prev)\
-		(c->free.tail)->prev->next = (c->free.tail)->next;\
-	if ((c->free).head == (c->free.tail))\
-		(c->free).head = (c->free.tail)->next;\
-	(c->free).tail = (c->free.tail)->prev;\
-	(c->free).nNodes--;\
+	remove_node(c->free, c->free.tail);
 
 	unlock((cache*)c, oldIrql);
 	return ret;

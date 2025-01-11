@@ -129,8 +129,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     if (nWritten)
         memcpy_k_to_usr(nWritten, &nWritten_, sizeof(size_t));
 
-    if (desc == 1 || desc == 2)
-        printf("%.*s", nBytes, kbuf);
+    // if (desc == 1 || desc == 2)
+    //     printf("%.*s", nBytes, kbuf);
 
     if (obos_is_error(status))
     {
@@ -294,6 +294,21 @@ obos_status Sys_FdFlush(handle desc)
     return Vfs_FdFlush(fd->un.fd);
 }
 
+// socket
+#define S_IFSOCK   0140000
+// symbolic link
+#define S_IFLNK    0120000
+// regular file
+#define S_IFREG    0100000
+// block device
+#define S_IFBLK    0060000
+// directory
+#define S_IFDIR    0040000
+// character device
+#define S_IFCHR    0020000
+// FIFO
+#define S_IFIFO    0010000
+
 obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struct stat* target)
 {
     if (!target || !fsfdt)
@@ -344,15 +359,44 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         return status;
     st.st_size = to_stat->filesize;
     mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = to_stat->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR) ? &point->fs_driver->driver->header : nullptr;
     if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK)
         driver = &to_stat->un.device->driver->header;
     size_t blkSize = 0;
     size_t blocks = 0;
+    OBOS_ENSURE(driver);
+    OBOS_ENSURE(to_stat);
     driver->ftable.get_blk_size(to_stat->desc, &blkSize);
     driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
     st.st_blksize = blkSize;
-    st.st_blocks = blocks;
+    st.st_mode = *(uint16_t*)&to_stat->perm;
+    switch (to_stat->vtype) {
+        case VNODE_TYPE_DIR:
+            st.st_mode |= S_IFDIR;
+            break;
+        case VNODE_TYPE_FIFO:
+            st.st_mode |= S_IFIFO;
+            break;
+        case VNODE_TYPE_CHR:
+            st.st_mode |= S_IFCHR;
+            break;
+        case VNODE_TYPE_BLK:
+            st.st_mode |= S_IFBLK;
+            break;
+        case VNODE_TYPE_REG:
+            st.st_mode |= S_IFREG;
+            break;
+        case VNODE_TYPE_SOCK:
+            st.st_mode |= S_IFSOCK;
+            break;
+        case VNODE_TYPE_LNK:
+            st.st_mode |= S_IFLNK;
+            break;
+        default:
+            OBOS_ENSURE(!"unimplemented");
+    }
+    st.st_size = blocks*blkSize;
+    st.st_blocks = st.st_size/512;
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     // TODO: Inode numbers.
@@ -396,7 +440,11 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
     size_t sz_path = 0;
     status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
-        return status;
+    {
+        if (statusp)
+            memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+        return HANDLE_INVALID;
+    }
     path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     dirent* dent = VfsH_DirentLookup(path);
@@ -412,7 +460,7 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_DIRENT, &desc);
-    desc->un.dirent = dent;
+    desc->un.dirent = dent->d_children.head;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     if (statusp)
@@ -433,13 +481,23 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    size_t k_nRead = 0;
+
+    if (dent->un.dirent == (dirent*)-1)
+    {
+        if (nRead)
+            memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
+        return OBOS_STATUS_SUCCESS;
+    }
+
     void* kbuff = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer, nullptr, szBuf, 0, true, &status);
     if (!kbuff)
         return status;
 
-    size_t k_nRead = 0;
     status = Vfs_ReadEntries(dent->un.dirent, kbuff, szBuf, &dent->un.dirent, nRead ? &k_nRead : nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuff, szBuf);
+    if (!dent->un.dirent)
+        dent->un.dirent = (dirent*)-1;
     if (obos_is_error(status))
         return status;
 

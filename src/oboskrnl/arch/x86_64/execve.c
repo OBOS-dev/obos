@@ -92,6 +92,16 @@ uintptr_t Arch_GotoUserBootstrap(uintptr_t udata)
     return -1;
 }
 
+static __attribute__((target("xsave"))) __attribute__((target("avx"))) void reset_extended_state()
+{
+    asm volatile("fninit");
+    memzero(Core_GetCurrentThread()->context.extended_ctx_ptr, Arch_GetXSaveRegionSize());
+    if (obos_expect(Arch_HasXSAVE, true))
+        __builtin_ia32_xrstor(Core_GetCurrentThread()->context.extended_ctx_ptr, __builtin_ia32_xgetbv(0));
+    else
+        __builtin_ia32_fxrstor(Core_GetCurrentThread()->context.extended_ctx_ptr);
+}
+
 OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
 {
     if (Core_GetIrql() < IRQL_DISPATCH)
@@ -144,7 +154,7 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     // Core_GetCurrentThread()->context.fs_base = 0;
     // Core_GetCurrentThread()->context.gs_base = 0;
 
-    // TODO: Reset extended context info.
+    reset_extended_state();
 
     Core_GetCurrentThread()->context.frame.rbp = 0;
     uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };

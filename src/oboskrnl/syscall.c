@@ -4,6 +4,8 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "mm/pmm.h"
+#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -89,6 +91,42 @@ void Sys_ExitCurrentProcess(uint32_t exitCode)
     Core_ExitCurrentProcess((exitCode & 0xff) << 8);
 }
 
+#define _SC_OPEN_MAX 4
+#define _SC_PAGE_SIZE 30
+#define _SC_NPROCESSORS_CONF 83
+#define _SC_NPROCESSORS_ONLN 84
+#define _SC_PHYS_PAGES 85
+#define _SC_PHYS_AVPAGES 86
+obos_status Sys_SysConf(int num, long *ret_)
+{
+    long ret = 0;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    switch (num)
+    {
+        case _SC_NPROCESSORS_ONLN:
+        case _SC_NPROCESSORS_CONF:
+            ret = Core_CpuCount;
+            break;
+        case _SC_OPEN_MAX:
+            ret = INT32_MAX;
+            break;
+        case _SC_PHYS_PAGES:
+            ret = Mm_UsablePhysicalPages;
+            break;
+        case _SC_PHYS_AVPAGES:
+            ret = Mm_TotalPhysicalPagesUsed;
+            break;
+        case _SC_PAGE_SIZE:
+            ret = OBOS_PAGE_SIZE;
+            break;
+        default:
+            status = OBOS_STATUS_UNIMPLEMENTED;
+            break;
+    }
+    memcpy_k_to_usr(ret_, &ret, sizeof(ret));
+    return status;
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -157,19 +195,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_WaitProcess,
     (uintptr_t)Sys_Stat, // 65
     (uintptr_t)Sys_StatFSInfo,
+    (uintptr_t)Sys_SysConf,
 };
+
 // Arch syscall table is defined per-arch
-
-#undef OBOS_CROSSES_PAGE_BOUNDARY
-
-static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
-{
-    uintptr_t ptr = (uintptr_t)ptr_;
-    uintptr_t limit = ptr+sz;
-    limit -= (limit % OBOS_PAGE_SIZE);
-    ptr -= (ptr % OBOS_PAGE_SIZE);
-    return ptr != limit;
-}
 
 obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
 {
