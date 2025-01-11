@@ -395,7 +395,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         default:
             OBOS_ENSURE(!"unimplemented");
     }
-    st.st_size = blocks*blkSize;
+    st.st_size = to_stat->filesize;
     st.st_blocks = st.st_size/512;
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;

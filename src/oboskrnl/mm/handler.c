@@ -104,9 +104,9 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
     return true;
 }
 
-static obos_status ref_page(context* ctx, page_info *curr)
+static obos_status ref_page(context* ctx, const page_info *curr)
 {
-    page_range* const rng = curr->range;
+    page_range* const volatile rng = curr->range;
     obos_status status = OBOS_STATUS_SUCCESS;
     working_set_entry* ent = nullptr;
     // for (working_set_node* node = rng->working_set_nodes.head; node; )
@@ -124,7 +124,7 @@ static obos_status ref_page(context* ctx, page_info *curr)
         ent = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
         ent->info.virt = curr->virt;
         ent->info.prot = curr->prot;
-        ent->info.range = curr->range;
+        ent->info.range = rng;
         allocated_ent = true;
     }
     ent->refs++;
@@ -182,6 +182,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     }
     done:
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+    info->range = rng;
     ref_page(ctx, info);
     return true;
 }

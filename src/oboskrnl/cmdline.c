@@ -34,6 +34,7 @@ static const char* const help_message =
 "--root-fs-uuid=uuid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
 "                     is used as root.\n"
 "--root-fs-partid=partid: Specifies the partition to mount as root. If set to 'initrd', the initrd\n"
+"                     is used as root.\n"
 "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
 "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
 "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"

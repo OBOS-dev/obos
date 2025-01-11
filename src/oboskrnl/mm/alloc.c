@@ -965,6 +965,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
     rng->prot.executable = false;
     rng->prot.user = false;
     rng->pageable = !non_pageable;
+    memzero(&rng->working_set_nodes, sizeof(rng->working_set_nodes));
 
     RB_INSERT(page_tree, &ctx->pages, rng);
 
