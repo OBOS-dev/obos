@@ -266,6 +266,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             goto done;
         }
         ctx->stat.paged -= (curr.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        Mm_GlobalMemoryUsage.paged -= (curr.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
         ref_page(ctx, &curr);
         handled = true;
@@ -323,7 +324,10 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
     {
         obos_status status = ent->free ? OBOS_STATUS_ABORTED : Mm_SwapOut(ent->info.virt, ent->info.range);
         if (obos_is_success(status))
+        {
             ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        }
         if (!ent->free)
             REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
         Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));

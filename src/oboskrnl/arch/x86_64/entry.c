@@ -593,6 +593,8 @@ void Arch_KernelMainBootstrap()
 		);
 		Mm_KernelContext.stat.committedMemory -= size*2;
 		Mm_KernelContext.stat.nonPaged -= size*2;
+		Mm_GlobalMemoryUsage.committedMemory -= size*2;
+		Mm_GlobalMemoryUsage.nonPaged -= size*2;
 	}
 	OBOS_Debug("%s: Initializing timer interface.\n", __func__);
 	Core_InitializeTimerInterface();

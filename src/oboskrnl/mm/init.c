@@ -215,6 +215,7 @@ void Mm_Initialize()
             }
         }
     }
+    memcpy(&Mm_GlobalMemoryUsage, &Mm_KernelContext.stat, sizeof(memstat));
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     Mm_InitializePageWriter();
 #if 1

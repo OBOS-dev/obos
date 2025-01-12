@@ -108,6 +108,7 @@ obos_status Mm_AgingPRA(context* ctx)
                 ent->info.range->pageable = true;
             Mm_SwapOut(ent->info.virt, ent->info.range);
             ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         }
     }
 

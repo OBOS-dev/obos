@@ -122,6 +122,8 @@ extern char MmS_MMPageableRangeStart[];
 extern char MmS_MMPageableRangeEnd[];
 bool MmH_IsAddressUnPageable(uintptr_t addr);
 
+extern memstat Mm_GlobalMemoryUsage;
+
 // Constructs a new (user-mode) context.
 void Mm_ConstructContext(context* ctx);
 

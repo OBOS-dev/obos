@@ -131,6 +131,8 @@ obos_status Sys_ContextExpandWSCapacity(handle ctx, size_t ws_capacity)
 }
 obos_status Sys_ContextGetStat(handle ctx, memstat* stat)
 {
+    if (HANDLE_TYPE(ctx) == HANDLE_TYPE_INVALID)
+        return memcpy_k_to_usr(stat, &Mm_GlobalMemoryUsage, sizeof(memstat));
     context* vmm_ctx = context_from_handle(ctx, false, 0, true);
     irql oldIrql = Core_SpinlockAcquire(&vmm_ctx->lock);
     obos_status status = memcpy_k_to_usr(stat, &vmm_ctx->stat, sizeof(memstat));

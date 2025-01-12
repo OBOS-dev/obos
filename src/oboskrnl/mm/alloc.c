@@ -421,16 +421,31 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         if (flags & VMA_FLAGS_GUARD_PAGE)
             size -= pgSize;
         if (!(flags & VMA_FLAGS_NON_PAGED))
+        {
             ctx->stat.pageable += size;
+            Mm_GlobalMemoryUsage.pageable += size;
+        }
         else
+        {
             ctx->stat.nonPaged += size;
+            Mm_GlobalMemoryUsage.nonPaged += size;
+        }
         if (!isNew)
+        {
             ctx->stat.reserved -= size;
+            Mm_GlobalMemoryUsage.reserved -= size;
+        }
         else
+        {
             ctx->stat.committedMemory += size;
+            Mm_GlobalMemoryUsage.committedMemory += size;
+        }
     }
     else
+    {
         ctx->stat.reserved += size;
+        Mm_GlobalMemoryUsage.reserved += size;
+    }
     OBOS_ASSERT(rng->size);
     RB_INSERT(page_tree, &ctx->pages, rng);
     Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -590,13 +605,25 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         if (sizeHasGuardPage)
             size -= (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         if (rng->reserved)
+        {
             ctx->stat.reserved -= size;
+            Mm_GlobalMemoryUsage.reserved -= size;
+        }
         else
+        {
             ctx->stat.committedMemory -= size;
+            Mm_GlobalMemoryUsage.committedMemory -= size;
+        }
         if (rng->pageable)
+        {
             ctx->stat.pageable -= size;
+            Mm_GlobalMemoryUsage.pageable -= size;
+        }
         else
+        {
             ctx->stat.nonPaged -= size;
+            Mm_GlobalMemoryUsage.nonPaged -= size;
+        }
     }
 
     if (full)

@@ -133,6 +133,8 @@ void MmH_DerefPage(page* buf)
 		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));
 	}
 }
+memstat Mm_GlobalMemoryUsage;
+
 swap_allocation_list Mm_SwapAllocations;
 OBOS_NODISCARD swap_allocation* MmH_LookupSwapAllocation(uintptr_t id)
 {
