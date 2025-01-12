@@ -144,6 +144,23 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
+
+void on_wake()
+{
+    for (size_t i = 0; i < nSerialPorts; i++)
+    {
+        serial_port *port = serialPorts + i;
+        if (!port->opened)
+            continue;
+        dev_desc discarded = 0;
+        open_serial_connection(port, port->baudRate, port->dataBits, port->stopbits, port->parityBit, &discarded);
+        OBOS_UNUSED(discarded);
+    }
+}
+
+void on_suspend()
+{}
+
 obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -162,6 +179,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .foreach_device = foreach_device,
         .read_sync = read_sync,
         .write_sync = write_sync,
+        .on_suspend = on_suspend,
+        .on_wake = on_wake,
     },
     .driverName = "COM Driver",
     .version = 1,

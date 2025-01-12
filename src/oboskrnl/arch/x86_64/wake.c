@@ -82,8 +82,8 @@ void OBOSS_SuspendSavePlatformState()
         for (uint8_t entry = 0; entry < Arch_IOAPICs[i].maxRedirectionEntries; entry++)
         {
             uint64_t val = 0;
-            val = ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 0x40+entry*2);
-            val |= ((uint64_t)ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 0x41+entry*2)) << 32;
+            val = ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 0x40+entry*8);
+            val |= ((uint64_t)ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 0x44+entry*8)) << 32;
             saved_ioapics[i].redirection_entries[entry] = val;
         }
     }
@@ -160,14 +160,14 @@ static void restore_ioapics()
         ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x0, tmp);
 
         tmp = ((uint32_t)saved_ioapics[i].arbitrationId) << 24;
-        ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x0, tmp);
+        ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x8, tmp);
 
         for (uint8_t entry = 0; entry < Arch_IOAPICs[i].maxRedirectionEntries; entry++)
         {
             tmp = saved_ioapics[i].redirection_entries[entry] >> 32;
-            ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x41+entry*2, tmp);
+            ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x44+entry*8, tmp);
             tmp = saved_ioapics[i].redirection_entries[entry] & 0xffffffff;
-            ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x40+entry*2, tmp);
+            ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x40+entry*8, tmp);
         }
         OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, saved_ioapics[i].redirection_entries, Arch_IOAPICs[i].maxRedirectionEntries*sizeof(uint64_t));
     }

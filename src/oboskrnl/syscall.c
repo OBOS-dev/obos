@@ -233,7 +233,10 @@ obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
     }
 
     if (buf)
+    {
+        memzero(buf, OBOS_MIN(sz_buf ? *sz_buf : SIZE_MAX, str_len));
         memcpy(buf, kstr, OBOS_MIN(sz_buf ? *sz_buf : SIZE_MAX, str_len));
+    }
     if (sz_buf)
         *sz_buf = str_len;
 

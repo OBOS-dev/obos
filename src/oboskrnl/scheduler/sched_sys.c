@@ -570,7 +570,6 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         status = process ? OBOS_STATUS_NOT_FOUND : OBOS_STATUS_SUCCESS;
         if (!process)
             return status;
-        printf("%d\n", process->pid);
         process->refcount++;
     }
     else

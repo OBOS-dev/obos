@@ -29,25 +29,6 @@ void append_to_buffer_str(buffer* buf,const char* what);
 void append_to_buffer_str_len(buffer* buf, const char* what, size_t strlen);
 char pop_from_buffer(buffer* buf); // NOTE: Pops from beginning of buffer.
 void free_buffer(buffer* buf);
-typedef struct serial_port
-{
-    uint8_t com_port;
-    char* user_name;
-    
-    uint16_t port_base;
-    uint16_t port_top;
-    
-    uint8_t gsi;
-    irq* irq_obj;
-
-    buffer in_buffer;
-    buffer out_buffer;
-
-    bool isFaulty;
-
-    dpc com_dpc;
-} serial_port;
-void flush_out_buffer(serial_port* port);
 
 enum uart_registers
 {
@@ -84,6 +65,33 @@ typedef enum stop_bits
     ONE_HALF_STOPBIT = 0b0100,
     TWO_STOPBIT = 0b0100,
 } stop_bits;
+
+typedef struct serial_port
+{
+    uint8_t com_port;
+    char* user_name;
+
+    uint16_t port_base;
+    uint16_t port_top;
+
+    uint8_t gsi;
+    irq* irq_obj;
+
+    buffer in_buffer;
+    buffer out_buffer;
+
+    bool isFaulty;
+
+    dpc com_dpc;
+
+    uint32_t baudRate;
+    data_bits dataBits;
+    stop_bits stopbits;
+    parity_bit parityBit;
+
+    bool opened;
+} serial_port;
+void flush_out_buffer(serial_port* port);
 
 #define IRQL_COM_IRQ IRQL_TIMER
 

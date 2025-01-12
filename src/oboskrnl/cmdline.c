@@ -129,7 +129,6 @@ void OBOS_ParseCMDLine()
     for (const char* iter = OBOS_KernelCmdLine; iter < (OBOS_KernelCmdLine + cmdlinelen); )
     {
         OBOS_argv = cmd_realloc(OBOS_argv, (++OBOS_argc)*sizeof(const char* const));
-        printf("argv=%p\n", OBOS_argv);
         size_t arg_len = 0;
         if (*iter == '\"' || *iter == '\'')
         {
@@ -151,7 +150,6 @@ void OBOS_ParseCMDLine()
                 arg_len--;
         }
         OBOS_argv[OBOS_argc - 1] = memcpy(cmd_calloc(arg_len + 1, sizeof(char)), iter, arg_len);
-        printf("argv[i]=%p\n", OBOS_argv[OBOS_argc-1]);
         iter += arg_len+1;
     }
     if (OBOS_GetOPTF("help"))

@@ -228,7 +228,7 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
-		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
+		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
 	if (nBytes > (4*1024*1024))
 		return NULL; // invalid argument
 
@@ -249,7 +249,8 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 		ret = c->free.tail;
 	}
 
-	OBOS_ENSURE(!(c->free.tail)->next);
+	if ((c->free.tail)->next)
+		(c->free.tail)->next = nullptr;
 	remove_node(c->free, c->free.tail);
 
 	unlock((cache*)c, oldIrql);

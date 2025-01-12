@@ -56,8 +56,8 @@ section .text
 
 global Arch_SyscallTrapHandler
 
-; NOTE: Clobbers r10,rcx,r11
-; Return value in rdx:rax
+; NOTE: Clobbers r10,rcx,r11,rdx
+; Return value in rax
 ; Parameter registers (in order):
 ; rdi, rsi, rdx, r8, r9
 ; Syscall number is in eax.
@@ -147,6 +147,7 @@ pop rdi
     mov [rsp+14*8], r9 ; old_cr3 = currentContext->pt
     sys_popaq
 
+    xor rdx,rdx
     mov rsp, r10
     swapgs
     o64 sysret

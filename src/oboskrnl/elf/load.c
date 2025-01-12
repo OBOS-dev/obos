@@ -157,7 +157,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
     if (!base)
     {
         obos_status status = OBOS_STATUS_SUCCESS;
-        base = (uintptr_t)Mm_VirtualMemoryAlloc(ctx, nullptr, limit-base, 0, 0, nullptr, &status);
+        base = (uintptr_t)Mm_VirtualMemoryAlloc(ctx, nullptr, limit-base, OBOS_PROTECTION_USER_PAGE, 0, nullptr, &status);
         if (!base)
             return status;
         require_addend = true;
@@ -181,7 +181,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             ubase = Mm_VirtualMemoryAlloc(ctx,
                                           (void*)real_base,
                                           real_limit-real_base,
-                                          0, 0, nullptr,
+                                          OBOS_PROTECTION_USER_PAGE, 0, nullptr,
                                           &status) + (phdrs[i].p_vaddr%OBOS_PAGE_SIZE);
         }
         else

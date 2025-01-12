@@ -60,8 +60,6 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
-	//if (frame->vector == 0x60)
-	//	printf("sci received\n");
 	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{

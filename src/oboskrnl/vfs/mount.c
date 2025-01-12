@@ -130,6 +130,8 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
         if (!is_base)
             currentPath[currentPathLen++] = '/';
         dirent* new = VfsH_DirentLookupFrom(token, last ? last : mountpoint->root);
+        if (new && new->d_parent == mountpoint->root->d_parent)
+            new = nullptr;
         if (!new)
         {
             // Allocate a new dirent.

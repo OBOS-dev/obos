@@ -177,11 +177,11 @@ void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, 
     OBOS_UNUSED(r8);
     OBOS_UNUSED(r9);
     OBOS_UNUSED(eax);
-    // OBOS_Log("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
+    OBOS_Debug("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
 void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
 {
     OBOS_UNUSED(ret);
     OBOS_UNUSED(eax);
-    // OBOS_Log("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+    OBOS_Debug("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
 }

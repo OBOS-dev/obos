@@ -103,10 +103,11 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
     }
     return nullptr;
 }
-dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
+dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
 {
     if (!path)
         return nullptr;
+    dirent* root = root_par;
     size_t path_len = strlen(path);
     if (!path_len)
         return nullptr;
@@ -162,7 +163,11 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root)
             curr = curr->d_next_child;
         }
         if (!curr)
+        {
             root = root->d_parent;
+            if (root == root_par->d_parent)
+                break;
+        }
     }
     return nullptr;
 }

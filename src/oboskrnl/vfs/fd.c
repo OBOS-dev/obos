@@ -157,7 +157,14 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
         OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
         Core_MutexAcquire(&dirty->lock);
-        memcpy(VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr), buf, nBytes);
+        void* ent = VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr);
+        if (!ent)
+        {
+            status = OBOS_STATUS_INTERNAL_ERROR;
+            goto done;
+        }
+        memcpy(ent, buf, nBytes);
+        done:
         VfsH_UnlockMountpoint(point);
         Core_MutexRelease(&dirty->lock);
 
@@ -225,7 +232,14 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        memcpy(buf, VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr), nBytes);
+        void* ent = VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr);
+        if (!ent)
+        {
+            status = OBOS_STATUS_INTERNAL_ERROR;
+            goto done;
+        }
+        memcpy(buf, ent, nBytes);
+        done:
         if (dirty)
             Core_MutexRelease(&dirty->lock);
         VfsH_UnlockMountpoint(point);

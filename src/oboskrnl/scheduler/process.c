@@ -70,6 +70,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->prev = proc->parent->children.tail;
 	proc->parent->children.tail = proc;
 	proc->parent->children.nChildren++;
+	proc->refcount++;
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
 

@@ -78,15 +78,6 @@ static void suspend_impl()
         for (size_t i = 0; i < Drv_PCIBusCount; i++)
             restore_pci(&Drv_PCIBuses[i]);
 
-        // Tell all drivers we're awake.
-        for (driver_node* node = Drv_LoadedDrivers.head; node; )
-        {
-            if (node->data->header.ftable.on_wake)
-                node->data->header.ftable.on_wake();
-
-            node = node->next;
-        }
-
         // Wake the thread that suspended the kernel to begin with.
         OBOS_WokeFromSuspend = false;
         CoreH_ThreadReady(suspended_thread);
@@ -203,6 +194,14 @@ obos_status OBOS_Suspend()
     // printf("hallo 4\n");
     CoreH_ThreadBlock(suspended_thread, true);
     OBOS_SetLogLevel(old_log_level);
+    // Tell all drivers we're awake.
+    for (driver_node* node = Drv_LoadedDrivers.head; node; )
+    {
+        if (node->data->header.ftable.on_wake)
+            node->data->header.ftable.on_wake();
+
+        node = node->next;
+    }
     Core_MutexRelease(&suspend_lock);
     OBOS_Log("oboskrnl: Woke up from suspend.\n");
     return OBOS_STATUS_SUCCESS;

@@ -66,20 +66,8 @@ OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* 
 }
 void driver_cleanup_callback()
 {
-    for (uint8_t porti = 0; porti < PortCount; porti++)
-    {
-        Port* port = Ports+porti;
-        if (!port->works)
-            continue;
-        // To ensure no more actions on the port happen.
-        port->works = false;   
-        obos_status status = OBOS_STATUS_SUCCESS;
-        for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
-            status = Core_SemaphoreTryAcquire(&port->lock);
-        // Abort all pending commands.
-        for (uint8_t i = 0; i < 32 && status != OBOS_STATUS_IN_USE; i++)
-            ClearCommand(port, port->PendingCommands[i]);
-    }
+    HaltTranscations();
+    WaitForTranscations();
     if (PCIIrqResource)
     {
         PCIIrqResource->irq->masked = true;
@@ -89,6 +77,12 @@ void driver_cleanup_callback()
     // TODO: Free HBA, port clb, and fb
     
 }
+
+driver_id* this_driver;
+
+void on_wake();
+void on_suspend();
+
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI|DRIVER_HEADER_HAS_VERSION_FIELD,
@@ -107,6 +101,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .foreach_device = foreach_device,
         .read_sync = read_sync,
         .write_sync = write_sync,
+        .on_wake = on_wake,
+        .on_suspend = on_suspend,
     },
     .driverName = "AHCI Driver",
     .version=1,
@@ -186,6 +182,7 @@ static void search_bus(pci_bus* bus)
 // https://forum.osdev.org/viewtopic.php?t=40969
 driver_init_status OBOS_DriverEntry(driver_id* this)
 {
+    this_driver = this;
     for (size_t i = 0; i < Drv_PCIBusCount; i++)
         search_bus(&Drv_PCIBuses[i]);
     if (!FoundPCINode)
@@ -415,6 +412,78 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
+}
+
+void on_wake()
+{
+    HbaIrq.irqChecker = ahci_irq_checker;
+    HbaIrq.handler = ahci_irq_handler;
+
+    // Set GHC.AE (AHCI Enable)
+    // Set GHC.HR (HBA Reset)
+    // Set GHC.AE (AHCI Enable) again
+
+    HBA->ghc |= BIT(31);
+    while (!(HBA->ghc & BIT(31)))
+        OBOSS_SpinlockHint();
+    HBA->ghc |= BIT(0);
+    while (HBA->ghc & BIT(0))
+        OBOSS_SpinlockHint();
+    HBA->ghc |= BIT(31);
+    while (!(HBA->ghc & BIT(31)))
+        OBOSS_SpinlockHint();
+
+    Port* curr = &Ports[0];
+    for (uint8_t port = 0; port < 32; port++, curr++)
+    {
+        HBA_PORT* hPort = HBA->ports + port;
+        if (!curr->works)
+            continue;
+        curr->works = false;
+        memzero((void*)curr->fisBase, 4096);
+        memzero((void*)curr->clBase, sizeof(HBA_CMD_HEADER)*32+sizeof(HBA_CMD_TBL)*32);
+        uint32_t max_slots = (((HBA->cap >> 8) & 0b11111)+1);
+        for (uint8_t slot = 0; slot < max_slots; slot++)
+        {
+            HBA_CMD_HEADER* cmdHeader = (HBA_CMD_HEADER*)curr->clBase + slot;
+            uintptr_t ctba = curr->clBasePhys + sizeof(HBA_CMD_HEADER) * 32 + slot * sizeof(HBA_CMD_TBL);
+            AHCISetAddress(ctba, cmdHeader->ctba);
+        }
+        AHCISetAddress(curr->clBasePhys, hPort->clb);
+        AHCISetAddress(curr->fisBasePhys, hPort->fb);
+        hPort->cmd |= BIT(4);
+        if (HBA->cap & BIT(27) /* CapSSS */)
+            hPort->cmd |= BIT(1);
+        timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1000);
+        while ((hPort->ssts & 0xf) != 0x3 && CoreS_GetTimerTick() < deadline)
+            OBOSS_SpinlockHint();
+        curr->hbaPortIndex = port;
+        if ((hPort->ssts & 0xf) != 0x3)
+            continue;
+        hPort->serr = 0xffffffff;
+        deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(10000);
+        while (hPort->tfd & 0x80 && hPort->tfd & 0x8 && CoreS_GetTimerTick() < deadline)
+            OBOSS_SpinlockHint();
+        if ((hPort->tfd & 0x88) != 0)
+            continue;
+        hPort->is = 0xffffffff;
+        hPort->ie = 0xffffffff;
+        hPort->serr = 0xffffffff;
+        StartCommandEngine(hPort);
+        curr->works = true;
+    }
+
+    HBA->ghc |= BIT(1);
+    while (!(HBA->ghc & BIT(1)))
+        OBOSS_SpinlockHint();
+
+    ResumeTranscations();
+}
+void on_suspend()
+{
+    HaltTranscations();
+    WaitForTranscations();
+    HBA->ghc &= ~BIT(1); // IE (interrupt enable)
 }
 
 // hexdump clone lol

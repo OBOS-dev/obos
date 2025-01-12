@@ -544,7 +544,7 @@ obos_status Drv_PCISetResource(const pci_resource* resource)
             status = writeback_bar(resource->owner, resource->bar);
             break;
         case PCI_RESOURCE_CMD_REGISTER:
-            status = DrvS_WritePCIRegister(resource->owner->location, 0x4, 2, resource->cmd_register);
+            status = DrvS_WritePCIRegister(resource->owner->location, 0x4, 4, resource->cmd_register);
             break;
         case PCI_RESOURCE_CAPABILITY:
             status = OBOS_STATUS_INVALID_OPERATION;

@@ -21,13 +21,7 @@
 extern OBOS_EXPORT uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN];
 extern OBOS_EXPORT uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
 
-#if OBOS_ARCHITECTURE_BITS == 64
-typedef __uint128_t syscall_ret_t;
-#elif OBOS_ARCHITECTURE_BITS == 32
 typedef uint64_t syscall_ret_t;
-#else
-#error Unknown.
-#endif
 
 // NOTE (for kernel devs): Syscalls can have a max of 5 parameters, any more paramters must be passed through a memory buffer.
 

@@ -14,15 +14,19 @@
 
 #include <irq/timer.h>
 
+#include "locks/wait.h"
 #include "structs.h"
 #include "command.h"
 
+static _Atomic(bool) transactions_halted = false;
 obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uint8_t device, uint16_t count)
 {
     if (!port || !data)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (data->physRegionCount > sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (transactions_halted)
+        return OBOS_STATUS_RETRY;
     StopCommandEngine(&HBA->ports[port->hbaPortIndex]);
     Core_SemaphoreAcquire(&port->lock);
     HBA->ports[port->hbaPortIndex].is = 0xffffffff;
@@ -135,4 +139,24 @@ void StartCommandEngine(volatile HBA_PORT* port)
     while (port->cmd & (1<<15))
         OBOSS_SpinlockHint();
     port->cmd |= (1<<0);
+}
+
+void HaltTranscations()
+{
+    transactions_halted = true;
+}
+void ResumeTranscations()
+{
+    transactions_halted = false;
+}
+
+void WaitForTranscations()
+{
+    for (size_t i = 0; i < PortCount; i++)
+    {
+        Port* port = Ports + i;
+        for (size_t j = 0; j < 32; j++)
+            if (port->CommandBitmask & BIT(j))
+                Core_WaitOnObject(WAITABLE_OBJECT(port->PendingCommands[j]->completionEvent));
+    }
 }

@@ -4,10 +4,10 @@ rm qemu_log.txt
 
 echo $@
 qemu-system-x86_64 \
--drive file=out/obos.iso,format=raw \
+-drive format=raw,file=out/obos.iso,media=disk,index=0 \
+-drive format=raw,file=disk.img,media=disk,index=1 \
 -m 2G \
 -gdb tcp:0.0.0.0:1234 -S \
--boot d \
 -M q35 \
 -cpu host \
 -accel kvm \
@@ -20,7 +20,6 @@ qemu-system-x86_64 \
 
 # -nographic
 # -enable-kvm \
-# -drive id=disk2,file=disk.img,if=none,format=raw -device ide-hd,drive=disk2,bus=ahci1.1 \
 # -M smm=off \
 # -no-reboot
 # -enable-kvm \

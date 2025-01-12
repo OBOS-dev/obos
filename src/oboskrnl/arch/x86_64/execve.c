@@ -77,10 +77,7 @@ static void allocate_string_vector_on_stack(char** vec, size_t cnt)
 static void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
 {
     for (size_t i = 0; i < cnt; i++)
-    {
-        printf("%p\n", vec[i]);
         stck_buf[i] = vec[i];
-    }
     stck_buf[cnt] = 0;
 }
 
@@ -156,6 +153,9 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
     // Core_GetCurrentThread()->context.fs_base = 0;
     // Core_GetCurrentThread()->context.gs_base = 0;
 
+    OBOS_Debug("Handing off control to user program.\n");
+    OBOS_Debug("NOTE: RSP=0x%p.\n", Core_GetCurrentThread()->context.frame.rsp);
+
     reset_extended_state();
 
     Core_GetCurrentThread()->context.frame.rbp = 0;
@@ -172,7 +172,7 @@ void OBOSS_HandOffToInit(struct exec_aux_values* aux)
     (void)Core_RaiseIrql(IRQL_DISPATCH);
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 
-    Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+    Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
     Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
 
     CoreS_SetThreadPageTable(&Core_GetCurrentThread()->context, ctx->pt);

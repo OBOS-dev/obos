@@ -113,17 +113,22 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     outb(port->port_base + IO_BUFFER, 0xde);
     if (inb(port->port_base + IO_BUFFER) != 0xde)
     {
-	    // OBOS_Debug("Port COM%d is faulty or disconnected.", port->com_port);
+	    OBOS_Log("Port COM%d is faulty or disconnected.", port->com_port);
         port->isFaulty = true; // bruh
         Core_LowerIrql(oldIrql);
         return OBOS_STATUS_INTERNAL_ERROR;
     }
     // Enter normal transmission mode.
     port->isFaulty = false;
+    port->opened = true;
     outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when four bytes are received, other flags */);
     outb(port->port_base + MODEM_CTRL, 0xF /* DTR+RTS+OUT2+OUT1*/);
     outb(port->port_base + IRQ_ENABLE, 1);
     Arch_IOAPICMaskIRQ(port->gsi, false);
+    port->stopbits = stopbits;
+    port->baudRate = baudRate;
+    port->dataBits = dataBits;
+    port->parityBit = parityBit;
     Core_LowerIrql(oldIrql);
     if (connection)
         *connection = (dev_desc)port;

@@ -78,12 +78,15 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     uintptr_t lastPhys = 0;
     struct ahci_phys_region curr = {};
     bool wroteback = false;
+    context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+    if (base >= OBOS_KERNEL_ADDRESS_SPACE_BASE && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
+        ctx = &Mm_KernelContext;
     for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
     {
         if (data->physRegionCount >= MAX_PRDT_COUNT)
             return OBOS_STATUS_INTERNAL_ERROR;
         page_info info = {};
-        MmS_QueryPageInfo(CoreS_GetCPULocalPtr()->currentContext->pt, addr, &info, nullptr);
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
         if ((lastPhys + pgSize) != info.phys)
         {
             if (addr != base)
