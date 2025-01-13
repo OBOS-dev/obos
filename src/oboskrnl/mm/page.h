@@ -71,6 +71,12 @@ typedef struct page
 
     uintptr_t swap_id;
     phys_page_flags flags;
+
+    enum {
+        COW_DISABLED,
+        COW_SYMMETRIC, // for fork, etc.
+        COW_ASYMMETRIC, // for CoW on a private page.
+    } cow_type;
 } page;
 
 typedef LIST_HEAD(swap_allocation_list, struct swap_allocation) swap_allocation_list;
@@ -120,15 +126,10 @@ typedef struct page_range
     bool pageable : 1;
     bool hasGuardPage : 1;
     bool reserved : 1;
-    bool cow : 1;
     bool can_fork : 1; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
     bool kernelStack : 1; // See Mm_AllocateKernelStack
     union {
-        enum {
-            COW_SYMMETRIC, // for fork, etc.
-            COW_ASYMMETRIC, // for CoW on a private page.
-        } cow_type : 1;
         struct context* userContext; // valid if kernelStack != nullptr
     } un;
 } page_range;

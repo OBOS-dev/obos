@@ -375,23 +375,21 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
                 if (phys)
                     MmH_RefPage(phys);
 
-                rng->cow = cow;
                 if (cow)
                 {
-                    rng->un.cow_type = COW_SYMMETRIC;
-                    pc_range->cow = true;
-                    pc_range->un.cow_type = COW_SYMMETRIC;
-                    pc_range->prot.rw = false;
-                    info.prot.rw = false;
+                    if (phys)
+                        phys->cow_type = COW_SYMMETRIC;
+                    if (info.prot.rw != false)
+                    {
+                        info.prot.rw = false;
+                        MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
+                    }
                 }
-
-                MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
             }
             else
             {
-                rng->un.cow_type = COW_ASYMMETRIC;
-                rng->cow = true;
                 MmH_RefPage(phys);
+                phys->cow_type = COW_ASYMMETRIC;
             }
         }
 
@@ -408,7 +406,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         curr.prot = rng->prot;
         curr.prot.rw = cow ? false : rng->prot.rw;
         curr.prot.present = isPresent;
-        if (rng->cow && rng->un.cow_type == COW_ASYMMETRIC)
+        if (phys && phys->cow_type == COW_ASYMMETRIC)
             curr.prot.present = false;
         OBOS_ASSERT(phys != 0 || !isPresent);
 
@@ -593,7 +591,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         {
             page what = {.phys=info.phys};
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-            // printf("derefing physical page %p representing %p\n", pg->phys, addr);
+            // printf("derefing physical page %p representing %p\n", info.phys, addr);
             pg->pagedCount--;
             MmH_DerefPage(pg);
         }
@@ -881,7 +879,6 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     rng->ctx = &Mm_KernelContext;
     rng->phys32 = false;
     rng->hasGuardPage = false;
-    rng->cow = false;
     rng->size = size;
     rng->prot.huge_page = false;
     rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
@@ -909,7 +906,10 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         page_info info = {};
         MmS_QueryPageInfo(user_context->pt, uaddr, &info, nullptr);
 
-        if (user_rng->cow && ~prot & OBOS_PROTECTION_READ_ONLY)
+        page what = {.phys=info.phys};
+        phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+
+        if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
         {
             uintptr_t fault_addr = uaddr;
             fault_addr -= (fault_addr % (user_rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE));
@@ -917,15 +917,16 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             Mm_HandlePageFault(user_context, fault_addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
             oldIrql2 = Core_SpinlockAcquire(&user_context->lock);
             MmS_QueryPageInfo(user_context->pt, uaddr, nullptr, &info.phys);
+            what.phys = info.phys;
+            phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
         }
 
-        page what = {.phys=info.phys};
-        phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
         if (phys)
         {
             MmH_RefPage(phys);
             phys->pagedCount++;
         }
+
         info.virt = kaddr;
         info.dirty = false;
         info.accessed = false;
@@ -983,12 +984,10 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     page_range* rng = Mm_Allocator->Allocate(Mm_Allocator, sizeof(page_range), nullptr);
     rng->ctx = ctx;
-    rng->cow = !non_pageable;
-    rng->un.cow_type = COW_ASYMMETRIC;
     rng->size = sz;
     rng->virt = base;
     rng->prot.present = true;
-    rng->prot.rw = !rng->cow;
+    rng->prot.rw = true;
     rng->prot.ro = false;
     rng->prot.executable = false;
     rng->prot.user = false;
@@ -999,20 +998,27 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     for (uintptr_t addr = base; addr < (base+sz); addr += OBOS_PAGE_SIZE)
     {
+        page_info info = {.prot=rng->prot,.virt=addr,.phys=0,.range=rng};
+
         uintptr_t phys = 0;
         if (!non_pageable)
         {
             phys = Mm_AnonPage->phys;
             MmH_RefPage(Mm_AnonPage);
             Mm_AnonPage->pagedCount++;
+            Mm_AnonPage->cow_type = COW_ASYMMETRIC;
+            info.prot.present = false;
+            info.prot.rw = false;
         }
         else
         {
             page* pg = MmH_PgAllocatePhysical(false,false);
             phys = pg->phys;
+            pg->cow_type = COW_DISABLED;
             pg->pagedCount++;
         }
-        page_info info = {.prot=rng->prot,.virt=addr,.phys=phys,.range=rng};
+        info.phys = phys;
+
         MmS_SetPageMapping(ctx->pt, &info, phys, false);
     }
 

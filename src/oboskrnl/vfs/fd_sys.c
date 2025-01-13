@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd_sys.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2025 Omar Berrow
  */
 
 #include <int.h>
@@ -54,6 +54,25 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
         return status;
     path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
+    if (strcmp(path, "/dev/stderr"))
+    {
+        Vfs_Free(fd->un.fd);
+        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 2, HANDLE_TYPE_FD, false, &status)->un.fd;
+        return OBOS_STATUS_SUCCESS;
+    }
+    else if (strcmp(path, "/dev/stdout"))
+    {
+        Vfs_Free(fd->un.fd);
+        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 1, HANDLE_TYPE_FD, false, &status)->un.fd;
+        return OBOS_STATUS_SUCCESS;
+    }
+    else if (strcmp(path, "/dev/stdin"))
+    {
+        Vfs_Free(fd->un.fd);
+        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 0, HANDLE_TYPE_FD, false, &status)->un.fd;
+        return OBOS_STATUS_SUCCESS;
+    }
+    printf("%s\n", path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags);
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
     return status;
@@ -396,10 +415,13 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    drv_fs_info fs_info = {};
-    OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
-    to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info(to_stat->mount_point->device, &fs_info);
-    st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK)
+    {
+        drv_fs_info fs_info = {};
+        OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
+        to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info(to_stat->mount_point->device, &fs_info);
+        st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
+    }
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     // TODO: Inode numbers.

@@ -92,7 +92,7 @@ static obos_status get_max_blk_count(dev_desc desc, size_t* count)
     *count = pipe->pipe_size;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+OBOS_PAGEABLE_FUNCTION static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
     OBOS_UNUSED(what);
     OBOS_UNUSED(request);
@@ -176,6 +176,7 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, co
     vn->un.device = &OBOS_FIFODriverVdev;
     ent->vnode = vn;
     vn->refs++;
+    vn->mount_point = parent->vnode->mount_point;
     OBOS_InitString(&ent->name, name);
     VfsH_DirentAppendChild(parent, ent);
     return OBOS_STATUS_SUCCESS;

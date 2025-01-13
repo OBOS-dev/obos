@@ -122,12 +122,15 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 void MmH_RefPage(page* buf)
 {
 	buf->refcount++;
+	// printf("refed page %p (now at %d)\n", buf->phys, buf->refcount);
 }
 void MmH_DerefPage(page* buf)
 {
-	if (!--buf->refcount)
+	// printf("derefed page %p (now at %d)\n", buf->phys, buf->refcount - 1);
+	if (!(--buf->refcount))
 	{
 		Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
+		// printf("removed page from tree (refcount %d)\n", buf->refcount);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));

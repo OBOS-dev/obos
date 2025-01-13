@@ -42,19 +42,11 @@ obos_status Mm_ForkContext(context* into, context* toFork)
              * Map both page ranges as Sym CoW
              * Go to the next range
              */
-            if (curr->cow)
-                OBOS_ENSURE(curr->un.cow_type == COW_ASYMMETRIC && "Cannot fork symmetric CoW pages, unimplemented.");
             page_range* clone = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             memcpy(clone, curr, sizeof(*curr));
             clone->ctx = into;
             memzero(&clone->rb_node, sizeof(clone->rb_node));
             RB_INSERT(page_tree, &into->pages, clone);
-
-            if (!curr->cow)
-            {
-                curr->cow = true;
-                curr->un.cow_type = COW_SYMMETRIC;
-            }
 
             for (uintptr_t addr = curr->virt; addr < (curr->virt + curr->size); addr += (curr->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
             {
@@ -64,23 +56,24 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                 page* phys = (info.prot.is_swap_phys) ? nullptr : RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
                 if (phys)
                 {
-                    MmH_RefPage(phys);
-                    if (!(phys->pagedCount++))
+                    if (phys->cow_type == COW_SYMMETRIC)
                     {
+                        uintptr_t fault_addr = addr;
                         Core_SpinlockRelease(&toFork->lock, oldIrql);
-                        Mm_HandlePageFault(toFork, addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
+                        Mm_HandlePageFault(toFork, fault_addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
                         oldIrql = Core_SpinlockAcquire(&toFork->lock);
-                        MmS_QueryPageInfo(toFork->pt, addr, nullptr, &info.phys);
-                        // At this point, paged count is two.
+                        MmS_QueryPageInfo(toFork->pt, fault_addr, nullptr, &info.phys);
+                        what.phys = info.phys;
+                        phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
                     }
-                }
-                if (curr->cow)
-                {
-                    if (curr->un.cow_type == COW_SYMMETRIC || info.prot.present)
-                    {
-                        info.prot.rw = false;
-                        MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
-                    }
+                    MmH_RefPage(phys);
+                    phys->pagedCount++;
+                    if (phys->cow_type != COW_ASYMMETRIC)
+                        phys->cow_type = COW_SYMMETRIC;
+                    else
+                        info.prot.present = false;
+                    info.prot.rw = false;
+                    MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
                 }
                 MmS_SetPageMapping(into->pt, &info, info.phys, false);
             }

@@ -14,4 +14,9 @@ void Vfs_Initialize();
 // Finalizes VFS initialization.
 // To be called after fs drivers and disk drivers are done being loaded.
 // This mainly mounts the root fs as was specified in the kernel cmd line.
+// This also makes the special files:
+// /dev/null
+// /dev/zero
+// /dev/full
 void Vfs_FinalizeInitialization();
+void Vfs_InitDummyDevices();

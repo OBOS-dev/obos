@@ -39,6 +39,7 @@ static namecache_ent* namecache_lookup_internal(namecache* nc, const char* path)
 }
 static dirent* namecache_lookup(namecache* nc, const char* path)
 {
+    return nullptr;
     namecache_ent* nc_ent = namecache_lookup_internal(nc, path);
     if (!nc_ent)
         return nullptr;
@@ -46,6 +47,7 @@ static dirent* namecache_lookup(namecache* nc, const char* path)
 }
 static void namecache_insert(namecache* nc, dirent* what, const char* path, size_t pathlen)
 {
+    return;
     namecache_ent* ent = Vfs_Calloc(1, sizeof(namecache_ent));
     ent->ent = what;
     ent->ref = what->vnode;

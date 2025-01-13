@@ -54,12 +54,14 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         // TODO: Find out why CoreS_GetCPULocalPtr()->currentContext is nullptr in the first place
         if (!CoreS_GetCPULocalPtr()->currentContext)
         {
-            if (CoreS_GetCPULocalPtr()->currentThread->proc->pid != 1 && mm_ec & PF_EC_UM)
+            if (CoreS_GetCPULocalPtr()->currentThread->proc->pid != 0 && mm_ec & PF_EC_UM)
                 CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc->ctx;
             else
                 CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
         }
+        irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
         obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
+        Core_LowerIrql(oldIrql);
         switch (status)
         {
             case OBOS_STATUS_SUCCESS:
@@ -77,7 +79,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     }
     if (frame->cs & 3)
     {
-        OBOS_Log("User thread %d SIGSEGV (rip %p, cr2 %p)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2());
+        OBOS_Log("User thread %d SIGSEGV (rip 0x%p, cr2 0x%p, error code 0x%08x)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2(), frame->errorCode);
+        Core_ExitCurrentProcess(0);
         Core_GetCurrentThread()->signal_info->signals[SIGSEGV].addr = (void*)getCR2();
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
         // OBOS_SyncPendingSignal(frame);

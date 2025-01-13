@@ -81,17 +81,16 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     if (curr.prot.rw)
         VfsH_PCDirtyRegionCreate(&vn->pagecache, fileoff, sz);
 }
-static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page_info* info) 
+static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
 {
     info->prot.present = true;
-    page what = {.phys=info->phys};
-    page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
     if (pg->refcount == 1 /* we're the only one left */)
     {
         // Steal the page.
         info->prot.rw = true;
         info->prot.ro = false;
         MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+        pg->cow_type = COW_DISABLED;
         return true;
     }
     page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
@@ -99,7 +98,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
     memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->prot.rw = true;
     info->prot.ro = false;
-    MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+    MmS_SetPageMapping(ctx->pt, info, new->phys, false);
     MmH_DerefPage(pg);
     return true;
 }
@@ -152,10 +151,8 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     return status;
 }
 
-static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page_info* info) 
+static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
 {
-    page what = {.phys=info->phys};
-    page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
     info->prot.present = true;
     info->prot.rw = false;
     info->prot.ro = true;
@@ -168,6 +165,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
             // Steal the page.
             info->prot.rw = true;
             info->prot.ro = false;
+            pg->cow_type = COW_DISABLED;
             goto done;
         }
         page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
@@ -202,10 +200,18 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         goto done;
     page_info curr = {};
     MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
+    page* pg = nullptr;
+    do
+    {
+        page what = {.phys=curr.phys};
+        // printf("curr.phys: %p\n", curr.phys);
+        pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+        OBOS_ENSURE(pg != nullptr);
+    } while(0);
     curr.range = rng;
     curr.prot.user = ec & PF_EC_UM;
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
-    if (rng->mapped_here && !rng->cow)
+    if (rng->mapped_here && !pg->cow_type)
     {
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Trying file mapping...\n", addr);
@@ -224,18 +230,18 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             type = curr_type;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
-    if (rng->cow)
+    if (pg->cow_type)
     {
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Doing CoW...\n", addr);
         // Mooooooooo.
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
-        switch (rng->un.cow_type) {
+        switch (pg->cow_type) {
             case COW_SYMMETRIC:
-                handled = sym_cow_cpy(ctx, rng, addr, ec, &curr);
+                handled = sym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
                 break;
             case COW_ASYMMETRIC:
-                handled = asym_cow_cpy(ctx, rng, addr, ec, &curr);
+                handled = asym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
                 break;
             default:
                 handled = false;
@@ -247,7 +253,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         goto done;
     }
-    not_cow:
     if (!handled && ~ec & PF_EC_PRESENT && curr.phys != 0)
     {
         if (ctx != &Mm_KernelContext)

@@ -245,6 +245,7 @@ obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
     }
     if (sz_buf)
         *sz_buf = str_len;
+    Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kstr, str_len + (OBOS_PAGE_SIZE-(str_len%OBOS_PAGE_SIZE)));
 
     return OBOS_STATUS_SUCCESS;
 }

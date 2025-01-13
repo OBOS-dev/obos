@@ -102,4 +102,5 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+    Vfs_InitDummyDevices();
 }
