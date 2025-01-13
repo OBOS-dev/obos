@@ -396,7 +396,10 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    st.st_blocks = st.st_size/512;
+    drv_fs_info fs_info = {};
+    OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
+    to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info(to_stat->mount_point->device, &fs_info);
+    st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     // TODO: Inode numbers.
@@ -493,6 +496,8 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
     void* kbuff = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer, nullptr, szBuf, 0, true, &status);
     if (!kbuff)
         return status;
+
+    memzero(kbuff, szBuf);
 
     status = Vfs_ReadEntries(dent->un.dirent, kbuff, szBuf, &dent->un.dirent, nRead ? &k_nRead : nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuff, szBuf);
