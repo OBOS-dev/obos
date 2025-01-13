@@ -127,6 +127,11 @@ obos_status Sys_SysConf(int num, long *ret_)
     return status;
 }
 
+void Sys_SetKLogLevel(log_level level)
+{
+    OBOS_SetLogLevel(level);
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -196,6 +201,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_Stat, // 65
     (uintptr_t)Sys_StatFSInfo,
     (uintptr_t)Sys_SysConf,
+    (uintptr_t)Sys_SetKLogLevel,
 };
 
 // Arch syscall table is defined per-arch

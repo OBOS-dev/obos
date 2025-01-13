@@ -63,6 +63,8 @@ const char* OBOSH_PanicReasonToStr(panic_reason reason)
 static log_level s_logLevel;
 OBOS_PAGEABLE_FUNCTION void OBOS_SetLogLevel(log_level level)
 {
+	if (level > LOG_LEVEL_NONE || level < 0)
+		return;
 	s_logLevel = level;
 }
 OBOS_EXPORT log_level OBOS_GetLogLevel()

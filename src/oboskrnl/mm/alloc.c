@@ -833,6 +833,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
 {
     uintptr_t ubase = (uintptr_t)ubase_;
     uintptr_t kbase = (uintptr_t)kbase_;
+    size += (ubase%OBOS_PAGE_SIZE);
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     kbase -= (kbase % OBOS_PAGE_SIZE);

@@ -28,9 +28,9 @@ syscall:;\
 
 static char obos_getchar()
 {
-    char ch = 0;
-    syscall4(Sys_FdRead, 0, &ch, 1, NULL);
-    return ch;
+    char ch[2] = {};
+    syscall4(Sys_FdRead, 0, &ch, 2, NULL);
+    return ch[0];
 }
 #define confirm() do \
 {\
