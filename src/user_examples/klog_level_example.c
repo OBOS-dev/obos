@@ -31,7 +31,7 @@ int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        printf("%s level", argv[0]);
+        printf("%s level\n", argv[0]);
         return -1;
     }
     int level = strtol(argv[1], NULL, 0);

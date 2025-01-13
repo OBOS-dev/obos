@@ -167,6 +167,7 @@ const char* syscall_to_string[] = {
     "Sys_Stat",
     "Sys_StatFSInfo",
     "Sys_SysConf",
+    "Sys_SetKLogLevel",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
