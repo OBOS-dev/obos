@@ -38,6 +38,7 @@
 typedef struct pnp_device
 {
     pci_hid pci_key; // the class code, subclass, etc.
+    bool ignore_progif;
     char acpi_key[8]; // acpi pnp id
     driver_header_list headers;
 } pnp_device;
@@ -52,8 +53,8 @@ static int pnp_pci_driver_cmp(const void* a_, const void* b_, void* udata)
         return (int8_t)a->indiv.classCode - (int8_t)b->indiv.classCode;
     if (((int8_t)a->indiv.subClass - (int8_t)b->indiv.subClass) != 0)
         return (int8_t)a->indiv.subClass - (int8_t)b->indiv.subClass;
-    if (((int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf) != 0)
-        return (int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf;
+    // if ((((int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf) != 0))
+    //     return (int8_t)a->indiv.progIf - (int8_t)b->indiv.progIf;
     return 0;
 }
 
@@ -176,12 +177,14 @@ struct callback_userdata
 static pci_iteration_decision pci_driver_callback(void* udata_, pci_device *device)
 {
     struct callback_userdata* udata = (struct callback_userdata*)udata_;
+
     pnp_device what = {
         .pci_key = device->hid,
     };
     pnp_device *dev = (pnp_device*)hashmap_get(udata->pci_drivers, &what);
     if (!dev)
         return PCI_ITERATION_DECISION_CONTINUE;
+
     // Add all of the drivers to the list.
     for (driver_header_node* node = dev->headers.head; node; )
     {
@@ -189,6 +192,17 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device *devi
         driver_header* hdr = node->data;
         OBOS_ASSERT(hdr);
         bool shouldAdd = false;
+        if (~hdr->flags & DRIVER_HEADER_PCI_IGNORE_PROG_IF)
+        {
+            if (hdr->pciId.indiv.progIf == device->hid.indiv.progIf)
+                shouldAdd = true;
+        }
+        else
+            shouldAdd = true;
+        if (!shouldAdd)
+            goto end;
+
+        shouldAdd = false;
         if ((hdr->flags & DRIVER_HEADER_PCI_HAS_VENDOR_ID))
         {
             if (hdr->pciId.indiv.vendorId == device->hid.indiv.vendorId)
@@ -198,6 +212,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device *devi
             shouldAdd = true;
         if (!shouldAdd)
             goto end;
+
         shouldAdd = false;
         if ((hdr->flags & DRIVER_HEADER_PCI_HAS_DEVICE_ID))
         {
@@ -208,6 +223,7 @@ static pci_iteration_decision pci_driver_callback(void* udata_, pci_device *devi
             shouldAdd = true;
         if (!shouldAdd)
             goto end;
+
         driver_header_node* newNode = malloc(sizeof(driver_header_node));
         newNode->data = hdr;
         APPEND_DRIVER_HEADER_NODE(*udata->detected, newNode);

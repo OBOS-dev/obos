@@ -34,6 +34,8 @@ OBOS_EXPORT struct hashmap *hashmap_new_with_allocator(void *(*malloc)(size_t),
     void (*elfree)(void *item),
     void *udata);
 
+OBOS_EXPORT void hashmap_set_udata(struct hashmap* map, void* udata);
+
 OBOS_EXPORT void hashmap_free(struct hashmap *map);
 OBOS_EXPORT void hashmap_clear(struct hashmap *map, bool update_cap);
 OBOS_EXPORT size_t hashmap_count(struct hashmap *map);

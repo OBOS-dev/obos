@@ -64,6 +64,10 @@ typedef enum driver_header_flags
     /// Set to tell PnP to ignore the driver.
     /// </summary>
     DRIVER_HEADER_PNP_IGNORE = 0x200,
+    /// <summary>
+    /// Set if PnP should ignore the Prog IF in the the pciId field of the header.
+    /// </summary>
+    DRIVER_HEADER_PCI_IGNORE_PROG_IF = 0x400,
 } driver_header_flags;
 typedef enum iterate_decision
 {
@@ -183,8 +187,10 @@ typedef struct driver_header
     uint64_t magic;
     // See driver_header_flags
     uint32_t flags;
+
     // The PCI device associcated with this.
     pci_hid pciId;
+
     struct
     {
         // These strings are not null-terminated.
@@ -195,17 +201,21 @@ typedef struct driver_header
         // Ranges from 1-32 inclusive.
         size_t nPnpIds;
     } acpiId;
+
     size_t stackSize; // If DRIVER_HEADER_FLAGS_REQUEST_STACK_SIZE is set.
     driver_ftable ftable;
     char driverName[64];
+
     uint32_t version;
+
     // If UACPI_INIT_LEVEL_EARLY, this field does nothing.
     // If a uacpi symbol is used in the driver, and this field is specified, the kernel will the current uacpi init level against this.
     // If the init level is < level, then the driver load is failed.
     // Only valid if version >= 1, and the version field exists (flags & DRIVER_HEADER_HAS_VERSION_FIELD).
     uint32_t uacpi_init_level_required;
+
     // Reserved for future use; do not use when version <= 1
-    char reserved[0x100-8];
+    char reserved[0x100-0x8];
 } driver_header;
 typedef struct driver_header_node
 {

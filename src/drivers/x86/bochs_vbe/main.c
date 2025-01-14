@@ -35,6 +35,7 @@ void cleanup() {}
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
+    .flags =
              DRIVER_HEADER_FLAGS_DETECT_VIA_PCI |
              DRIVER_HEADER_HAS_VERSION_FIELD |
              DRIVER_HEADER_PCI_HAS_DEVICE_ID |
