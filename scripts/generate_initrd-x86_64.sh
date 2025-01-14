@@ -9,6 +9,7 @@ cp out/ahci tar
 # rm tar/ahci
 cp out/slowfat tar
 cp out/bochs_vbe tar
+cp out/r8169 tar
 #cp out/init tar
 if [[ ! -d tar/dev ]]
 then

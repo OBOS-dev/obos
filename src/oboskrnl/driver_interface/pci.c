@@ -350,8 +350,8 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
     uint8_t subclass = (tmp >> 16) & 0xff;
     uint8_t progIF = (tmp >> 8) & 0xff;
     DrvS_ReadPCIRegister(loc, 0, 4, &tmp);
-    uint16_t deviceId = tmp & 0xffff;
-    uint16_t vendorId = tmp >> 16;
+    uint16_t deviceId = tmp >> 16;
+    uint16_t vendorId = tmp & 0xffff;
     dev->hid.indiv.deviceId = deviceId;
     dev->hid.indiv.vendorId = vendorId;
     dev->hid.indiv.classCode = classCode;

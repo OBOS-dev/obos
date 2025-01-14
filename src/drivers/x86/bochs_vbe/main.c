@@ -46,8 +46,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .subClass  = 0x0000,
         .progIf    = 0x0000,
         // Bochs VBE
-        .vendorId  = 0x1111,
-        .deviceId  = 0x1234,
+        .vendorId  = 0x1234,
+        .deviceId  = 0x1111,
     },
     .ftable = {
         .driver_cleanup_callback = cleanup,

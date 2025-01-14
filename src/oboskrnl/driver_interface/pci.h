@@ -36,7 +36,7 @@ typedef union pci_hid
         uint8_t classCode;
         uint8_t subClass;
         uint8_t progIf;
-        uint8_t revId;
+        uint8_t resv;
         uint16_t vendorId;
         uint16_t deviceId;
     } OBOS_PACK indiv;

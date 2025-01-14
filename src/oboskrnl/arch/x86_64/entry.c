@@ -303,7 +303,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
-		// OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+		OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
