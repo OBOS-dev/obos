@@ -989,6 +989,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
     rng->prot.present = true;
     rng->prot.rw = true;
     rng->prot.ro = false;
+    rng->prot.huge_page = false;
     rng->prot.executable = false;
     rng->prot.user = false;
     rng->pageable = !non_pageable;

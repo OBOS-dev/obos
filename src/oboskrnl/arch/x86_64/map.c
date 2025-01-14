@@ -163,7 +163,7 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0xfff || at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (obos_expect(!has_xd(), true))
+	if (obos_expect(has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
@@ -497,6 +497,7 @@ obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t p
 		flags |= BIT_TYPE(9, UL); /* Available bit */
 	if (page->prot.uc)
 		flags |= BIT_TYPE(4, UL);
+	// printf("%s %p->%p (%s page)\n", __func__, page->virt, phys, page->prot.huge_page ? "huge" : "normal");
 	return !page->prot.huge_page ? 
 		Arch_MapPage(pt, (void*)(page->virt & ~0xfff), phys, flags, free_pte) : 
 		Arch_MapHugePage(pt, (void*)(page->virt & ~0x1fffff), phys, flags, free_pte);

@@ -204,7 +204,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     do
     {
         page what = {.phys=curr.phys};
-        // printf("curr.phys: %p\n", curr.phys);
+        // printf("curr.phys: %p, curr.virt: %p\n", curr.phys, curr.virt);
         pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
         OBOS_ENSURE(pg != nullptr);
     } while(0);

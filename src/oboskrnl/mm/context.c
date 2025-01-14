@@ -108,12 +108,12 @@ page* MmH_PgAllocatePhysical(bool phys32, bool huge)
 
 page* MmH_AllocatePage(uintptr_t phys, bool huge)
 {
-	page* buf = Mm_Allocator->Allocate(Mm_Allocator, sizeof(page), nullptr);
+	page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
 		buf->flags |= PHYS_PAGE_HUGE_PAGE;
 	buf->pagedCount = 0;
-	buf->refcount = 1;
+	MmH_RefPage(buf);
 	RB_INSERT(phys_page_tree, &Mm_PhysicalPages, buf);
 	Mm_PhysicalMemoryUsage += (huge ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 	return buf;
