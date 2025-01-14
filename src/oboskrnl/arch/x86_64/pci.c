@@ -279,3 +279,35 @@ obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask)
     // handle is the GSI.
     return Arch_IOAPICMaskIRQ(handle & 0xffffffff, mask);
 }
+
+OBOS_EXPORT obos_status DrvS_WriteIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t val, uint8_t byte_width)
+{
+    if (!bar)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (bar->type != PCI_BARIO)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (byte_width)
+    {
+        case 1: outb(bar->iospace+offset, val&0xff); break;
+        case 2: outw(bar->iospace+offset, val&0xffff); break;
+        case 4: outd(bar->iospace+offset, val&0xffffffff); break;
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+OBOS_EXPORT obos_status DrvS_ReadIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t *val, uint8_t byte_width)
+{
+    if (!bar || !val)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (bar->type != PCI_BARIO)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (byte_width)
+    {
+        case 1: *val = inb(bar->iospace+offset); break;
+        case 2: *val = inw(bar->iospace+offset); break;
+        case 4: *val = ind(bar->iospace+offset); break;
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}

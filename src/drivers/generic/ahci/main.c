@@ -32,6 +32,7 @@
 
 #include "command.h"
 #include "ahci_irq.h"
+#include "mm/page.h"
 #include "structs.h"
 
 #include <uacpi/namespace.h>

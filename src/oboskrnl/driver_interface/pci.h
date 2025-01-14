@@ -156,6 +156,8 @@ typedef struct pci_irq_handle
 } pci_irq_handle;
 OBOS_WEAK bool DrvS_CheckIrqCallbackIrqPin(struct irq* i, void* userdata);
 #if OBOS_ARCHITECTURE_HAS_PCI
+OBOS_EXPORT obos_status DrvS_WriteIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t val, uint8_t byte_width);
+OBOS_EXPORT obos_status DrvS_ReadIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t *val, uint8_t byte_width);
 OBOS_EXPORT obos_status DrvS_EnumeratePCI(uint8_t bus, pci_iteration_decision(*cb)(void* udata, pci_device_location device), void *cb_udata);
 OBOS_EXPORT obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val);
 OBOS_EXPORT obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val);
@@ -170,7 +172,7 @@ obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
 #endif
 // Note: Overwrites irq->irqChecker as well as irq->irqCheckerUserdata.
 // It also overwrites the IRQ move callback.
-OBOS_EXPORT obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
+obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
 #else
 OBOS_WEAK obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata);
 OBOS_WEAK obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node);

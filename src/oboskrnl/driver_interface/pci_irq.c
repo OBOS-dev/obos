@@ -108,7 +108,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
                     OBOS_Debug("Found MSI capability at 0x%02x.\n", msi_offset);
                     break;
                 case 0x11:
-                    has_msix = true;
+                    // has_msix = true;
                     msix_offset = curr->offset;
                     handle->msi_capability = curr;
                     OBOS_Debug("Found MSI-X capability at 0x%02x.\n", msix_offset);
@@ -129,7 +129,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         {
             if (handle->un.msix_entry)
             {
-                has_msix = true;
+                // has_msix = true;
                 msix_offset = handle->msi_capability->offset;
             }
             else
