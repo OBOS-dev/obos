@@ -21,6 +21,8 @@
 #include <scheduler/sched_sys.h>
 #include <scheduler/process.h>
 
+#include <driver_interface/drv_sys.h>
+
 #include <power/shutdown.h>
 #include <power/suspend.h>
 
