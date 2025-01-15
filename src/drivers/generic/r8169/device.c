@@ -40,6 +40,85 @@ void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
     DrvS_WriteIOSpaceBar(dev->bar->bar, IntrStatus, isr, 2);
     DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
     OBOS_Debug("int status register after clear: %04x\n", isr);
+    uint32_t tmp = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, MissedPacketCount, &tmp, 4);
+    OBOS_Debug("MPC: %08x\n", tmp);
+}
+
+static void write_reg64(r8169_device* dev, uint8_t off, uint64_t val)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, off+4, val>>32, 4);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, off, val&0xffffffff, 4);
+}
+
+static void write_or_register(r8169_device* dev, uint8_t off, uint32_t mask, uint8_t size)
+{
+    uint32_t tmp = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, off, &tmp, size);
+    tmp |= mask;
+    DrvS_WriteIOSpaceBar(dev->bar->bar, off, tmp, size);
+}
+static void write_and_register(r8169_device* dev, uint8_t off, uint32_t mask, uint8_t size)
+{
+    uint32_t tmp = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, off, &tmp, size);
+    tmp &= mask;
+    DrvS_WriteIOSpaceBar(dev->bar->bar, off, tmp, size);
+}
+void r8169_read_mac(r8169_device* dev)
+{
+    memzero(&dev->mac_readable, sizeof(dev->mac_readable));
+
+    uint32_t tmp = 0;
+    for (uint8_t i = 0; i < 6; i++)
+    {
+        DrvS_ReadIOSpaceBar(dev->bar->bar, MAC0+i, &tmp, 1);
+        dev->mac[i] = tmp & 0xff;
+    }
+
+    snprintf(dev->mac_readable, 19, "%02x:%02x:%02x:%02x:%02x:%02x", dev->mac[0], dev->mac[1], dev->mac[2], dev->mac[3], dev->mac[4], dev->mac[5]);
+    OBOS_Debug("RTL8169: %02x:%02x:%02x: MAC Address is %s\n",
+               dev->dev->location.bus,dev->dev->location.slot,dev->dev->location.function,
+               dev->mac_readable
+    );
+}
+
+void r8169_hw_reset(r8169_device* dev)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, BIT(4) /* Reset */, 1);
+    uint32_t tmp = 0;
+    do {
+        DrvS_ReadIOSpaceBar(dev->bar->bar, ChipCmd, &tmp, 1);
+    } while(tmp & BIT(4));
+}
+
+void r8169_init_rxcfg(r8169_device *dev)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, RxConfig, 0xe700, 4);
+}
+
+void r8169_set_rxcfg_mode(r8169_device *dev)
+{
+    uint64_t mc_filter = 0xffffffffffffffff;
+    write_reg64(dev, MAR0, mc_filter);
+    // AcceptBroadcast | AcceptMyPhys | AcceptMulticast
+    write_or_register(dev, RxConfig, 0b1110, 4);
+}
+
+void r8169_set_txcfg(r8169_device *dev)
+{
+    // TODO: Auto FIFO enable?
+    DrvS_WriteIOSpaceBar(dev->bar->bar, TxConfig, 0x0700|0x3000000, 4);
+}
+
+void r8169_lock_config(r8169_device* dev)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, Cfg9346, Cfg9346_Lock, 1);
+}
+
+void r8169_unlock_config(r8169_device* dev)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, Cfg9346, Cfg9346_Unlock, 1);
 }
 
 void r8169_reset(r8169_device* dev)
@@ -56,66 +135,44 @@ void r8169_reset(r8169_device* dev)
         dev->irq_res->irq->irq->handlerUserdata = dev;
     }
 
-    dev->dev->resource_cmd_register->cmd_register |= 5; // io space + bus master
+    dev->dev->resource_cmd_register->cmd_register |= 0x3; // io space + memspace
     Drv_PCISetResource(dev->dev->resource_cmd_register);
-
-    memzero(&dev->mac_readable, sizeof(dev->mac_readable));
-
-    // Send Reset.
-    DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, 0x10, 1);
-    uint32_t val = 0;
-    do {
-        DrvS_ReadIOSpaceBar(dev->bar->bar, ChipCmd, &val, 1);
-    } while(val & 0x10);
-
-    for (uint8_t i = 0; i < 6; i++)
-    {
-        DrvS_ReadIOSpaceBar(dev->bar->bar, MAC0+i, &val, 1);
-        dev->mac[i] = val & 0xff;
-    }
-
-    snprintf(dev->mac_readable, 19, "%02x:%02x:%02x:%02x:%02x:%02x", dev->mac[0], dev->mac[1], dev->mac[2], dev->mac[3], dev->mac[4], dev->mac[5]);
-    OBOS_Debug("RTL8169: %02x:%02x:%02x: MAC Address is %s\n",
-        dev->dev->location.bus,dev->dev->location.slot,dev->dev->location.function,
-        dev->mac_readable
-    );
 
     r8169_alloc_set(dev, Rx_Set);
     r8169_alloc_set(dev, Tx_Set);
-    r8169_alloc_set(dev, TxH_Set);
 
-    // Unlock registers.
-    DrvS_WriteIOSpaceBar(dev->bar->bar, Cfg9346, 0xC0, 1);
+    r8169_init_rxcfg(dev);
 
-    // Configure RxConfig
-    DrvS_WriteIOSpaceBar(dev->bar->bar, RxConfig, 0xe70f, 4);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrStatus, 0xffffffff, 2);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrMask, 0x0, 2);
 
-    // Configure TxConfig
-    DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, 0x4, 1);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, TxConfig, 0x3000700, 4);
+    r8169_hw_reset(dev);
+    r8169_read_mac(dev);
 
-    // Configure packet sizes.
-    DrvS_WriteIOSpaceBar(dev->bar->bar, RxMaxSize, RX_PACKET_SIZE, 2);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, MaxTxPacketSize, TX_PACKET_SIZE, 1);
+    r8169_unlock_config(dev);
 
-    // Write the addresses of all sets to the NIC.
+    DrvS_WriteIOSpaceBar(dev->bar->bar, MaxTxPacketSize, TX_PACKET_SIZE, 2);
 
-    DrvS_WriteIOSpaceBar(dev->bar->bar, RxDescAddrLow, dev->sets_phys[Rx_Set]&0xffffffff, 4);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, RxDescAddrHigh, dev->sets_phys[Rx_Set]>>32, 4);
+    write_or_register(dev, CPlusCmd, BIT(3) /*PCIMulRW*/, 2);
 
-    DrvS_WriteIOSpaceBar(dev->bar->bar, TxDescStartAddrLow, dev->sets_phys[Tx_Set]&0xffffffff, 4);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, TxDescStartAddrHigh, dev->sets_phys[Tx_Set]>>32, 4);
+    // Linux sets a "magic register" here
+    // TODO: Should we do that too?
 
-    DrvS_WriteIOSpaceBar(dev->bar->bar, TxHDescStartAddrLow, dev->sets_phys[TxH_Set]&0xffffffff, 4);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, TxHDescStartAddrHigh, dev->sets_phys[TxH_Set]>>32, 4);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrMitigate, 0x0, 2);
 
-    // Enable Tx/Rx.
+    DrvS_WriteIOSpaceBar(dev->bar->bar, RxMaxSize, RX_PACKET_SIZE, 4);
+
+    write_reg64(dev, RxDescAddrLow, dev->sets_phys[Rx_Set]);
+    write_reg64(dev, TxDescStartAddrLow, dev->sets_phys[Tx_Set]);
+
+    r8169_lock_config(dev);
+
     DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, 0xC, 1);
-    // Enable all IRQs
-    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrMask, 0xffffffff, 1);
-
-    // Lock registers
-    DrvS_WriteIOSpaceBar(dev->bar->bar, Cfg9346, 0x0, 1);
+    r8169_init_rxcfg(dev);
+    r8169_set_txcfg(dev);
+    r8169_set_rxcfg_mode(dev);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrMask, ENABLED_IRQS, 2);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, TimerInt, 0, 2);
 }
 
 static void* map_registers(uintptr_t phys, size_t size, bool uc)
@@ -178,6 +235,7 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     // TODO: Do any platforms require this to be mapped as UC?
     dev->sets[set] = map_registers(phys, nPages*OBOS_PAGE_SIZE, false);
     dev->sets_phys[set] = phys;
+    OBOS_Debug("set %d = %p\n", set, phys);
 
     phys = 0;
 
@@ -185,7 +243,7 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     {
         dev->sets[set][i].vlan = 0; // reserved probably, so we zero it.
 
-        dev->sets[set][i].command = (RX_PACKET_SIZE&0x3fff);
+        dev->sets[set][i].command = (RX_PACKET_SIZE&0x3fff) & ~0x7;
         dev->sets[set][i].command |= NIC_OWN;
 
         nPages = RX_PACKET_SIZE;

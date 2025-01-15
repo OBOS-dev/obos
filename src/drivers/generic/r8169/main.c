@@ -15,6 +15,7 @@
 
 #include <allocators/base.h>
 
+#include "scheduler/schedule.h"
 #include "structs.h"
 
 OBOS_WEAK void on_wake();
@@ -138,6 +139,11 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     // Reset the devices.
     for (size_t i = 0; i < nDevices; i++)
         r8169_reset(Devices+i);
+
+    // For testing purposes.
+    // Remove when done testing the NIC driver.
+    Core_SuspendScheduler(true);
+    Core_WaitForSchedulerSuspend();
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS};
 }

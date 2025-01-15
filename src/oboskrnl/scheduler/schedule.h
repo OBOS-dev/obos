@@ -34,11 +34,11 @@ OBOS_EXPORT void Core_Yield();
 /// of all CPUs' threads before suspending the system.
 /// </summary>
 /// <param name="suspended">Whether to suspend (true) or unsuspend (false) the scheduler..</param>
-void Core_SuspendScheduler(bool suspended);
+OBOS_EXPORT void Core_SuspendScheduler(bool suspended);
 /// <summary>
 /// Waits for all CPUs (but the current CPU) to suspend their scheduler,
 /// </summary>
-void Core_WaitForSchedulerSuspend();
+OBOS_EXPORT void Core_WaitForSchedulerSuspend();
 
 extern OBOS_EXPORT size_t Core_ReadyThreadCount;
 extern struct irq* Core_SchedulerIRQ;

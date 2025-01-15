@@ -176,8 +176,14 @@ typedef struct driver_ftable
     // Can only be nullptr for the InitRD driver.
     // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
     bool(*probe)(void* vn);
+
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
+    // --------- START NET FUNCTIONS ---------
+
+    obos_status(*net_open_mac)(dev_desc nic, uint8_t(*mac)[6]);
+
+    // ----------- END NET FUNCTIONS ----------
 } driver_ftable;
 
 #define CURRENT_DRIVER_HEADER_VERSION (1)
