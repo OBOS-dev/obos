@@ -16,34 +16,15 @@
 #include <mm/page.h>
 #include <mm/alloc.h>
 
+#include <irq/dpc.h>
+#include <irq/irq.h>
+
+#include <locks/pushlock.h>
+#include <locks/event.h>
+
+#include <utils/list.h>
+
 #include "structs.h"
-
-bool r8169_irq_checker(struct irq* i, void* userdata)
-{
-    OBOS_UNUSED(i);
-    r8169_device* dev = userdata;
-    uint32_t isr = 0;
-    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
-    OBOS_Debug("hmmm isr=0x%04x\n", isr);
-    return isr != 0;
-}
-
-void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
-{
-    OBOS_UNUSED(i);
-    OBOS_UNUSED(frame);
-    OBOS_UNUSED(oldIrql);
-    r8169_device* dev = userdata;
-    uint32_t isr = 0;
-    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
-    OBOS_Debug("got r8169 irq. int status register: %04x\n", isr);
-    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrStatus, isr, 2);
-    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
-    OBOS_Debug("int status register after clear: %04x\n", isr);
-    uint32_t tmp = 0;
-    DrvS_ReadIOSpaceBar(dev->bar->bar, MissedPacketCount, &tmp, 4);
-    OBOS_Debug("MPC: %08x\n", tmp);
-}
 
 static void write_reg64(r8169_device* dev, uint8_t off, uint64_t val)
 {
@@ -65,6 +46,97 @@ static void write_and_register(r8169_device* dev, uint8_t off, uint32_t mask, ui
     tmp &= mask;
     DrvS_WriteIOSpaceBar(dev->bar->bar, off, tmp, size);
 }
+
+static void dpc_handler(dpc* obj, void* userdata);
+static void* map_registers(uintptr_t phys, size_t size, bool uc);
+
+bool r8169_irq_checker(struct irq* i, void* userdata)
+{
+    OBOS_UNUSED(i);
+    r8169_device* dev = userdata;
+    uint32_t isr = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
+    return isr != 0;
+}
+
+void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
+{
+    OBOS_UNUSED(i);
+    OBOS_UNUSED(frame);
+    OBOS_UNUSED(oldIrql);
+
+    r8169_device* dev = userdata;
+    uint32_t isr = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
+    dev->isr = isr;
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrStatus, isr, 2);
+    DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
+
+    CoreH_InitializeDPC(&dev->dpc, dpc_handler, Core_DefaultThreadAffinity);
+}
+
+void r8169_rx(r8169_device* dev)
+{
+    Core_PushlockAcquire(&dev->rx_buffer_lock, false);
+    for (size_t i = 0; i < DESCS_IN_SET; i++, dev->rx_count++)
+    {
+        r8169_descriptor* desc = &dev->sets[Rx_Set][i];
+        if (desc->command & NIC_OWN)
+            continue;
+
+        if (desc->command & RES_ERR)
+        {
+            // Uh oh
+            dev->rx_errors++;
+            if (desc->command & CRC_ERR)
+                dev->rx_crc_errors++;
+            if (desc->command & (RUNT_ERR|RWT_ERR))
+                dev->rx_length_errors++;
+            goto done;
+        }
+
+        // TODO: Support fragmented packets.
+        if ((desc->command & (LS|FS)) != (LS|FS))
+        {
+            dev->rx_dropped++;
+            dev->rx_length_errors++;
+            goto done;
+        }
+
+        // See linux/v6.13-rc3/source/drivers/net/ethernet/realtek/r8169_main.c:4620
+        // for info on why we do this.
+        size_t packet_len = (desc->command & PACKET_LEN_MASK) - 4;
+
+        r8169_frame frame = {};
+        void* buff = map_registers(desc->buf, packet_len, false);
+        r8169_frame_generate(dev, &frame, buff, packet_len);
+        r8169_buffer_add_frame(&dev->rx_buffer, &frame);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, buff, packet_len);
+        OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width);
+
+        dev->rx_bytes += packet_len;
+        Core_EventPulse(&dev->rx_buffer.envt, false);
+
+        done:
+        r8169_release_desc(desc);
+    }
+    Core_PushlockRelease(&dev->rx_buffer_lock, false);
+}
+
+static void dpc_handler(dpc* obj, void* userdata)
+{
+    OBOS_UNUSED(obj);
+
+    r8169_device* dev = userdata;
+    r8169_rx(dev);
+    // r8169_tx(dev);
+}
+
+void r8169_set_irq_mask(r8169_device* dev, uint16_t mask)
+{
+    DrvS_WriteIOSpaceBar(dev->bar->bar, IntrMask, mask, 2);
+}
+
 void r8169_read_mac(r8169_device* dev)
 {
     memzero(&dev->mac_readable, sizeof(dev->mac_readable));
@@ -125,6 +197,8 @@ void r8169_reset(r8169_device* dev)
 {
     if (!dev->suspended)
     {
+        // This is a clean reinit, so we must initialize the IRQ object and DPC.
+
         Core_IrqObjectInitializeIRQL(&dev->irq, IRQL_R8169, true, true);
         dev->irq_res->irq->irq = &dev->irq;
         dev->irq_res->irq->masked = false;
@@ -133,6 +207,11 @@ void r8169_reset(r8169_device* dev)
         dev->irq_res->irq->irq->handler = r8169_irq_handler;
         dev->irq_res->irq->irq->irqCheckerUserdata = dev;
         dev->irq_res->irq->irq->handlerUserdata = dev;
+
+        dev->dpc.userdata = dev;
+
+        dev->rx_buffer.envt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+        dev->rx_buffer_lock = PUSHLOCK_INITIALIZE();
     }
 
     dev->dev->resource_cmd_register->cmd_register |= 0x3; // io space + memspace
@@ -235,7 +314,6 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     // TODO: Do any platforms require this to be mapped as UC?
     dev->sets[set] = map_registers(phys, nPages*OBOS_PAGE_SIZE, false);
     dev->sets_phys[set] = phys;
-    OBOS_Debug("set %d = %p\n", set, phys);
 
     phys = 0;
 
@@ -243,8 +321,7 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     {
         dev->sets[set][i].vlan = 0; // reserved probably, so we zero it.
 
-        dev->sets[set][i].command = (RX_PACKET_SIZE&0x3fff) & ~0x7;
-        dev->sets[set][i].command |= NIC_OWN;
+        dev->sets[set][i].command = (RX_PACKET_SIZE & PACKET_LEN_MASK) & ~0x7;
 
         nPages = RX_PACKET_SIZE;
         if (nPages % OBOS_PAGE_SIZE)
@@ -252,10 +329,69 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
         nPages /= OBOS_PAGE_SIZE;
 
         phys = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
-        dev->sets[set][i].buf_low = phys & 0xffffffff;
-#if UINTPTR_MAX == UINT64_MAX
-        dev->sets[set][i].buf_high = phys >> 32;
-#endif
+        dev->sets[set][i].buf = phys;
+
+        r8169_release_desc(&dev->sets[set][i]);
     }
     dev->sets[set][DESCS_IN_SET - 1].command |= EOR;
+}
+
+void r8169_release_desc(r8169_descriptor* desc)
+{
+    desc->command |= NIC_OWN;
+}
+
+LIST_GENERATE(r8169_frame_list, r8169_frame, node);
+
+void r8169_frame_generate(r8169_device* dev, r8169_frame* frame, void* data, size_t sz)
+{
+    if (!dev->refcount)
+    {
+        dev->rx_dropped++;
+        return;
+    }
+    frame->buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+    memcpy(frame->buf, data, sz);
+    frame->sz = sz;
+    frame->idx = dev->rx_count;
+    frame->refcount = dev->refcount;
+}
+
+void r8169_buffer_add_frame(r8169_buffer* buff, r8169_frame* frame)
+{
+    if (!frame->buf)
+        return;
+    r8169_frame* new_frame = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*frame), nullptr);
+    *new_frame = *frame;
+    LIST_APPEND(r8169_frame_list, &buff->frames, new_frame);
+}
+
+void r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame)
+{
+    if (!(--frame->refcount))
+    {
+        LIST_REMOVE(r8169_frame_list, &buff->frames, frame);
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, frame->buf, frame->sz);
+        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, frame, sizeof(*frame));
+    }
+}
+
+void r8169_buffer_read_next_frame(r8169_buffer* buff, r8169_frame** frame)
+{
+    if (!(*frame))
+        *frame = LIST_GET_HEAD(r8169_frame_list, &buff->frames);
+    else
+        *frame = LIST_GET_NEXT(r8169_frame_list, &buff->frames, *frame);
+
+}
+
+void r8169_buffer_poll(r8169_buffer* buff)
+{
+    while (!buff->envt.signaled)
+        OBOSS_SpinlockHint();
+}
+
+void r8169_buffer_block(r8169_buffer* buff)
+{
+    Core_WaitOnObject(WAITABLE_OBJECT(buff->envt));
 }

@@ -128,6 +128,8 @@ static void search_bus(pci_bus* bus)
     }
 }
 
+OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width);
+
 OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
@@ -140,10 +142,63 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     for (size_t i = 0; i < nDevices; i++)
         r8169_reset(Devices+i);
 
-    // For testing purposes.
-    // Remove when done testing the NIC driver.
+    Devices[0].refcount++;
+    r8169_buffer_block(&Devices[0].rx_buffer);
+    Core_PushlockAcquire(&Devices[0].rx_buffer_lock, true);
+    r8169_frame* frame = nullptr;
+    r8169_buffer_read_next_frame(&Devices[0].rx_buffer, &frame);
+    hexdump(frame->buf, frame->sz, 15);
+
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS};
+}
+
+// hexdump clone lol
+OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
+{
+	bool printCh = false;
+	uint8_t* buff = (uint8_t*)_buff;
+	printf("         Address: ");
+	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
+		printf("%02x ", i);
+	printf("\n%016lx: ", buff);
+	for (size_t i = 0, chI = 0; i < nBytes; i++, chI++)
+	{
+		if (printCh)
+		{
+			char ch = buff[i];
+			switch (ch)
+			{
+			case '\n':
+			case '\t':
+			case '\r':
+			case '\b':
+			case '\a':
+			case '\0':
+			{
+				ch = '.';
+				break;
+			}
+			default:
+				break;
+			}
+			printf("%c", ch);
+		}
+		else
+			printf("%02x ", buff[i]);
+		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
+		{
+			chI = 0;
+			if (!printCh)
+				i -= (width + 1);
+			else
+				printf(" |\n%016lx: ", &buff[i + 1]);
+			printCh = !printCh;
+			if (printCh)
+				printf("\t| ");
+		}
+	}
+	printf("\n");
 }
