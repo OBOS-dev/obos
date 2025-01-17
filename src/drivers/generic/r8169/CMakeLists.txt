@@ -1,6 +1,6 @@
 # drivers/generic/r8169/CMakeLists.txt
 #
-# Copyright (c) 2024 Omar Berrow
+# Copyright (c) 2025 Omar Berrow
 
 add_executable(r8169 "main.c" "device.c")
 
