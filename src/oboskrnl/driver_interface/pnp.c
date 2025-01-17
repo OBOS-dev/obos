@@ -431,7 +431,7 @@ obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *to
 struct driver_file
 {
     driver_header* hdr;
-    thread* main;
+    driver_id* id;
     void* base;
     fd* file;
 };
@@ -450,9 +450,9 @@ static uint64_t driver_file_hash(const void *item, uint64_t seed0, uint64_t seed
 static void driver_file_free(void* ele)
 {
     struct driver_file* drv = ele;
-    if (drv->main)
-        if (!(--drv->main->references) && drv->main->free)
-            drv->main->free(drv->main);
+    // if (drv->main)
+    //     if (!(--drv->main->references) && drv->main->free)
+    //         drv->main->free(drv->main);
     Vfs_FdSeek(drv->file, 0, SEEK_END);
     size_t filesize = Vfs_FdTellOff(drv->file);
     Vfs_FdSeek(drv->file, 0, SEEK_SET);
@@ -549,7 +549,8 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
                 OBOS_Warning("Could not load '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 continue;
             }
-            loadStatus = Drv_StartDriver(drv, &file->main);
+            file->id = drv;
+            loadStatus = Drv_StartDriver(drv, nullptr);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
             {
                 OBOS_Warning("Could not start '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
@@ -570,13 +571,11 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
                     if (!item)
                         continue; // fnuy
                     struct driver_file* file = item;
-                    if (!file->main)
+                    if (!file->id)
                         continue;
-                    if (!(file->main->flags & THREAD_FLAGS_DIED))
-                    {
-                        done = false;
-                        break;
-                    }
+                    if (!file->id->main_thread)
+                        continue;
+                    done = false;
                 }
                 if (done)
                     break;

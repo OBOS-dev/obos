@@ -179,11 +179,6 @@ typedef struct driver_ftable
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
-    // --------- START NET FUNCTIONS ---------
-
-    obos_status(*net_open_mac)(dev_desc nic, uint8_t(*mac)[6]);
-
-    // ----------- END NET FUNCTIONS ----------
 } driver_ftable;
 
 #define CURRENT_DRIVER_HEADER_VERSION (1)
