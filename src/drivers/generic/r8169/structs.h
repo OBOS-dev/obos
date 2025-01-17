@@ -122,9 +122,15 @@ typedef struct r8169_device
     size_t tx_dropped;
     // Total number of bytes transmitted.
     size_t tx_bytes;
+    // Total number of bytes waiting to be transferred.
+    size_t tx_awaiting_transfer;
+    // Total number of bytes from high priority packets waiting to be transferred.
+    size_t tx_high_priority_awaiting_transfer;
     // Frames to transmit.
     r8169_buffer tx_buffer;
     pushlock tx_buffer_lock;
+
+    uint16_t saved_phy_state[0x20];
 } r8169_device;
 
 enum {
@@ -145,6 +151,7 @@ enum {
     MissedPacketCount = 0x4c,
     Cfg9346 = 0x50,
     TimerInt = 0x58,
+    PhyAr = 0x60, // dword
     RxMaxSize = 0xda,
     CPlusCmd = 0xe0,
     IntrMitigate = 0xe2,
@@ -220,6 +227,8 @@ enum {
 #define ENABLED_IRQS RxOk|RxErr|TxOk|TxErr|LinkStatus|RxOverflow
 
 void r8169_reset(r8169_device* dev);
+void r8169_save_phy(r8169_device* dev);
+void r8169_resume_phy(r8169_device* dev);
 void r8169_read_mac(r8169_device* dev);
 void r8169_hw_reset(r8169_device* dev);
 void r8169_init_rxcfg(r8169_device *dev);
@@ -244,4 +253,4 @@ obos_status r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame);
 obos_status r8169_buffer_read_next_frame(r8169_buffer* buff, r8169_frame** frame);
 obos_status r8169_buffer_poll(r8169_buffer* buff);
 obos_status r8169_buffer_block(r8169_buffer* buff);
-obos_status r8169_queue_transmition(r8169_device* dev, bool wait);
+obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait);

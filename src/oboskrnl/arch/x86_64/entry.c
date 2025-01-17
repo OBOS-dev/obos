@@ -873,6 +873,12 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 
+	fd nic = {};
+	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
+	Vfs_FdWrite(&nic, "test1", 5, 0);
+	Vfs_FdWrite(&nic, "test1", 5, 0);
+	// OBOS_Suspend();
+
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
 
@@ -894,8 +900,7 @@ void Arch_KernelMainBootstrap()
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
 
-    //OBOS_Suspend();
-	OBOS_LoadInit();
+	// OBOS_LoadInit();
 
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 

@@ -28,6 +28,8 @@
 
 #include <utils/list.h>
 
+#include <power/shutdown.h>
+
 #include "structs.h"
 
 static void write_reg64(r8169_device* dev, uint8_t off, uint64_t val)
@@ -129,25 +131,35 @@ void r8169_rx(r8169_device* dev)
 
 static void tx_set(r8169_device* dev, uint8_t set)
 {
+    if (!dev->sets[set])
+        return;
+    Core_PushlockAcquire(&dev->tx_buffer_lock, true);
     for (size_t i = 0; i < DESCS_IN_SET; i++, dev->rx_count++)
     {
         r8169_descriptor* desc = &dev->sets[set][i];
         if (desc->command & NIC_OWN)
             continue;
 
-        // NOTE(oberrow): This is technically invalid, but I doubt the NIC touches this member.
-        size_t packet_len = desc->command & TX_PACKET_LEN_MASK;
-        if (packet_len)
-        {
-            Mm_FreePhysicalPages(desc->buf, packet_len);
-            dev->tx_bytes += packet_len;
-        }
-        else
-            OBOS_Warning("r8169: While finalizing transmission: Packet length was cleared in a descriptor, this is not an NIC bug, but instead an obos bug. Report it\n"); // Unimplemented.
+        Mm_FreePhysicalPages(desc->buf, TX_PACKET_SIZE*128);
+
         Core_EventPulse(&dev->tx_buffer.envt, false);
 
         r8169_release_desc(dev, desc, set);
     }
+    uint32_t tx_poll = 0;
+    DrvS_ReadIOSpaceBar(dev->bar->bar, TxPoll, &tx_poll, 1);
+    if (set == TxH_Set && ~tx_poll & BIT(7))
+    {
+        dev->tx_count += dev->tx_high_priority_awaiting_transfer;
+        dev->tx_high_priority_awaiting_transfer = 0;
+    }
+    if (set == Tx_Set && ~tx_poll & BIT(6))
+    {
+        dev->tx_count += dev->tx_awaiting_transfer;
+        dev->tx_awaiting_transfer = 0;
+    }
+    OBOS_Debug("tx_count %d, tx_poll 0x%08x\n", dev->tx_count, tx_poll);
+    Core_PushlockRelease(&dev->tx_buffer_lock, true);
 }
 void r8169_tx(r8169_device* dev)
 {
@@ -225,6 +237,43 @@ void r8169_unlock_config(r8169_device* dev)
     DrvS_WriteIOSpaceBar(dev->bar->bar, Cfg9346, Cfg9346_Unlock, 1);
 }
 
+static uint16_t read_phy(r8169_device* dev, uint8_t offset)
+{
+    offset &= ~0x1f;
+    uint32_t phyar_value = BIT(31);
+    phyar_value |= (offset<<16);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, PhyAr, phyar_value, 4);
+    do {
+        DrvS_ReadIOSpaceBar(dev->bar->bar, PhyAr, &phyar_value, 4);
+    } while(phyar_value & BIT(31));
+    printf("%08x", phyar_value);
+    return phyar_value & 0xffff;
+}
+
+static void write_phy(r8169_device* dev, uint8_t offset, uint16_t data)
+{
+    offset &= ~0x1f;
+    uint32_t phyar_value = 0;
+    phyar_value |= (offset<<16);
+    phyar_value |= (data&0xffff);
+    DrvS_WriteIOSpaceBar(dev->bar->bar, PhyAr, phyar_value, 4);
+    do {
+        DrvS_ReadIOSpaceBar(dev->bar->bar, PhyAr, &phyar_value, 4);
+    } while(~phyar_value & BIT(31));
+}
+
+void r8169_save_phy(r8169_device* dev)
+{
+    for (uint8_t offset = 0; offset < 0x20; offset++)
+        dev->saved_phy_state[offset] = read_phy(dev, offset);
+}
+
+void r8169_resume_phy(r8169_device* dev)
+{
+    for (uint8_t offset = 0; offset < 0x20; offset++)
+        write_phy(dev, offset, dev->saved_phy_state[offset]);
+}
+
 void r8169_reset(r8169_device* dev)
 {
     if (!dev->suspended)
@@ -256,13 +305,14 @@ void r8169_reset(r8169_device* dev)
         dev->interface_name = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, len+1, nullptr);
         snprintf(dev->interface_name, len+1, "r8169-eth%d", dev->idx);
         dev->interface_name[len] = 0;
+
+        dev->dev->resource_cmd_register->cmd_register |= 0x3; // io space + memspace
+        Drv_PCISetResource(dev->dev->resource_cmd_register);
+
+        r8169_alloc_set(dev, Rx_Set);
+        r8169_alloc_set(dev, Tx_Set);
+
     }
-
-    dev->dev->resource_cmd_register->cmd_register |= 0x3; // io space + memspace
-    Drv_PCISetResource(dev->dev->resource_cmd_register);
-
-    r8169_alloc_set(dev, Rx_Set);
-    r8169_alloc_set(dev, Tx_Set);
 
     r8169_init_rxcfg(dev);
 
@@ -366,15 +416,18 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     {
         dev->sets[set][i].vlan = 0; // reserved probably, so we zero it.
 
-        dev->sets[set][i].command = (RX_PACKET_SIZE & PACKET_LEN_MASK) & ~0x7;
+        if (set == Rx_Set)
+        {
+            dev->sets[set][i].command = (RX_PACKET_SIZE & PACKET_LEN_MASK) & ~0x7;
 
-        nPages = RX_PACKET_SIZE;
-        if (nPages % OBOS_PAGE_SIZE)
-            nPages += (OBOS_PAGE_SIZE-(nPages%OBOS_PAGE_SIZE));
-        nPages /= OBOS_PAGE_SIZE;
+            nPages = RX_PACKET_SIZE;
+            if (nPages % OBOS_PAGE_SIZE)
+                nPages += (OBOS_PAGE_SIZE-(nPages%OBOS_PAGE_SIZE));
+            nPages /= OBOS_PAGE_SIZE;
 
-        phys = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
-        dev->sets[set][i].buf = phys;
+            phys = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
+            dev->sets[set][i].buf = phys;
+        }
 
         r8169_release_desc(dev, &dev->sets[set][i], set);
     }
@@ -410,7 +463,7 @@ r8169_descriptor* r8169_alloc_desc(r8169_device* dev, uint8_t set)
     return desc;
 }
 
-obos_status r8169_queue_transmition(r8169_device* dev, bool wait)
+obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     if (wait)
@@ -451,18 +504,26 @@ obos_status r8169_queue_transmition(r8169_device* dev, bool wait)
         desc->command |= LS;
         // This does not free the physical memory.
         // That is done in r8169_tx
-        Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, tx_frame->sz);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))));
 
         if (tx_frame->tx_priority_high)
+        {
             tx_poll |= BIT(7); // High priority frame.
+            dev->tx_high_priority_awaiting_transfer += tx_frame->sz;
+        }
         else
-            tx_poll |= BIT(6); // High priority frame.
+        {
+            tx_poll |= BIT(6); // Normal priority frame.
+            dev->tx_awaiting_transfer += tx_frame->sz;
+        }
+
+        r8169_buffer_remove_frame(&dev->tx_buffer, tx_frame);
 
         tx_frame = next;
     }
     DrvS_WriteIOSpaceBar(dev->bar->bar, TxPoll, tx_poll, 1);
     if (did_tx)
-        DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, TX_ENABLE, 1);
+        DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, TX_ENABLE|RX_ENABLE, 1);
 
 
     Core_PushlockRelease(&dev->tx_buffer_lock, false);
@@ -495,6 +556,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 dev->rx_dropped++;
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
+            frame->refcount = dev->refcount;
             break;
         }
         case FRAME_PURPOSE_TX:
@@ -504,6 +566,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 dev->tx_dropped++;
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
+            frame->refcount = 1;
             break;
         }
         default:
@@ -512,11 +575,10 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
     if (purpose == FRAME_PURPOSE_RX)
         frame->buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
     else
-        frame->buf = map_registers(Mm_AllocatePhysicalPages((sz + (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE))) / OBOS_PAGE_SIZE, 1, nullptr), (sz + (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE))), false, true);
+        frame->buf = map_registers(Mm_AllocatePhysicalPages(((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))) / OBOS_PAGE_SIZE, 1, nullptr), ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))), false, true);
     memcpy(frame->buf, data, sz);
     frame->sz = sz;
     frame->idx = dev->rx_count;
-    frame->refcount = dev->refcount;
     frame->purpose = purpose;
     return OBOS_STATUS_SUCCESS;
 }
@@ -536,7 +598,8 @@ obos_status r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame)
     if (!(--frame->refcount))
     {
         LIST_REMOVE(r8169_frame_list, &buff->frames, frame);
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, frame->buf, frame->sz);
+        if (frame->purpose == FRAME_PURPOSE_RX)
+            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, frame->buf, frame->sz);
         OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, frame, sizeof(*frame));
     }
     return OBOS_STATUS_SUCCESS;

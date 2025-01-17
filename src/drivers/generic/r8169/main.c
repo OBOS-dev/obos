@@ -26,8 +26,24 @@ r8169_device* Devices;
 size_t nDevices;
 driver_id* this_driver;
 
-OBOS_WEAK void on_wake();
-OBOS_WEAK void on_suspend();
+void on_wake()
+{
+    for (size_t i = 0; i < nDevices; i++)
+    {
+        r8169_reset(&Devices[i]);
+        r8169_resume_phy(&Devices[i]);
+        Devices[i].suspended = false;
+    }
+}
+
+void on_suspend()
+{
+    for (size_t i = 0; i < nDevices; i++)
+    {
+        r8169_save_phy(&Devices[i]);
+        Devices[i].suspended = true;
+    }
+}
 
 obos_status get_blk_size(dev_desc desc, size_t* blkSize)
 {
@@ -63,7 +79,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     r8169_frame frame = {};
     r8169_frame_generate(dev, &frame, buf, blkCount, FRAME_PURPOSE_TX);
     r8169_buffer_add_frame(&dev->tx_buffer, &frame);
-    r8169_queue_transmition(dev, true);
+    r8169_tx_queue_flush(dev, true);
 
     Core_PushlockRelease(&dev->tx_buffer_lock, true);
 
