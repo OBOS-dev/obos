@@ -11,3 +11,6 @@
 /qemu_log.txt
 /tar
 /src/oboskrnl/inc/*
+/.cache
+/.clangd
+/config/initrd.tar

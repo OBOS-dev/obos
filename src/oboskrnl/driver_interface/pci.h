@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/pci.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once

@@ -1,7 +1,7 @@
 /*
  * oboskrnl/power/shutdown.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -19,7 +19,8 @@
 
 OBOS_NORETURN void OBOS_Shutdown()
 {
-    (void)Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    OBOS_UNUSED(oldIrql);
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
     OBOS_Log("oboskrnl: Shutdown requested.\n");

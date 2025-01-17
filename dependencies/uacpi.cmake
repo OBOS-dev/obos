@@ -1,6 +1,6 @@
 # dependencies/uacpi.cmake
 
-# Copyright (c) 2024 Omar Berrow
+# Copyright (c) 2024-2025 Omar Berrow
 
 if (OBOS_REFRESH_DEPENDENCIES)
 	include(FetchContent)

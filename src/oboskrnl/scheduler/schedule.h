@@ -1,7 +1,7 @@
 /*
-	oboskrnl/scheduler/schedule.h
-
-	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/scheduler/schedule.h
+ *
+ * Copyright (c) 2025 Omar Berrow
 */
 
 #pragma once
