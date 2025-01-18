@@ -45,6 +45,7 @@ typedef enum phys_page_flags
     PHYS_PAGE_STANDBY = BIT(0),
     PHYS_PAGE_DIRTY = BIT(1),
     PHYS_PAGE_HUGE_PAGE = BIT(2),
+    PHYS_PAGE_MMIO = BIT(3),
 } phys_page_flags;
 
 typedef RB_HEAD(phys_page_tree, page) phys_page_tree;
@@ -103,12 +104,12 @@ inline static int phys_page_cmp(struct page* lhs, struct page* rhs)
 }
 
 // Adds a reference to the page.
-page* MmH_PgAllocatePhysical(bool phys32, bool huge);
-page* MmH_AllocatePage(uintptr_t phys, bool huge);
-void MmH_RefPage(page* buf);
-void MmH_DerefPage(page* buf);
-extern phys_page_tree Mm_PhysicalPages;
-extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
+OBOS_EXPORT page* MmH_PgAllocatePhysical(bool phys32, bool huge);
+OBOS_EXPORT page* MmH_AllocatePage(uintptr_t phys, bool huge);
+OBOS_EXPORT void MmH_RefPage(page* buf);
+OBOS_EXPORT void MmH_DerefPage(page* buf);
+OBOS_EXPORT extern phys_page_tree Mm_PhysicalPages;
+OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
 
 typedef struct page_range
 {

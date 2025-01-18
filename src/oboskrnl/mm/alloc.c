@@ -982,7 +982,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     uintptr_t base = (uintptr_t)blk;
 
-    page_range* rng = Mm_Allocator->Allocate(Mm_Allocator, sizeof(page_range), nullptr);
+    page_range* rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->ctx = ctx;
     rng->size = sz;
     rng->virt = base;

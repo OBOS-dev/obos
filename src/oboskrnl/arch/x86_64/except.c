@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/except.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -37,7 +37,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         goto down;
     if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
         virt &= ~0x1fffff;
-    if (Mm_IsInitialized())
+    if (Mm_IsInitialized() && Core_GetIrql() <= IRQL_DISPATCH)
     {
         CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
         uint32_t mm_ec = 0;

@@ -108,6 +108,10 @@ static uint64_t get_hash(struct hashmap *map, const void *key) {
     return clip_hash(map->hash(key, map->seed0, map->seed1));
 }
 
+void hashmap_set_udata(struct hashmap* map, void* udata)
+{
+    map->udata = udata;
+}
 
 // hashmap_new_with_allocator returns a new hash map using a custom allocator.
 // See hashmap_new for more information information

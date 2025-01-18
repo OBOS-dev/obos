@@ -1,7 +1,7 @@
 /*
  * oboskrnl/error.h
  * 
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -167,4 +167,8 @@ typedef enum
 	/// The ELF file has an invalid, or unsupported elf type in it's header.
 	/// </summary>
 	OBOS_STATUS_INVALID_ELF_TYPE,
+	/// <summary>
+	/// The operation would block.
+	/// </summary>
+	OBOS_STATUS_WOULD_BLOCK,
 } obos_status;

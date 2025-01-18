@@ -1,7 +1,7 @@
 /*
  * drivers/generic/ahci/main.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -32,6 +32,7 @@
 
 #include "command.h"
 #include "ahci_irq.h"
+#include "mm/page.h"
 #include "structs.h"
 
 #include <uacpi/namespace.h>

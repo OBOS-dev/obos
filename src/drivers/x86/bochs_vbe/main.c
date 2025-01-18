@@ -1,7 +1,7 @@
 /*
  * drivers/x86/boches_vbe/main.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -35,6 +35,7 @@ void cleanup() {}
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
+    .flags =
              DRIVER_HEADER_FLAGS_DETECT_VIA_PCI |
              DRIVER_HEADER_HAS_VERSION_FIELD |
              DRIVER_HEADER_PCI_HAS_DEVICE_ID |
@@ -45,8 +46,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .subClass  = 0x0000,
         .progIf    = 0x0000,
         // Bochs VBE
-        .vendorId  = 0x1111,
-        .deviceId  = 0x1234,
+        .vendorId  = 0x1234,
+        .deviceId  = 0x1111,
     },
     .ftable = {
         .driver_cleanup_callback = cleanup,

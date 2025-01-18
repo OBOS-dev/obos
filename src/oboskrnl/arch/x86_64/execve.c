@@ -104,7 +104,10 @@ static __attribute__((target("xsave"))) __attribute__((target("avx"))) void rese
 OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
 {
     if (Core_GetIrql() < IRQL_DISPATCH)
-        (void)Core_RaiseIrql(IRQL_DISPATCH);
+    {
+        irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+        OBOS_UNUSED(oldIrql);
+    }
     Core_GetCurrentThread()->context.extended_ctx_ptr = Arch_AllocateXSAVERegion();
 
     Core_GetCurrentThread()->context.frame.rsp = (uintptr_t)Core_GetCurrentThread()->context.stackBase + Core_GetCurrentThread()->context.stackSize;
@@ -169,7 +172,8 @@ void OBOSS_HandOffToInit(struct exec_aux_values* aux)
 {
     OBOS_OpenStandardFDs(OBOS_CurrentHandleTable());
 
-    (void)Core_RaiseIrql(IRQL_DISPATCH);
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+    OBOS_UNUSED(oldIrql);
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 
     Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);

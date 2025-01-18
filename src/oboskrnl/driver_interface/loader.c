@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/loader.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -290,6 +290,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
         OBOS_Log("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     return driver;
 }
+
 typedef driver_init_status(*driver_entry)(driver_id* id);
 __attribute__((no_instrument_function)) static void driver_trampoline(driver_id* id)
 {
@@ -297,6 +298,7 @@ __attribute__((no_instrument_function)) static void driver_trampoline(driver_id*
     driver_init_status status = ((driver_entry)id->entryAddr)(id);
     Drv_ExitDriver(id, &status);
 }
+
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
 {
     if (mainThread)
@@ -416,6 +418,10 @@ void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status)
         return;
     if (id->main_thread != Core_GetCurrentThread())
         return;
+    // NOTE: It is impossible for this to be zero after this, because
+    // the main thread is referenced by the scheduler.
+    id->main_thread->references--;
+    id->main_thread = nullptr;
     if (obos_is_error(status->status))
     {
         if (OBOS_GetLogLevel() <= LOG_LEVEL_WARNING)

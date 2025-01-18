@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/limits.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  *
  * Defines limits for the VFS.
 */
@@ -10,7 +10,7 @@
 
 #include <int.h>
 
-#define MAX_FILENAME_LEN 256 /* In bytes */
+#define MAX_FILENAME_LEN 256UL /* In bytes */
 
 typedef  int64_t off_t;
 typedef uint64_t uoff_t;

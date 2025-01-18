@@ -283,7 +283,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 		return NULL;
 	}
 	void* newblk = Allocate(This_, new_size, status);
-	if (!blk)
+	if (!newblk)
 		return blk;
 	memcpy(newblk, blk, old_size);
 	This_->Free(This_, blk, old_size);

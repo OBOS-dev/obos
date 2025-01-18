@@ -1,6 +1,6 @@
 # CMakeLists.txt
 #
-# Copyright (c) 2024 Omar Berrow
+# Copyright (c) 2024-2025 Omar Berrow
 
 cmake_minimum_required(VERSION 3.10)
 
@@ -16,6 +16,7 @@ option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" 
 option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
+option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
 
 # String options
 
@@ -219,4 +220,5 @@ add_subdirectory("src/drivers/generic/initrd")
 add_subdirectory("src/drivers/generic/slowfat")
 add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
+add_subdirectory("src/drivers/generic/r8169")
 add_subdirectory("src/isogen")
