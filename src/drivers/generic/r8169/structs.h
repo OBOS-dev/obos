@@ -188,9 +188,9 @@ enum {
     // bits 0-15
     TX_PACKET_LEN_MASK = 0xffff,
     LGSEND = BIT(27), // tx packet
-    IPCS = BIT(18),
-    UDPCS = BIT(17),
-    TCPCS = BIT(16),
+    IPCS = BIT(18), // tx packet
+    UDPCS = BIT(17), // tx packet
+    TCPCS = BIT(16), // tx packet
 };
 
 enum {
@@ -212,6 +212,8 @@ enum {
 #define MAX_DESCS_IN_SET 0x400 /* 1024 */
 
 // The amount of descriptors to allocate per set
+// TODO: Should we set this to something that would make this <= OBOS_PAGE_SIZE to facilitate
+// allocation?
 #define DESCS_IN_SET MAX_DESCS_IN_SET
 
 #define RxOk BIT(0)

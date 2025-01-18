@@ -158,7 +158,6 @@ static void tx_set(r8169_device* dev, uint8_t set)
         dev->tx_count += dev->tx_awaiting_transfer;
         dev->tx_awaiting_transfer = 0;
     }
-    OBOS_Debug("tx_count %d, tx_poll 0x%08x\n", dev->tx_count, tx_poll);
     Core_PushlockRelease(&dev->tx_buffer_lock, true);
 }
 void r8169_tx(r8169_device* dev)
@@ -246,7 +245,6 @@ static uint16_t read_phy(r8169_device* dev, uint8_t offset)
     do {
         DrvS_ReadIOSpaceBar(dev->bar->bar, PhyAr, &phyar_value, 4);
     } while(phyar_value & BIT(31));
-    printf("%08x", phyar_value);
     return phyar_value & 0xffff;
 }
 
@@ -311,7 +309,8 @@ void r8169_reset(r8169_device* dev)
 
         r8169_alloc_set(dev, Rx_Set);
         r8169_alloc_set(dev, Tx_Set);
-
+        // TODO: Test high-priority TX packets. 
+        r8169_alloc_set(dev, TxH_Set);
     }
 
     r8169_init_rxcfg(dev);
@@ -384,7 +383,8 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     OBOS_ENSURE(set <= 2);
     if (dev->sets[set])
     {
-        OBOS_Warning("RTL8169: Attempt to reallocate set %d denied.", set);
+        printf("info before assert: set=%d, dev->sets[%d]=0x%p", set, dev->sets[set]);
+        OBOS_ASSERT(dev->sets[set] && "RTL8169: Attempt to reallocate set %d denied.");
         return;
     }
 
@@ -459,6 +459,7 @@ r8169_descriptor* r8169_alloc_desc(r8169_device* dev, uint8_t set)
     r8169_descriptor* desc = node->desc;
     LIST_REMOVE(r8169_descriptor_list, &dev->free_descriptors[set], node);
     Core_MutexRelease(&dev->free_descriptors_locks[set]);
+    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
 
     return desc;
 }

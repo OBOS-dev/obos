@@ -72,6 +72,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     if (blkCount > TX_PACKET_SIZE)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    // TODO: Open a connection and increment the refcount there.
     dev->refcount++;
 
     Core_PushlockAcquire(&dev->tx_buffer_lock, true);
@@ -102,6 +103,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (blkCount > RX_PACKET_SIZE)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    // TODO: Open a connection and increment the refcount there.
     dev->refcount++;
 
     // Wait for the buffer to receive a frame.
@@ -230,12 +232,13 @@ static void search_bus(pci_bus* bus)
 
             if (!bar0 || !irq_res)
             {
+                OBOS_Warning("%02x:%02x:%02x: Bogus RTL8169 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
                 dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
                 continue;
             }
 
             nDevices++;
-            Devices = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
+            Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
             Devices[nDevices-1].dev = dev;
             Devices[nDevices-1].bar = bar0;
             Devices[nDevices-1].irq_res = irq_res;
