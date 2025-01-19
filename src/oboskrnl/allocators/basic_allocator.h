@@ -46,6 +46,7 @@ enum {
 typedef struct region {
 	void* start;
 	size_t sz;
+	size_t alloc_size;
 	size_t nFree;
 	size_t nBlocks;
 	uint64_t magic;

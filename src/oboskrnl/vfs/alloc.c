@@ -48,7 +48,7 @@ void* Vfs_Realloc(void* what, size_t cnt)
     struct allocation_hdr* hdr = what;
     hdr--;
     hdr->sz += cnt;
-    hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt, hdr->sz-cnt, nullptr);
+    hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt, hdr->sz-cnt+sizeof(struct allocation_hdr*), nullptr);
     return hdr+1;
 }
 
@@ -58,5 +58,5 @@ void Vfs_Free(void* what)
         return;
     struct allocation_hdr* hdr = what;
     hdr--;
-    Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz);
+    Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz+sizeof(struct allocation_hdr*));
 }

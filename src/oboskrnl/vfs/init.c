@@ -85,9 +85,9 @@ void Vfs_Initialize()
     Vfs_Mount("/", nullptr, &initrd_dev, &root);
     Vfs_Root->vnode->mount_point = root;
     if (root_partid)
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+        OBOS_FreeOption(root_partid);
     if (root_uuid)
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+        OBOS_FreeOption(root_uuid);
     Vfs_InitializePipeInterface();
 }
 OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
@@ -99,8 +99,8 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
     OBOS_Debug("%s: Unimplemented.\n", __func__);
     end:
     if (root_partid)
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+        OBOS_FreeOption(root_partid);
     if (root_uuid)
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+        OBOS_FreeOption(root_uuid);
     Vfs_InitDummyDevices();
 }

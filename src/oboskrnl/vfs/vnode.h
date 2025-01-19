@@ -68,7 +68,7 @@ typedef struct file_perm
 } OBOS_PACK file_perm;
 typedef struct vnode
 {
-    void* data;
+    uint64_t data;
     uint32_t vtype;
     uint32_t flags;
     struct mount* mount_point;

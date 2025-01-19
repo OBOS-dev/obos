@@ -451,7 +451,7 @@ void r8169_release_desc(r8169_device* dev, r8169_descriptor* desc, uint8_t set)
     desc->vlan = 0;
     Core_MutexAcquire(&dev->free_descriptors_locks[set]);
     OBOS_ASSERT(set <= TxH_Set);
-    r8169_descriptor_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
+    r8169_descriptor_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
     node->desc = desc;
     LIST_APPEND(r8169_descriptor_list, &dev->free_descriptors[set], node);
     Core_MutexRelease(&dev->free_descriptors_locks[set]);
@@ -468,7 +468,7 @@ r8169_descriptor* r8169_alloc_desc(r8169_device* dev, uint8_t set)
     r8169_descriptor* desc = node->desc;
     LIST_REMOVE(r8169_descriptor_list, &dev->free_descriptors[set], node);
     Core_MutexRelease(&dev->free_descriptors_locks[set]);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
 
     return desc;
 }
@@ -627,6 +627,8 @@ obos_status r8169_buffer_read_next_frame(r8169_buffer* buff, r8169_frame** frame
 
 obos_status r8169_buffer_poll(r8169_buffer* buff)
 {
+    if (LIST_GET_NODE_COUNT(r8169_frame_list, &buff->frames))
+        return OBOS_STATUS_SUCCESS;
     while (!buff->envt.signaled)
         OBOSS_SpinlockHint();
     return OBOS_STATUS_SUCCESS;
@@ -634,5 +636,7 @@ obos_status r8169_buffer_poll(r8169_buffer* buff)
 
 obos_status r8169_buffer_block(r8169_buffer* buff)
 {
+    if (LIST_GET_NODE_COUNT(r8169_frame_list, &buff->frames))
+        return OBOS_STATUS_SUCCESS;
     return Core_WaitOnObject(WAITABLE_OBJECT(buff->envt));
 }

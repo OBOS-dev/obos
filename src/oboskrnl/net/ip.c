@@ -14,7 +14,7 @@
 
 #include <allocators/base.h>
 
-static int checksum(void *buffer, size_t size)
+uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
 {
     uint16_t *p = buffer;
     int sum = 0;
@@ -36,7 +36,7 @@ static int checksum(void *buffer, size_t size)
 
 uint16_t Net_IPChecksum(ip_header* hdr)
 {
-    return checksum(hdr, sizeof(*hdr));
+    return NetH_OnesComplementSum(hdr, sizeof(*hdr));
 }
 
 obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size)
@@ -59,3 +59,11 @@ obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint
     *phdr = hdr;
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status Net_IPReceiveFrame(frame* data)
+{
+    OBOS_UNUSED(data);
+    return OBOS_STATUS_SUCCESS;
+}
+
+LIST_GENERATE(frame_queue, frame, node);

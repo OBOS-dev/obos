@@ -17,4 +17,4 @@ typedef struct udp_header {
     uint16_t chksum;
 } udp_header;
 
-obos_status Net_FormatUDPPacket(udp_header** hdr, void* data, uint16_t length, uint16_t src_port, uint16_t dest_port);
+obos_status Net_FormatUDPPacket(udp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port);

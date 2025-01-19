@@ -194,6 +194,7 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 	reg->sz = sz-sizeof(region);
 	reg->magic = REGION_MAGIC;
 	reg->alloc = alloc;
+	reg->alloc_size = 1 << (cache_index+4);
 	append_node(c->region_list, reg);
 	if (sz_node == reg->sz)
 	{
@@ -228,7 +229,7 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
-		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
+		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 	if (nBytes > (4*1024*1024))
 		return NULL; // invalid argument
 
@@ -254,6 +255,7 @@ static OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_s
 	remove_node(c->free, c->free.tail);
 
 	unlock((cache*)c, oldIrql);
+	// printf("%s: %ld -> %p\n", __func__, nBytes, ret);
 	return ret;
 }
 static OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
@@ -303,6 +305,8 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 
+	// printf("%s: %p %ld\n", __func__, blk, nBytes);
+
 	if (nBytes > (4*1024*1024))
 		return OBOS_STATUS_INVALID_ARGUMENT; // invalid argument
 
@@ -318,6 +322,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		region* reg = (void*)((uintptr_t)blk - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
 		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
+		OBOS_ENSURE(reg->alloc_size == nBytes);
 
 		irql oldIrql = lock(c);
 		remove_node(c->region_list, reg);
@@ -331,6 +336,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		region* volatile reg = (void*)((blki - (blki % init_pgsize())) - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
 		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
+		OBOS_ENSURE(reg->alloc_size == nBytes);
 
 		irql oldIrql = lock(c);
 

@@ -531,7 +531,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         {
             driver_header_node* next = node->next;
             driver_header* const curr = node->data;
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+            free(node);
             node = next;
             struct driver_file ele = { .hdr=curr };
             struct driver_file* file = (struct driver_file*)hashmap_get(drivers, &ele);

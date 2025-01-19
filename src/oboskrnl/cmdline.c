@@ -188,6 +188,10 @@ char* OBOS_GetOPTS(const char* opt)
     }
     return nullptr;
 }
+void OBOS_FreeOption(const char* opt)
+{
+    cmd_free((char*)opt);
+}
 static uint64_t dec2bin(const char* str, size_t size)
 {
 	uint64_t ret = 0;

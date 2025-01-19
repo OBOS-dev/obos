@@ -485,6 +485,54 @@ static void test_allocator(allocator_info* alloc)
 	}
 }
 
+// hexdump clone lol
+OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
+{
+	bool printCh = false;
+	uint8_t* buff = (uint8_t*)_buff;
+	printf("         Address: ");
+	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
+		printf("%02x ", i);
+	printf("\n%016lx: ", buff);
+	for (size_t i = 0, chI = 0; i < ((nBytes + 0xf) & ~0xf); i++, chI++)
+	{
+		if (printCh)
+		{
+			char ch = (i < nBytes) ? buff[i] : 0;
+			switch (ch)
+			{
+			case '\n':
+			case '\t':
+			case '\r':
+			case '\b':
+			case '\a':
+			case '\0':
+			{
+				ch = '.';
+				break;
+			}
+			default:
+				break;
+			}
+			printf("%c", ch);
+		}
+		else
+			printf("%02x ", (i < nBytes) ? buff[i] : 0);
+		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
+		{
+			chI = 0;
+			if (!printCh)
+				i -= (width + 1);
+			else
+				printf(" |\n%016lx: ", &buff[i + 1]);
+			printCh = !printCh;
+			if (printCh)
+				printf("\t| ");
+		}
+	}
+	printf("\n");
+}
+
 void data_ready(void* userdata, void* vn_, size_t bytes_ready)
 {
 	OBOS_UNUSED(userdata);
@@ -492,6 +540,17 @@ void data_ready(void* userdata, void* vn_, size_t bytes_ready)
 	vnode* vn = vn_;
 	vn->un.device->driver->header.ftable.query_user_readable_name(vn->desc, &interface);
 	OBOS_Debug("%ld bytes ready on interface %s\n", bytes_ready, interface);
+	void* buffer = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, bytes_ready, nullptr);
+	size_t read = 0, bytes_left = bytes_ready;
+	size_t i = 0;
+	while (bytes_left)
+	{
+		vn->un.device->driver->header.ftable.read_sync(vn->desc, (void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), bytes_left, 0, &read);
+		OBOS_Debug("Packet %lu\n", i);
+		hexdump((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, 15);
+		bytes_left -= read;
+		i++;
+	}
 }
 
 void Arch_KernelMainBootstrap()
@@ -530,9 +589,9 @@ void Arch_KernelMainBootstrap()
 		else
 			OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
 		if (initrd_module_name)
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
+			OBOS_FreeOption(initrd_module_name);
 		if (initrd_driver_module_name)
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
+			OBOS_FreeOption(initrd_driver_module_name);
 	}
 	OBOS_Debug("%s: Setting up uACPI early table access\n", __func__);
 	OBOS_SetupEarlyTableAccess();
@@ -886,30 +945,32 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 
-	fd nic = {};
-	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
+	fd *nic = Vfs_Calloc(1, sizeof(fd));
+	Vfs_FdOpen(nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
 
 	udp_header* udp_hdr = nullptr;
 	OBOS_ENSURE(obos_is_success(Net_FormatUDPPacket(&udp_hdr, "Hello from OBOS' network stack!", 31, 0x8000, 0x8000)));
 
 	ip_header* ip_hdr = nullptr;
-	ip_addr src = { .comp1=192,.comp2=168,.comp3=2,.comp4=254 };
-	ip_addr dest = { .addr=0xffffffff };
+	ip_addr src = { {192,168,100,2} };
+	ip_addr dest = { {192,168,100,1} };
 	OBOS_ENSURE(obos_is_success(Net_FormatIPv4Packet(&ip_hdr, udp_hdr, be16_to_host(udp_hdr->length), IPv4_PRECEDENCE_ROUTINE, &src, &dest, 60, 0x11, 0, false)));
 	ethernet2_header* eth_hdr = nullptr;
 	mac_address destm = { 0x98,0xee,0xcb,0x39,0xd9,0x37 };
 	mac_address srcm = {};
-	if (obos_is_error(Vfs_FdIoctl(&nic, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &srcm)))
+	if (obos_is_error(Vfs_FdIoctl(nic, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &srcm)))
 		memcpy(srcm, destm, sizeof(destm));
 	size_t nToSend = 0;
 	OBOS_ENSURE(obos_is_success(Net_FormatEthernet2Packet(&eth_hdr, ip_hdr, be16_to_host(ip_hdr->packet_length), &destm, &srcm, ETHERNET2_TYPE_IPv4, &nToSend)));
-	Vfs_FdIoctl(&nic, IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD, (void*)true);
-	Vfs_FdIoctl(&nic, IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD, (void*)true);
-	Vfs_FdWrite(&nic, eth_hdr, nToSend, nullptr);
-	Vfs_FdWrite(&nic, eth_hdr, nToSend, nullptr);
-	if (nic.vn)
-		nic.vn->un.device->driver->header.ftable.set_data_ready_cb(nic.vn, data_ready, nullptr);
-	Vfs_FdClose(&nic);
+	Vfs_FdIoctl(nic, IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD, (void*)true);
+	Vfs_FdIoctl(nic, IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD, (void*)true);
+	Vfs_FdWrite(nic, eth_hdr, nToSend, nullptr);
+	// if (nic->vn)
+	// 	nic->vn->un.device->driver->header.ftable.set_data_ready_cb(nic->vn, data_ready, nullptr);
+	if (nic->vn)
+		nic->vn->data = src.addr;
+	Net_InitializeEthernet2(nic->vn);
+	// Vfs_FdClose(&nic);
 	// OBOS_Suspend();
 
 	fd com1 = {};

@@ -15,7 +15,7 @@
 
 #include <allocators/base.h>
 
-obos_status Net_FormatUDPPacket(udp_header** phdr, void* data, uint16_t length, uint16_t src_port, uint16_t dest_port)
+obos_status Net_FormatUDPPacket(udp_header** phdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port)
 {
     if (!phdr || !data || !length || !src_port || !dest_port)
         return OBOS_STATUS_INVALID_ARGUMENT;

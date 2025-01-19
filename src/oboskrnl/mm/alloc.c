@@ -567,7 +567,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                     curr->data->free = true;
-                    Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
                 }
                 curr = next;
             }
@@ -626,14 +625,13 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 
     if (full)
     {
-        // for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-        // {
-        //     working_set_node* next = curr->next;
-        //     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-        //     curr->data->free = true;
-        //     Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
-        //     curr = next;
-        // }
+        for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+        {
+            working_set_node* next = curr->next;
+            REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+            curr->data->free = true;
+            curr = next;
+        }
         RB_REMOVE(page_tree, &ctx->pages, rng);
         Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
     }
