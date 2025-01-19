@@ -900,7 +900,7 @@ void Arch_KernelMainBootstrap()
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
 
-	// OBOS_LoadInit();
+	OBOS_LoadInit();
 
 	OBOS_Log("%s: Done early boot.\n", __func__);
 	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
