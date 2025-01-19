@@ -173,9 +173,18 @@ typedef struct driver_ftable
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
     obos_status(*stat_fs_info)(void *vn, drv_fs_info *info);
 
-    // Can only be nullptr for the InitRD driver.
-    // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
-    bool(*probe)(void* vn);
+    union {
+        // Can only be nullptr for the InitRD driver.
+        // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
+        bool(*probe)(void* vn);
+        // void* vn points to a struct vnode
+        // This callback is required for NIC drivers and optional for other PIPE_STYLE drivers, and is ignored for other drivers.
+        // This function should always be entered at IRQL_PASSIVE
+        // bytes_ready is simply the amount of bytes received since the last "packet"
+        obos_status(*set_data_ready_cb)(void* vn, void(*cb)(void* userdata, void* vn, size_t bytes_ready), void* userdata);
+    };
+    obos_status(*reference_interface)(dev_desc desc);
+    obos_status(*unreference_interface)(dev_desc desc);
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------

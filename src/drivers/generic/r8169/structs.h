@@ -20,6 +20,8 @@
 
 #include <utils/list.h>
 
+#include <net/eth.h>
+
 #if OBOS_IRQL_COUNT == 16
 #	define IRQL_R8169 (7)
 #elif OBOS_IRQL_COUNT == 8
@@ -75,8 +77,12 @@ typedef struct r8169_device
 
     size_t idx;
 
-    uint8_t mac[6];
+    mac_address mac;
     char mac_readable[6*3+1]; // XX:XX:XX:XX:XX:XX\0
+
+    bool ip_checksum_offload : 1;
+    bool udp_checksum_offload : 1;
+    bool tcp_checksum_offload : 1;
 
     r8169_descriptor* sets[3];
     uintptr_t sets_phys[3];
@@ -131,6 +137,10 @@ typedef struct r8169_device
     pushlock tx_buffer_lock;
 
     uint16_t saved_phy_state[0x20];
+
+    void(*data_ready)(void *userdata, void* vn, size_t bytes_ready);
+    void* data_ready_userdata;
+    thread* data_ready_thread;
 } r8169_device;
 
 enum {
@@ -204,7 +214,7 @@ enum {
 
 // Multiply by 128 to get the real size.
 // NOTE: Do not do this when setting MaxTxPacketSize.
-#define TX_PACKET_SIZE 0x3f
+#define TX_PACKET_SIZE 0x3b
 
 #define RX_PACKET_SIZE 0x1fff
 

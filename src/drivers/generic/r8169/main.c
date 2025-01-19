@@ -16,9 +16,17 @@
 #include <allocators/base.h>
 
 #include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
 
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
+
+#include <net/eth.h>
 
 #include "structs.h"
 
@@ -69,11 +77,9 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     r8169_device* dev = (void*)desc;
     if (dev->magic != R8169_DEVICE_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (blkCount > TX_PACKET_SIZE)
+    if (blkCount > (TX_PACKET_SIZE*128))
         return OBOS_STATUS_INVALID_ARGUMENT;
-
-    // TODO: Open a connection and increment the refcount there.
-    dev->refcount++;
+    OBOS_ENSURE(dev->refcount);
 
     Core_PushlockAcquire(&dev->tx_buffer_lock, true);
 
@@ -83,8 +89,6 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     r8169_tx_queue_flush(dev, true);
 
     Core_PushlockRelease(&dev->tx_buffer_lock, true);
-
-    dev->refcount--;
 
     if (nBlkWritten)
         *nBlkWritten = blkCount;
@@ -102,9 +106,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (blkCount > RX_PACKET_SIZE)
         return OBOS_STATUS_INVALID_ARGUMENT;
-
-    // TODO: Open a connection and increment the refcount there.
-    dev->refcount++;
+    OBOS_ENSURE(dev->refcount);
 
     // Wait for the buffer to receive a frame.
     r8169_buffer_block(&dev->rx_buffer);
@@ -121,8 +123,6 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 
     Core_PushlockRelease(&dev->rx_buffer_lock, true);
 
-    dev->refcount--;
-
     if (nBlkRead)
         *nBlkRead = szRead;
 
@@ -130,6 +130,28 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 }
 
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
+
+obos_status reference_interface(dev_desc desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device* dev = (void*)desc;
+    if (dev->magic != R8169_DEVICE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    dev->refcount++;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status unreference_interface(dev_desc desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device* dev = (void*)desc;
+    if (dev->magic != R8169_DEVICE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    dev->refcount--;
+    return OBOS_STATUS_SUCCESS;
+}
 
 obos_status query_user_readable_name(dev_desc what, const char** name)
 {
@@ -144,14 +166,79 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what);
-    OBOS_UNUSED(request);
-    OBOS_UNUSED(argp);
+    if (!what)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device* dev = (void*)what;
+    if (dev->magic != R8169_DEVICE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (request) {
+        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+            memcpy(argp, dev->mac, sizeof(mac_address));
+            return OBOS_STATUS_SUCCESS;
+        case IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD:
+            dev->ip_checksum_offload = !!(uintptr_t)argp;
+            break;
+        case IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD:
+            dev->udp_checksum_offload = !!(uintptr_t)argp;
+            break;
+        case IOCTL_ETHERNET_SET_TCP_CHECKSUM_OFFLOAD:
+            dev->tcp_checksum_offload = !!(uintptr_t)argp;
+            break;
+        default: break;
+    }
     return OBOS_STATUS_INVALID_IOCTL;
 }
 
 // TODO: driver cleanup
 void driver_cleanup_callback() {}
+
+static void data_ready_main(void* vn_)
+{
+    vnode* vn = vn_;
+    r8169_device* dev = (void*)vn->desc;
+    size_t last_rx_bytes = dev->rx_bytes;
+    while (1)
+    {
+        Core_WaitOnObject(WAITABLE_OBJECT(dev->rx_buffer.envt));
+        if (dev->data_ready)
+            dev->data_ready(dev->data_ready_userdata, vn, dev->rx_bytes-last_rx_bytes);
+        last_rx_bytes = dev->rx_bytes;
+    }
+}
+
+obos_status set_data_ready_cb(void* vn_, void(*cb)(void* userdata, void* vn, size_t bytes_ready), void* userdata)
+{
+    vnode* vn = vn_;
+    if (!vn || !cb)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (vn->vtype != VNODE_TYPE_CHR)
+        return OBOS_STATUS_INVALID_ARGUMENT; // This NIC driver registers its vnodes as character devices.
+    if (vn->un.device->driver != this_driver)
+        return OBOS_STATUS_INVALID_ARGUMENT; // This vnode is not read/written to through the NIC driver.
+    dev_desc what = vn->desc;
+    if (!what)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    r8169_device* dev = (void*)what;
+    if (dev->magic != R8169_DEVICE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    dev->data_ready = cb;
+    dev->data_ready_userdata = userdata;
+
+    if (!dev->data_ready_thread)
+    {
+        dev->data_ready_thread = CoreH_ThreadAllocate(nullptr);
+        thread_ctx ctx = {};
+        CoreS_SetupThreadContext(&ctx, (uintptr_t)data_ready_main, (uintptr_t)vn, false, Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x4000);
+        CoreH_ThreadInitialize(dev->data_ready_thread, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+        dev->data_ready_thread->stackFreeUserdata = &Mm_KernelContext;
+        dev->data_ready_thread->stackFree = CoreH_VMAStackFree;
+        CoreH_ThreadReady(dev->data_ready_thread);
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -180,6 +267,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .write_sync = write_sync,
         .on_wake = on_wake,
         .on_suspend = on_suspend,
+        .set_data_ready_cb = set_data_ready_cb,
+        .reference_interface = reference_interface,
+        .unreference_interface = unreference_interface,
     },
     .driverName = "RTL8169 Driver",
     .version = 1,
@@ -239,13 +329,28 @@ static void search_bus(pci_bus* bus)
 
             nDevices++;
             Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
+            memzero(&Devices[nDevices-1], sizeof(Devices[nDevices-1]));
             Devices[nDevices-1].dev = dev;
             Devices[nDevices-1].bar = bar0;
             Devices[nDevices-1].irq_res = irq_res;
             Devices[nDevices-1].idx = nDevices-1;
-            memzero(Devices[nDevices-1].mac, sizeof(Devices[nDevices-1].mac));
-            // Zeroed in reset_dev.
-            // memzero(Devices[nDevices-1].mac_readable, sizeof(Devices[nDevices-1].mac_readable));
+
+            Devices[nDevices-1].tx_count = 0;
+            Devices[nDevices-1].tx_bytes = 0;
+            Devices[nDevices-1].tx_dropped = 0;
+            Devices[nDevices-1].tx_high_priority_awaiting_transfer = 0;
+            Devices[nDevices-1].tx_awaiting_transfer = 0;
+
+            Devices[nDevices-1].rx_bytes = 0;
+            Devices[nDevices-1].rx_count = 0;
+            Devices[nDevices-1].rx_crc_errors = 0;
+            Devices[nDevices-1].rx_errors= 0;
+            Devices[nDevices-1].rx_length_errors = 0;
+            Devices[nDevices-1].rx_dropped = 0;
+
+            Devices[nDevices-1].isr = 0;
+
+            Devices[nDevices-1].suspended = false;
         }
 
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
@@ -267,8 +372,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     {
         r8169_reset(Devices+i);
         vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
-        const char* dev_name = nullptr;
-        query_user_readable_name(vn->desc, &dev_name);
+        const char* dev_name = Devices[i].interface_name;
         OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }

@@ -553,7 +553,7 @@ uacpi_status uacpi_kernel_uninstall_interrupt_handler(
 {
     OBOS_UNUSED(unused);
     struct irq* irqHnd = (irq*)irq_handle;
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, irqHnd->handlerUserdata, sizeof(uintptr_t)*2);
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, irqHnd->handlerUserdata, sizeof(uintptr_t)*2);
     Core_IrqObjectFree(irqHnd);
     return UACPI_STATUS_OK;
 }	
@@ -593,7 +593,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler
     if (!s_isWorkQueueLockInit)
         s_workQueueLock = Core_SpinlockCreate();
     // Make the work object.
-    uacpi_work* work = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uacpi_work), nullptr);
+    uacpi_work* work = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(uacpi_work), nullptr);
     work->type = type;
     work->cb = cb; 
     work->ctx = ctx;

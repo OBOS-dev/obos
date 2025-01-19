@@ -102,10 +102,13 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_NOEXEC;
     if (vnode->vtype == VNODE_TYPE_CHR)
         desc->flags |= FD_FLAGS_UNCACHED;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (vnode->un.device && vnode->un.device->driver->header.ftable.reference_interface)
+        status = vnode->un.device->driver->header.ftable.reference_interface(vnode->desc);
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
     desc->flags |= FD_FLAGS_OPEN;
-    return OBOS_STATUS_SUCCESS;
+    return status;
 }
 static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
 {
@@ -356,11 +359,14 @@ obos_status Vfs_FdClose(fd* desc)
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
+    obos_status status = OBOS_STATUS_SUCCESS;
     vnode* vn = desc->vn;
     LIST_REMOVE(fd_list, &desc->vn->opened, desc);
     vn->refs--;
     desc->flags &= ~FD_FLAGS_OPEN;
+    if (vn->un.device && vn->un.device->driver->header.ftable.reference_interface)
+        status = vn->un.device->driver->header.ftable.unreference_interface(vn->desc);
     VfsH_UnlockMountpoint(point);
-    return OBOS_STATUS_SUCCESS;
+    return status;
 }
 LIST_GENERATE_INTERNAL(fd_list, struct fd, node, OBOS_EXPORT);

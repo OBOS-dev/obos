@@ -84,15 +84,18 @@ void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
 void r8169_rx(r8169_device* dev)
 {
     Core_PushlockAcquire(&dev->rx_buffer_lock, false);
-    for (size_t i = 0; i < DESCS_IN_SET; i++, dev->rx_count++)
+    for (size_t i = 0; i < DESCS_IN_SET; i++)
     {
         r8169_descriptor* desc = &dev->sets[Rx_Set][i];
         if (desc->command & NIC_OWN)
             continue;
 
+        dev->rx_count++;
+
         if (desc->command & RES_ERR)
         {
             // Uh oh
+            OBOS_Debug("packet error!\n");
             dev->rx_errors++;
             if (desc->command & CRC_ERR)
                 dev->rx_crc_errors++;
@@ -109,16 +112,15 @@ void r8169_rx(r8169_device* dev)
             goto done;
         }
 
-        // See linux/v6.13-rc3/source/drivers/net/ethernet/realtek/r8169_main.c:4620
-        // for info on why we do this.
-        size_t packet_len = (desc->command & PACKET_LEN_MASK) - 4;
+        size_t packet_len = desc->command & PACKET_LEN_MASK;
 
         r8169_frame frame = {};
         void* buff = map_registers(desc->buf, packet_len, false, true);
         r8169_frame_generate(dev, &frame, buff, packet_len, FRAME_PURPOSE_RX /* We're receiving a packet */);
         r8169_buffer_add_frame(&dev->rx_buffer, &frame);
+        if (memcmp(buff, "OBOS_Shutdown", 13))
+            OBOS_Shutdown();
         Mm_VirtualMemoryFree(&Mm_KernelContext, buff, packet_len);
-        OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width);
 
         dev->rx_bytes += packet_len;
         Core_EventPulse(&dev->rx_buffer.envt, false);
@@ -134,11 +136,13 @@ static void tx_set(r8169_device* dev, uint8_t set)
     if (!dev->sets[set])
         return;
     Core_PushlockAcquire(&dev->tx_buffer_lock, true);
-    for (size_t i = 0; i < DESCS_IN_SET; i++, dev->rx_count++)
+    for (size_t i = 0; i < DESCS_IN_SET; i++)
     {
         r8169_descriptor* desc = &dev->sets[set][i];
         if (desc->command & NIC_OWN)
             continue;
+
+        dev->tx_count++;
 
         Mm_FreePhysicalPages(desc->buf, TX_PACKET_SIZE*128);
 
@@ -150,12 +154,12 @@ static void tx_set(r8169_device* dev, uint8_t set)
     DrvS_ReadIOSpaceBar(dev->bar->bar, TxPoll, &tx_poll, 1);
     if (set == TxH_Set && ~tx_poll & BIT(7))
     {
-        dev->tx_count += dev->tx_high_priority_awaiting_transfer;
+        dev->tx_bytes += dev->tx_high_priority_awaiting_transfer;
         dev->tx_high_priority_awaiting_transfer = 0;
     }
     if (set == Tx_Set && ~tx_poll & BIT(6))
     {
-        dev->tx_count += dev->tx_awaiting_transfer;
+        dev->tx_bytes += dev->tx_awaiting_transfer;
         dev->tx_awaiting_transfer = 0;
     }
     Core_PushlockRelease(&dev->tx_buffer_lock, true);
@@ -436,10 +440,15 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
 
 void r8169_release_desc(r8169_device* dev, r8169_descriptor* desc, uint8_t set)
 {
-    desc->command |= NIC_OWN;
     if (set == Rx_Set)
+    {
+        desc->command |= NIC_OWN;
         return; // We're done here.
+    }
 
+    desc->command = 0;
+    desc->buf = 0;
+    desc->vlan = 0;
     Core_MutexAcquire(&dev->free_descriptors_locks[set]);
     OBOS_ASSERT(set <= TxH_Set);
     r8169_descriptor_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
@@ -475,11 +484,8 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
         return status;
 
     r8169_frame* tx_frame = LIST_GET_HEAD(r8169_frame_list, &dev->tx_buffer.frames);
-    bool did_tx = !!tx_frame;
 
     // TODO: Do we need to synchronize this?
-    if (did_tx)
-        DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, RX_ENABLE, 1);
     uint8_t tx_poll = 0x00;
     while (tx_frame)
     {
@@ -493,20 +499,22 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
             else
                 return OBOS_STATUS_WOULD_BLOCK;
         }
-        OBOS_ENSURE(desc->command & NIC_OWN);
 
         uintptr_t phys = 0;
         MmS_QueryPageInfo(Mm_KernelContext.pt, (uintptr_t)tx_frame->buf, nullptr, &phys);
+        irql oldIrql = Core_RaiseIrql(IRQL_R8169);
         OBOS_ENSURE(phys);
         desc->buf = phys;
         desc->command = tx_frame->sz & TX_PACKET_LEN_MASK;
-        desc->command |= NIC_OWN;
         desc->command |= FS;
         desc->command |= LS;
-        // This does not free the physical memory.
-        // That is done in r8169_tx
-        Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))));
-
+        if (dev->ip_checksum_offload)
+            desc->command |= IPCS;
+        if (dev->udp_checksum_offload)
+            desc->command |= UDPCS;
+        if (dev->tcp_checksum_offload)
+            desc->command |= TCPCS;
+        desc->command |= NIC_OWN;
         if (tx_frame->tx_priority_high)
         {
             tx_poll |= BIT(7); // High priority frame.
@@ -517,15 +525,16 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
             tx_poll |= BIT(6); // Normal priority frame.
             dev->tx_awaiting_transfer += tx_frame->sz;
         }
+        Core_LowerIrql(oldIrql);
+        // This does not free the physical memory.
+        // That is done in r8169_tx
+        Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))));
 
         r8169_buffer_remove_frame(&dev->tx_buffer, tx_frame);
 
         tx_frame = next;
     }
     DrvS_WriteIOSpaceBar(dev->bar->bar, TxPoll, tx_poll, 1);
-    if (did_tx)
-        DrvS_WriteIOSpaceBar(dev->bar->bar, ChipCmd, TX_ENABLE|RX_ENABLE, 1);
-
 
     Core_PushlockRelease(&dev->tx_buffer_lock, false);
     return OBOS_STATUS_SUCCESS;

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 #include <struct_packing.h>
 
 typedef union ip_addr {
@@ -19,8 +20,8 @@ typedef union ip_addr {
     };
 } OBOS_PACK ip_addr;
 
-#define IPv4_GET_HEADER_LENGTH(hdr) ((be32_to_host((hdr)->version_hdrlen) & 0xf0) * 4)
-#define IPv4_GET_HEADER_VERSION(hdr) (be32_to_host((hdr)->version_hdrlen) & 0x0f)
+#define IPv4_GET_HEADER_LENGTH(hdr) (((hdr)->version_hdrlen & 0x0f) * 4)
+#define IPv4_GET_HEADER_VERSION(hdr) ((hdr)->version_hdrlen & 0xf0)
 
 #define IPv4_GET_FLAGS(hdr) (be32_to_host((hdr)->flags_fragment) & 0x8)
 #define IPv4_GET_FRAGMENT(hdr) (be32_to_host((hdr)->flags_fragment) & 0xfff8)
@@ -48,8 +49,8 @@ enum {
 };
 
 enum {
-    IPv4_MAY_FRAGMENT = BIT(1),
-    IPv4_LAST_FRAGMENT = BIT(2),
+    IPv4_MAY_FRAGMENT = BIT(12),
+    IPv4_MORE_FRAGMENTS = BIT(13),
 };
 
 // TODO: Are these valid?
@@ -82,11 +83,10 @@ typedef struct ip_header {
     uint16_t packet_length;
     
     // DW2
-    uint16_t identification;
-    uint16_t flags_fragment;
+    uint32_t id_flags_fragment;
 
     // DW3
-    uint8_t time_to_live;
+    uint8_t time_to_live; // in seconds
     uint8_t protocol;
     uint16_t chksum;
 
@@ -96,8 +96,9 @@ typedef struct ip_header {
     // DW5
     ip_addr dest_address;
 
-    // DW6
-    // OPTIONAL!
-    // Check IPv4_GET_HEADER_LENGTH(this) to make sure you can access this.
-    uint32_t option;
-} OBOS_PACK ip_header;
+    // After here, there can be options.
+    // This is unimplemented.
+} ip_header;
+
+obos_status Net_FormatIPv4Packet(ip_header** hdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size);
+uint16_t Net_IPChecksum(ip_header* hdr);

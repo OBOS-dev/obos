@@ -27,6 +27,10 @@
 
 #include <locks/spinlock.h>
 
+#include <net/udp.h>
+#include <net/ip.h>
+#include <net/eth.h>
+
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
@@ -481,6 +485,15 @@ static void test_allocator(allocator_info* alloc)
 	}
 }
 
+void data_ready(void* userdata, void* vn_, size_t bytes_ready)
+{
+	OBOS_UNUSED(userdata);
+	const char* interface = nullptr;
+	vnode* vn = vn_;
+	vn->un.device->driver->header.ftable.query_user_readable_name(vn->desc, &interface);
+	OBOS_Debug("%ld bytes ready on interface %s\n", bytes_ready, interface);
+}
+
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -875,12 +888,32 @@ void Arch_KernelMainBootstrap()
 
 	fd nic = {};
 	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
+
+	udp_header* udp_hdr = nullptr;
+	OBOS_ENSURE(obos_is_success(Net_FormatUDPPacket(&udp_hdr, "Hello from OBOS' network stack!", 31, 0x8000, 0x8000)));
+
+	ip_header* ip_hdr = nullptr;
+	ip_addr src = { .comp1=192,.comp2=168,.comp3=2,.comp4=254 };
+	ip_addr dest = { .addr=0xffffffff };
+	OBOS_ENSURE(obos_is_success(Net_FormatIPv4Packet(&ip_hdr, udp_hdr, be16_to_host(udp_hdr->length), IPv4_PRECEDENCE_ROUTINE, &src, &dest, 60, 0x11, 0, false)));
+	ethernet2_header* eth_hdr = nullptr;
+	mac_address destm = { 0x98,0xee,0xcb,0x39,0xd9,0x37 };
+	mac_address srcm = {};
+	if (obos_is_error(Vfs_FdIoctl(&nic, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &srcm)))
+		memcpy(srcm, destm, sizeof(destm));
+	size_t nToSend = 0;
+	OBOS_ENSURE(obos_is_success(Net_FormatEthernet2Packet(&eth_hdr, ip_hdr, be16_to_host(ip_hdr->packet_length), &destm, &srcm, ETHERNET2_TYPE_IPv4, &nToSend)));
+	Vfs_FdIoctl(&nic, IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD, (void*)true);
+	Vfs_FdIoctl(&nic, IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD, (void*)true);
+	Vfs_FdWrite(&nic, eth_hdr, nToSend, nullptr);
+	Vfs_FdWrite(&nic, eth_hdr, nToSend, nullptr);
+	if (nic.vn)
+		nic.vn->un.device->driver->header.ftable.set_data_ready_cb(nic.vn, data_ready, nullptr);
+	Vfs_FdClose(&nic);
 	// OBOS_Suspend();
 
 	fd com1 = {};
-	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
+	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
 
 	struct {
 		OBOS_ALIGNAS(8) uint8_t id;
@@ -899,6 +932,7 @@ void Arch_KernelMainBootstrap()
 	};
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
+	Vfs_FdWrite(&com1, eth_hdr, nToSend, nullptr);
 
 	// OBOS_LoadInit();
 
