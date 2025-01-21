@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <memmanip.h>
 #include <text.h>
+
 #include <locks/spinlock.h>
 
 #include <scheduler/cpu_local.h>
@@ -38,8 +39,6 @@
 
 #ifdef __x86_64__
 #	include <arch/x86_64/asm_helpers.h>
-#elif defined(__m68k__)
-#	include <arch/x86_64/pmm.h>
 #endif
 
 const char* OBOSH_PanicReasonToStr(panic_reason reason)
@@ -213,6 +212,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 	OBOS_UNUSED(oldIrql);
 	OBOS_ResetColor();
 	printf("\n%s\n", ascii_art);
+#ifdef __x86_64
 	char cpu_vendor[13] = {0};
 	memset(cpu_vendor, 0, 13);
 	__cpuid__(0, 0, nullptr, (uint32_t*)&cpu_vendor[0],(uint32_t*)&cpu_vendor[8], (uint32_t*)&cpu_vendor[4]);
@@ -224,6 +224,11 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 	__cpuid__(0x80000002, 0, (uint32_t*)&brand_string[0], (uint32_t*)&brand_string[4], (uint32_t*)&brand_string[8], (uint32_t*)&brand_string[12]);
 	__cpuid__(0x80000003, 0, (uint32_t*)&brand_string[16], (uint32_t*)&brand_string[20], (uint32_t*)&brand_string[24], (uint32_t*)&brand_string[28]);
 	__cpuid__(0x80000004, 0, (uint32_t*)&brand_string[32], (uint32_t*)&brand_string[36], (uint32_t*)&brand_string[40], (uint32_t*)&brand_string[44]);
+#elif defined(__m68k__)
+	char cpu_vendor[13] = { "Motorola" };
+	char brand_string[49] = { "Motorola 68040" };
+	bool isHypervisor = false;
+#endif
 	printf("Kernel Panic in OBOS %s built on %s.\nCrash is on CPU %d in thread %d, owned by process %d. Reason: %s.\n", GIT_SHA1, __DATE__ " at " __TIME__, getCPUId(), getTID(), getPID(), OBOSH_PanicReasonToStr(reason));
 	printf("Currently running on a %s. We are currently %srunning on a hypervisor\n", brand_string, isHypervisor ? "" : "not ");
 	printf("Information on the crash is below:\n");

@@ -103,9 +103,8 @@ static OBOS_NO_UBSAN bool register_pages(basicmm_region* region, void* udatablk)
     page_range* reg = &udata->buf[udata->i++];
     reg->virt = round_down(region->addr);
     bool flushed = false;
-    for (uintptr_t addr = round_down(region->addr); addr < limit; )
+    for (uintptr_t addr = round_down(region->addr); !(flushed = false) && addr < limit; )
     {
-        flushed = false;
         MmS_QueryPageInfo(MmS_GetCurrentPageTable(), addr, &pg, nullptr);
         MmH_AllocatePage(pg.phys, pg.prot.huge_page); 
         bool pageable = !(MmH_IsAddressUnPageable(addr) ||

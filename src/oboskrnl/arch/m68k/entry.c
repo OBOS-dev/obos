@@ -45,6 +45,8 @@
 #include <driver_interface/loader.h>
 #include <driver_interface/driverId.h>
 
+#include <asan.h>
+
 allocator_info* OBOS_KernelAllocator;
 timer_frequency CoreS_TimerFrequency;
 
@@ -79,6 +81,38 @@ static thread_node kmain_node;
 static thread_node idle_thread_node;
 void Arch_InitializeVectorTable();
 void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f);
+
+struct stack_frame
+{
+	struct stack_frame* down;
+	uintptr_t rip;
+};
+
+stack_frame OBOSS_StackFrameNext(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+		return curr;
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->down, sizeof(*curr), false))
+		return nullptr;
+	return curr->down;
+}
+uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
+{
+	if (!curr)
+	{
+		curr = __builtin_frame_address(0);
+		if (curr->down)
+			curr = curr->down; // use caller's stack frame, if available
+	}
+	if (!KASAN_IsAllocated((uintptr_t)&curr->rip, sizeof(*curr), false))
+		return 0;
+	return curr->rip;
+}
 
 // Makeshift frame buffer lol.
 // BPP=32
@@ -116,8 +150,17 @@ void Arch_KernelEntryBootstrap()
     // OBOS_TextRendererState.fb.width = 1024;
     // OBOS_TextRendererState.fb.pitch = 1024*4;
     // OBOS_TextRendererState.fb.format = OBOS_FB_FORMAT_RGBX8888;
+    
     memzero(Arch_Framebuffer, 1024*768*4);
     OBOS_TextRendererState.font = font_bin;
+    OBOS_KernelCmdLine = Arch_KernelFile.response->kernel_file->cmdline;
+    OBOS_ParseCMDLine();
+    
+    uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_DEBUG);
+	if (log_level > 4)
+		log_level = LOG_LEVEL_DEBUG;
+	OBOS_SetLogLevel(log_level);
+
     OBOS_Debug("Initializing Vector Base Register.\n");
     Arch_InitializeVectorTable();
     OBOS_Debug("Initializing scheduler.\n");
@@ -132,6 +175,7 @@ void Arch_KernelEntryBootstrap()
     CoreH_ThreadReadyNode(&kmain_thread, &kmain_node);
     CoreH_ThreadReadyNode(&idle_thread, &idle_thread_node);
     Core_LowerIrql(oldIrql);
+    
     // Finally, yield.
     OBOS_Debug("Yielding into kernel main thread.\n");
     Core_Yield();
@@ -141,11 +185,6 @@ obos_status Arch_MapPage(uint32_t pt_root, uintptr_t virt, uintptr_t phys, uintp
 void Arch_PageFaultHandler(interrupt_frame* frame);
 static basic_allocator kalloc;
 extern BootDeviceBase Arch_RTCBase;
-struct stack_frame
-{
-    struct stack_frame* down;
-    void* rip;
-} fdssdfdsf;
 void timer_yield(dpc* on, void* udata)
 {
     OBOS_UNUSED(on);
@@ -175,11 +214,51 @@ asm (
 extern const char Arch_ModuleStart[];
 extern const char Arch_ModuleEnd[];
 
-void tty_print(char ch, void *data)
+static const char* color_to_ansi[] = {
+        "\x1b[30m",
+        "\x1b[34m",
+        "\x1b[32m",
+        "\x1b[36m",
+        "\x1b[31m",
+        "\x1b[35m",
+        "\x1b[38;5;52m",
+        "\x1b[38;5;7m",
+        "\x1b[38;5;8m",
+        "\x1b[38;5;75m",
+        "\x1b[38;5;10m",
+        "\x1b[38;5;14m",
+        "\x1b[38;5;9m",
+        "\x1b[38;5;13m",
+        "\x1b[38;5;11m",
+        "\x1b[38;5;15m",
+};
+/*
+typedef struct log_backend {
+        void* userdata;
+        void(*write)(const char* buf, size_t sz, void* userdata);
+        // Can be nullptr.
+        void(*set_color)(color c, void* userdata);
+        // Can be nullptr if set_color is nullptr.
+        void(*reset_color)(void* userdata);
+} log_backend;
+*/
+
+void tty_print(const char* buf, size_t sz, void *data)
 {
     OBOS_UNUSED(data);
-    ((uint32_t*)Arch_TTYBase)[0] = ch; // Enable device through CMD register
+    for (size_t i = 0; i < sz; i++)
+        ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
 }
+void tty_set_color(color c, void* udata)
+{
+    tty_print(color_to_ansi[c], strlen(color_to_ansi[c]), udata);
+}
+void tty_reset_color(void *udata)
+{
+    tty_print("\x1b[0m", 4, udata);
+}
+static log_backend tty_backend = { .write=tty_print, .set_color=tty_set_color, .reset_color=tty_reset_color };
+
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
@@ -201,16 +280,13 @@ void Arch_KernelEntry()
         static basicmm_region tty_region = {};
         OBOSH_BasicMMAddRegion(&tty_region, (void*)Arch_TTYBase, 0x1000);
         tty_region.mmioRange = true;
-        OBOS_AddLogSource(tty_print, nullptr);
+        OBOS_AddLogSource(&tty_backend);
     }
     OBOS_Debug("%s: Initializing allocator.\n", __func__);
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = OBOSH_ConstructBasicAllocator(&kalloc)))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize allocator. Status: %d.\n", status);
     OBOS_KernelAllocator = (allocator_info*)&kalloc;
-    OBOS_Debug("%s: Parsing command line.\n", __func__);
-    OBOS_KernelCmdLine = Arch_KernelFile.response->kernel_file->cmdline;
-    OBOS_ParseCMDLine();
     OBOS_Debug("%s: Initialize kernel process.\n", __func__);
     OBOS_KernelProcess = Core_ProcessAllocate(&status);
 	if (obos_is_error(status))
@@ -313,12 +389,13 @@ Core_InitializeIRQInterface();
     OBOS_InitrdSize = Arch_InitrdRequest.response->modules[0]->size;
     Vfs_Initialize();
     OBOS_Log("%s: Done early boot.\n", __func__);
-	OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged, and %ld KiB uncommitted. Page faulted %ld times (%ld hard, %ld soft).\n", 
-		Mm_KernelContext.stat.committedMemory/0x400, 
-		Mm_KernelContext.stat.pageable/0x400, 
+    OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
+		Mm_KernelContext.stat.committedMemory/0x400,
+		Mm_KernelContext.stat.pageable/0x400,
 		Mm_KernelContext.stat.paged/0x400,
 		Mm_KernelContext.stat.nonPaged/0x400,
 		Mm_KernelContext.stat.reserved/0x400,
+		Mm_PhysicalMemoryUsage/0x400,
 		Mm_KernelContext.stat.pageFaultCount,
 		Mm_KernelContext.stat.hardPageFaultCount,
 		Mm_KernelContext.stat.softPageFaultCount

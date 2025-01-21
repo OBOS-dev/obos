@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/pmm.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -20,6 +19,7 @@
 #include <mm/context.h>
 #include <mm/alloc.h>
 #include <mm/bare_map.h>
+#include <mm/pmm.h>
 
 obos_status Arch_MapPage(page_table pt_root, uintptr_t virt, uintptr_t to, uintptr_t ptFlags);
 
@@ -62,21 +62,34 @@ static OBOS_NO_KASAN void write_register32(volatile gf_rtc* rtc, uint8_t reg, ui
         return; // Drop the read
     rtc[reg/4] = val;
 }
+
 static OBOS_NO_KASAN void write_register64(volatile gf_rtc* rtc, uint8_t reg, uint64_t val)
 {
     write_register32(rtc, reg+4, val>>32);
     write_register32(rtc, reg, val);
 }
+
 static void set_alarm(volatile gf_rtc* rtc)
 {
     write_register64(rtc, ALARM_LOW, read_register64(rtc, TIME_LOW) + ns_period);
     write_register32(rtc, ENABLE_IRQ, 1);
 } 
+
 timer_tick CoreS_GetTimerTick()
 {
     volatile gf_rtc* rtc = (volatile gf_rtc*)(Arch_RTCBase.base);
     return read_register64(rtc,TIME_LOW);
 }
+
+uint64_t CoreS_GetNativeTimerFrequency()
+{
+    return CoreS_TimerFrequency;
+}
+timer_tick CoreS_GetNativeTimerTick()
+{
+    return CoreS_GetTimerTick();
+}
+
 void rtc_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
 {
     OBOS_UNUSED(i);
@@ -84,6 +97,7 @@ void rtc_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_ve
     OBOS_UNUSED(to);
     OBOS_UNUSED(userdata);
 }
+
 void rtc_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
     OBOS_UNUSED(i);
@@ -94,6 +108,7 @@ void rtc_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     ((irq_handler)userdata)(i, frame, nullptr, oldIrql);
     // set_alarm((volatile gf_rtc*)(Arch_RTCBase.base));
 }
+
 // TODO: Implement
 // bool rtc_check_irq_callback(struct irq* i, void* userdata)
 // {
@@ -145,6 +160,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
+
 obos_status CoreS_ResetTimer()
 {
     if (!Arch_RTCBase.base)

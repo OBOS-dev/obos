@@ -24,6 +24,8 @@
 
 #include <utils/list.h>
 
+#if OBOS_ARCHITECTURE_HAS_PCI
+
 LIST_GENERATE_INTERNAL(pci_device_list, pci_device, node, OBOS_EXPORT);
 LIST_GENERATE_INTERNAL(pci_resource_list, pci_resource, node, OBOS_EXPORT);
 
@@ -592,3 +594,8 @@ obos_status Drv_PCIUpdateResource(pci_resource* resource)
 
     return status;
 }
+
+#else
+
+#endif
+

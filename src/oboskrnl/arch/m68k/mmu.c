@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/page_table.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -106,6 +107,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_MapPage(page_table pt_root, uintptr
     pflush(virt);
     return OBOS_STATUS_SUCCESS;
 }
+
 OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_UnmapPage(page_table pt_root, uintptr_t virt, bool free_pte)
 {
     if (!pt_root)
@@ -140,6 +142,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_UnmapPage(page_table pt_root, uintp
     }
     return OBOS_STATUS_SUCCESS;
 }
+
 OBOS_NO_UBSAN OBOS_NO_KASAN obos_status Arch_GetPagePTE(page_table pt_root, uintptr_t virt, uint32_t* out)
 {
     if (!out)
@@ -241,8 +244,6 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
     obos_status status = Arch_GetPagePTE(pt, addr, &entry);
     page_info page;
     memzero(&page, sizeof(page));
-    page.virt = addr;
-    page.prot.present = entry & PT_FLAGS_RESIDENT;
     if (obos_is_error(status) && status != OBOS_STATUS_NOT_FOUND)
     {
         if (ppage)
@@ -255,6 +256,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
             *phys = MASK_PTE(entry);
         return status;
     }
+    page.virt = addr;
+    page.prot.present = entry & PT_FLAGS_RESIDENT;
     page.prot.huge_page = false;
     page.prot.rw = !(entry & PT_FLAGS_READONLY);
     page.prot.executable = true;
@@ -270,6 +273,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
         entry &= ~(PT_FLAGS_USED | PT_FLAGS_MODIFIED);
         Arch_MapPage(pt, addr, MASK_PTE(entry), entry & ~0xffffff00, false);
     }
+    OBOS_ENSURE(MASK_PTE(entry) != 0);
     if (phys)
         *phys = MASK_PTE(entry);
     if (ppage)
@@ -303,9 +307,23 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_SetPageMapping(page_table pt, const 
         Arch_MapPage(pt, (page->virt & ~0xfff), phys, flags, free_pte) :
         OBOS_STATUS_UNIMPLEMENTED;
 }
+
 OBOS_NO_UBSAN OBOS_NO_KASAN page_table MmS_GetCurrentPageTable()
 {
     page_table pt;
     asm ("movec.l %%srp, %0" :"=r"(pt) :);
     return pt;
+}
+
+page_table MmS_AllocatePageTable()
+{
+    page_table pt = Mm_AllocatePhysicalPages(1, 1, nullptr);
+    memzero(Arch_MapToHHDM(pt), OBOS_PAGE_SIZE);
+    return pt;
+}
+
+void MmS_FreePageTable(page_table pt)
+{
+    // TODO: Free the hierarchy?
+    Mm_FreePhysicalPages(pt, 1);
 }

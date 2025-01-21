@@ -8,6 +8,8 @@
 #include <klog.h>
 #include <error.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
+
 // note: remove after done debugging pls
 #include <uacpi/internal/namespace.h>
 #include <uacpi/namespace.h>
@@ -393,3 +395,37 @@ d_state OBOS_DeviceGetDStateForWake(uacpi_namespace_node* dev, uacpi_sleep_state
     return val;
 }
 
+#else
+
+#include <int.h>
+#include <error.h>
+
+#include <power/device.h>
+
+obos_status OBOS_DeviceSetDState(void* dev, d_state new_state, bool dry_run) 
+{
+	OBOS_UNUSED(dev);
+	OBOS_UNUSED(new_state);
+	OBOS_UNUSED(dry_run);
+	return OBOS_STATUS_UNIMPLEMENTED;
+}
+
+obos_status OBOS_DeviceHasDState(void* dev, d_state state) { OBOS_UNUSED(state); OBOS_UNUSED(dev); return OBOS_STATUS_UNIMPLEMENTED; }
+
+obos_status OBOS_DeviceMakeWakeCapable(void* dev, int state, bool registerGPEOnly)
+{
+	OBOS_UNUSED(dev);
+	OBOS_UNUSED(state);
+	OBOS_UNUSED(registerGPEOnly);
+	return OBOS_STATUS_UNIMPLEMENTED;
+}
+d_state OBOS_DeviceGetDStateForWake(void* dev, int state, obos_status* status)
+{
+	if (status)
+		*status = OBOS_STATUS_UNIMPLEMENTED;
+	OBOS_UNUSED(dev);
+	OBOS_UNUSED(state);
+	return DSTATE_INVALID;
+}
+
+#endif

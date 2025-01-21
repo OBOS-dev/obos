@@ -11,4 +11,4 @@
 
 void OBOS_LoadInit();
 
-OBOS_NORETURN void OBOSS_HandOffToInit(struct exec_aux_values* info);
+OBOS_NORETURN OBOS_WEAK void OBOSS_HandOffToInit(struct exec_aux_values* info);
