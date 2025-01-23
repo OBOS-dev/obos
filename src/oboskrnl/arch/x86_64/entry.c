@@ -21,6 +21,7 @@
 #include <UltraProtocol/ultra_protocol.h>
 
 #include <arch/x86_64/idt.h>
+#include <arch/x86_64/cmos.h>
 #include <arch/x86_64/interrupt_frame.h>
 
 #include <irq/irql.h>
@@ -875,12 +876,16 @@ void Arch_KernelMainBootstrap()
 
 	fd nic = {};
 	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
 	// OBOS_Suspend();
 
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
+
+	Arch_CMOSInitialize();
+	cmos_timeofday time = {};
+	Arch_CMOSGetTimeOfDay(&time);
+	time.hours -= 5;
+	OBOS_Log("%d-%02d-%02d %02d:%02d:%02d\n", time.year, time.month, time.day_of_month, time.hours, time.minutes, time.seconds);
 
 	struct {
 		OBOS_ALIGNAS(8) uint8_t id;
