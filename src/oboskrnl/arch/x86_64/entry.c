@@ -21,6 +21,7 @@
 #include <UltraProtocol/ultra_protocol.h>
 
 #include <arch/x86_64/idt.h>
+#include <arch/x86_64/cmos.h>
 #include <arch/x86_64/interrupt_frame.h>
 
 #include <irq/irql.h>
@@ -540,6 +541,8 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
 	if (obos_is_error(status = Core_InitializeIRQInterface()))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
+	OBOS_Debug("%s: Initializing CMOS RTC\n", __func__);
+	Arch_CMOSInitialize();
 	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
 	Arch_InitializeSchedulerTimer();
 	Core_LowerIrql(oldIrql);
@@ -875,8 +878,6 @@ void Arch_KernelMainBootstrap()
 
 	fd nic = {};
 	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
-	Vfs_FdWrite(&nic, "test1", 5, 0);
 	// OBOS_Suspend();
 
 	fd com1 = {};
