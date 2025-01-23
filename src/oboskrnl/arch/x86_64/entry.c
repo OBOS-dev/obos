@@ -541,6 +541,8 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
 	if (obos_is_error(status = Core_InitializeIRQInterface()))
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
+	OBOS_Debug("%s: Initializing CMOS RTC\n", __func__);
+	Arch_CMOSInitialize();
 	OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
 	Arch_InitializeSchedulerTimer();
 	Core_LowerIrql(oldIrql);
@@ -880,12 +882,6 @@ void Arch_KernelMainBootstrap()
 
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
-
-	Arch_CMOSInitialize();
-	cmos_timeofday time = {};
-	Arch_CMOSGetTimeOfDay(&time);
-	time.hours -= 5;
-	OBOS_Log("%d-%02d-%02d %02d:%02d:%02d\n", time.year, time.month, time.day_of_month, time.hours, time.minutes, time.seconds);
 
 	struct {
 		OBOS_ALIGNAS(8) uint8_t id;
