@@ -17,16 +17,14 @@
 #   ifndef UACPI_ATOMIC_STORE_THREAD_ID
 #       define UACPI_ATOMIC_STORE_THREAD_ID(ptr, value) uacpi_atomic_store_ptr(ptr, value)
 #   endif
-#endif
+
+#   include <uacpi/platform/atomic.h>
+
+#   ifndef UACPI_THREAD_ID_NONE
+#        define UACPI_THREAD_ID_NONE ((uacpi_thread_id)-1)
+#   endif
 
 typedef uint8_t uacpi_cpu_flags;
 typedef uintptr_t uacpi_thread_id;
 
-#ifndef UACPI_THREAD_ID_NONE
-#    define UACPI_THREAD_ID_NONE ((uacpi_thread_id)-1)
 #endif
-
-/*
- * A sentinel value that the kernel promises to NEVER return from
- * uacpi_kernel_get_current_thread_id or this will break
- */

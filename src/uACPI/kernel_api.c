@@ -1,7 +1,7 @@
 /*
-	uACPI/kernel_api.c
-	
-	Copyright (c) 2024 Omar Berrow
+ * uACPI/kernel_api.c
+ *
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -90,127 +90,75 @@ uacpi_status uacpi_kernel_raw_memory_write(uacpi_phys_addr address, uacpi_u8 byt
     }
     return UACPI_STATUS_OK;
 }
-#ifdef __x86_64__
-    static uint8_t raw_io_readB_impl(uacpi_io_addr address) { return inb(address); };
-    static uint16_t raw_io_readW_impl(uacpi_io_addr address) { return inw(address); };
-    static uint32_t raw_io_readD_impl(uacpi_io_addr address) { return ind(address); };
-    static uint8_t (*raw_io_readB)(uacpi_io_addr address) = raw_io_readB_impl;
-    static uint16_t(*raw_io_readW)(uacpi_io_addr address) = raw_io_readW_impl;
-    static uint32_t(*raw_io_readD)(uacpi_io_addr address) = raw_io_readD_impl;
-    static uint64_t(*raw_io_readQ)(uacpi_io_addr address) = nullptr;
-#endif
-// struct stack_frame
-// {
-// 	struct stack_frame* down;
-// 	void* rip;
-// };
-// void spin_hung()
-// {
-//     OBOS_Warning("Spinlock could be hanging!\n");
-//     struct stack_frame* curr = (struct stack_frame*)__builtin_frame_address(0);
-//     OBOS_Debug("Stack trace:\n");
-//     for (int i = 0; curr; )
-//     {
-//         OBOS_Debug("\t%i: %p\n", i, curr->rip);
-//         curr = curr->down;
-//     }
-// }
 void spin_hung()
 {
     // Use to report a lock hanging.
 }
-uacpi_status io_read(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 *out_value)
+
+uacpi_status uacpi_kernel_io_read8(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u8 *out_value
+)
 {
-    uint8_t (*readB)(uacpi_io_addr address) = raw_io_readB;
-    uint16_t(*readW)(uacpi_io_addr address) = raw_io_readW;
-    uint32_t(*readD)(uacpi_io_addr address) = raw_io_readD;
-    uint64_t(*readQ)(uacpi_io_addr address) = raw_io_readQ;
-    if (!isPower2(byteWidth))
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    if (byteWidth > 8)
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    uacpi_status status = UACPI_STATUS_OK;
-    if (byteWidth == 1)
-    {
-        if (readB)
-            *out_value = readB(address);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 2)
-    {
-        if (readW)
-            *out_value = readW(address);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 4)
-    {
-        if (readD)
-            *out_value = readD(address);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 8)
-    {
-        if (readQ)
-            *out_value = readQ(address);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    // printf("read 0x%0*x from I/O Port 0x%04x\n", byteWidth*2, (uint32_t)*out_value, address);
-    return status;
-}
-#ifdef __x86_64__
-    static void raw_io_writeB_impl(uacpi_io_addr address, uint8_t val)  { outb(address, val); };
-    static void raw_io_writeW_impl(uacpi_io_addr address, uint16_t val) { outw(address, val); };
-    static void raw_io_writeD_impl(uacpi_io_addr address, uint32_t val) { outd(address, val); };
-    static void(*raw_io_writeB)(uacpi_io_addr address, uint8_t  val) = raw_io_writeB_impl;
-    static void(*raw_io_writeW)(uacpi_io_addr address, uint16_t val) = raw_io_writeW_impl;
-    static void(*raw_io_writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD_impl;
-    static void(*raw_io_writeQ)(uacpi_io_addr address, uint64_t val) = nullptr;
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    *out_value = inb(port+offset);
 #endif
-uacpi_status io_write(uacpi_io_addr address, uacpi_u8 byteWidth, uacpi_u64 in_value)
+    return UACPI_STATUS_OK;
+}
+
+uacpi_status uacpi_kernel_io_read16(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u16 *out_value
+)
 {
-    // printf("writing 0x%0*x to I/O Port 0x%04x\n", byteWidth*2, in_value, address);
-    void(*writeB)(uacpi_io_addr address, uint8_t  val) = raw_io_writeB;
-    void(*writeW)(uacpi_io_addr address, uint16_t val) = raw_io_writeW;
-    void(*writeD)(uacpi_io_addr address, uint32_t val) = raw_io_writeD;
-    void(*writeQ)(uacpi_io_addr address, uint64_t val) = raw_io_writeQ;
-    if (!isPower2(byteWidth))
-        return UACPI_STATUS_INVALID_ARGUMENT;
-    if (byteWidth > 8)
-       return UACPI_STATUS_INVALID_ARGUMENT;
-    uacpi_status status = UACPI_STATUS_OK;
-    if (byteWidth == 1)
-    {
-        if (writeB)
-            writeB(address, in_value);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 2)
-    {
-        if (writeW)
-            writeW(address, in_value);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 4)
-    {
-        if (writeD)
-            writeD(address, in_value);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    if (byteWidth == 8)
-    {
-        if (writeQ)
-            writeQ(address, in_value);
-        else
-            status = UACPI_STATUS_INVALID_ARGUMENT;
-    }
-    return status;
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    *out_value = inw(port+offset);
+#endif
+    return UACPI_STATUS_OK;
+}
+
+uacpi_status uacpi_kernel_io_read32(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u32 *out_value
+) 
+{
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    *out_value = ind(port+offset);
+#endif
+    return UACPI_STATUS_OK;
+}
+
+uacpi_status uacpi_kernel_io_write8(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u8 in_value
+)
+{
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    outb(port+offset, in_value);
+#endif
+    return UACPI_STATUS_OK;
+}
+
+uacpi_status uacpi_kernel_io_write16(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u16 in_value
+)
+{
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    outw(port+offset, in_value);
+#endif
+    return UACPI_STATUS_OK;
+}
+
+uacpi_status uacpi_kernel_io_write32(
+    uacpi_handle hnd, uacpi_size offset, uacpi_u32 in_value
+)
+{
+    uintptr_t port = (uintptr_t)hnd;
+#if defined(__x86_64__) || defined(__i386__)
+    outd(port+offset, in_value);
+#endif
+    return UACPI_STATUS_OK;
 }
 
 uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
@@ -223,6 +171,108 @@ uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handl
 void uacpi_kernel_pci_device_close(uacpi_handle hnd)
 {
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(uacpi_pci_address));
+}
+
+uacpi_status uacpi_kernel_pci_read8(
+    uacpi_handle device, uacpi_size offset, uacpi_u8 *value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    uint64_t val = 0;
+    obos_status status = DrvS_ReadPCIRegister(loc, offset, 1, &val);
+    *value = val;
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
+}
+
+uacpi_status uacpi_kernel_pci_read16(
+    uacpi_handle device, uacpi_size offset, uacpi_u16 *value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    uint64_t val = 0;
+    obos_status status = DrvS_ReadPCIRegister(loc, offset, 2, &val);
+    *value = val;
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
+}
+
+uacpi_status uacpi_kernel_pci_read32(
+    uacpi_handle device, uacpi_size offset, uacpi_u32 *value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    uint64_t val = 0;
+    obos_status status = DrvS_ReadPCIRegister(loc, offset, 4, &val);
+    *value = val;
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
+}
+
+uacpi_status uacpi_kernel_pci_write8(
+    uacpi_handle device, uacpi_size offset, uacpi_u8 value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    obos_status status = DrvS_WritePCIRegister(loc, offset, 1, value);
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
+}
+
+uacpi_status uacpi_kernel_pci_write16(
+    uacpi_handle device, uacpi_size offset, uacpi_u16 value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    obos_status status = DrvS_WritePCIRegister(loc, offset, 2, value);
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
+}
+
+uacpi_status uacpi_kernel_pci_write32(
+    uacpi_handle device, uacpi_size offset, uacpi_u32 value
+)
+{
+    uacpi_pci_address* address = device;
+    if (address->segment)
+        return UACPI_STATUS_UNIMPLEMENTED;
+    pci_device_location loc = {
+        .bus = address->bus,
+        .slot = address->device,
+        .function = address->function,
+    };
+    obos_status status = DrvS_WritePCIRegister(loc, offset, 4, value);
+    return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
 
 uacpi_status uacpi_kernel_pci_read(
@@ -257,6 +307,7 @@ uacpi_status uacpi_kernel_pci_write(
     obos_status status = DrvS_WritePCIRegister(loc, offset, byte_width, value);
     return status == OBOS_STATUS_SUCCESS ? UACPI_STATUS_OK : UACPI_STATUS_INVALID_ARGUMENT;
 }
+
 // static allocators::BasicAllocator s_uACPIAllocator;
 // static bool s_uACPIAllocatorInitialized = false;
 
@@ -371,7 +422,8 @@ void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
     spinlock* lock = (spinlock*)hnd;
-    return Core_SpinlockAcquire(lock);
+    irql r = Core_SpinlockAcquire(lock);
+    return r;
 }
 void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
@@ -412,6 +464,7 @@ void uacpi_kernel_reset_event(uacpi_handle _e)
     volatile size_t* e = (size_t*)_e;
     __atomic_store_n(e, 0, __ATOMIC_SEQ_CST);
 }
+
 uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle *out_handle)
 {
 #if defined(__x86_64__) || defined(__i386__)
@@ -425,22 +478,6 @@ uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handl
 void uacpi_kernel_io_unmap(uacpi_handle handle)
 {
     OBOS_UNUSED(handle);
-}
-uacpi_status uacpi_kernel_io_read(
-    uacpi_handle hnd, uacpi_size offset,
-    uacpi_u8 byte_width, uacpi_u64 *value
-)
-{
-    uintptr_t base = (uintptr_t)hnd;
-    return io_read(base + offset, byte_width, value);
-}
-uacpi_status uacpi_kernel_io_write(
-    uacpi_handle hnd, uacpi_size offset,
-    uacpi_u8 byte_width, uacpi_u64 value
-)
-{
-    uintptr_t base = (uintptr_t)hnd;
-    return io_write(base + offset, byte_width, value);
 }
 
 uacpi_handle uacpi_kernel_create_mutex(void)
@@ -539,11 +576,13 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
     udata[1] = (uintptr_t)handler;
     irqHnd->handler = bootstrap_irq_handler;
     irqHnd->handlerUserdata = udata;
+    irql oldIrql = Core_RaiseIrql(IRQL_GPE);
 #if defined(__x86_64__)
-    if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, false, TriggerModeEdgeSensitive) != OBOS_STATUS_SUCCESS)
+    if (Arch_IOAPICMapIRQToVector(irq, irqHnd->vector->id+0x20, PolarityActiveHigh, TriggerModeLevelSensitive) != OBOS_STATUS_SUCCESS)
         return UACPI_STATUS_INTERNAL_ERROR;
     Arch_IOAPICMaskIRQ(irq, false);
 #endif
+    Core_LowerIrql(oldIrql);
     *out_irq_handle = irqHnd;
     return UACPI_STATUS_OK;
 }
@@ -587,15 +626,17 @@ static void work_handler(dpc* dpc, void* userdata)
     s_nWork--;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
     CoreH_FreeDPC(dpc, true);
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, work, sizeof(*work));
 }
+
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
 {
     if (!s_isWorkQueueLockInit)
         s_workQueueLock = Core_SpinlockCreate();
     // Make the work object.
-    uacpi_work* work = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uacpi_work), nullptr);
+    uacpi_work* work = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(uacpi_work), nullptr);
     work->type = type;
-    work->cb = cb; 
+    work->cb = cb;
     work->ctx = ctx;
     irql oldIrql = Core_SpinlockAcquire(&s_workQueueLock);
     if(!s_workHead)

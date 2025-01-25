@@ -206,10 +206,20 @@ static void initialize_capability_resources(pci_device* dev)
 
     pci_capability* tail = nullptr;
 
+    uint8_t visited_offsets[256/8];
+#define set_visited_offset(off) (visited_offsets[(off)/8] |= BIT((off)%8))
+#define visited_offset(off) !!(visited_offsets[(off)/8] & BIT((off)%8))
+
     for (uint8_t offset = tmp & 0xff; offset; )
     {
         uint8_t next = 0;
         uint8_t cap_id = 0;
+
+        // works around certain PCs that have something like:
+        // a->b->c->b
+        if (visited_offset(offset))
+            break; 
+        set_visited_offset(offset);
 
         DrvS_ReadPCIRegister(dev->location, offset, 4, &tmp);
         uint16_t cap_hdr = (uint16_t)(tmp&0xffff);
@@ -268,6 +278,8 @@ static void initialize_capability_resources(pci_device* dev)
         done:
         offset = next;
     }
+#undef visited_offset
+#undef set_visited_offset
 }
 
 static void initialize_irq_resources(pci_device* dev)
