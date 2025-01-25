@@ -17,6 +17,12 @@ option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
+option (OBOS_COMPILE_USER_EXAMPLES "Compiles user examples" ${OBOS_USE_OBOS_GCC})
+
+if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_EXAMPLES)
+	message(WARNING "OBOS_COMPILE_USER_EXAMPLES must be OFF if OBOS_USE_OBOS_GCC is OFF")
+	set(OBOS_COMPILE_USER_EXAMPLES OFF)
+endif()
 
 # String options
 
@@ -222,3 +228,7 @@ add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/generic/r8169")
 add_subdirectory("src/isogen")
+
+if (OBOS_COMPILE_USER_EXAMPLES)
+	add_subdirectory("src/user_examples")
+endif()

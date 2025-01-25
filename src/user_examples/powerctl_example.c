@@ -3,29 +3,6 @@
 #include <strings.h>
 #include <stdio.h>
 
-asm (
-".intel_syntax noprefix;\
-\
-.global syscall;\
-\
-syscall:;\
-    push rbp;\
-    mov rbp, rsp;\
-\
-    mov eax, edi;\
-    mov rdi, rsi;\
-    mov rsi, rdx;\
-    mov rdx, rcx;\
-\
-    syscall;\
-\
-    leave;\
-    ret;\
-\
-.hidden syscall;\
-\
-.att_syntax prefix;");
-
 static char obos_getchar()
 {
     char ch[2] = {};
@@ -55,19 +32,19 @@ int main(int argc, char** argv)
     {
         puts("Suspending...");
         confirm();
-        asm volatile ("syscall;" : :"r"(Sys_Suspend) :"memory");
+        syscall0(Sys_Suspend);
     }
     else if (strcasecmp(option, "reboot") == 0)
     {
         puts("Rebooting...");
         confirm();
-        asm volatile ("syscall;" : :"r"(Sys_Reboot) :"memory");
+        syscall0(Sys_Reboot);
     }
     else
     {
         puts("Shutting down...");
         confirm();
-        asm volatile ("syscall;" : :"r"(Sys_Shutdown) :"memory");
+        syscall0(Sys_Shutdown);
     }
     return 0;
 }

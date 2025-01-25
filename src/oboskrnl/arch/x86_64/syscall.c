@@ -13,6 +13,7 @@
 
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/sse.h>
+#include <arch/x86_64/cmos.h>
 
 #include <mm/context.h>
 
@@ -40,14 +41,14 @@ void OBOSS_InitializeSyscallInterface()
     Arch_cpu_local_currentKernelStack_offset = offsetof(cpu_local, currentKernelStack);
 }
 
-void Sys_SetFSBase(uintptr_t to)
+void SysS_SetFSBase(uintptr_t to)
 {
     wrmsr(0xC0000100, to);
     Core_GetCurrentThread()->context.fs_base = to;
 }
 
 // Creates a new thread context, but takes in a stack pointer instead of a stack and stack size
-handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, handle vmm_context)
+handle SysS_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, handle vmm_context)
 {
     context* vmm_ctx =
         HANDLE_TYPE(vmm_context) == HANDLE_TYPE_CURRENT ?
@@ -94,14 +95,15 @@ handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, han
 }
 
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
-    (uintptr_t)Sys_SetFSBase,
-    (uintptr_t)Sys_ThreadContextCreateFork,
+    (uintptr_t)SysS_SetFSBase,
+    (uintptr_t)SysS_ThreadContextCreateFork,
+    (uintptr_t)SysS_ClockGet,
 };
 
 const char* syscall_to_string[] = {
     "Core_ExitCurrentThread/Sys_SetFSBase",
     "Core_Yield/Sys_ThreadContextCreateFork",
-    "OBOS_Reboot",
+    "OBOS_Reboot/SysS_ClockGet",
     "OBOS_Shutdown",
     "Sys_HandleClose",
     "Sys_HandleClone",

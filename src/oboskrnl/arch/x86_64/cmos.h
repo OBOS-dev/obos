@@ -58,3 +58,5 @@ typedef struct cmos_timeofday
 
 obos_status Arch_CMOSInitialize();
 obos_status Arch_CMOSGetTimeOfDay(cmos_timeofday* time);
+
+obos_status SysS_ClockGet(int clock, long *secs, long *nsecs);
