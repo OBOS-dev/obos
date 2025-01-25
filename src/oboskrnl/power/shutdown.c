@@ -4,6 +4,8 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
+
 #include <int.h>
 #include <klog.h>
 #include <struct_packing.h>
@@ -50,3 +52,18 @@ OBOS_NORETURN void OBOS_Reboot()
     while(1)
         asm volatile("");
 }
+#else
+
+#include <int.h>
+#include <klog.h>
+
+OBOS_NORETURN void OBOS_Shutdown()
+{
+	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Shutting down is unsupported\n");
+}
+OBOS_NORETURN void OBOS_Reboot()
+{
+	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Rebooting is unsupported\n");
+}
+
+#endif

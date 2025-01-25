@@ -36,6 +36,8 @@
 
 #include <utils/list.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
+
 static mutex suspend_lock = MUTEX_INITIALIZE();
 // the thread that initiated the suspend.
 static thread* suspended_thread = nullptr;
@@ -206,3 +208,13 @@ obos_status OBOS_Suspend()
     OBOS_Log("oboskrnl: Woke up from suspend.\n");
     return OBOS_STATUS_SUCCESS;
 }
+
+#else
+
+obos_status OBOS_Suspend()
+{
+    OBOS_Log("%s: Unimplemented.\n", __func__);
+    return OBOS_STATUS_UNIMPLEMENTED;
+}
+
+#endif

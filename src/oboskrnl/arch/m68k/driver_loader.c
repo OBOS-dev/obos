@@ -54,9 +54,17 @@ struct copy_reloc_array
 };
 static void append_relocation_table(struct relocation_array* arr, const struct relocation_table* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
-    OBOS_ASSERT(arr->buf);
-    arr->buf[arr->nRelocations - 1] = *what; 
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
+    OBOS_ASSERT(arr->buf); // oopsies
+    arr->buf[arr->nRelocations - 1] = *what;
+    // Note:
+    // Since you'll probably forget what you were doing:
+    // You were making relocation tables in the array be stored as the struct relocation_table instead of Elf64_Dyn.
+    // You're done adapting the array, you only need to adapt the code.
+    // 5 Hours later:
+    // thank god I wrote this comment.
 }
 static void free_reloc_array(struct relocation_array* arr)
 {
@@ -65,15 +73,18 @@ static void free_reloc_array(struct relocation_array* arr)
 }
 static void append_copy_reloc(struct copy_reloc_array* arr, const struct copy_reloc* what)
 {
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, (++arr->nRelocations)*sizeof(*arr->buf), nullptr);
-    OBOS_ASSERT(arr->buf);
-    arr->buf[arr->nRelocations - 1] = *what; 
+    size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
+    size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
+    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
+    OBOS_ASSERT(arr->buf); // oopsies
+    arr->buf[arr->nRelocations - 1] = *what;
 }
 static void free_copy_reloc_array(struct copy_reloc_array* arr)
 {
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, arr->buf, arr->nRelocations*sizeof(*arr->buf));
     memzero(arr, sizeof(*arr));
 }
+
 
 // From https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-48031.html#scrolltoc
 static uint32_t ElfHash(const char* name)
@@ -126,7 +137,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
             return; // don't add an already added dependency to the list
         cur = cur->next;
     }
-    driver_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sizeof(driver_node), nullptr);
+    driver_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_node), nullptr);
     node->data = dependency;
     driver_list* list = &depends->dependencies;
     if (!list->head)

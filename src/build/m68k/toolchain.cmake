@@ -42,7 +42,7 @@ set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
 set(TARGET_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
 set(TARGET_DRIVER_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
 
-if (DEFINED OBOS_ENABLE_KASAN)
+if (OBOS_ENABLE_KASAN)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fasan-shadow-offset=0>)
 endif()
 

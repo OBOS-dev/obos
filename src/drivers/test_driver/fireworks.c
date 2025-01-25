@@ -190,9 +190,9 @@ OBOS_NO_UBSAN fixedptd cos(int angle)
 static void particle_update(void* udata_)
 {
 	uint64_t *udata = udata_;
-	firework_data *data = (void*)udata[0];
-	event* e = (void*)udata[1];
-	timer* t = (void*)udata[2];
+	firework_data *data = (void*)(uintptr_t)udata[0];
+	event* e = (void*)(uintptr_t)udata[1];
+	timer* t = (void*)(uintptr_t)udata[2];
 	int expires_in = (int)(uintptr_t)udata[3];
 	timer_tick startedAt = (timer_tick)(uintptr_t)udata[4];
 	if ((expires_in + startedAt) >= t->lastTimeTicked)

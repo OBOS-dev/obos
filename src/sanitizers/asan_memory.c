@@ -17,6 +17,9 @@ uintptr_t* Arch_AllocatePageMapAt(uintptr_t pml4Base, uintptr_t at, uintptr_t cp
 bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth);
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags);
+#elif defined(__m68k__)
+#include <mm/context.h>
+obos_status Arch_GetPagePTE(page_table pt_root, uintptr_t virt, uint32_t* out);
 #endif
 
 OBOS_NO_KASAN bool KASAN_IsAllocated(uintptr_t base, size_t size, bool rw)

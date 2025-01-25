@@ -18,6 +18,8 @@
 
 #include <irq/irql.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
+
 #include <uacpi/uacpi.h>
 #include <uacpi/status.h>
 #include <uacpi/context.h>
@@ -93,3 +95,14 @@ void OBOS_InitializeUACPI()
 
     Core_LowerIrql(oldIrql);
 }
+
+#else
+
+void OBOS_SetupEarlyTableAccess() {}
+void OBOS_InitializeUACPI() {}
+
+void OBOS_InitializeECFromECDT() {}
+void OBOS_InitializeECFromNamespace() {}
+void OBOS_ECSetGPEs() {}
+
+#endif

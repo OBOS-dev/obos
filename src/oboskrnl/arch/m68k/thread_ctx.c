@@ -49,3 +49,15 @@ obos_status CoreS_FreeThreadContext(thread_ctx* ctx)
     OBOS_UNUSED(ctx);
     return OBOS_STATUS_SUCCESS;
 }
+void CoreS_SetThreadPageTable(thread_ctx* ctx, page_table pt)
+{
+    if (!pt || !ctx)
+        return;
+    ctx->urp = pt;
+}
+
+void CoreS_SetKernelStack(void* stck)
+{
+    // TODO: Set kernel stack
+    OBOS_UNUSED(stck);
+}

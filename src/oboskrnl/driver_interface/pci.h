@@ -174,20 +174,23 @@ obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
 // It also overwrites the IRQ move callback.
 obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
 #else
-OBOS_WEAK obos_status DrvS_EnumeratePCI(pci_iteration_decision(*cb)(void* udata, pci_device_node device), void *cb_udata);
-OBOS_WEAK obos_status DrvS_ReadPCIDeviceNode(pci_device_location loc, pci_device_node* node);
-OBOS_WEAK obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val);
-OBOS_WEAK obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val);
-OBOS_WEAK size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bool is64bit, size_t* size);
-OBOS_WEAK uint64_t DrvS_MSIAddressAndData(uint64_t* data, uint8_t vec, uint32_t processor, bool edgetrigger, bool deassert);
-OBOS_WEAK obos_status DrvS_RegisterIRQPin(const pci_device_node* dev, uint32_t* handle, irq_vector_id vector);
-OBOS_WEAK obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
-typedef struct pci_irq_handle
-{
-    uint8_t unused;
-} pci_irq_handle;
-OBOS_WEAK obos_status Drv_RegisterPCIIrq(irq* irq, const pci_device_node* dev, pci_irq_handle* handle);
-OBOS_WEAK obos_status Drv_MaskPCIIrq(const pci_irq_handle* handle, bool mask);
+OBOS_EXPORT obos_status DrvS_WriteIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t val, uint8_t byte_width);
+OBOS_EXPORT obos_status DrvS_ReadIOSpaceBar(pci_bar* bar, uint16_t offset, uint32_t *val, uint8_t byte_width);
+OBOS_EXPORT obos_status DrvS_EnumeratePCI(uint8_t bus, pci_iteration_decision(*cb)(void* udata, pci_device_location device), void *cb_udata);
+OBOS_EXPORT obos_status DrvS_ReadPCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t* val);
+OBOS_EXPORT obos_status DrvS_WritePCIRegister(pci_device_location loc, uint8_t offset, size_t accessSize, uint64_t val);
+OBOS_EXPORT size_t DrvS_GetBarSize(pci_device_location loc, uint8_t barIndex, bool is64bit, obos_status* status);
+// Returns the address field that MSI(-X) expects, and outputs in *data the data expected by MSI(-X).
+uint64_t DrvS_MSIAddressAndData(uint64_t* data, irq_vector_id vec, uint32_t processor, bool edgetrigger, bool deassert);
+obos_status DrvS_RegisterIRQPin(const pci_device_location* dev, uint32_t* handle, irq_vector_id vector);
+obos_status DrvS_MaskIRQPin(uint32_t handle, bool mask);
+#ifdef __x86_64__
+#   define PCI_IRQ_CAN_USE_ACPI 1 /* for stuff like PCI routing tables */
+#   define PCI_IRQ_UACPI_INIT_LEVEL UACPI_INIT_LEVEL_NAMESPACE_LOADED
+#endif
+// Note: Overwrites irq->irqChecker as well as irq->irqCheckerUserdata.
+// It also overwrites the IRQ move callback.
+obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
 #endif
 
 #ifndef PCI_IRQ_CAN_USE_ACPI

@@ -20,6 +20,8 @@
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
 
+#include <stdatomic.h>
+
 #include <utils/string.h>
 
 static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)

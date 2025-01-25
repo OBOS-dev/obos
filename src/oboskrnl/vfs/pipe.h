@@ -34,6 +34,6 @@ typedef struct pipe_desc
     vnode *vn;
     void* buf;
     size_t pipe_size;
-    _Atomic(uoff_t) offset;
+    _Atomic(uintptr_t) offset;
     pushlock lock;
 } pipe_desc;
