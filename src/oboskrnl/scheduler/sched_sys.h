@@ -47,7 +47,6 @@ uint64_t Sys_ThreadGetTid(handle thr);
 // locks/wait.h
 
 obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */);
-obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects);
 
 // scheduler/process.h
 

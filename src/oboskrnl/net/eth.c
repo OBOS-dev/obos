@@ -11,6 +11,7 @@
 #include <struct_packing.h>
 
 #include <net/eth.h>
+#include <net/frame.h>
 #include <net/ip.h>
 #include <net/arp.h>
 
@@ -77,13 +78,14 @@ obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_
 {
     if (!phdr || !data || !sz || !src || !dest || !out_sz)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ethernet2_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ethernet2_header)+sz+4, nullptr);
+    size_t real_size = sz >= 64 ? sz : 64;
+    ethernet2_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ethernet2_header)+real_size+4, nullptr);
     memcpy(hdr->dest, dest, sizeof(mac_address));
     memcpy(hdr->src, src, sizeof(mac_address));
     hdr->type = host_to_be16(type);
     memcpy(hdr+1, data, sz);
-    set_checksum(hdr, sz);
-    *out_sz = sizeof(ethernet2_header)+sz+4;
+    set_checksum(hdr, real_size);
+    *out_sz = sizeof(ethernet2_header)+real_size+4;
     *phdr = hdr;
     return OBOS_STATUS_SUCCESS;
 }
@@ -98,8 +100,9 @@ static void receive_packet(dpc* d, void* userdata)
     // TODO: Do we need to see if the MAC address in the frame matches our MAC address?
     frame pkt_frame = *data;
     pkt_frame.buff += sizeof(*hdr);
+    pkt_frame.base->refcount++;
     pkt_frame.sz -= sizeof(*hdr);
-    // checksum
+    // remove the checksum
     pkt_frame.sz -= 4;
     switch (be16_to_host(hdr->type))
     {
@@ -110,32 +113,32 @@ static void receive_packet(dpc* d, void* userdata)
         }
         case ETHERNET2_TYPE_ARP:
         {
-            OBOS_Debug("data.mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                       pkt_frame.source_mac_address[0], pkt_frame.source_mac_address[1], pkt_frame.source_mac_address[2],
-                       pkt_frame.source_mac_address[3], pkt_frame.source_mac_address[4], pkt_frame.source_mac_address[5]
-            );
+            // OBOS_Debug("data.mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
+            //            pkt_frame.source_mac_address[0], pkt_frame.source_mac_address[1], pkt_frame.source_mac_address[2],
+            //            pkt_frame.source_mac_address[3], pkt_frame.source_mac_address[4], pkt_frame.source_mac_address[5]
+            // );
             Net_ARPReceiveFrame(&pkt_frame);
             break;
         }
         default:
             break;
     }
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, data->buff, data->sz);
+    NetH_ReleaseSharedBuffer(data->base);
     LIST_REMOVE(frame_queue, &frames, data);
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, data, sizeof(*data));
 }
 
-static void queue_packet(const void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6])
+static void queue_packet(void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6], net_shared_buffer* buffer)
 {
-    void* real_buff = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
-    memcpy(real_buff, buff, sz);
     frame* data = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(frame), nullptr);
-    data->buff = real_buff;
+    data->buff = buff;
     data->source_vn = vnode;
     memcpy(data->source_mac_address, mac, 6);
     data->sz = sz;
+    buffer->refcount++;
+    data->base = buffer;
     data->receive_dpc.userdata = data;
-    OBOS_Debug("initializing DPC\n");
+    // OBOS_Debug("initializing DPC\n");
     receive_packet(nullptr, data);
     // CoreH_InitializeDPC(&data->receive_dpc, receive_packet, Core_DefaultThreadAffinity);
     LIST_APPEND(frame_queue, &frames, data);
@@ -149,13 +152,15 @@ static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
     vn->un.device->driver->header.ftable.ioctl(vn->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, addr);
     void* buffer = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, bytes_ready, nullptr);
     size_t read = 0, bytes_left = bytes_ready;
+    net_shared_buffer* base = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_shared_buffer), nullptr);
+    base->base = buffer;
+    base->buff_size = bytes_ready;
     while (bytes_left)
     {
         vn->un.device->driver->header.ftable.read_sync(vn->desc, (void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), bytes_left, 0, &read);
-        queue_packet((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, vn, &addr);
+        queue_packet((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, vn, &addr, base);
         bytes_left -= read;
     }
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buffer, bytes_ready);
 }
 
 obos_status Net_InitializeEthernet2(vnode* interface_vn)
@@ -169,4 +174,13 @@ obos_status Net_InitializeEthernet2(vnode* interface_vn)
     if (!interface_vn->un.device->driver->header.ftable.set_data_ready_cb)
         return OBOS_STATUS_INVALID_OPERATION;
     return interface_vn->un.device->driver->header.ftable.set_data_ready_cb(interface_vn, data_ready, nullptr);
+}
+
+void NetH_ReleaseSharedBuffer(net_shared_buffer* buff)
+{
+    if (!(--buff->refcount))
+    {
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buff->base, buff->buff_size);
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buff, sizeof(*buff));
+    }
 }

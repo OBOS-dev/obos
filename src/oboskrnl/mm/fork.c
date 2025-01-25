@@ -66,6 +66,8 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                         what.phys = info.phys;
                         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
                     }
+                    if (!phys)
+                        goto done;
                     MmH_RefPage(phys);
                     phys->pagedCount++;
                     if (phys->cow_type != COW_ASYMMETRIC)
@@ -75,6 +77,7 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                     info.prot.rw = false;
                     MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
                 }
+                done:
                 MmS_SetPageMapping(into->pt, &info, info.phys, false);
             }
         }

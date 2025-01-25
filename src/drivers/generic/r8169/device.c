@@ -19,7 +19,6 @@
 #include <irq/dpc.h>
 #include <irq/irq.h>
 
-#include <locks/pushlock.h>
 #include <locks/event.h>
 #include <locks/wait.h>
 #include <locks/mutex.h>
@@ -30,6 +29,7 @@
 
 #include <power/shutdown.h>
 
+#include "locks/spinlock.h"
 #include "structs.h"
 
 static void write_reg64(r8169_device* dev, uint8_t off, uint64_t val)
@@ -43,13 +43,6 @@ static void write_or_register(r8169_device* dev, uint8_t off, uint32_t mask, uin
     uint32_t tmp = 0;
     DrvS_ReadIOSpaceBar(dev->bar->bar, off, &tmp, size);
     tmp |= mask;
-    DrvS_WriteIOSpaceBar(dev->bar->bar, off, tmp, size);
-}
-static void write_and_register(r8169_device* dev, uint8_t off, uint32_t mask, uint8_t size)
-{
-    uint32_t tmp = 0;
-    DrvS_ReadIOSpaceBar(dev->bar->bar, off, &tmp, size);
-    tmp &= mask;
     DrvS_WriteIOSpaceBar(dev->bar->bar, off, tmp, size);
 }
 
@@ -83,7 +76,9 @@ void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
 
 void r8169_rx(r8169_device* dev)
 {
-    Core_PushlockAcquire(&dev->rx_buffer_lock, false);
+    OBOS_ENSURE(~dev->isr & RxOverflow);
+    OBOS_ENSURE(~dev->isr & TxErr);
+    irql oldIrql = Core_SpinlockAcquire(&dev->rx_buffer_lock);
     for (size_t i = 0; i < DESCS_IN_SET; i++)
     {
         r8169_descriptor* desc = &dev->sets[Rx_Set][i];
@@ -95,7 +90,6 @@ void r8169_rx(r8169_device* dev)
         if (desc->command & RES_ERR)
         {
             // Uh oh
-            OBOS_Debug("packet error!\n");
             dev->rx_errors++;
             if (desc->command & CRC_ERR)
                 dev->rx_crc_errors++;
@@ -128,18 +122,20 @@ void r8169_rx(r8169_device* dev)
         done:
         r8169_release_desc(dev, desc, Rx_Set);
     }
-    Core_PushlockRelease(&dev->rx_buffer_lock, false);
+    Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
 }
 
 static void tx_set(r8169_device* dev, uint8_t set)
 {
     if (!dev->sets[set])
         return;
-    Core_PushlockAcquire(&dev->tx_buffer_lock, true);
+    irql oldIrql = Core_SpinlockAcquire(&dev->tx_buffer_lock);
     for (size_t i = 0; i < DESCS_IN_SET; i++)
     {
         r8169_descriptor* desc = &dev->sets[set][i];
         if (desc->command & NIC_OWN)
+            continue;
+        if (!desc->buf)
             continue;
 
         dev->tx_count++;
@@ -149,6 +145,7 @@ static void tx_set(r8169_device* dev, uint8_t set)
         Core_EventPulse(&dev->tx_buffer.envt, false);
 
         r8169_release_desc(dev, desc, set);
+        // OBOS_Debug("%d: desc->command: %08x\n", i, desc->command);
     }
     uint32_t tx_poll = 0;
     DrvS_ReadIOSpaceBar(dev->bar->bar, TxPoll, &tx_poll, 1);
@@ -162,7 +159,7 @@ static void tx_set(r8169_device* dev, uint8_t set)
         dev->tx_bytes += dev->tx_awaiting_transfer;
         dev->tx_awaiting_transfer = 0;
     }
-    Core_PushlockRelease(&dev->tx_buffer_lock, true);
+    Core_SpinlockRelease(&dev->tx_buffer_lock, oldIrql);
 }
 void r8169_tx(r8169_device* dev)
 {
@@ -294,12 +291,8 @@ void r8169_reset(r8169_device* dev)
         dev->dpc.userdata = dev;
 
         dev->rx_buffer.envt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-        dev->free_descriptors_events[0] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-        dev->free_descriptors_events[1] = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-        dev->free_descriptors_locks[0] = MUTEX_INITIALIZE();
-        dev->free_descriptors_locks[1] = MUTEX_INITIALIZE();
-        dev->rx_buffer_lock = PUSHLOCK_INITIALIZE();
-        dev->tx_buffer_lock = PUSHLOCK_INITIALIZE();
+        dev->rx_buffer_lock = Core_SpinlockCreate();
+        dev->tx_buffer_lock = Core_SpinlockCreate();
 
         dev->magic = R8169_DEVICE_MAGIC;
 
@@ -340,6 +333,7 @@ void r8169_reset(r8169_device* dev)
 
     write_reg64(dev, RxDescAddrLow, dev->sets_phys[Rx_Set]);
     write_reg64(dev, TxDescStartAddrLow, dev->sets_phys[Tx_Set]);
+    write_reg64(dev, TxHDescStartAddrLow, dev->sets_phys[TxH_Set]);
 
     r8169_lock_config(dev);
 
@@ -413,25 +407,22 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     // TODO: Do any platforms require this to be mapped as UC?
     dev->sets[set] = map_registers(phys, nPages*OBOS_PAGE_SIZE, false, true);
     dev->sets_phys[set] = phys;
+    memzero(dev->sets[set], nPages*OBOS_PAGE_SIZE);
 
     phys = 0;
 
-    for (size_t i = 0; i < DESCS_IN_SET; i++)
+    for (size_t i = 0; i < DESCS_IN_SET && (set == Rx_Set); i++)
     {
-        dev->sets[set][i].vlan = 0; // reserved probably, so we zero it.
+        dev->sets[set][i].vlan = 0; // we don't use this, so we zero it.
+        dev->sets[set][i].command = (RX_PACKET_SIZE & PACKET_LEN_MASK) & ~0x7;
 
-        if (set == Rx_Set)
-        {
-            dev->sets[set][i].command = (RX_PACKET_SIZE & PACKET_LEN_MASK) & ~0x7;
+        nPages = RX_PACKET_SIZE;
+        if (nPages % OBOS_PAGE_SIZE)
+            nPages += (OBOS_PAGE_SIZE-(nPages%OBOS_PAGE_SIZE));
+        nPages /= OBOS_PAGE_SIZE;
 
-            nPages = RX_PACKET_SIZE;
-            if (nPages % OBOS_PAGE_SIZE)
-                nPages += (OBOS_PAGE_SIZE-(nPages%OBOS_PAGE_SIZE));
-            nPages /= OBOS_PAGE_SIZE;
-
-            phys = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
-            dev->sets[set][i].buf = phys;
-        }
+        phys = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
+        dev->sets[set][i].buf = phys;
 
         r8169_release_desc(dev, &dev->sets[set][i], set);
     }
@@ -440,48 +431,30 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
 
 void r8169_release_desc(r8169_device* dev, r8169_descriptor* desc, uint8_t set)
 {
+    OBOS_UNUSED(dev);
     if (set == Rx_Set)
     {
         desc->command |= NIC_OWN;
         return; // We're done here.
     }
 
-    desc->command = 0;
+    desc->command &= EOR;
     desc->buf = 0;
     desc->vlan = 0;
-    Core_MutexAcquire(&dev->free_descriptors_locks[set]);
-    OBOS_ASSERT(set <= TxH_Set);
-    r8169_descriptor_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
-    node->desc = desc;
-    LIST_APPEND(r8169_descriptor_list, &dev->free_descriptors[set], node);
-    Core_MutexRelease(&dev->free_descriptors_locks[set]);
 }
 
 r8169_descriptor* r8169_alloc_desc(r8169_device* dev, uint8_t set)
 {
     if (set == Rx_Set)
         return nullptr; // We're done here.
-    OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
-
-    Core_MutexAcquire(&dev->free_descriptors_locks[set]);
-    r8169_descriptor_node* node = LIST_GET_HEAD(r8169_descriptor_list, &dev->free_descriptors[set]);
-    r8169_descriptor* desc = node->desc;
-    LIST_REMOVE(r8169_descriptor_list, &dev->free_descriptors[set], node);
-    Core_MutexRelease(&dev->free_descriptors_locks[set]);
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
-
-    return desc;
+    return &dev->sets[set][(*(set == TxH_Set ? &dev->tx_priority_idx : &dev->tx_idx))++ % DESCS_IN_SET];
 }
 
 obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
 {
-    obos_status status = OBOS_STATUS_SUCCESS;
-    if (wait)
-        status = Core_PushlockAcquire(&dev->tx_buffer_lock, false);
-    else
-        status = Core_PushlockTryAcquire(&dev->tx_buffer_lock);
-    if (obos_is_error(status))
-        return status;
+    OBOS_UNUSED(wait);
+
+    irql oldIrql = Core_SpinlockAcquireExplicit(&dev->tx_buffer_lock, IRQL_R8169, false);
 
     r8169_frame* tx_frame = LIST_GET_HEAD(r8169_frame_list, &dev->tx_buffer.frames);
 
@@ -492,20 +465,13 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
         r8169_frame* next = LIST_GET_NEXT(r8169_frame_list, &dev->tx_buffer.frames, tx_frame);
 
         r8169_descriptor* desc = r8169_alloc_desc(dev, tx_frame->tx_priority_high ? TxH_Set : Tx_Set);
-        if (!desc)
-        {
-            if (wait)
-                Core_WaitOnObject(WAITABLE_OBJECT(dev->free_descriptors_events[tx_frame->tx_priority_high ? TxH_Set : Tx_Set]));
-            else
-                return OBOS_STATUS_WOULD_BLOCK;
-        }
+        OBOS_ENSURE(desc);
 
         uintptr_t phys = 0;
         MmS_QueryPageInfo(Mm_KernelContext.pt, (uintptr_t)tx_frame->buf, nullptr, &phys);
-        irql oldIrql = Core_RaiseIrql(IRQL_R8169);
         OBOS_ENSURE(phys);
         desc->buf = phys;
-        desc->command = tx_frame->sz & TX_PACKET_LEN_MASK;
+        desc->command = (desc->command & EOR) | (tx_frame->sz & TX_PACKET_LEN_MASK);
         desc->command |= FS;
         desc->command |= LS;
         if (dev->ip_checksum_offload)
@@ -525,9 +491,6 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
             tx_poll |= BIT(6); // Normal priority frame.
             dev->tx_awaiting_transfer += tx_frame->sz;
         }
-        Core_LowerIrql(oldIrql);
-        // This does not free the physical memory.
-        // That is done in r8169_tx
         Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))));
 
         r8169_buffer_remove_frame(&dev->tx_buffer, tx_frame);
@@ -536,7 +499,7 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
     }
     DrvS_WriteIOSpaceBar(dev->bar->bar, TxPoll, tx_poll, 1);
 
-    Core_PushlockRelease(&dev->tx_buffer_lock, false);
+    Core_SpinlockRelease(&dev->tx_buffer_lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -577,6 +540,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             frame->refcount = 1;
+            OBOS_ENSURE(sz >= 64);
             break;
         }
         default:

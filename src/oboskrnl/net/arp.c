@@ -36,14 +36,15 @@ OBOS_NO_UBSAN obos_status Net_FormatARPRequestIPv4(arp_header** phdr, mac_addres
     uint8_t* iter = (void*)hdr->data;
     // We don't know the target.
     mac_address target_mac = {};
-    memcpy(iter, &sender_mac, sizeof(mac_address));
+    memcpy(iter, sender_mac, sizeof(mac_address));
     iter += sizeof(mac_address);
     memcpy(iter, &sender_ip, sizeof(sender_ip));
     iter += sizeof(sender_ip);
-    memcpy(iter, &target_mac, sizeof(mac_address));
+    memcpy(iter, target_mac, sizeof(mac_address));
     iter += sizeof(mac_address);
     memcpy(iter, &target_ip, sizeof(target_ip));
     iter += sizeof(target_ip);
+    *phdr = hdr;
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -112,13 +113,12 @@ obos_status Net_ARPReceiveFrame(frame* data)
     {
         case ARP_REQUEST:
         {
-            OBOS_Debug("ARP: Request for %d.%d.%d.%d from %d.%d.%d.%d (%02x:%02x:%02x:%02x:%02x:%02x)\n",
-                       target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4,
-                       sender_ip.comp1, sender_ip.comp2, sender_ip.comp3, sender_ip.comp4,
-                       sender_mac[0], sender_mac[1], sender_mac[2],
-                       sender_mac[3], sender_mac[4], sender_mac[5]
-            );
-            OBOS_Debug("NOTE: We are %d.%d.%d.%d\n", our_ip.comp1, our_ip.comp2, our_ip.comp3, our_ip.comp4);
+            // OBOS_Debug("ARP: Request for %d.%d.%d.%d from %d.%d.%d.%d (%02x:%02x:%02x:%02x:%02x:%02x)\n",
+            //            target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4,
+            //            sender_ip.comp1, sender_ip.comp2, sender_ip.comp3, sender_ip.comp4,
+            //            sender_mac[0], sender_mac[1], sender_mac[2],
+            //            sender_mac[3], sender_mac[4], sender_mac[5]
+            // );
             if (our_ip.addr == target_ip.addr)
             {
                 // Setup the reply
@@ -152,10 +152,10 @@ obos_status Net_ARPReceiveFrame(frame* data)
                                             sizeof(*reply)+2*reply->len_protocol_address+2*reply->len_hw_address);
                 OBOS_KernelAllocator->Free(OBOS_KernelAllocator, eth2, frame_size);
 
-                OBOS_Debug("ARP: We have %d.%d.%d.%d, replying to %d.%d.%d.%d\n",
-                           target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4,
-                           sender_ip.comp1, sender_ip.comp2, sender_ip.comp3, sender_ip.comp4
-                );
+                // OBOS_Debug("ARP: We have %d.%d.%d.%d, replying to %d.%d.%d.%d\n",
+                //            target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4,
+                //            sender_ip.comp1, sender_ip.comp2, sender_ip.comp3, sender_ip.comp4
+                // );
             }
             break;
         }
@@ -163,13 +163,13 @@ obos_status Net_ARPReceiveFrame(frame* data)
         {
             arp_ip_request what = { .target.addr=sender_ip.addr, .interface = data->source_vn };
             arp_ip_request *request = RB_FIND(arp_ip_request_tree, &Net_InFlightARPRequests, &what);
+            // OBOS_Debug("ARP: %02x:%02x:%02x:%02x:%02x:%02x has %d.%d.%d.%d\n",
+            //     sender_mac[0], sender_mac[1], sender_mac[2],
+            //     sender_mac[3], sender_mac[4], sender_mac[5],
+            //     target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4
+            // );
             if (!request)
                 break;
-            OBOS_Debug("ARP: %02x:%02x:%02x:%02x:%02x:%02x has %d.%d.%d.%d\n",
-                sender_mac[0], sender_mac[1], sender_mac[2],
-                sender_mac[3], sender_mac[4], sender_mac[5],
-                target_ip.comp1, target_ip.comp2, target_ip.comp3, target_ip.comp4
-            );
             memcpy(request->response, sender_mac, sizeof(mac_address));
             Core_EventPulse(&request->evnt, true);
             break;
@@ -178,7 +178,8 @@ obos_status Net_ARPReceiveFrame(frame* data)
             status = OBOS_STATUS_UNIMPLEMENTED;
             break;
     }
+    NetH_ReleaseSharedBuffer(data->base);
     exit:
-    OBOS_Debug("ARP: Finished handling packet\n");
+    // OBOS_Debug("ARP: Finished handling packet\n");
     return status;
 }

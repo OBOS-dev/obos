@@ -4,6 +4,8 @@
  * Copyright (c) 2024-2025 Omar Berrow
 */
 
+#include "net/arp.h"
+#include "uacpi/types.h"
 #include <int.h>
 #include <error.h>
 #include <signal.h>
@@ -485,72 +487,67 @@ static void test_allocator(allocator_info* alloc)
 	}
 }
 
-// hexdump clone lol
-OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
+static uacpi_interrupt_ret pwr_button(uacpi_handle thing)
 {
-	bool printCh = false;
-	uint8_t* buff = (uint8_t*)_buff;
-	printf("         Address: ");
-	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
-		printf("%02x ", i);
-	printf("\n%016lx: ", buff);
-	for (size_t i = 0, chI = 0; i < ((nBytes + 0xf) & ~0xf); i++, chI++)
+	OBOS_UNUSED(thing);
+	if (OBOSS_StackFrameNext && OBOSS_StackFrameGetPC)
 	{
-		if (printCh)
+		printf("\n\tAddress");
+		#if UINTPTR_MAX == UINT64_MAX
+		// We want 9+8 bytes of padding
+		printf("                 ");
+		#elif UINTPTR_MAX == UINT32_MAX
+		// We want 1+8 bytes of padding
+		printf("         ");
+		#endif
+		printf("Symbol\n");
+		stack_frame curr = OBOSS_StackFrameNext(nullptr);
+		while (curr)
 		{
-			char ch = (i < nBytes) ? buff[i] : 0;
-			switch (ch)
+			// Resolve the symbol from the address.
+			uintptr_t pc = OBOSS_StackFrameGetPC(curr);
+			driver_id* drv = nullptr;
+			driver_symbol* sym = DrvH_ResolveSymbolReverse(pc, &drv);
+			printf("%0*p        ", sizeof(uintptr_t)*2, (void*)pc);
+			if (sym)
 			{
-			case '\n':
-			case '\t':
-			case '\r':
-			case '\b':
-			case '\a':
-			case '\0':
-			{
-				ch = '.';
-				break;
+				if (drv)
+					printf("%*s!%s+%x", uacpi_strnlen(drv->header.driverName, 64), drv->header.driverName, sym->name, pc-sym->address);
+				else
+					printf("oboskrnl!%s+%x", sym->name, pc-sym->address);
 			}
-			default:
-				break;
-			}
-			printf("%c", ch);
-		}
-		else
-			printf("%02x ", (i < nBytes) ? buff[i] : 0);
-		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
-		{
-			chI = 0;
-			if (!printCh)
-				i -= (width + 1);
 			else
-				printf(" |\n%016lx: ", &buff[i + 1]);
-			printCh = !printCh;
-			if (printCh)
-				printf("\t| ");
+				printf("%s", pc == 0 ? "End" : "Unresolved/External");
+			printf("\n");
+			curr = OBOSS_StackFrameNext(curr);
 		}
 	}
-	printf("\n");
-}
-
-void data_ready(void* userdata, void* vn_, size_t bytes_ready)
-{
-	OBOS_UNUSED(userdata);
-	const char* interface = nullptr;
-	vnode* vn = vn_;
-	vn->un.device->driver->header.ftable.query_user_readable_name(vn->desc, &interface);
-	OBOS_Debug("%ld bytes ready on interface %s\n", bytes_ready, interface);
-	void* buffer = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, bytes_ready, nullptr);
-	size_t read = 0, bytes_left = bytes_ready;
-	size_t i = 0;
-	while (bytes_left)
+	printf("\n\tAddress");
+	#if UINTPTR_MAX == UINT64_MAX
+	// We want 8+9 bytes of padding
+	printf("                  ");
+	#elif UINTPTR_MAX == UINT32_MAX
+	// We want 8+2 bytes of padding
+	printf("          ");
+	#endif
+	printf("Main TID");
+	// We want 4+1 bytes of padding
+	printf("     ");
+	printf("Driver Name\n");
+	for (driver_node *node = Drv_LoadedDrivers.head; node; )
 	{
-		vn->un.device->driver->header.ftable.read_sync(vn->desc, (void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), bytes_left, 0, &read);
-		OBOS_Debug("Packet %lu\n", i);
-		hexdump((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, 15);
-		bytes_left -= read;
-		i++;
+		if (!node->data)
+			goto next;
+		printf("\t%p     ", node->data->base);
+		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : (uint64_t)-1);
+		if (uacpi_strnlen(node->data->header.driverName, 64))
+			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
+		else
+			printf("Unknown\n");
+		next:
+		node = node->next;
 	}
+	return UACPI_INTERRUPT_HANDLED;
 }
 
 void Arch_KernelMainBootstrap()
@@ -948,28 +945,12 @@ void Arch_KernelMainBootstrap()
 	fd *nic = Vfs_Calloc(1, sizeof(fd));
 	Vfs_FdOpen(nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
 
-	udp_header* udp_hdr = nullptr;
-	OBOS_ENSURE(obos_is_success(Net_FormatUDPPacket(&udp_hdr, "Hello from OBOS' network stack!", 31, 0x8000, 0x8000)));
+	uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, pwr_button, nullptr);
 
-	ip_header* ip_hdr = nullptr;
-	ip_addr src = { {192,168,100,2} };
-	ip_addr dest = { {192,168,100,1} };
-	OBOS_ENSURE(obos_is_success(Net_FormatIPv4Packet(&ip_hdr, udp_hdr, be16_to_host(udp_hdr->length), IPv4_PRECEDENCE_ROUTINE, &src, &dest, 60, 0x11, 0, false)));
-	ethernet2_header* eth_hdr = nullptr;
-	mac_address destm = { 0x98,0xee,0xcb,0x39,0xd9,0x37 };
-	mac_address srcm = {};
-	if (obos_is_error(Vfs_FdIoctl(nic, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &srcm)))
-		memcpy(srcm, destm, sizeof(destm));
-	size_t nToSend = 0;
-	OBOS_ENSURE(obos_is_success(Net_FormatEthernet2Packet(&eth_hdr, ip_hdr, be16_to_host(ip_hdr->packet_length), &destm, &srcm, ETHERNET2_TYPE_IPv4, &nToSend)));
-	Vfs_FdIoctl(nic, IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD, (void*)true);
-	Vfs_FdIoctl(nic, IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD, (void*)true);
-	Vfs_FdWrite(nic, eth_hdr, nToSend, nullptr);
-	// if (nic->vn)
-	// 	nic->vn->un.device->driver->header.ftable.set_data_ready_cb(nic->vn, data_ready, nullptr);
 	if (nic->vn)
-		nic->vn->data = src.addr;
+		nic->vn->data = host_to_be32(0xc0a86402);
 	Net_InitializeEthernet2(nic->vn);
+
 	// Vfs_FdClose(&nic);
 	// OBOS_Suspend();
 
@@ -993,7 +974,6 @@ void Arch_KernelMainBootstrap()
 	};
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
-	Vfs_FdWrite(&com1, eth_hdr, nToSend, nullptr);
 
 	// OBOS_LoadInit();
 

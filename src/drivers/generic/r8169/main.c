@@ -28,6 +28,8 @@
 
 #include <net/eth.h>
 
+#include <locks/spinlock.h>
+
 #include "structs.h"
 
 r8169_device* Devices;
@@ -81,14 +83,10 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_INVALID_ARGUMENT;
     OBOS_ENSURE(dev->refcount);
 
-    Core_PushlockAcquire(&dev->tx_buffer_lock, true);
-
     r8169_frame frame = {};
     r8169_frame_generate(dev, &frame, buf, blkCount, FRAME_PURPOSE_TX);
     r8169_buffer_add_frame(&dev->tx_buffer, &frame);
     r8169_tx_queue_flush(dev, true);
-
-    Core_PushlockRelease(&dev->tx_buffer_lock, true);
 
     if (nBlkWritten)
         *nBlkWritten = blkCount;
@@ -111,7 +109,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     // Wait for the buffer to receive a frame.
     r8169_buffer_block(&dev->rx_buffer);
 
-    Core_PushlockAcquire(&dev->rx_buffer_lock, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
 
     r8169_frame* frame = nullptr;
     r8169_buffer_read_next_frame(&dev->rx_buffer, &frame);
@@ -121,7 +119,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 
     r8169_buffer_remove_frame(&dev->rx_buffer, frame);
 
-    Core_PushlockRelease(&dev->rx_buffer_lock, true);
+    Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
 
     if (nBlkRead)
         *nBlkRead = szRead;

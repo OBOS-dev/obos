@@ -90,6 +90,7 @@ static void swap_libc_free(void* buf)
 #define PAGE_SHIFT (__builtin_clz(OBOS_HUGE_PAGE_SIZE > 0 ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
 static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_page)
 {
+    OBOS_Debug("%s\n", __func__);
     swap_header* hdr = dev->metadata;
     const long sz = huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
@@ -137,6 +138,7 @@ static void swap_free_impl(void* item)
 }
 static obos_status swap_free(struct swap_device* dev, uintptr_t id)
 {
+    OBOS_Debug("%s\n", __func__);
     swap_header* hdr = dev->metadata;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
     swap_page what = {.key=id};

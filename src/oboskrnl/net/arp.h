@@ -58,7 +58,7 @@ typedef struct arp_ip_request {
 
     ip_addr target;
 
-    mac_address* response;
+    mac_address response;
     event evnt; // EVENT_NOTIFICATION
 
     RB_ENTRY(arp_ip_request) rb_node;

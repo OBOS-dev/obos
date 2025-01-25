@@ -50,6 +50,7 @@ CoreS_SwitchToThreadContext:
     move.l %a0@+, %d1
     move.l %d1, %sp@-
     rts
+CoreS_SwitchToThreadContextEnd:
 .extern Core_Schedule
 CoreS_SaveRegisterContextAndYield:
     move.l %sp@+, %d1 // save the return address into d1

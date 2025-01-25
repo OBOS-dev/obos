@@ -63,6 +63,7 @@ obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint
 obos_status Net_IPReceiveFrame(frame* data)
 {
     OBOS_UNUSED(data);
+    NetH_ReleaseSharedBuffer(data->base);
     return OBOS_STATUS_SUCCESS;
 }
 

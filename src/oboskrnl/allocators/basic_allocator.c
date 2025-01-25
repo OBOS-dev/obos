@@ -194,7 +194,7 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 	reg->sz = sz-sizeof(region);
 	reg->magic = REGION_MAGIC;
 	reg->alloc = alloc;
-	reg->alloc_size = 1 << (cache_index+4);
+	reg->alloc_size = sz_node;
 	append_node(c->region_list, reg);
 	if (sz_node == reg->sz)
 	{
@@ -300,6 +300,8 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	if (!blk || !nBytes)
 		return OBOS_STATUS_SUCCESS;
 
+	OBOS_ENSURE(nBytes != 0xaa);
+
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
@@ -336,10 +338,16 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		region* volatile reg = (void*)((blki - (blki % init_pgsize())) - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
 		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
-		OBOS_ENSURE(reg->alloc_size == nBytes);
+		if (reg->alloc_size != nBytes)
+		{
+			nBytes = reg->alloc_size;
+			cache_index = __builtin_ctzll(nBytes)-4;
+			c = &alloc->caches[cache_index];
+		}
 
 		irql oldIrql = lock(c);
 
+		memset(blk, 0xaa, nBytes);
 		if ((reg->nFree + 1) == reg->nBlocks)
 		{
 			for (size_t i = 0; i < reg->nBlocks; i++)

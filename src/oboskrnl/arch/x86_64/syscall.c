@@ -7,6 +7,7 @@
 #include <int.h>
 #include <syscall.h>
 #include <handle.h>
+#include <memmanip.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
@@ -86,6 +87,7 @@ handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, han
     ctx->ctx->frame.rflags = 0x200202;
     ctx->ctx->fs_base = rdmsr(0xC0000100);
     ctx->ctx->extended_ctx_ptr = Arch_AllocateXSAVERegion();
+    memcpy(ctx->ctx->extended_ctx_ptr, Core_GetCurrentThread()->context.extended_ctx_ptr, Arch_GetXSaveRegionSize());
     ctx->vmm_ctx = vmm_ctx;
     ctx->ctx->stackBase = Core_GetCurrentThread()->context.stackBase;
     ctx->ctx->stackSize = Core_GetCurrentThread()->context.stackSize;

@@ -14,9 +14,8 @@
 #include <irq/irq.h>
 #include <irq/dpc.h>
 
-#include <locks/pushlock.h>
 #include <locks/event.h>
-#include <locks/mutex.h>
+#include <locks/spinlock.h>
 
 #include <utils/list.h>
 
@@ -86,12 +85,6 @@ typedef struct r8169_device
 
     r8169_descriptor* sets[3];
     uintptr_t sets_phys[3];
-    // index 0: normal priority tx
-    // index 1: high priority tx
-    r8169_descriptor_list free_descriptors[2];
-    // EVENT_NOTIFICATION
-    event free_descriptors_events[2];
-    mutex free_descriptors_locks[2];
 
     bool suspended;
 
@@ -120,7 +113,10 @@ typedef struct r8169_device
     size_t rx_bytes;
     // received frames
     r8169_buffer rx_buffer;
-    pushlock rx_buffer_lock;
+    spinlock rx_buffer_lock;
+    
+    size_t tx_idx;
+    size_t tx_priority_idx;
 
     // Total number of transmitted packets.
     size_t tx_count;
@@ -134,7 +130,7 @@ typedef struct r8169_device
     size_t tx_high_priority_awaiting_transfer;
     // Frames to transmit.
     r8169_buffer tx_buffer;
-    pushlock tx_buffer_lock;
+    spinlock tx_buffer_lock;
 
     uint16_t saved_phy_state[0x20];
 

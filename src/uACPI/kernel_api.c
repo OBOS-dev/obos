@@ -352,9 +352,10 @@ uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
     return CoreS_GetNativeTimerTick() * cached_rate;
 }
 
-void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
+void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size sz)
 {
 #ifdef __x86_64__
+    OBOS_UNUSED(sz);
     return Arch_MapToHHDM(addr);
 #endif
 }

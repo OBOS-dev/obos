@@ -263,8 +263,6 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 			curr = OBOSS_StackFrameNext(curr);
 		}
 	}
-	// unsafe to do unfortunately
-	// todo: make safer
 	printf("\n\tAddress");
 #if UINTPTR_MAX == UINT64_MAX
 	// We want 8+9 bytes of padding

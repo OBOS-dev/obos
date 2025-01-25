@@ -71,13 +71,13 @@ obos_status Core_MutexAcquire(mutex* mut)
 #endif
         return OBOS_STATUS_SUCCESS;
     }
-    //printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
+    printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
     obos_status st = Core_WaitOnObject(&mut->hdr);
     if (st != OBOS_STATUS_SUCCESS)
         return st;
     if (mut->ignoreAllAndBlowUp)
         return OBOS_STATUS_ABORTED;
-    while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
+    while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_acq_rel))
         spinlock_hint();
     mut->who = Core_GetCurrentThread();
 #if OBOS_ENABLE_LOCK_PROFILING
@@ -91,9 +91,18 @@ obos_status Core_MutexTryAcquire(mutex* mut)
 {
     if (!mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (mut->locked)
-        return OBOS_STATUS_IN_USE;
-    return Core_MutexAcquire(mut);
+    if (mut->ignoreAllAndBlowUp)
+        return OBOS_STATUS_ABORTED;
+    if (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_acq_rel))
+    {
+        mut->who = Core_GetCurrentThread();
+#if OBOS_ENABLE_LOCK_PROFILING
+        mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
+#endif
+        mut->locked = true;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_IN_USE;
 }
 
 obos_status Core_MutexRelease(mutex* mut)
