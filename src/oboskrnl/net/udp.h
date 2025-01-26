@@ -37,7 +37,7 @@ static inline int cmp_udp_queue(const udp_queue* lhs, const udp_queue* rhs)
         return 1;
     return 0;
 }
-RB_HEAD(udp_queue_tree, udp_queue);
+typedef RB_HEAD(udp_queue_tree, udp_queue) udp_queue_tree;
 RB_PROTOTYPE(udp_queue_tree, udp_queue, rb_node, cmp_udp_queue);
 
 obos_status Net_FormatUDPPacket(udp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port);

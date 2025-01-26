@@ -12,8 +12,12 @@
 
 #include <net/ip.h>
 #include <net/udp.h>
+#include <net/nic_data.h>
 
 #include <allocators/base.h>
+
+RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);
+LIST_GENERATE(ip_table, ip_table_entry, node);
 
 uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
 {

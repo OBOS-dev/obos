@@ -98,6 +98,10 @@ typedef _Bool bool;
 
 #define BIT_TYPE(b, type) (1##type << (b))
 #define BIT(b) BIT_TYPE(b, U)
+
+#define BITS_TYPE(start, end, type) (((1##type << (end)) - 1) << (start))
+#define BITS(start, end) BITS_TYPE(start, end, U)
+
 #if __STDC_NO_ATOMICS__
 #	error No atomics supported by the compiler.
 #endif
