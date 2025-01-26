@@ -23,7 +23,7 @@ typedef union ip_addr {
 } OBOS_PACK ip_addr;
 
 #define IPv4_GET_HEADER_LENGTH(hdr) (((hdr)->version_hdrlen & 0x0f) * 4)
-#define IPv4_GET_HEADER_VERSION(hdr) ((hdr)->version_hdrlen & 0xf0)
+#define IPv4_GET_HEADER_VERSION(hdr) (((hdr)->version_hdrlen & 0xf0) >> 4)
 
 #define IPv4_GET_FLAGS(hdr) (be32_to_host((hdr)->flags_fragment) & 0x8)
 #define IPv4_GET_FRAGMENT(hdr) (be32_to_host((hdr)->flags_fragment) & 0xfff8)

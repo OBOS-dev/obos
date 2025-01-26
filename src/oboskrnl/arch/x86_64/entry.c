@@ -487,69 +487,6 @@ static void test_allocator(allocator_info* alloc)
 	}
 }
 
-static uacpi_interrupt_ret pwr_button(uacpi_handle thing)
-{
-	OBOS_UNUSED(thing);
-	if (OBOSS_StackFrameNext && OBOSS_StackFrameGetPC)
-	{
-		printf("\n\tAddress");
-		#if UINTPTR_MAX == UINT64_MAX
-		// We want 9+8 bytes of padding
-		printf("                 ");
-		#elif UINTPTR_MAX == UINT32_MAX
-		// We want 1+8 bytes of padding
-		printf("         ");
-		#endif
-		printf("Symbol\n");
-		stack_frame curr = OBOSS_StackFrameNext(nullptr);
-		while (curr)
-		{
-			// Resolve the symbol from the address.
-			uintptr_t pc = OBOSS_StackFrameGetPC(curr);
-			driver_id* drv = nullptr;
-			driver_symbol* sym = DrvH_ResolveSymbolReverse(pc, &drv);
-			printf("%0*p        ", sizeof(uintptr_t)*2, (void*)pc);
-			if (sym)
-			{
-				if (drv)
-					printf("%*s!%s+%x", uacpi_strnlen(drv->header.driverName, 64), drv->header.driverName, sym->name, pc-sym->address);
-				else
-					printf("oboskrnl!%s+%x", sym->name, pc-sym->address);
-			}
-			else
-				printf("%s", pc == 0 ? "End" : "Unresolved/External");
-			printf("\n");
-			curr = OBOSS_StackFrameNext(curr);
-		}
-	}
-	printf("\n\tAddress");
-	#if UINTPTR_MAX == UINT64_MAX
-	// We want 8+9 bytes of padding
-	printf("                  ");
-	#elif UINTPTR_MAX == UINT32_MAX
-	// We want 8+2 bytes of padding
-	printf("          ");
-	#endif
-	printf("Main TID");
-	// We want 4+1 bytes of padding
-	printf("     ");
-	printf("Driver Name\n");
-	for (driver_node *node = Drv_LoadedDrivers.head; node; )
-	{
-		if (!node->data)
-			goto next;
-		printf("\t%p     ", node->data->base);
-		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : (uint64_t)-1);
-		if (uacpi_strnlen(node->data->header.driverName, 64))
-			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
-		else
-			printf("Unknown\n");
-		next:
-		node = node->next;
-	}
-	return UACPI_INTERRUPT_HANDLED;
-}
-
 void Arch_KernelMainBootstrap()
 {
 	//Core_Yield();
@@ -944,8 +881,6 @@ void Arch_KernelMainBootstrap()
 
 	fd *nic = Vfs_Calloc(1, sizeof(fd));
 	Vfs_FdOpen(nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-
-	uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, pwr_button, nullptr);
 
 	if (nic->vn)
 		nic->vn->data = host_to_be32(0xc0a86402);
