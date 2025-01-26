@@ -133,6 +133,7 @@ void MmH_DerefPage(page* buf)
 			Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
 		// printf("removed page from tree (refcount %d)\n", buf->refcount);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
+		asm volatile ("" : : :"memory");
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));
 	}
@@ -171,6 +172,7 @@ void MmH_DerefSwapAllocation(swap_allocation* alloc)
 	{
 		LIST_REMOVE(swap_allocation_list, &Mm_SwapAllocations, alloc);
 		alloc->provider->swap_free(alloc->provider, alloc->id);
+		asm volatile ("" : : :"memory");
 		Mm_Allocator->Free(Mm_Allocator, alloc, sizeof(*alloc));
 	}
 }

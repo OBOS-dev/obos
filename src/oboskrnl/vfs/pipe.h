@@ -13,7 +13,7 @@
 #include <vfs/vnode.h>
 
 #include <locks/wait.h>
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 // fds is an array of 2 file descriptors
 obos_status Vfs_CreatePipe(fd* fds, size_t pipesize);
@@ -35,5 +35,5 @@ typedef struct pipe_desc
     void* buf;
     size_t pipe_size;
     _Atomic(uoff_t) offset;
-    pushlock lock;
+    rw_lock lock;
 } pipe_desc;

@@ -65,6 +65,7 @@ obos_status Mm_AgingPRA(context* ctx)
         if (ent->free)
         {
             MmH_RemovePageFromWorkingset(ctx, node_save);
+            asm volatile ("" : : :"memory");
             Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
             continue;
         }
@@ -87,6 +88,7 @@ obos_status Mm_AgingPRA(context* ctx)
         working_set_node* const node = curr;
         curr = node->next;
         REMOVE_WORKINGSET_PAGE_NODE(ctx->referenced, node);
+        asm volatile ("" : : :"memory");
         if (ent->free)
         {
             Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));

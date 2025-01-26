@@ -299,9 +299,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 
 	if (!blk || !nBytes)
 		return OBOS_STATUS_SUCCESS;
-
-	OBOS_ENSURE(nBytes != 0xaa);
-
+	
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
@@ -330,6 +328,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		remove_node(c->region_list, reg);
 		unlock(c, oldIrql);
 
+		asm volatile ("" : : :"memory");
 		init_munmap(reg->block_source, reg, reg->sz);
 	}
 	else
@@ -357,6 +356,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 			}
 			remove_node(c->region_list, reg);
 
+			asm volatile ("" : : :"memory");
 			init_munmap(reg->block_source, reg, reg->sz);
 		} else
 			append_node(c->free, (freelist_node*)blk);

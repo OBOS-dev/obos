@@ -11,7 +11,7 @@
 #include <utils/tree.h>
 
 #include <locks/mutex.h>
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 #include <mm/handler.h>
 

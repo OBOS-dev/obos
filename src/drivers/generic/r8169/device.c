@@ -540,7 +540,6 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             frame->refcount = 1;
-            OBOS_ENSURE(sz >= 64);
             break;
         }
         default:

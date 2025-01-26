@@ -15,6 +15,11 @@
 
 #include <utils/tree.h>
 
+#include <locks/rw_lock.h>
+#include <locks/event.h>
+
+#include <stdatomic.h>
+
 typedef struct udp_header {
     uint16_t src_port;
     uint16_t dest_port;
@@ -24,16 +29,21 @@ typedef struct udp_header {
 
 typedef struct udp_queue {
     frame_queue queue;
-    pushlock lock;
     struct process* owning_process;
-    uint16_t source_port;
+    uint16_t dest_port;
+    
+    atomic_flag destroy;
+
+    rw_lock lock;
+    event recv_event; // EVENT_NOTIFICATION
+    
     RB_ENTRY(udp_queue) rb_node;
 } udp_queue;
 static inline int cmp_udp_queue(const udp_queue* lhs, const udp_queue* rhs)
 {
-    if (lhs->source_port < rhs->source_port)
+    if (lhs->dest_port < rhs->dest_port)
         return -1;
-    if (lhs->source_port > rhs->source_port)
+    if (lhs->dest_port > rhs->dest_port)
         return 1;
     return 0;
 }
@@ -41,4 +51,9 @@ typedef RB_HEAD(udp_queue_tree, udp_queue) udp_queue_tree;
 RB_PROTOTYPE(udp_queue_tree, udp_queue, rb_node, cmp_udp_queue);
 
 obos_status Net_FormatUDPPacket(udp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port);
-obos_status Net_UDPReceiveFrame(frame* what, const frame* raw_frame);
+// ent points to struct ip_table_entry
+obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent);
+// ent points to struct ip_table_entry
+udp_queue* NetH_GetUDPQueueForPort(void* ent, uint16_t port, bool create);
+// ent points to struct ip_table_entry
+void NetH_DestroyUDPQueue(void* ent, udp_queue* queue);

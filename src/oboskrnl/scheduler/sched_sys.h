@@ -12,7 +12,7 @@
 
 #include <scheduler/thread.h>
 
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 // internal
 typedef struct thread_ctx_handle
@@ -20,7 +20,7 @@ typedef struct thread_ctx_handle
     // NOTE: When the thread context is finally used in a thread creation, ctx gets freed,
     // canFree is set to false, then ctx is set to &thread->context.
     struct thread_context_info* ctx;
-    pushlock lock;
+    rw_lock lock;
     // If false, this thread context cannot be used in a new thread creation.
     bool canFree;
 

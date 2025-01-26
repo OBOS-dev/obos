@@ -334,6 +334,7 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
         }
         if (!ent->free)
             REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
+        asm volatile ("" : : :"memory");
         Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
     }
     Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));

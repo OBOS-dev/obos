@@ -10,6 +10,8 @@
 #include <error.h>
 #include <struct_packing.h>
 
+#include <vfs/vnode.h>
+
 #include <net/frame.h>
 
 typedef union ip_addr {
@@ -104,6 +106,8 @@ typedef struct ip_header {
 
 obos_status Net_FormatIPv4Packet(ip_header** hdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size);
 uint16_t Net_IPChecksum(ip_header* hdr);
-obos_status Net_IPReceiveFrame(frame* data);
-obos_status Net_IPForwardFrame(frame* data);
+obos_status Net_IPReceiveFrame(const frame* data);
+obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data);
 uint16_t NetH_OnesComplementSum(void *buffer, size_t size);
+
+obos_status Net_TransmitIPv4Packet(vnode* interface, ip_header* hdr);

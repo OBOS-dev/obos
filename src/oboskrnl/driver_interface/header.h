@@ -183,11 +183,12 @@ typedef struct driver_ftable
         // bytes_ready is simply the amount of bytes received since the last "packet"
         obos_status(*set_data_ready_cb)(void* vn, void(*cb)(void* userdata, void* vn, size_t bytes_ready), void* userdata);
     };
-    obos_status(*reference_interface)(dev_desc desc);
-    obos_status(*unreference_interface)(dev_desc desc);
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
+
+    obos_status(*reference_interface)(dev_desc desc);
+    obos_status(*unreference_interface)(dev_desc desc);
 } driver_ftable;
 
 #define CURRENT_DRIVER_HEADER_VERSION (1)

@@ -15,6 +15,7 @@
 #include <vfs/vnode.h>
 
 typedef uint8_t mac_address[6];
+#define BROADCAST_MAC_ADDRESS {0xff,0xff,0xff,0xff,0xff,0xff,}
 
 enum {
     ETHERNET2_TYPE_IPv4 = 0x0800,
@@ -29,7 +30,7 @@ typedef struct ethernet2_header {
 } OBOS_PACK ethernet2_header;
 
 obos_status Net_FormatEthernet2Packet(ethernet2_header** hdr, void* data, size_t sz, const mac_address* restrict dest, const mac_address* restrict src, uint16_t type, size_t *out_sz);
-obos_status Net_InitializeEthernet2(vnode* interface_vn);
+obos_status Net_EthernetUp(vnode* interface_vn);
 
 // Each ethernet driver should define this
 // argp points to a `mac_address`

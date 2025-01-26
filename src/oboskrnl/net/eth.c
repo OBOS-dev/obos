@@ -14,6 +14,10 @@
 #include <net/frame.h>
 #include <net/ip.h>
 #include <net/arp.h>
+#include <net/tables.h>
+
+#include <locks/rw_lock.h>
+#include <locks/event.h>
 
 #include <irq/dpc.h>
 
@@ -78,14 +82,13 @@ obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_
 {
     if (!phdr || !data || !sz || !src || !dest || !out_sz)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    size_t real_size = sz >= 64 ? sz : 64;
-    ethernet2_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ethernet2_header)+real_size+4, nullptr);
+    ethernet2_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ethernet2_header)+sz+4, nullptr);
     memcpy(hdr->dest, dest, sizeof(mac_address));
     memcpy(hdr->src, src, sizeof(mac_address));
     hdr->type = host_to_be16(type);
     memcpy(hdr+1, data, sz);
-    set_checksum(hdr, real_size);
-    *out_sz = sizeof(ethernet2_header)+real_size+4;
+    set_checksum(hdr, sz);
+    *out_sz = sizeof(ethernet2_header)+sz+4;
     *phdr = hdr;
     return OBOS_STATUS_SUCCESS;
 }
@@ -104,6 +107,7 @@ static void receive_packet(dpc* d, void* userdata)
     pkt_frame.sz -= sizeof(*hdr);
     // remove the checksum
     pkt_frame.sz -= 4;
+    OBOS_Debug("%04x\n", be16_to_host(hdr->type));
     switch (be16_to_host(hdr->type))
     {
         case ETHERNET2_TYPE_IPv4:
@@ -125,6 +129,7 @@ static void receive_packet(dpc* d, void* userdata)
     }
     NetH_ReleaseSharedBuffer(data->base);
     LIST_REMOVE(frame_queue, &frames, data);
+    asm volatile ("" : : :"memory");
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, data, sizeof(*data));
 }
 
@@ -132,16 +137,15 @@ static void queue_packet(void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6], 
 {
     frame* data = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(frame), nullptr);
     data->buff = buff;
-    data->source_vn = vnode;
-    memcpy(data->source_mac_address, mac, 6);
+    data->interface_vn = vnode;
+    memcpy(data->interface_mac_address, mac, 6);
     data->sz = sz;
-    buffer->refcount++;
     data->base = buffer;
     data->receive_dpc.userdata = data;
     // OBOS_Debug("initializing DPC\n");
+    LIST_APPEND(frame_queue, &frames, data);
     receive_packet(nullptr, data);
     // CoreH_InitializeDPC(&data->receive_dpc, receive_packet, Core_DefaultThreadAffinity);
-    LIST_APPEND(frame_queue, &frames, data);
 }
 
 static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
@@ -163,7 +167,7 @@ static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
     }
 }
 
-obos_status Net_InitializeEthernet2(vnode* interface_vn)
+obos_status Net_EthernetUp(vnode* interface_vn)
 {
     if (!interface_vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -173,7 +177,21 @@ obos_status Net_InitializeEthernet2(vnode* interface_vn)
         return OBOS_STATUS_INVALID_OPERATION;
     if (!interface_vn->un.device->driver->header.ftable.set_data_ready_cb)
         return OBOS_STATUS_INVALID_OPERATION;
-    return interface_vn->un.device->driver->header.ftable.set_data_ready_cb(interface_vn, data_ready, nullptr);
+    if (interface_vn->un.device->driver->header.ftable.reference_interface)
+        interface_vn->un.device->driver->header.ftable.reference_interface(interface_vn->desc);
+    obos_status status = interface_vn->un.device->driver->header.ftable.set_data_ready_cb(interface_vn, data_ready, nullptr);
+    if (obos_is_error(status))
+        return status;
+    tables* tables = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct tables), nullptr);
+    tables->address_to_phys_lock = RWLOCK_INITIALIZE();
+    tables->table_lock = RWLOCK_INITIALIZE();
+    tables->gateway_lock = EVENT_INITIALIZE(EVENT_SYNC);
+    Core_EventSet(&tables->gateway_lock, false);
+    tables->magic = IP_TABLES_MAGIC;
+    tables->interface = interface_vn;
+    interface_vn->un.device->driver->header.ftable.ioctl(interface_vn->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &tables->interface_mac);
+    interface_vn->data = (uint64_t)(uintptr_t)tables;
+    return OBOS_STATUS_SUCCESS;
 }
 
 void NetH_ReleaseSharedBuffer(net_shared_buffer* buff)

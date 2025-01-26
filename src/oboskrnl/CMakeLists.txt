@@ -14,7 +14,7 @@ list (APPEND oboskrnl_sources
 	"vfs/fd.c" "vfs/pagecache.c" "vfs/async.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
-	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
+	"mm/aging.c" "mm/initial_swap.c" "locks/rw_lock.c" "vfs/pipe.c"
 	"syscall.c" "handle.c" "scheduler/sched_sys.c" "mm/mm_sys.c"
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"

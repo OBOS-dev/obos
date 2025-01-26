@@ -290,6 +290,7 @@ static void close_fd(fd* desc)
 {
     desc->flags &= ~FD_FLAGS_OPEN;
     LIST_REMOVE(fd_list, &desc->vn->opened, desc);
+    asm volatile ("" : : :"memory");
     deref_vnode(desc->vn);
     
 }
@@ -354,6 +355,7 @@ obos_status Vfs_Unmount(mount* what)
         Vfs_Root->vnode->un.mounted = nullptr;
     }
     what->awaitingFree = true;
+    asm volatile ("" : : :"memory");
     if (!what->nWaiting)
         Vfs_Free(what);
     else // the last thread to be waken up will free the mount point.

@@ -29,7 +29,7 @@
 #include <asan.h>
 
 #include <locks/spinlock.h>
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 allocator_info* OBOS_NonPagedPoolAllocator;
 allocator_info* Mm_Allocator;
@@ -552,6 +552,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
             rng->ctx = nullptr;
+            asm volatile ("" : : :"memory");
             Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
             rng = nullptr;
         }
@@ -633,6 +634,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             curr = next;
         }
         RB_REMOVE(page_tree, &ctx->pages, rng);
+        asm volatile ("" : : :"memory");
         Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
     }
 
@@ -761,6 +763,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
             RB_INSERT(page_tree, &ctx->pages, new);
+            asm volatile ("" : : :"memory");
             Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
             rng = new;
         }

@@ -232,6 +232,7 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		}
 		OBOS_Debug("removing %p\n", node->phys);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, node);
+		asm volatile ("" : : :"memory");
         Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
 	}
 	else

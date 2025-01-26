@@ -161,6 +161,7 @@ void VfsH_PageCacheFlush(pagecache* pc)
         // OBOS_Debug("flushing dirty region from offset 0x%016x with a size of 0x%016x bytes\n", curr->fileoff, curr->sz);
         driver->ftable.write_sync(vn->desc, pc->data + curr->fileoff, curr->sz/blkSize, (curr->fileoff+base_offset)/blkSize, nullptr);
         RB_REMOVE(dirty_pc_tree, &pc->dirty_regions, curr);
+        asm volatile ("" : : :"memory");
         Vfs_Free(curr);
         curr = next;
     }

@@ -1,5 +1,5 @@
 /*
- * oboskrnk/locks/pushlock.c
+ * oboskrnk/locks/rw_lock.c
  *
  * Copyright (c) 2024 Omar Berrow
 */
@@ -9,24 +9,28 @@
 #include <error.h>
 
 #include <locks/wait.h>
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 
-obos_status Core_PushlockAcquire(pushlock* lock, bool reader /* false: writer, true: reader */)
+obos_status Core_RwLockAcquire(rw_lock* lock, bool reader /* false: writer, true: reader */)
 {
     if (!lock)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (lock->abort)
+        return OBOS_STATUS_ABORTED;
     if (reader)
     {
         if (lock->currWriter)
         {
             lock->nWaitingReaders++;
-            while(lock->currWriter)
+            while(lock->currWriter && !lock->abort)
                 OBOSS_SpinlockHint();
             lock->nWaitingReaders--;
         }
+        if (lock->abort)
+            return OBOS_STATUS_ABORTED;
         lock->nReaders++;
         return OBOS_STATUS_SUCCESS;
     }
@@ -40,15 +44,15 @@ obos_status Core_PushlockAcquire(pushlock* lock, bool reader /* false: writer, t
     lock->currWriter = Core_GetCurrentThread();
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Core_PushlockTryAcquire(pushlock* lock)
+obos_status Core_RwLockTryAcquire(rw_lock* lock)
 {
     if (!lock)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (lock->nReaders)
         return OBOS_STATUS_IN_USE;
-    return Core_PushlockAcquire(lock, false);
+    return Core_RwLockAcquire(lock, false);
 }
-obos_status Core_PushlockRelease(pushlock* lock, bool reader)
+obos_status Core_RwLockRelease(rw_lock* lock, bool reader)
 {
     if (!lock)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -63,13 +67,13 @@ obos_status Core_PushlockRelease(pushlock* lock, bool reader)
     lock->currWriter = nullptr;
     return lock->nWaitingReaders ? OBOS_STATUS_SUCCESS : CoreH_SignalWaitingThreads(&lock->hdr, false, true);
 }
-size_t Core_PushlockGetReaderCount(pushlock* lock)
+size_t Core_RwLockGetReaderCount(rw_lock* lock)
 {
     if (!lock)
         return 0;
     return lock->nReaders;
 }
-thread* Core_PushlockGetWriter(const pushlock* lock)
+thread* Core_RwLockGetWriter(const rw_lock* lock)
 {
     if (!lock)
         return 0;

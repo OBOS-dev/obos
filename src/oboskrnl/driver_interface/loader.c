@@ -372,6 +372,7 @@ obos_status Drv_UnloadDriver(driver_id* driver)
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     Mm_VirtualMemoryFree(&Mm_KernelContext, driver->base, size);
+    asm volatile ("" : : :"memory");
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
     return OBOS_STATUS_SUCCESS;
 }

@@ -15,7 +15,7 @@
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
 
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
@@ -33,10 +33,10 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_EOF; // nothing to read...
     if (blkCount > pipe->pipe_size)
         blkCount = pipe->pipe_size - pipe->offset;
-    Core_PushlockAcquire(&pipe->lock, true);
+    Core_RwLockAcquire(&pipe->lock, true);
     memcpy(buf, (char*)pipe->buf, blkCount);
     pipe->offset -= blkCount;
-    Core_PushlockRelease(&pipe->lock, true);
+    Core_RwLockRelease(&pipe->lock, true);
     if (nBlkRead)
         *nBlkRead = blkCount;
     return OBOS_STATUS_SUCCESS;
@@ -68,10 +68,10 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         return OBOS_STATUS_SUCCESS;
     }
     bool atomic = blkCount <= PIPE_BUF;
-    Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
+    Core_RwLockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
     pipe->offset += blkCount;
-    Core_PushlockRelease(&pipe->lock, !atomic);
+    Core_RwLockRelease(&pipe->lock, !atomic);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
     return OBOS_STATUS_SUCCESS;

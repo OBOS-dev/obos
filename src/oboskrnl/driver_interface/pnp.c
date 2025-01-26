@@ -113,6 +113,7 @@ static void free_pnp_device(struct hashmap* map, pnp_device* dev)
     {
         driver_header_node* nextNode = node->next;
         REMOVE_DRIVER_HEADER_NODE(dev->headers, node);
+        asm volatile ("" : : :"memory");
         free(node);
         node = nextNode;
     }

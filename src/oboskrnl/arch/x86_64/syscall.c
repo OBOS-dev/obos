@@ -76,7 +76,7 @@ handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, han
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     ctx->ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
     ctx->canFree = true;
-    ctx->lock = PUSHLOCK_INITIALIZE();
+    ctx->lock = RWLOCK_INITIALIZE();
 
     ctx->ctx->cr3 = vmm_ctx->pt;
     ctx->ctx->frame.cr3 = vmm_ctx->pt;

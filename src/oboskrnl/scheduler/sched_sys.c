@@ -24,7 +24,7 @@
 #include <mm/context.h>
 #include <mm/alloc.h>
 
-#include <locks/pushlock.h>
+#include <locks/rw_lock.h>
 #include <locks/wait.h>
 
 #include <vfs/fd_sys.h>
@@ -60,7 +60,7 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     ctx->ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
     ctx->canFree = true;
-    ctx->lock = PUSHLOCK_INITIALIZE();
+    ctx->lock = RWLOCK_INITIALIZE();
     ctx->vmm_ctx = vmm_ctx;
 
     CoreS_SetupThreadContext(ctx->ctx, entry, arg1, true, stack, stack_size);
@@ -86,9 +86,9 @@ obos_status Sys_ThreadContextRead(handle thread_context, struct thread_context_i
     thread_ctx_handle* thr_ctx = ctx->un.thread_ctx;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    Core_PushlockAcquire(&thr_ctx->lock, true);
+    Core_RwLockAcquire(&thr_ctx->lock, true);
     status = memcpy_k_to_usr(out, thr_ctx->ctx, sizeof(*out));
-    Core_PushlockRelease(&thr_ctx->lock, true);
+    Core_RwLockRelease(&thr_ctx->lock, true);
     return status;
 }*/
 
@@ -166,10 +166,10 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
 
     if (ctx->un.thread_ctx->canFree)
     {
-        Core_PushlockAcquire(&ctx->un.thread_ctx->lock, false);
+        Core_RwLockAcquire(&ctx->un.thread_ctx->lock, false);
         ctx->un.thread_ctx->canFree = false;
         ctx->un.thread_ctx->ctx = &thr->context;
-        Core_PushlockRelease(&ctx->un.thread_ctx->lock, false);
+        Core_RwLockRelease(&ctx->un.thread_ctx->lock, false);
     }
 
     handle_desc* desc = nullptr;

@@ -28,7 +28,7 @@ typedef enum handle_type
     HANDLE_TYPE_MUTEX,
     // locks/semaphore.h
     HANDLE_TYPE_SEMAPHORE,
-    // locks/pushlock.h
+    // locks/rw_lock.h
     HANDLE_TYPE_PUSHLOCK,
     // locks/event.h
     HANDLE_TYPE_EVENT,
@@ -56,7 +56,7 @@ typedef struct handle_desc
         struct context* vmm_context;
         struct mutex* mutex;
         struct semaphore* semaphore;
-        struct pushlock* pushlock;
+        struct rw_lock* rw_lock;
         struct event* event;
         struct driver_id* driver_id;
         struct thread_ctx_handle* thread_ctx;

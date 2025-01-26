@@ -171,4 +171,8 @@ typedef enum
 	/// The operation would block.
 	/// </summary>
 	OBOS_STATUS_WOULD_BLOCK,
+	/// <summary>
+	/// The host is unreachable.
+	/// </summary>
+	OBOS_STATUS_HOST_UNREACHABLE,
 } obos_status;

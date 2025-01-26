@@ -56,6 +56,7 @@ static void deref_futex(futex_object* fut)
     if (!(--fut->refs))
     {
         RB_REMOVE(futex_tree, &futexes, fut);
+        asm volatile ("" : : :"memory");
         OBOS_KernelAllocator->Free(OBOS_KernelAllocator, fut, sizeof(*fut));
     }
 }

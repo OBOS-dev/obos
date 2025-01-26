@@ -12,6 +12,7 @@
 
 #include <vfs/vnode.h>
 
+#include <locks/mutex.h>
 #include <locks/event.h>
 
 #include <net/eth.h>
@@ -79,4 +80,5 @@ static inline int cmp_arp_ip_request(arp_ip_request* lhs, arp_ip_request* rhs)
 RB_PROTOTYPE(arp_ip_request_tree, arp_ip_request, rb_node, cmp_arp_ip_request);
 
 extern arp_ip_request_tree Net_InFlightARPRequests;
+extern mutex Net_InFlightARPRequestsLock;
 obos_status Net_ARPReceiveFrame(frame* data);

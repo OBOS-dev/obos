@@ -25,11 +25,15 @@ typedef LIST_HEAD(frame_queue, struct frame) frame_queue;
 typedef struct frame {
     uint8_t* buff;
     size_t sz;
+
+    uint32_t source_ip;
+    uint16_t source_port;
+
     net_shared_buffer* base;
     // The MAC address of the NIC that received this frame.
-    uint8_t source_mac_address[6];
+    uint8_t interface_mac_address[6];
     // The vnode of the NIC that received this frame
-    vnode* source_vn;
+    vnode* interface_vn;
     dpc receive_dpc;
     LIST_NODE(frame_queue, struct frame) node;
 } frame;

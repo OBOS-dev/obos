@@ -109,3 +109,7 @@ name##_LIST_GET_PREV(list, node)
 (list)->tail
 #define LIST_IS_NODE_UNLINKED(name, list, node)\
 (LIST_GET_HEAD(name, list) != node && LIST_GET_NEXT(name, list, node) == nullptr && LIST_GET_PREV(name, list, node) == nullptr)
+#define LIST_FOREACH(x, name, list) \
+for ((x) = LIST_GET_HEAD(name, list); \
+	 (x); \
+	 (x) = LIST_GET_NEXT(name, list, x))
