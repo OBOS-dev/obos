@@ -103,6 +103,8 @@ typedef struct tables {
     vnode *interface;
     mac_address interface_mac;
 
+    bool ipv4_forward;
+
     enum {
         IP_TABLES_MAGIC = 0x6b83764e04e022ed
     } magic;

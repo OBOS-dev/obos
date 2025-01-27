@@ -33,7 +33,7 @@ static uint32_t crctab[256];
 // For future reference, we cannot hardware-accelerate the crc32 algorithm as
 // x86-64's crc32 uses a different polynomial than that of GPT.
 
-static void crcInit()
+static OBOS_NO_UBSAN void crcInit()
 {
     uint32_t crc = 0;
     for (uint16_t i = 0; i < 256; ++i)
@@ -47,13 +47,13 @@ static void crcInit()
         crctab[i] = crc;
     }
 }
-static uint32_t crc(const char *data, size_t len, uint32_t result)
+static OBOS_NO_UBSAN uint32_t crc(const char *data, size_t len, uint32_t result)
 {
     for (size_t i = 0; i < len; ++i)
         result = (result >> 8) ^ crctab[(result ^ data[i]) & 0xFF];
     return ~result;
 }
-static uint32_t crc32_bytes_from_previous(void *data, size_t sz,
+static OBOS_NO_UBSAN uint32_t crc32_bytes_from_previous(void *data, size_t sz,
                                    uint32_t previousChecksum)
 {
     if (!initialized_crc32)
@@ -63,7 +63,7 @@ static uint32_t crc32_bytes_from_previous(void *data, size_t sz,
     }
     return crc((char *)data, sz, ~previousChecksum);
 }
-static uint32_t crc32_bytes(void *data, size_t sz)
+static OBOS_NO_UBSAN uint32_t crc32_bytes(void *data, size_t sz)
 {
     if (!initialized_crc32)
     {
@@ -78,7 +78,7 @@ static OBOS_NO_UBSAN void set_checksum(ethernet2_header* hdr, size_t sz)
     *(uint32_t*)(&((uint8_t*)hdr)[sizeof(ethernet2_header) + sz]) = crc32_bytes(hdr, sizeof(ethernet2_header) + sz);
 }
 
-obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_t sz, const mac_address* restrict dest, const mac_address* restrict src, uint16_t type, size_t *out_sz)
+OBOS_NO_UBSAN obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_t sz, const mac_address* restrict dest, const mac_address* restrict src, uint16_t type, size_t *out_sz)
 {
     if (!phdr || !data || !sz || !src || !dest || !out_sz)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -95,7 +95,7 @@ obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_
 
 static frame_queue frames;
 
-static void receive_packet(dpc* d, void* userdata)
+static OBOS_NO_UBSAN void receive_packet(dpc* d, void* userdata)
 {
     OBOS_UNUSED(d);
     frame* data = userdata;
@@ -107,7 +107,6 @@ static void receive_packet(dpc* d, void* userdata)
     pkt_frame.sz -= sizeof(*hdr);
     // remove the checksum
     pkt_frame.sz -= 4;
-    OBOS_Debug("%04x\n", be16_to_host(hdr->type));
     switch (be16_to_host(hdr->type))
     {
         case ETHERNET2_TYPE_IPv4:
@@ -133,7 +132,7 @@ static void receive_packet(dpc* d, void* userdata)
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, data, sizeof(*data));
 }
 
-static void queue_packet(void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6], net_shared_buffer* buffer)
+static OBOS_NO_UBSAN void queue_packet(void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6], net_shared_buffer* buffer)
 {
     frame* data = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(frame), nullptr);
     data->buff = buff;
@@ -148,7 +147,7 @@ static void queue_packet(void* buff, size_t sz, vnode* vnode, uint8_t(*mac)[6], 
     // CoreH_InitializeDPC(&data->receive_dpc, receive_packet, Core_DefaultThreadAffinity);
 }
 
-static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
+static OBOS_NO_UBSAN void data_ready(void* userdata, void* vn_, size_t bytes_ready)
 {
     OBOS_UNUSED(userdata);
     vnode* vn = vn_;
@@ -158,6 +157,7 @@ static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
     size_t read = 0, bytes_left = bytes_ready;
     net_shared_buffer* base = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_shared_buffer), nullptr);
     base->base = buffer;
+    base->refcount++;
     base->buff_size = bytes_ready;
     while (bytes_left)
     {
@@ -165,6 +165,7 @@ static void data_ready(void* userdata, void* vn_, size_t bytes_ready)
         queue_packet((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, vn, &addr, base);
         bytes_left -= read;
     }
+    NetH_ReleaseSharedBuffer(base);
 }
 
 obos_status Net_EthernetUp(vnode* interface_vn)

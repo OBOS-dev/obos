@@ -30,7 +30,7 @@
 
 RB_GENERATE(udp_queue_tree, udp_queue, rb_node, cmp_udp_queue);
 
-obos_status Net_FormatUDPPacket(udp_header** phdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port)
+OBOS_NO_UBSAN obos_status Net_FormatUDPPacket(udp_header** phdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port)
 {
     if (!phdr || !data || !length || !src_port || !dest_port)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -43,7 +43,7 @@ obos_status Net_FormatUDPPacket(udp_header** phdr, const void* data, uint16_t le
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent_)
+OBOS_NO_UBSAN obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent_)
 {
     OBOS_UNUSED(raw_frame);
     udp_header* hdr = (void*)what->buff;
@@ -78,7 +78,7 @@ obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void 
     *new_frame = *what;
     new_frame->buff += sizeof(*hdr);
     new_frame->sz = be16_to_host(hdr->length) - sizeof(*hdr);
-    printf("%d\n", new_frame->sz);
+    // printf("%d\n", new_frame->sz);
     new_frame->base->refcount++;
     new_frame->source_port = be16_to_host(hdr->src_port);
     obos_status status = Core_RwLockAcquire(&queue->lock, false);
@@ -96,17 +96,17 @@ obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void 
     return OBOS_STATUS_SUCCESS;
 }
 
-udp_queue* NetH_GetUDPQueueForPort(void* ent_, uint16_t port, bool create)
+OBOS_NO_UBSAN udp_queue* NetH_GetUDPQueueForPort(void* ent_, uint16_t port, bool create)
 {
     if (!port || !ent_)
         return nullptr;
     ip_table_entry* ent = ent_;
-    printf("%s of UDP port %d on IP address %d.%d.%d.%d (ent: %p)\n", 
-        create ? "creation" : "query", 
-        port,
-        ent->address.comp1, ent->address.comp2, ent->address.comp3, ent->address.comp4, 
-        ent
-    );
+    // printf("%s of UDP port %d on IP address %d.%d.%d.%d (ent: %p)\n", 
+    //     create ? "creation" : "query", 
+    //     port,
+    //     ent->address.comp1, ent->address.comp2, ent->address.comp3, ent->address.comp4, 
+    //     ent
+    // );
     Core_RwLockAcquire(&ent->received_udp_packets_tree_lock, true);
     udp_queue what = {.dest_port=port};
     udp_queue* res = RB_FIND(udp_queue_tree, &ent->received_udp_packets, &what);
@@ -121,12 +121,11 @@ udp_queue* NetH_GetUDPQueueForPort(void* ent_, uint16_t port, bool create)
     res->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     Core_RwLockAcquire(&ent->received_udp_packets_tree_lock, false);
     RB_INSERT(udp_queue_tree, &ent->received_udp_packets, res);
-    OBOS_Debug("did fnuy shit\n");
     Core_RwLockRelease(&ent->received_udp_packets_tree_lock, false);
     return res;
 }
 
-void NetH_DestroyUDPQueue(void* ent_, udp_queue* queue)
+OBOS_NO_UBSAN void NetH_DestroyUDPQueue(void* ent_, udp_queue* queue)
 {
     if (!ent_ || !queue)
         return;

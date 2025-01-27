@@ -29,7 +29,7 @@
 RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);
 LIST_GENERATE(ip_table, ip_table_entry, node);
 
-uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
+OBOS_NO_UBSAN uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
 {
     uint16_t *p = buffer;
     int sum = 0;
@@ -49,12 +49,12 @@ uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
     return ret;
 }
 
-uint16_t Net_IPChecksum(ip_header* hdr)
+OBOS_NO_UBSAN uint16_t Net_IPChecksum(ip_header* hdr)
 {
     return NetH_OnesComplementSum(hdr, IPv4_GET_HEADER_LENGTH(hdr));
 }
 
-obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size)
+OBOS_NO_UBSAN obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size)
 {
     if (!phdr || !data || !sz || !source || !destination)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -75,7 +75,7 @@ obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Net_IPReceiveFrame(const frame* data)
+OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
 {
     OBOS_UNUSED(data);
     ip_header* hdr = (void*)data->buff;
@@ -168,21 +168,30 @@ obos_status Net_IPReceiveFrame(const frame* data)
     return status;
 }
 
-obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data)
+OBOS_NO_UBSAN obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data)
 {
+    tables* tables = (void*)(uintptr_t)interface->data;
+    if (!tables)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (tables->magic != IP_TABLES_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!tables->ipv4_forward)
+        return OBOS_STATUS_ABORTED;
+
     if (data->time_to_live <= 1)
     {
         // TODO: Send ICMP message telling the source that we timed out.
 
         return OBOS_STATUS_TIMED_OUT;
     }
+
     data->time_to_live--;
     data->chksum = 0;
     data->chksum = host_to_be16(Net_IPChecksum(data));
     return Net_TransmitIPv4Packet(interface, data);
 }
 
-static void submit_arp_request(vnode* interface, ip_addr ip, ip_addr source)
+static OBOS_NO_UBSAN void submit_arp_request(vnode* interface, ip_addr ip, ip_addr source)
 {
     tables* tables = (void*)(uintptr_t)interface->data;
 
@@ -209,7 +218,7 @@ static void submit_arp_request(vnode* interface, ip_addr ip, ip_addr source)
 
 }
 
-static obos_status resolve_mac(vnode* interface, ip_addr ip, ip_addr source, mac_address* out)
+static OBOS_NO_UBSAN obos_status resolve_mac(vnode* interface, ip_addr ip, ip_addr source, mac_address* out)
 {
     // OBOS_Debug("source: %d.%d.%d.%d\n", source.comp1, source.comp2, source.comp3, source.comp4);
     // OBOS_Debug("requested ip: %d.%d.%d.%d\n", ip.comp1, ip.comp2, ip.comp3, ip.comp4);
@@ -277,7 +286,7 @@ static obos_status resolve_mac(vnode* interface, ip_addr ip, ip_addr source, mac
     return OBOS_STATUS_SUCCESS;
 }
 
-static obos_status get_destination_mac(vnode *interface, ip_addr ip, mac_address *out)
+static OBOS_NO_UBSAN obos_status get_destination_mac(vnode *interface, ip_addr ip, mac_address *out)
 {
     tables* tables = (void*)(uintptr_t)interface->data;
 
@@ -299,7 +308,7 @@ static obos_status get_destination_mac(vnode *interface, ip_addr ip, mac_address
     return resolve_mac(interface, gateway_address, source_address, out);
 }
 
-obos_status Net_TransmitIPv4Packet(vnode* interface, ip_header* hdr)
+OBOS_NO_UBSAN obos_status Net_TransmitIPv4Packet(vnode* interface, ip_header* hdr)
 {
     tables* tables = (void*)(uintptr_t)interface->data;
     if (!tables)
