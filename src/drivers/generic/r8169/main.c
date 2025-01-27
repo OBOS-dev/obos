@@ -104,6 +104,8 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (blkCount > RX_PACKET_SIZE)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
     OBOS_ENSURE(dev->refcount);
 
     // Wait for the buffer to receive a frame.
@@ -115,11 +117,16 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     r8169_buffer_read_next_frame(&dev->rx_buffer, &frame);
 
     const size_t szRead = OBOS_MIN(blkCount, frame->sz);
+    Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+
+    // Lower the IRQL temporarily.
+    // This is because there is a chance of a page fault here, which is invalid at IRQL > IRQL_DISPATCH
     memcpy(buf, frame->buf, szRead);
 
+    oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
     r8169_buffer_remove_frame(&dev->rx_buffer, frame);
-
     Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+
 
     if (nBlkRead)
         *nBlkRead = szRead;
