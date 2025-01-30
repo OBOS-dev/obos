@@ -174,17 +174,13 @@ const char* syscall_to_string[] = {
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
 {
-    OBOS_UNUSED(rdi);
-    OBOS_UNUSED(rsi);
-    OBOS_UNUSED(rdx);
-    OBOS_UNUSED(r8);
-    OBOS_UNUSED(r9);
-    OBOS_UNUSED(eax);
+    if (eax > (sizeof(syscall_to_string)/sizeof(syscall_to_string[0])))
+        return;
     OBOS_Debug("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
 void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
 {
-    OBOS_UNUSED(ret);
-    OBOS_UNUSED(eax);
+    if (eax > (sizeof(syscall_to_string)/sizeof(syscall_to_string[0])))
+        return;
     OBOS_Debug("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
 }

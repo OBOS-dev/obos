@@ -107,6 +107,11 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
     OBOS_ENSURE(dev->refcount);
+    // TODO: Implement.
+    // The bug is 'frame' is always nullptr, so r8169_buffer_read_next_frame always just gets the
+    // head of the buffer, which is invalid.
+    // The solution likely requires a change to the driver interface.
+    OBOS_ENSURE(dev->refcount == 1 && "unimplemented");
 
     // Wait for the buffer to receive a frame.
     r8169_buffer_block(&dev->rx_buffer);

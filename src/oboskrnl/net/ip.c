@@ -135,16 +135,31 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
     }
 
     tables* tables = (void*)(uintptr_t)data->interface_vn->data;
-    
+
     ip_table_entry *entry = nullptr;
-    LIST_FOREACH(entry, ip_table, &tables->table)
-        if (entry->address.addr == hdr->dest_address.addr)
-            break;
-    
+    if (hdr->dest_address.addr != 0xffffffff)
+    {
+        LIST_FOREACH(entry, ip_table, &tables->table)
+            if (entry->address.addr == hdr->dest_address.addr)
+                break;
+    }
+    else 
+    {
+        // Ignore broadcast packets in the IP stack.
+        // If any program cares about broadcasts, they can use a raw socket to listen 
+        // for those (which most likely already do?)
+        // NOTE(oberrow): The only thing I could think of that cares about broadcast packets are
+        // DHCP clients/servers, so we should be fine there, especially considering they have
+        // special requirements anyway.
+        
+        entry = nullptr; 
+    }
+
     obos_status status = OBOS_STATUS_UNIMPLEMENTED;
     if (!entry)
     {
-        status = Net_IPv4ForwardPacket(data->interface_vn, hdr);
+        if (hdr->dest_address.addr != 0xffffffff)
+            status = Net_IPv4ForwardPacket(data->interface_vn, hdr);
         goto out;
     }
 
@@ -170,6 +185,8 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
 
 OBOS_NO_UBSAN obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data)
 {
+    OBOS_ASSERT(data->dest_address.addr != 0xffffffff);
+
     tables* tables = (void*)(uintptr_t)interface->data;
     if (!tables)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -288,6 +305,12 @@ static OBOS_NO_UBSAN obos_status resolve_mac(vnode* interface, ip_addr ip, ip_ad
 
 static OBOS_NO_UBSAN obos_status get_destination_mac(vnode *interface, ip_addr ip, mac_address *out)
 {
+    if (ip.addr == 0xffffffff /* broadcast */)
+    {
+        // Broadcast MAC
+        memset(*out, 0xff, 6);
+        return OBOS_STATUS_SUCCESS;
+    }
     tables* tables = (void*)(uintptr_t)interface->data;
 
     ip_table_entry *entry = nullptr;
