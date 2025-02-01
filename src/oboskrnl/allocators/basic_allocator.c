@@ -329,7 +329,24 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 	{
 		const uintptr_t blki = (uintptr_t)blk;
 		region* volatile reg = (void*)((blki - (blki % init_pgsize())) - init_pgsize());
-		OBOS_ENSURE(reg->magic == REGION_MAGIC);
+// 		if (reg->magic != REGION_MAGIC)
+// 		{
+// /*
+//         void* start;
+//         size_t sz;
+//         size_t nFree;
+//         size_t nBlocks;
+//         uint64_t magic;
+//         enum blockSource block_source;
+//         struct basic_allocator* alloc;
+//         struct region *next, *prev;
+// */
+// 			printf("reg->start: 0x%p\nreg->sz: 0x%p\nreg->nFree: 0x%p\nreg->nBlocks: %p\nreg->magic: %p\nreg->block_source: %08x\nreg->alloc: %p\nre->next: %p\nreg->prev: %p",
+// 				reg->start, reg->sz, reg->nFree, reg->nBlocks, reg->magic, reg->block_source, reg->alloc, reg->next, reg->prev);
+// 		}
+		OBOS_ASSERT(reg->magic == REGION_MAGIC);
+		if (reg->magic != REGION_MAGIC)
+			return OBOS_STATUS_INVALID_ARGUMENT;
 		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
 
 		irql oldIrql = lock(c);

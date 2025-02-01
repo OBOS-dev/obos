@@ -146,6 +146,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 		child->parent->children.tail = child;
 		child->parent->children.nChildren++;
 		Core_SpinlockRelease(&child->parent->children_lock, oldIrql);
+		child->refcount++;
 
 		child = next;
 	}

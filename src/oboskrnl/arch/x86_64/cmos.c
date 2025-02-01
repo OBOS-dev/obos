@@ -66,7 +66,7 @@ obos_status Arch_CMOSGetTimeOfDay(cmos_timeofday* time)
     time->seconds = read_cmos8(CMOS_REGISTER_SECONDS);
     time->minutes = read_cmos8(CMOS_REGISTER_MINUTES);
     time->hours = read_cmos8(CMOS_REGISTER_HOURS);
-    time->day_of_month = read_cmos8(CMOS_REGISTER_DAY_OF_MONTH) + 4;
+    time->day_of_month = read_cmos8(CMOS_REGISTER_DAY_OF_MONTH);
     time->month = read_cmos8(CMOS_REGISTER_MONTH);
     time->year = read_cmos8(CMOS_REGISTER_YEAR) + 4;
     uint16_t century = CMOS_REGISTER_CENTURY ? read_cmos8(CMOS_REGISTER_CENTURY) : 20;
