@@ -4,11 +4,8 @@
  * Copyright (c) 2024-2025 Omar Berrow
 */
 
-#include "net/arp.h"
-#include "uacpi/types.h"
 #include <int.h>
 #include <error.h>
-#include <signal.h>
 #include <cmdline.h>
 #include <syscall.h>
 #include <init_proc.h>
@@ -28,6 +25,9 @@
 #include <irq/irql.h>
 
 #include <locks/spinlock.h>
+#include <locks/rw_lock.h>
+
+#include <net/tables.h>
 
 #include <net/udp.h>
 #include <net/ip.h>
@@ -84,6 +84,7 @@
 #include <uacpi/event.h>
 #include <uacpi/context.h>
 #include <uacpi/kernel_api.h>
+#include <uacpi/types.h>
 #include <uacpi/utilities.h>
 #include <uacpi_libc.h>
 
@@ -879,15 +880,45 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 
-	fd *nic = Vfs_Calloc(1, sizeof(fd));
-	Vfs_FdOpen(nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
+	fd nic = {};
+	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
 
-	if (nic->vn)
-		nic->vn->data = host_to_be32(0xc0a86402);
-	Net_InitializeEthernet2(nic->vn);
+	if (~nic.flags & FD_FLAGS_OPEN)
+		goto end;
 
-	// Vfs_FdClose(&nic);
-	// OBOS_Suspend();
+	Net_EthernetUp(nic.vn);
+	Vfs_FdClose(&nic);
+
+	ip_table_entry* table_ent = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
+	table_ent->address = (ip_addr){ .addr=host_to_be32(0xc0a802fe) }; // 192.168.2.254
+	table_ent->broadcast_address = (ip_addr){ .addr=host_to_be32(0xc0a802ff) }; // 192.168.2.255
+	table_ent->subnet_mask = 24;
+	table_ent->received_udp_packets_tree_lock = RWLOCK_INITIALIZE();
+    tables* tables = (void*)(uintptr_t)nic.vn->data;
+	LIST_APPEND(ip_table, &tables->table, table_ent);
+	tables->gateway_address.addr = host_to_be32(0xc0a80201); // 192.168.2.1
+	tables->gateway_entry = table_ent;
+	udp_queue* bound_port = NetH_GetUDPQueueForPort(table_ent, 32768, true);
+	while (1)
+	{
+		Core_WaitOnObject(WAITABLE_OBJECT(bound_port->recv_event));
+		Core_EventClear(&bound_port->recv_event);
+		frame* recv_packet = LIST_GET_HEAD(frame_queue, &bound_port->queue);
+		LIST_REMOVE(frame_queue, &bound_port->queue, recv_packet);
+		OBOS_Debug("Received packet:\n");
+		printf("%.*s\n", recv_packet->sz, recv_packet->buff);
+		udp_header* udp_hdr = nullptr;
+		Net_FormatUDPPacket(&udp_hdr, recv_packet->buff, recv_packet->sz, bound_port->dest_port, recv_packet->source_port);
+		ip_header* packet = nullptr;
+		ip_addr dest = {.addr=recv_packet->source_ip};
+		Net_FormatIPv4Packet(&packet, udp_hdr, host_to_be16(udp_hdr->length), IPv4_PRECEDENCE_ROUTINE, &table_ent->address, &dest, 64, 0x11, 0, true);
+		Net_TransmitIPv4Packet(nic.vn, packet);
+		
+		NetH_ReleaseSharedBuffer(recv_packet->base);
+		OBOS_KernelAllocator->Free(OBOS_KernelAllocator, recv_packet, sizeof(*recv_packet));
+	}
+	
+	end:
 
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ|FD_OFLAGS_WRITE);

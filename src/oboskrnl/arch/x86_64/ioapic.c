@@ -12,11 +12,13 @@
 #include <allocators/base.h>
 
 #include <arch/x86_64/ioapic.h>
-#include <arch/x86_64/madt.h>
 
 #include <arch/x86_64/pmm.h>
 #include <arch/x86_64/boot_info.h>
-#include <stdint.h>
+
+#include <uacpi/acpi.h>
+#include <uacpi/uacpi.h>
+#include <uacpi/tables.h>
 
 ioapic_irq_redirection_entry* Arch_IRQRedirectionEntries;
 size_t Arch_SizeofIRQRedirectionEntries;
@@ -24,42 +26,30 @@ ioapic_descriptor* Arch_IOAPICs;
 size_t Arch_IOAPICCount;
 
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
-#define NextMADTEntry(cur) OffsetPtr(cur, cur->length, MADT_EntryHeader)
-#define MADTEntryStruct(entry_type) MADT_EntryType ##entry_type
+#define NextMADTEntry(cur) OffsetPtr(cur, cur->length, struct acpi_entry_hdr)
 // #define OffsetOfReg(reg) ((uintptr_t)&(((ioapic_registers*)nullptr)->reg))
 #define OffsetOfReg(reg) offsetof(ioapic_registers, reg)
 
 static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 {
-	// Find the MADT in the ACPI tables.
-	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
-	bool tables32 = rsdp->Revision < 2;
-	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
-	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
-	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
-	MADTTable* madt = nullptr;
-	for (size_t i = 0; i < nEntries; i++)
-	{
-		uintptr_t phys = tables32 ? OffsetPtr(xsdt, sizeof(*xsdt), uint32_t)[i] : OffsetPtr(xsdt, sizeof(*xsdt), uint64_t)[i];
-		ACPISDTHeader* header = (ACPISDTHeader*)Arch_MapToHHDM(phys);
-		if (memcmp(header->Signature, "APIC", 4))
-		{
-			madt = (MADTTable*)header;
-			break;
-		}
-	}
-	void* end = OffsetPtr(madt, madt->sdtHeader.Length, void);
-	for (MADT_EntryHeader* cur = OffsetPtr(madt, sizeof(*madt), MADT_EntryHeader); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
+	uacpi_table madt_table = {};
+    uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &madt_table);
+	if (!madt_table.ptr)
+        return OBOS_STATUS_UNIMPLEMENTED;
+    struct acpi_madt *madt = (void*)madt_table.hdr;
+    void* end = OffsetPtr(madt, madt->hdr.length, void);
+    
+	for (struct acpi_entry_hdr* cur = OffsetPtr(madt, sizeof(*madt), struct acpi_entry_hdr); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
 	{
 		if (cur->type == 1)
             Arch_IOAPICCount++;
 		if (cur->type == 2)
         {
-            if (((MADTEntryStruct(2)*)cur)->busSource != 0 /* ISA */)
+            if (((struct acpi_madt_interrupt_source_override*)cur)->source != 0 /* ISA */)
                 continue;
-            if ((((MADTEntryStruct(2)*)cur)->flags & 0b11) == 0b10)
+            if ((((struct acpi_madt_interrupt_source_override*)cur)->flags & ACPI_MADT_POLARITY_MASK) == 0b10)
                 continue;
-            if (((((MADTEntryStruct(2)*)cur)->flags >> 2) & 0b11) == 0b10)
+            if (((((struct acpi_madt_interrupt_source_override*)cur)->flags >> 2) & 0b11) == 0b10)
                 continue;
             Arch_SizeofIRQRedirectionEntries++;
         }
@@ -75,16 +65,16 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
         return status;
     size_t ioapic_index = 0;
     size_t ioapic_redir_index = 0;
-    for (MADT_EntryHeader* cur = OffsetPtr(madt, sizeof(*madt), MADT_EntryHeader); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
+	for (struct acpi_entry_hdr* cur = OffsetPtr(madt, sizeof(*madt), struct acpi_entry_hdr); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
 	{
 		if (cur->type == 1)
         {
             // IOAPIC
-            MADTEntryStruct(1)* ent = (MADTEntryStruct(1)*)cur;
-            Arch_IOAPICs[ioapic_index].id = ent->ioApicID;
-            Arch_IOAPICs[ioapic_index].phys = ent->ioapicAddress;
-            Arch_IOAPICs[ioapic_index].gsi = ent->globalSystemInterruptBase;
-            Arch_IOAPICs[ioapic_index].address = Arch_MapToHHDM(ent->ioapicAddress);
+            struct acpi_madt_ioapic* ent = (void*)cur;
+            Arch_IOAPICs[ioapic_index].id = ent->id;
+            Arch_IOAPICs[ioapic_index].phys = ent->address;
+            Arch_IOAPICs[ioapic_index].gsi = ent->gsi_base;
+            Arch_IOAPICs[ioapic_index].address = Arch_MapToHHDM(ent->address);
             Arch_IOAPICs[ioapic_index].maxRedirectionEntries = 
                 ArchH_IOAPICReadRegister(Arch_IOAPICs[ioapic_index].address, OffsetOfReg(ioapicVersion.maximumRedirectionEntries)) & 0xff;
             ioapic_index++;
@@ -92,8 +82,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
 		if (cur->type == 2)
         {
             // IOAPIC Redirection entry
-            MADTEntryStruct(2)* ent = (MADTEntryStruct(2)*)cur;
-            if (ent->busSource != 0 /* ISA */)
+            struct acpi_madt_interrupt_source_override* ent = (struct acpi_madt_interrupt_source_override*)cur;
+            if (ent->source != 0 /* ISA */)
                 continue;
             uint8_t polarity = ent->flags & 0b11;
             OBOS_ASSERT(polarity != 0b10);
@@ -109,8 +99,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
                 tm = TriggerModeEdgeSensitive;
             else if (tmFlg == 0b11)
                 tm = TriggerModeLevelSensitive;
-            Arch_IRQRedirectionEntries[ioapic_redir_index].globalSystemInterrupt = ent->globalSystemInterrupt;
-            Arch_IRQRedirectionEntries[ioapic_redir_index].source = ent->irqSource;
+            Arch_IRQRedirectionEntries[ioapic_redir_index].globalSystemInterrupt = ent->gsi;
             Arch_IRQRedirectionEntries[ioapic_redir_index].polarity = res;
             Arch_IRQRedirectionEntries[ioapic_redir_index].tm = tm;
             ioapic_redir_index++;
@@ -119,8 +108,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
     return OBOS_STATUS_SUCCESS;
 }
 
-// FIXME: Optimizations break things for some reason.
-#pragma GCC optimize("-O0")
 OBOS_PAGEABLE_FUNCTION obos_status Arch_InitializeIOAPICs()
 {
     obos_status status = ParseMADT();

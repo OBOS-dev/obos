@@ -161,6 +161,8 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 	if (!(((uintptr_t)(at_) >> 47) == 0 || ((uintptr_t)(at_) >> 47) == 0x1ffff))
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	uintptr_t at = (uintptr_t)at_;
+	OBOS_ASSERT(!(at & 0xfff));
+	OBOS_ASSERT(!(phys & 0xfff));
 	if (phys & 0xfff || at & 0xfff)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (obos_expect(has_xd(), true))

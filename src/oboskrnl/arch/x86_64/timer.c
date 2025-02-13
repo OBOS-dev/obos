@@ -22,7 +22,6 @@
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/hpet_table.h>
 #include <arch/x86_64/lapic.h>
-#include <arch/x86_64/sdt.h>
 #include <arch/x86_64/pmm.h>
 #include <arch/x86_64/boot_info.h>
 #include <arch/x86_64/ioapic.h>
@@ -32,6 +31,10 @@
 #include <external/fixedptc.h>
 
 #include <stdatomic.h>
+
+#include <uacpi/acpi.h>
+#include <uacpi/uacpi.h>
+#include <uacpi/tables.h>
 
 extern uint64_t Arch_FindCounter(uint64_t hz);
 atomic_size_t nCPUsWithInitializedTimer;
@@ -79,25 +82,12 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN void InitializeHPET()
 {
     static basicmm_region hpet_region;
     hpet_region.mmioRange = true;
-    ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
-    bool tables32 = rsdp->Revision < 2;
-    ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
-    xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
-    size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
-    HPET_Table* hpet_table = nullptr;
-    for (size_t i = 0; i < nEntries; i++)
-    {
-        uintptr_t phys = tables32 ? OffsetPtr(xsdt, sizeof(*xsdt), uint32_t)[i] : OffsetPtr(xsdt, sizeof(*xsdt), uint64_t)[i];
-        ACPISDTHeader* header = (ACPISDTHeader*)Arch_MapToHHDM(phys);
-        if (memcmp(header->Signature, "HPET", 4))
-        {
-            hpet_table = (HPET_Table*)header;
-            break;
-        }
-    }
-    if (!hpet_table)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n");
-    uintptr_t phys = hpet_table->baseAddress.address;
+    uacpi_table hpet_table = {};
+    uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &hpet_table);
+    struct acpi_hpet* hpet = (void*)hpet_table.hdr;
+    if (!hpet)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No HPET!\n"); // TODO: Other timekeeping methods.
+    uintptr_t phys = hpet->address.address;
     Arch_HPETAddress = (HPET*)0xffffffffffffd000;
     Arch_MapPage(getCR3(), Arch_HPETAddress, phys, 0x8000000000000013, false);
     OBOSH_BasicMMAddRegion(&hpet_region, Arch_HPETAddress, 0x1000);

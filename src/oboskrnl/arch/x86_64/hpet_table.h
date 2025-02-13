@@ -9,8 +9,6 @@
 #include <int.h>
 #include <struct_packing.h>
 
-#include <arch/x86_64/sdt.h>
-
 typedef struct OBOS_PACK HPET_Addr
 {
 	uint8_t addressSpaceId;
@@ -19,15 +17,6 @@ typedef struct OBOS_PACK HPET_Addr
 	uint8_t resv;
 	uintptr_t address;
 } HPET_Addr;
-typedef struct OBOS_PACK HPET_Table
-{
-	ACPISDTHeader sdtHeader;
-	uint32_t eventTimerBlockID;
-	HPET_Addr baseAddress;
-	uint8_t hpetNumber;
-	uint16_t mainCounterMinimum;
-	uint8_t pageProtectionAndOEMAttrib;
-} HPET_Table;
 typedef struct OBOS_PACK HPET_Timer
 {
 	volatile uint64_t timerConfigAndCapabilities;

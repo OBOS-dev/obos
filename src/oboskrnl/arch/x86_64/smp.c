@@ -16,8 +16,6 @@
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/asm_helpers.h>
-#include <arch/x86_64/sdt.h>
-#include <arch/x86_64/madt.h>
 #include <arch/x86_64/mtrr.h>
 #include <arch/x86_64/sse.h>
 #include <arch/x86_64/idt.h>
@@ -41,41 +39,34 @@
 #include <irq/irq.h>
 #include <irq/irql.h>
 
+#include <uacpi/acpi.h>
+#include <uacpi/uacpi.h>
+#include <uacpi/tables.h>
+
 static uint8_t s_lapicIDs[256];
 static uint8_t s_nLAPICIDs = 0;
 #define OffsetPtr(ptr, off, t) ((t*)(((uintptr_t)(ptr)) + (off)))
-#define NextMADTEntry(cur) OffsetPtr(cur, cur->length, MADT_EntryHeader)
+#define NextMADTEntry(cur) OffsetPtr(cur, cur->length, struct acpi_entry_hdr)
 obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool);
 static OBOS_NO_UBSAN void ParseMADT()
 {
-	// Find the MADT in the ACPI tables.
-	ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
-	bool tables32 = rsdp->Revision < 2;
-	ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
-	xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
-	size_t nEntries = (xsdt->Length - sizeof(*xsdt)) / (tables32 ? 4 : 8);
-	MADTTable* madt = nullptr;
-	for (size_t i = 0; i < nEntries; i++)
-	{
-		uintptr_t phys = tables32 ? OffsetPtr(xsdt, sizeof(*xsdt), uint32_t)[i] : OffsetPtr(xsdt, sizeof(*xsdt), uint64_t)[i];
-		ACPISDTHeader* header = (ACPISDTHeader*)Arch_MapToHHDM(phys);
-		if (memcmp(header->Signature, "APIC", 4))
-		{
-			madt = (MADTTable*)header;
-			break;
-		}
-	}
-	void* end = OffsetPtr(madt, madt->sdtHeader.Length, void);
-	for (MADT_EntryHeader* cur = OffsetPtr(madt, sizeof(*madt), MADT_EntryHeader); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
+	uacpi_table madt_table = {};
+    uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &madt_table);
+	if (!madt_table.ptr)
+        return;
+    struct acpi_madt *madt = (void*)madt_table.hdr;
+    
+	void* end = OffsetPtr(madt, madt->hdr.length, void);
+	for (struct acpi_entry_hdr* cur = OffsetPtr(madt, sizeof(*madt), struct acpi_entry_hdr); (uintptr_t)cur < (uintptr_t)end; cur = NextMADTEntry(cur))
 	{
 		if (cur->type == 0)
 		{
-			MADT_EntryType0* mLapicId = (MADT_EntryType0*)cur;
+			struct acpi_madt_lapic* mLapicId = (struct acpi_madt_lapic*)cur;
 			if (s_nLAPICIDs == 255)
-				break; // make continue if more types are parsed
-			if (~mLapicId->flags & BIT(0))
+				break; // TODO: Make continue if more types are parsed
+			if (~mLapicId->flags & ACPI_PIC_ENABLED)
 				continue;
-			s_lapicIDs[s_nLAPICIDs++] = mLapicId->apicID;
+			s_lapicIDs[s_nLAPICIDs++] = mLapicId->id;
 		}
 	}
 }
