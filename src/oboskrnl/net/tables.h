@@ -22,6 +22,7 @@
 
 typedef struct ip_table_entry {
     ip_addr address;
+    ip_addr broadcast_address;
     uint8_t subnet_mask;
     udp_queue_tree received_udp_packets;
     rw_lock received_udp_packets_tree_lock;

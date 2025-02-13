@@ -317,9 +317,16 @@ static OBOS_NO_UBSAN obos_status get_destination_mac(vnode *interface, ip_addr i
     LIST_FOREACH(entry, ip_table, &tables->table)
         if ((ip.addr & BITS(0, entry->subnet_mask)) == entry->address.addr)
             break;
-    // OBOS_Debug("entry = %p\n", entry);
     if (entry)
+    {
+        if (ip.addr == entry->broadcast_address.addr /* broadcast */)
+        {
+            // Broadcast MAC
+            memset(*out, 0xff, 6);
+            return OBOS_STATUS_SUCCESS;
+        }
         return resolve_mac(interface, ip,  entry->address, out);
+    }
     if (!tables->gateway_entry)
         return OBOS_STATUS_HOST_UNREACHABLE;
 
