@@ -80,29 +80,6 @@ __attribute__((no_instrument_function)) void Core_Schedule()
 	// getCurrentThread = nullptr;
 	// (void)Core_SpinlockAcquireExplicit(&Core_SchedulerLock, IRQL_DISPATCH, true);
 	// (void)Core_SpinlockAcquireExplicit(&CoreS_GetCPULocalPtr()->schedulerLock, IRQL_DISPATCH, true);
-	// Thread starvation prevention and work stealing.
-	// The amount of priority lists with a finished (starvation) quantum.
-	#if 0
-	if (Core_CpuCount > 1)
-	{
-	size_t nPriorityListsFQuantum = 0;
-	for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE; priority++)
-	{
-	thread_priority_list* list = priorityList(priority);
-	if (priority < THREAD_PRIORITY_MAX_VALUE)
-		nPriorityListsFQuantum += (size_t)!(ThreadStarvationPrevention(list, priority));
-	WorkStealing(list, priority);
-}
-if (nPriorityListsFQuantum == THREAD_PRIORITY_MAX_VALUE)
-{
-for (thread_priority priority = THREAD_PRIORITY_IDLE; priority <= THREAD_PRIORITY_MAX_VALUE-1; priority++)
-{
-thread_priority_list* list = priorityList(priority);
-list->noStarvationQuantum = 0;
-}
-}
-}
-#endif
 thread* chosenThread = nullptr;
 timer_tick CoreS_GetNativeTimerTick();
 // timer_tick start = CoreS_GetNativeTimerTick();
