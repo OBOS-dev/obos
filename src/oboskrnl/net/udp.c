@@ -32,13 +32,14 @@ RB_GENERATE(udp_queue_tree, udp_queue, rb_node, cmp_udp_queue);
 
 OBOS_NO_UBSAN obos_status Net_FormatUDPPacket(udp_header** phdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port)
 {
-    if (!phdr || !data || !length || !src_port || !dest_port)
+    if (!phdr || !src_port || !dest_port)
         return OBOS_STATUS_INVALID_ARGUMENT;
     udp_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(udp_header)+length, nullptr);
     hdr->length = host_to_be16(length+sizeof(udp_header));
     hdr->dest_port = host_to_be16(dest_port);
     hdr->src_port = host_to_be16(src_port);
-    memcpy(hdr+1, data, length);
+    if (data && length)
+        memcpy(hdr+1, data, length);
     *phdr = hdr;
     return OBOS_STATUS_SUCCESS;
 }

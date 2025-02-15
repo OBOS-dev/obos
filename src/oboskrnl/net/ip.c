@@ -348,7 +348,9 @@ OBOS_NO_UBSAN obos_status Net_TransmitIPv4Packet(vnode* interface, ip_header* hd
     
     ip_addr destination_ip = hdr->dest_address;
     mac_address destination = {};
-    get_destination_mac(interface, destination_ip, &destination);
+    obos_status status = get_destination_mac(interface, destination_ip, &destination);
+    if (obos_is_error(status))
+        return status;
 
     ethernet2_header* eth_hdr = nullptr;
     size_t frame_size = 0;
@@ -358,7 +360,7 @@ OBOS_NO_UBSAN obos_status Net_TransmitIPv4Packet(vnode* interface, ip_header* hd
                               ETHERNET2_TYPE_IPv4, 
                               &frame_size);
 
-    obos_status status = interface->un.device->driver->header.ftable.write_sync(tables->desc, eth_hdr, frame_size, 0, nullptr);
+    status = interface->un.device->driver->header.ftable.write_sync(tables->desc, eth_hdr, frame_size, 0, nullptr);
     OBOS_KernelAllocator->Free(OBOS_KernelAllocator, eth_hdr, frame_size);
     return status;
 }

@@ -260,15 +260,9 @@ CoreS_SaveRegisterContextAndYield:
 	mov rax, [Arch_cpu_local_curr_offset]
 	mov rax, [gs:rax]
 	mov [rdi+thread_ctx.gs_base], rax
-	mov ecx, 0xC0000100
-	rdmsr
-	shl rdx, 32
-	or rax, rdx
-	mov [rdi+thread_ctx.fs_base], rax
 	mov rax, cr3
 	mov [rdi+thread_ctx.cr3], rax
 	mov [rdi+thread_ctx.frame+0x00], rax ; cr3
-	
 	cmp qword [rdi+thread_ctx.extended_ctx_ptr], 0
 	jz .call_scheduler
 

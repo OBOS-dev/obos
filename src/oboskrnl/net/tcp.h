@@ -42,7 +42,10 @@ typedef struct tcp_header {
     uint8_t options[];
 } OBOS_PACK tcp_header;
 
-// Set control bits after calling this using TCP_SET_CTRL_BIT
-// NOTE: After doing that, recompute the checksum using NetH_TCPCHecksum
-obos_status Net_FormatTCPPacket(ip_header* ip_hdr, tcp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port, uint16_t window, uint16_t seq, uint16_t ack, uint16_t urg_ptr);
-uint16_t NetH_TCPChecksum(ip_header* ip_hdr, tcp_header* tcp_hdr);
+
+// Note: Checksum should be computed by the user after having formatted the TCP header.
+obos_status Net_FormatTCPPacket(tcp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port, uint16_t window, uint16_t seq, uint16_t ack, uint16_t urg_ptr);
+// tcp_hdr is expected to have ip_hdr->packet_len-sizeof(*ip_hdr) bytes in it.
+uint16_t NetH_TCPChecksum(const ip_header* ip_hdr, const tcp_header* tcp_hdr);
+// ent points to struct ip_table_entry
+obos_status Net_TCPReceiveFrame(const frame* what, const ip_header* ip_hdr, void *ent);

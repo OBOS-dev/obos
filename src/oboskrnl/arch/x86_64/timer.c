@@ -57,7 +57,17 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
     else
     {
         if (frame->cs & 0x3)
+        {
+            static bool has_wrfsbase = false, initialized_has_wrfsbase = false;
+            if (!initialized_has_wrfsbase)
+            {
+                has_wrfsbase = getCR4() & BIT(16) /* enable WRFSBASE (and related instructions) */;
+                initialized_has_wrfsbase = true;
+            }
+            if (has_wrfsbase)
+                Core_GetCurrentThread()->context.fs_base = rdfsbase();
             Arch_UserYield(Core_GetCurrentThread()->kernelStack); // switches to the kernel stack passed, then yields, then returns.
+        }
         else
             Core_Yield();
     }

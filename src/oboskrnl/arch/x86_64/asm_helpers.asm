@@ -14,6 +14,7 @@ global getDR6:function default
 global pause:function default
 global getEFER:function default
 global rdmsr:function default
+global rdfsbase:function default
 global wrmsr:function default
 global outb:function default
 global outw:function default
@@ -232,3 +233,7 @@ rdtsc:
 	ret
 MmS_GetCurrentPageTable:
 	jmp getCR3
+
+rdfsbase:
+	rdfsbase rax
+	ret
