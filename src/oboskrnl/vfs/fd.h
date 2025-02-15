@@ -9,6 +9,8 @@
 #include <int.h>
 #include <error.h>
 
+#include <driver_interface/header.h>
+
 #include <vfs/dirent.h>
 #include <vfs/limits.h>
 
@@ -38,6 +40,7 @@ typedef struct fd
     struct vnode* vn;
     uint32_t flags;
     uoff_t offset;
+    dev_desc desc;
     LIST_NODE(fd_list, struct fd) node;
 } fd;
 OBOS_EXPORT obos_status       Vfs_FdOpen(fd* const desc, const char* path, uint32_t oflags);

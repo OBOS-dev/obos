@@ -151,7 +151,7 @@ obos_status Net_ARPReceiveFrame(frame* data)
                     }
 
                     // Send the reply
-                    status = data->interface_vn->un.device->driver->header.ftable.write_sync(data->interface_vn->desc, eth2, frame_size, 0, nullptr);
+                    status = data->interface_vn->un.device->driver->header.ftable.write_sync(data->interface_vn->tables->desc, eth2, frame_size, 0, nullptr);
 
                     // cleanup
                     OBOS_KernelAllocator->Free(OBOS_KernelAllocator,

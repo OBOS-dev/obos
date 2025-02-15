@@ -187,7 +187,9 @@ typedef struct driver_ftable
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
 
-    obos_status(*reference_interface)(dev_desc desc);
+    // desc, in_out: input is the descriptor to reference, *desc is set to a new handle of the interface. This handle should be passed
+    // to unreference_interface.
+    obos_status(*reference_interface)(dev_desc *desc);
     obos_status(*unreference_interface)(dev_desc desc);
 } driver_ftable;
 

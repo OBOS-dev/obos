@@ -109,4 +109,6 @@ typedef struct tables {
     enum {
         IP_TABLES_MAGIC = 0x6b83764e04e022ed
     } magic;
+
+    dev_desc desc;
 } tables;

@@ -92,13 +92,13 @@ struct metadata
 //     size_t free_off = metadata->hdr.freelist.head;
 //     const size_t base_offset = metadata->vn->flags & VFLAGS_PARTITION ? metadata->vn->partitions[0].off : 0;
 //     uintptr_t offset = (free_off+base_offset) / metadata->blkSize;
-//     metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     metadata->driver->header.ftable.read_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //     obos_swap_free_region* curr = (void*)buf;
 //     off_t addend = 0;
 //     while (curr->size < nBytes && free_off)
 //     {
 //         offset = (free_off+base_offset) / metadata->blkSize;
-//         metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//         metadata->driver->header.ftable.read_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //         free_off = curr->next;
 //         if ((curr->size + sizeof(*curr)) >= nBytes)
 //         {
@@ -127,17 +127,17 @@ struct metadata
 //         curr->sizeof_this = 0;
 //         if (next)
 //         {
-//             metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
+//             metadata->driver->header.ftable.read_sync(metadata->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
 //             obos_swap_free_region* next_reg = (void*)other_buf;
 //             next_reg->prev = prev;
-//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
+//             metadata->driver->header.ftable.write_sync(metadata->desc, other_buf, access_size/metadata->blkSize, (next+base_offset) / metadata->blkSize, nullptr);
 //         }
 //         if (prev)
 //         {
-//             metadata->driver->header.ftable.read_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
+//             metadata->driver->header.ftable.read_sync(metadata->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
 //             obos_swap_free_region* next_reg = (void*)other_buf;
 //             next_reg->next = next;
-//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
+//             metadata->driver->header.ftable.write_sync(metadata->desc, other_buf, access_size/metadata->blkSize, (prev+base_offset) / metadata->blkSize, nullptr);
 //         }
 //         bool flush_hdr = true;
 //         if (metadata->hdr.freelist.head == offset)
@@ -153,12 +153,12 @@ struct metadata
 //         if (flush_hdr)
 //         {
 //             memcpy(other_buf, &metadata->hdr, metadata->blkSize);
-//             metadata->driver->header.ftable.write_sync(metadata->vn->desc, other_buf, access_size/metadata->blkSize, 0, nullptr);
+//             metadata->driver->header.ftable.write_sync(metadata->desc, other_buf, access_size/metadata->blkSize, 0, nullptr);
 //         }
 //         unmap(accessSizePages, other_pages);
 //     }
 //     *id = (free_off+curr->size+addend);
-//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     metadata->driver->header.ftable.write_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //     unmap(accessSizePages, pages);
 //     return OBOS_STATUS_SUCCESS;
 // }
@@ -192,20 +192,20 @@ struct metadata
 //     if (metadata->hdr.freelist.tail)
 //     {
 //         uintptr_t offset = (metadata->hdr.freelist.tail+base_offset) / metadata->blkSize;
-//         metadata->driver->header.ftable.read_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//         metadata->driver->header.ftable.read_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //         obos_swap_free_region* curr = (void*)buf;
 //         curr->next = id;
-//         metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//         metadata->driver->header.ftable.write_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //     }
 //     free.prev = metadata->hdr.freelist.tail;
 //     memzero(buf, access_size);
 //     metadata->hdr.freelist.tail = id;
 //     memcpy(&free, buf, sizeof(free));
 //     uintptr_t offset = (id+base_offset) / metadata->blkSize;
-//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     metadata->driver->header.ftable.write_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //     memzero(buf, sizeof(free));
 //     memcpy(&metadata->hdr, buf, sizeof(free));
-//     metadata->driver->header.ftable.write_sync(metadata->vn->desc, buf, access_size/metadata->blkSize, offset, nullptr);
+//     metadata->driver->header.ftable.write_sync(metadata->desc, buf, access_size/metadata->blkSize, offset, nullptr);
 //     unmap(accessSizePages, pages);
 //     return OBOS_STATUS_SUCCESS;
 // }
@@ -222,7 +222,7 @@ struct metadata
 //     size_t offset = (base_offset+id+offsetBytes)/metadata->blkSize;
 //     page* pages = nullptr;
 //     void* virt = map(phys, nPages, &pages);
-//     obos_status status = metadata->driver->header.ftable.write_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
+//     obos_status status = metadata->driver->header.ftable.write_sync(metadata->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
 //     unmap(nPages, pages);
 //     return status;
 // }
@@ -242,7 +242,7 @@ struct metadata
 //     offset /= metadata->blkSize;
 //     page* pages = nullptr;
 //     void* virt = map(phys, nPages, &pages);
-//     obos_status status = metadata->driver->header.ftable.read_sync(metadata->vn->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
+//     obos_status status = metadata->driver->header.ftable.read_sync(metadata->desc, virt, (nPages*OBOS_PAGE_SIZE)/metadata->blkSize, offset, nullptr);
 //     unmap(nPages, pages);
 //     return status;
 // }

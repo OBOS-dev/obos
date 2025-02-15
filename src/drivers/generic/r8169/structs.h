@@ -68,8 +68,13 @@ typedef struct r8169_descriptor_node {
     LIST_NODE(r8169_descriptor_list, struct r8169_descriptor_node) node;
 } r8169_descriptor_node;
 
+#define R8169_DEVICE_MAGIC 0x7186941C
+#define R8169_HANDLE_MAGIC 0x7186941D
+
 typedef struct r8169_device
 {
+    uint32_t magic;
+
     pci_device *dev;
     pci_resource* bar; // BAR0
     pci_resource* irq_res;
@@ -96,8 +101,6 @@ typedef struct r8169_device
 
     char* interface_name;
 
-#define R8169_DEVICE_MAGIC 0x7186941C
-    uint32_t magic;
 
     // Total number of received packets (both dropped, and undropped)
     size_t rx_count;
@@ -138,6 +141,14 @@ typedef struct r8169_device
     void* data_ready_userdata;
     thread* data_ready_thread;
 } r8169_device;
+
+typedef struct r8169_device_handle {
+    uint32_t magic; // R8169_HANDLE_MAGIC
+
+    r8169_device* dev;
+    r8169_frame* rx_curr;
+    size_t rx_off;
+} r8169_device_handle;
 
 enum {
     MAC0 = 0x0,

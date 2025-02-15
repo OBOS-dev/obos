@@ -152,7 +152,7 @@ static OBOS_NO_UBSAN void data_ready(void* userdata, void* vn_, size_t bytes_rea
     OBOS_UNUSED(userdata);
     vnode* vn = vn_;
     mac_address addr = {};
-    vn->un.device->driver->header.ftable.ioctl(vn->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, addr);
+    vn->un.device->driver->header.ftable.ioctl(vn->tables->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, addr);
     void* buffer = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, bytes_ready, nullptr);
     size_t read = 0, bytes_left = bytes_ready;
     net_shared_buffer* base = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_shared_buffer), nullptr);
@@ -161,7 +161,7 @@ static OBOS_NO_UBSAN void data_ready(void* userdata, void* vn_, size_t bytes_rea
     base->buff_size = bytes_ready;
     while (bytes_left)
     {
-        vn->un.device->driver->header.ftable.read_sync(vn->desc, (void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), bytes_left, 0, &read);
+        vn->un.device->driver->header.ftable.read_sync(vn->tables->desc, (void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), bytes_left, 0, &read);
         queue_packet((void*)((uintptr_t)buffer+(bytes_ready-bytes_left)), read, vn, &addr, base);
         bytes_left -= read;
     }
@@ -178,19 +178,21 @@ obos_status Net_EthernetUp(vnode* interface_vn)
         return OBOS_STATUS_INVALID_OPERATION;
     if (!interface_vn->un.device->driver->header.ftable.set_data_ready_cb)
         return OBOS_STATUS_INVALID_OPERATION;
+    dev_desc desc = interface_vn->desc;
     if (interface_vn->un.device->driver->header.ftable.reference_interface)
-        interface_vn->un.device->driver->header.ftable.reference_interface(interface_vn->desc);
+        interface_vn->un.device->driver->header.ftable.reference_interface(&desc);
     obos_status status = interface_vn->un.device->driver->header.ftable.set_data_ready_cb(interface_vn, data_ready, nullptr);
     if (obos_is_error(status))
         return status;
     tables* tables = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct tables), nullptr);
+    tables->desc = desc;
     tables->address_to_phys_lock = RWLOCK_INITIALIZE();
     tables->table_lock = RWLOCK_INITIALIZE();
     tables->gateway_lock = EVENT_INITIALIZE(EVENT_SYNC);
     Core_EventSet(&tables->gateway_lock, false);
     tables->magic = IP_TABLES_MAGIC;
     tables->interface = interface_vn;
-    interface_vn->un.device->driver->header.ftable.ioctl(interface_vn->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &tables->interface_mac);
+    interface_vn->un.device->driver->header.ftable.ioctl(tables->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &tables->interface_mac);
     interface_vn->data = (uint64_t)(uintptr_t)tables;
     return OBOS_STATUS_SUCCESS;
 }

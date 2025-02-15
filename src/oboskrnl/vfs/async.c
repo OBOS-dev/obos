@@ -120,7 +120,7 @@ obos_status Vfs_FdAWrite(fd* desc, const void* buf, size_t nBytes, event* evnt)
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
         obos_status status = driver->ftable.write_sync(
-            desc->vn->desc,
+            desc->desc,
             buf,
             nBytes,
             desc->offset + base_offset,
@@ -209,7 +209,7 @@ obos_status Vfs_FdARead(fd* desc, void* buf, size_t nBytes, event* evnt)
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
         obos_status status = driver->ftable.read_sync(
-            desc->vn->desc,
+            desc->desc,
             buf,
             nBytes,
             desc->offset + base_offset,
