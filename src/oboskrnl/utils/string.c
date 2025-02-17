@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <memmanip.h>
 
 #include <utils/string.h>
@@ -17,6 +18,12 @@ void OBOS_StringSetAllocator(string* obj, allocator_info* allocator)
 {
     obj->allocator = allocator;
 }
+void OBOS_StringEnableSSO(string* obj, bool opt)
+{
+    OBOS_ENSURE(!obj->set_sso_opt);
+    obj->enable_sso = opt;
+    obj->set_sso_opt = true;
+}
 void OBOS_InitString(string* obj, const char* str)
 {
     OBOS_InitStringLen(obj, str, strlen(str));
@@ -28,7 +35,9 @@ void OBOS_InitStringLen(string* obj, const char* str, size_t len)
     obj->ls = nullptr;
     obj->cap = 0;
     obj->len = 0;
-    if (len <= 32)
+    if (!obj->set_sso_opt)
+        OBOS_StringEnableSSO(obj, true);
+    if (len <= 32 && obj->enable_sso)
     {
         memzero(obj->sso, 33);
         memcpy(obj->sso, str, len);
@@ -58,24 +67,20 @@ void OBOS_AppendStringS(string* obj, string* str)
 }
 void OBOS_ResizeString(string* obj, size_t len)
 {
-    if (((len + 0x1f) & ~0x1f) != obj->cap)
+    if (((len + 0x1f) & ~0x1f) != obj->cap || !obj->cap)
         OBOS_SetCapacityString(obj, len);
-    if (len < obj->len)
-        memzero(OBOS_GetStringPtr(obj) + obj->len, obj->len - len);
-    else
-        memzero(OBOS_GetStringPtr(obj) + obj->len, len - obj->len);
     obj->len = len;
     OBOS_GetStringPtr(obj)[obj->len] = 0;
 }
 void OBOS_SetCapacityString(string* obj, size_t cap)
 {
-    if (cap <= 32)
+    if (cap <= 32 && obj->enable_sso)
         return;
     cap = (cap + 0x1f) & ~0x1f;
     size_t oldCap = obj->cap;
     obj->cap = cap;
     obj->ls = obj->allocator->Reallocate(obj->allocator, obj->ls, obj->cap, oldCap, nullptr);
-    if (oldCap <= 32)
+    if (oldCap <= 32 && obj->enable_sso)
         memcpy(obj->ls, obj->sso, oldCap);
     memzero(obj->ls + oldCap, cap-oldCap);
 }
@@ -89,11 +94,11 @@ size_t OBOS_GetStringSize(const string* obj)
 }
 char* OBOS_GetStringPtr(string* obj)
 {
-    return obj->cap <= 32 ? obj->sso : obj->ls;
+    return (obj->cap <= 32 && obj->enable_sso) ? obj->sso : obj->ls;
 }
 const char* OBOS_GetStringCPtr(const string* obj)
 {
-    return obj->cap <= 32 ? obj->sso : obj->ls;
+    return (obj->cap <= 32 && obj->enable_sso) ? obj->sso : obj->ls;
 }
 bool OBOS_CompareStringS(const string* str1, const string* str2)
 {
@@ -111,7 +116,7 @@ bool OBOS_CompareStringNC(const string* str1, const char* str2, size_t str2len)
 }
 void OBOS_FreeString(string* obj)
 {
-    if (obj->cap <= 32)
+    if (obj->cap <= 32 && obj->enable_sso)
         return;
     obj->allocator->Free(obj->allocator, obj->ls, obj->cap);
 }

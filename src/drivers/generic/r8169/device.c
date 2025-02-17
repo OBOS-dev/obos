@@ -568,7 +568,7 @@ obos_status r8169_buffer_add_frame(r8169_buffer* buff, r8169_frame* frame)
 
 obos_status r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame)
 {
-    printf("refcount of %p is now %d\n", frame, frame->refcount - 1);
+    // printf("refcount of %p is now %d\n", frame, frame->refcount - 1);
     if (!(--frame->refcount))
     {
         LIST_REMOVE(r8169_frame_list, &buff->frames, frame);

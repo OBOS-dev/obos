@@ -63,13 +63,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_Lo
 		return;
 	Core_LowerIrqlNoDPCDispatch(to);
 	if (to < IRQL_DISPATCH && CoreS_GetCPULocalPtr())
-	{
-		CoreS_SetIRQL(IRQL_DISPATCH, to);
-		*Core_GetIRQLVar() = IRQL_DISPATCH;
 		CoreH_DispatchDPCs();
-		*Core_GetIRQLVar() = to;
-		CoreS_SetIRQL(to, IRQL_DISPATCH);
-	}
 }
 
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)

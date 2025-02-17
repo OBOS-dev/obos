@@ -58,8 +58,10 @@ OBOS_NO_UBSAN obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uin
 {
     if (!phdr || !data || !sz || !source || !destination)
         return OBOS_STATUS_INVALID_ARGUMENT;
+#if IPv4_PREFERRED_PACKET_LENGTH != IPv4_MAX_PACKET_LENGTH
     if (!override_preferred_size && sz > IPv4_PREFERRED_PACKET_LENGTH)
         return OBOS_STATUS_INVALID_ARGUMENT;
+#endif
     ip_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_header)+sz, nullptr);
     hdr->protocol = protocol;
     hdr->id_flags_fragment = 0;

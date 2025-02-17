@@ -43,8 +43,8 @@ obos_status Kdbg_GDB_qC(gdb_connection* con, const char* arguments, size_t argum
 {
     NO_ARGUMENTS;
     NO_USERDATA;
-    uint32_t tid = dbg_ctx->interrupted_thread->tid > 255 ?  __builtin_bswap32(dbg_ctx->interrupted_thread->tid) : dbg_ctx->interrupted_thread->tid;
-    uint32_t pid = dbg_ctx->interrupted_thread->proc->pid > 255 ? __builtin_bswap32(dbg_ctx->interrupted_thread->proc->pid) : dbg_ctx->interrupted_thread->proc->pid;
+    uint32_t tid = dbg_ctx->interrupted_thread->tid > 255 ?  __builtin_bswap32(dbg_ctx->interrupted_thread->tid+1) : dbg_ctx->interrupted_thread->tid;
+    uint32_t pid = (dbg_ctx->interrupted_thread->proc->pid+1) > 255 ? __builtin_bswap32(dbg_ctx->interrupted_thread->proc->pid+1) : dbg_ctx->interrupted_thread->proc->pid+1;
     char* response = KdbgH_FormatResponse("QCp%x.%x", pid, tid);
     Kdbg_ConnectionSendPacket(con, response);
     Kdbg_Free(response);
@@ -169,18 +169,20 @@ obos_status Kdbg_GDB_vMustReplyEmpty(gdb_connection* con, const char* arguments,
 obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t argumentsLen_, gdb_ctx* dbg_ctx, void* userdata)
 {
     NO_CTX;
-    NO_RESPONSE;
     NO_USERDATA;
     size_t argumentsLen = argumentsLen_ / 2;
     char* arguments = Kdbg_Calloc(argumentsLen + 1, sizeof(char));
     for (size_t i = 0; i < argumentsLen; i++)
         arguments[i] = KdbgH_hex2bin(arguments_ + (i*2), 2);
+    printf("%s\n%s\n", arguments, arguments_);
     size_t commandLen = strchr(arguments, ' ');
+    char* response = "556E6B6E6F776E20636F6D6D616E640A";
+    if (!commandLen)
+        return Kdbg_ConnectionSendPacket(con, response);
     if (commandLen != argumentsLen)
         commandLen -= 1;
     char* command = 
         (char*)memcpy(Kdbg_Calloc(commandLen+1, sizeof(char)), arguments, commandLen);
-    char* response = "556E6B6E6F776E20636F6D6D616E640A";
     bool freeResponse = false;
     if (strcmp(command, "ping"))
         response = "706F6E670A";

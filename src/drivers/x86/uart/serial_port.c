@@ -150,7 +150,7 @@ static void dpc_handler(dpc* obj, void* userdata)
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
     // Receive all the avaliable data.
-    irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, 193, false);
     while (inb(port->port_base + LINE_STATUS) & BIT(0))
     {
         char ch = inb(port->port_base+IO_BUFFER);

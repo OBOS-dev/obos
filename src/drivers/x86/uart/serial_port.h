@@ -93,7 +93,17 @@ typedef struct serial_port
 } serial_port;
 void flush_out_buffer(serial_port* port);
 
-#define IRQL_COM_IRQ IRQL_TIMER
+#if OBOS_IRQL_COUNT == 16
+#	define IRQL_COM_IRQ (7)
+#elif OBOS_IRQL_COUNT == 8
+#	define IRQL_COM_IRQ (3)
+#elif OBOS_IRQL_COUNT == 4
+#	define IRQL_COM_IRQ (2)
+#elif OBOS_IRQL_COUNT == 2
+#	define IRQL_COM_IRQ (0)
+#else
+#	error Funny business.
+#endif
 
 enum
 {

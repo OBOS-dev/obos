@@ -116,12 +116,12 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 
     irql oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
 
-    printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
     if (!hnd->rx_curr)
         r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
 
-    printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
     if (!hnd->rx_curr)
     {
@@ -139,11 +139,11 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     memcpy(buf, hnd->rx_curr->buf + hnd->rx_off, szRead);
     hnd->rx_off += szRead;
 
-    printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
     if (hnd->rx_off >= hnd->rx_curr->sz)
     {
-        printf(__FILE__ ":%d\n", __LINE__);
+        // printf(__FILE__ ":%d\n", __LINE__);
         oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
         r8169_frame* next = LIST_GET_NEXT(r8169_frame_list, &dev->rx_buffer.frames, hnd->rx_curr);
         r8169_buffer_remove_frame(&dev->rx_buffer, hnd->rx_curr);
@@ -152,7 +152,7 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
     }
     
-    printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
     if (nBlkRead)
         *nBlkRead = szRead;
@@ -291,6 +291,7 @@ obos_status set_data_ready_cb(void* vn_, void(*cb)(void* userdata, void* vn, siz
         CoreH_ThreadInitialize(dev->data_ready_thread, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
         dev->data_ready_thread->stackFreeUserdata = &Mm_KernelContext;
         dev->data_ready_thread->stackFree = CoreH_VMAStackFree;
+        Core_ProcessAppendThread(OBOS_KernelProcess, dev->data_ready_thread);
         CoreH_ThreadReady(dev->data_ready_thread);
     }
 

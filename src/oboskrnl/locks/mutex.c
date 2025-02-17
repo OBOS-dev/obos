@@ -93,7 +93,7 @@ obos_status Core_MutexTryAcquire(mutex* mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (mut->ignoreAllAndBlowUp)
         return OBOS_STATUS_ABORTED;
-    if (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_acq_rel))
+    if (!atomic_flag_test_and_set_explicit(&mut->lock, memory_order_acq_rel))
     {
         mut->who = Core_GetCurrentThread();
 #if OBOS_ENABLE_LOCK_PROFILING

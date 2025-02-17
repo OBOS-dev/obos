@@ -6,24 +6,49 @@
 
 #include <int.h>
 #include <error.h>
+#include <memmanip.h>
 
 #include <allocators/base.h>
 
+struct cmd_allocation_header
+{
+    size_t alloc_size;
+};
+
 void* Kdbg_Malloc(size_t sz)
 {
-    return OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, sz, nullptr);
+    struct cmd_allocation_header* blk = nullptr;
+    blk = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator, sz+sizeof(*blk), nullptr);
+    blk->alloc_size = sz;
+    return blk + 1;
 }
-void* Kdbg_Calloc(size_t nObjs, size_t szObj)
+
+void* Kdbg_Calloc(size_t nobj, size_t szobj)
 {
-    return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, nObjs, szObj, nullptr);
+    size_t sz = nobj * szobj;
+    return memzero(Kdbg_Malloc(sz), sz);
 }
-void* Kdbg_Realloc(void* ptr, size_t newSz)
+
+void Kdbg_Free(void* buf)
 {
-    return OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, ptr, newSz, nullptr);
+    struct cmd_allocation_header* hdr = buf;
+    hdr--;
+    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, hdr, hdr->alloc_size+sizeof(*hdr));
 }
-void Kdbg_Free(void* ptr)
+
+void* Kdbg_Realloc(void* buf, size_t newsize)
 {
-    size_t sz = 0;
-    OBOS_NonPagedPoolAllocator->QueryBlockSize(OBOS_NonPagedPoolAllocator, ptr, &sz);
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, ptr, sz);
+    if (!buf)
+        return Kdbg_Malloc(newsize);
+    if (!newsize)
+    {
+        Kdbg_Free(buf);
+        return nullptr;
+    }
+    struct cmd_allocation_header* hdr = buf;
+    hdr--;
+    size_t oldsz = hdr->alloc_size;
+    hdr->alloc_size = newsize;
+    hdr = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, hdr, sizeof(*hdr)+newsize, sizeof(*hdr)+oldsz, nullptr);
+    return hdr + 1;
 }

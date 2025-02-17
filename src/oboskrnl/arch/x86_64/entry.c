@@ -88,14 +88,8 @@
 #include <uacpi/utilities.h>
 #include <uacpi_libc.h>
 
-#if 0
 #include "gdbstub/connection.h"
-#include "gdbstub/packet_dispatcher.h"
-#include "gdbstub/debug.h"
-#include "gdbstub/general_query.h"
-#include "gdbstub/stop_reply.h"
-#include "gdbstub/bp.h"
-#endif
+#include "gdbstub/gdb_udp_backend.h"
 
 #include <vfs/init.h>
 #include <vfs/alloc.h>
@@ -257,6 +251,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 	Core_CpuCount = 1;
 	Core_CpuInfo = &bsp_cpu;
 	Core_CpuInfo->curr = Core_CpuInfo;
+	Core_CpuInfo->currentIrql = IRQL_MASKED;
 
 	extern uint64_t __stack_chk_guard;
 	Core_CpuInfo->arch_specific.stack_check_guard = __stack_chk_guard;
@@ -384,6 +379,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 
 	// Finally yield into the scheduler.
 	
+	Core_LowerIrql(IRQL_PASSIVE);
+
 	Core_Yield();
 
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
@@ -880,46 +877,6 @@ void Arch_KernelMainBootstrap()
 	OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
 	Vfs_FinalizeInitialization();
 
-	fd nic = {};
-	Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-
-	if (~nic.flags & FD_FLAGS_OPEN)
-		goto end;
-
-	Net_EthernetUp(nic.vn);
-	Vfs_FdClose(&nic);
-
-	ip_table_entry* table_ent = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
-	table_ent->address = (ip_addr){ .addr=host_to_be32(0xc0a802fe) }; // 192.168.2.254
-	table_ent->broadcast_address = (ip_addr){ .addr=host_to_be32(0xc0a802ff) }; // 192.168.2.255
-	table_ent->subnet_mask = 24;
-	table_ent->received_udp_packets_tree_lock = RWLOCK_INITIALIZE();
-    tables* tables = (void*)(uintptr_t)nic.vn->data;
-	LIST_APPEND(ip_table, &tables->table, table_ent);
-	tables->gateway_address.addr = host_to_be32(0xc0a80201); // 192.168.2.1
-	tables->gateway_entry = table_ent;
-	udp_queue* bound_port = NetH_GetUDPQueueForPort(table_ent, 32768, true);
-	while (1)
-	{
-		Core_WaitOnObject(WAITABLE_OBJECT(bound_port->recv_event));
-		Core_EventClear(&bound_port->recv_event);
-		frame* recv_packet = LIST_GET_HEAD(frame_queue, &bound_port->queue);
-		LIST_REMOVE(frame_queue, &bound_port->queue, recv_packet);
-		OBOS_Debug("Received packet:\n");
-		printf("%.*s\n", recv_packet->sz, recv_packet->buff);
-		udp_header* udp_hdr = nullptr;
-		Net_FormatUDPPacket(&udp_hdr, recv_packet->buff, recv_packet->sz, bound_port->dest_port, recv_packet->source_port);
-		ip_header* packet = nullptr;
-		ip_addr dest = {.addr=recv_packet->source_ip};
-		Net_FormatIPv4Packet(&packet, udp_hdr, host_to_be16(udp_hdr->length), IPv4_PRECEDENCE_ROUTINE, &table_ent->address, &dest, 64, 0x11, 0, true);
-		Net_TransmitIPv4Packet(nic.vn, packet);
-		
-		NetH_ReleaseSharedBuffer(recv_packet->base);
-		OBOS_KernelAllocator->Free(OBOS_KernelAllocator, recv_packet, sizeof(*recv_packet));
-	}
-	
-	end:
-
 	fd com1 = {};
 	Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
 
@@ -936,10 +893,21 @@ void Arch_KernelMainBootstrap()
 		.dataBits=3,
 		.stopBits=0,
 		.parityBit=0,
-		.connection=&com1.vn->desc,
+		.connection=&com1.desc,
 	};
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
+
+	Kdbg_InitializeHandlers();
+	// TODO: Enable this through a syscall.
+	// static gdb_connection gdb_conn = {};
+	// if (OBOS_GetOPTF("enable-kdbg") && gdb_conn.pipe)
+	// {
+	// 	Kdbg_CurrentConnection = &gdb_conn;
+	// 	OBOS_Debug("%s: Enabling KDBG.\n", __func__);
+	// 	Kdbg_CurrentConnection->connection_active = true;
+	// 	asm("int3");
+	// }
 
 	// OBOS_LoadInit();
 

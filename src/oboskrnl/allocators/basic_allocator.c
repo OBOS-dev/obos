@@ -155,21 +155,21 @@ static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block,
 } while(0)
 
 #if 1
-OBOS_NO_KASAN irql lock(cache* c)
+OBOS_NO_KASAN static irql lock(cache* c)
 {
 	return Core_SpinlockAcquire(&c->lock);
 }
-OBOS_NO_KASAN void unlock(cache* c, irql oldIrql)
+OBOS_NO_KASAN static void unlock(cache* c, irql oldIrql)
 {
 	Core_SpinlockRelease(&c->lock, oldIrql);
 }
 #else
-irql lock(cache* c)
+static irql lock(cache* c)
 {
 	// return Core_SpinlockAcquire(&c->lock);
 	return 0;
 }
-void unlock(cache* c, irql oldIrql)
+static void unlock(cache* c, irql oldIrql)
 {
 	// Core_SpinlockRelease(&c->lock, oldIrql);
 }
@@ -284,6 +284,8 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void*
 		This_->Free(This_, blk, old_size);
 		return NULL;
 	}
+	if (old_size >= new_size)
+		return blk;
 	void* newblk = Allocate(This_, new_size, status);
 	if (!newblk)
 		return blk;
@@ -337,6 +339,7 @@ static OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void*
 		region* volatile reg = (void*)((blki - (blki % init_pgsize())) - init_pgsize());
 		OBOS_ENSURE(reg->magic == REGION_MAGIC);
 		OBOS_ENSURE((allocator_info*)reg->alloc == This_);
+		OBOS_ENSURE(reg->alloc_size == nBytes);
 		if (reg->alloc_size != nBytes)
 		{
 			nBytes = reg->alloc_size;

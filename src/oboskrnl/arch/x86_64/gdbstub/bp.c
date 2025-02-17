@@ -74,39 +74,24 @@ obos_status Kdbg_GDB_Z0(gdb_connection* con, const char* arguments, size_t argum
     char* response = nullptr;
     sw_breakpoint *bp = Kdbg_Malloc(sizeof(*bp));
     bp->addr = args.address;
-    page what = {.addr=bp->addr&~0xfff};
-    bool retried = false;
-    retry:
-    page* found = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-    if (!found && !retried)
+ 
+    uintptr_t phys = 0;
+    MmS_QueryPageInfo(Mm_KernelContext.pt, bp->addr, nullptr, &phys);
+    if (!phys)
     {
-        retried = true;
-        what.addr &= ~0x1fffff;
-        goto retry;
-    }
-    if (!found)
-    {
-        response = "E.No such breakpoint at address";
+        response = "E.Page fault";
         goto respond;
     }
-    prot_flags prot = 0, oldProt = 0;
-    if (found->prot.executable)
-        oldProt |= OBOS_PROTECTION_EXECUTABLE;
-    if (!(found->prot.rw))
-        oldProt |= OBOS_PROTECTION_READ_ONLY;
-    if (found->prot.user)
-        oldProt |= OBOS_PROTECTION_USER_PAGE;
-    prot = oldProt & ~OBOS_PROTECTION_READ_ONLY;
-    Mm_VirtualMemoryProtect(&Mm_KernelContext, (void*)what.addr, found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE, prot, 2);
-    bp->at = *(uint8_t*)bp->addr;
-    *(uint8_t*)bp->addr = X86_INT3;
-    Mm_VirtualMemoryProtect(&Mm_KernelContext, (void*)what.addr, found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE, oldProt, 2);
+
+    phys += (bp->addr & 0xfff);
+
+    bp->at = *(uint8_t*)Arch_MapToHHDM(phys);
+    *(uint8_t*)Arch_MapToHHDM(phys) = X86_INT3;
+    
     LIST_APPEND(sw_breakpoint_list, &con->sw_breakpoints, bp);
     response = "OK";
     respond:
-    (void)0;
-    obos_status status = Kdbg_ConnectionSendPacket(con, response);
-    return status;
+    return Kdbg_ConnectionSendPacket(con, response);
 }
 // Removes a software breakpoint.
 obos_status Kdbg_GDB_z0(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
@@ -131,33 +116,18 @@ obos_status Kdbg_GDB_z0(gdb_connection* con, const char* arguments, size_t argum
         response = "E.No such breakpoint at address";
         goto respond;
     }
-    page what = {.addr=bp->addr&~0xfff};
-    bool retried = false;
-    retry:
-    (void)0;
-    page* found = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-    if (!found && !retried)
+
+    uintptr_t phys = 0;
+    MmS_QueryPageInfo(Mm_KernelContext.pt, bp->addr, nullptr, &phys);
+    if (!phys)
     {
-        retried = true;
-        what.addr &= ~0x1fffff;
-        goto retry;
-    }
-    if (!found)
-    {
-        response = "E.No such breakpoint at address";
+        response = "E.Page fault";
         goto respond;
     }
-    prot_flags prot = 0, oldProt = 0;
-    if (found->prot.executable)
-        oldProt |= OBOS_PROTECTION_EXECUTABLE;
-    if (!(found->prot.rw))
-        oldProt |= OBOS_PROTECTION_READ_ONLY;
-    if (found->prot.user)
-        oldProt |= OBOS_PROTECTION_USER_PAGE;
-    prot = oldProt &= ~OBOS_PROTECTION_READ_ONLY;
-    Mm_VirtualMemoryProtect(&Mm_KernelContext, (void*)what.addr, found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE, prot, 2);
-    *(uint8_t*)bp->addr = bp->at;
-    Mm_VirtualMemoryProtect(&Mm_KernelContext, (void*)what.addr, found->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE, oldProt, 2);
+
+    phys += (bp->addr & 0xfff);
+
+    *(uint8_t*)Arch_MapToHHDM(phys) = bp->at;
     LIST_APPEND(sw_breakpoint_list, &con->sw_breakpoints, bp);
     response = "OK";
     respond:

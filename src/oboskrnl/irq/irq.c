@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#include "scheduler/process.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -33,7 +34,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 {
 #if !OBOS_ARCH_EMULATED_IRQL && !OBOS_LAZY_IRQL
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
-	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
+	irql oldIrql2 = Core_RaiseIrql(irql_);
 	if (!CoreS_EnterIRQHandler(frame))
 		return;
 	CoreS_SendEOI(frame);
@@ -49,7 +50,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	if (!CoreS_EnterIRQHandler(frame))
 		return;
 	CoreS_SendEOI(frame);
-	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
+	irql oldIrql2 = Core_RaiseIrql(irql_);
 #else
 	irql irql_ = OBOS_IRQ_VECTOR_ID_TO_IRQL(frame->vector);
 	if (!CoreS_EnterIRQHandler(frame))
@@ -57,7 +58,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	if (irql_ <= Core_GetIrql())
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "IRQL on call of the dispatcher is less than the IRQL of the vector reported by the architecture (\"irql_ <= Core_GetIrql()\").");
 	CoreS_SendEOI(frame);
-	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
+	irql oldIrql2 = Core_RaiseIrql(irql_);
 #endif
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
 	irq* irq_obj = nullptr;
@@ -86,7 +87,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 		//if (frame->vector == 0x60)
 			//printf("could not resolve irq object\n");
 		// Spooky actions from a distance...
-		Core_LowerIrqlNoDPCDispatch(oldIrql2);
+		Core_LowerIrql(oldIrql2);
 		CoreS_ExitIRQHandler(frame);
 		return;
 	}
@@ -103,7 +104,9 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	//else if (frame->vector == 0x60)
 		//printf("no irq handler\n");
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoThread(oldIrql2);
+	// if (oldIrql2 < IRQL_DISPATCH && OBOS_KernelProcess->threads.head->data->tid != 1)
+	// 	printf("whoa\n");
+	Core_LowerIrql(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

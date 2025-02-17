@@ -99,7 +99,7 @@ static uacpi_status ec_write(uint8_t offset, uint8_t value)
     return UACPI_STATUS_OK;
 }
 
-#define IRQL_EC_BURST IRQL_MASKED
+#define IRQL_EC_BURST IRQL_GPE
 
 static bool ec_burst_enable()
 {

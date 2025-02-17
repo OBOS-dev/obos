@@ -11,7 +11,7 @@ global memcmp:function default
 global memcmp_b:function default
 global strcmp:function default
 global strlen:function default
-global strchr:function default
+;global strchr:function default
 
 section .text
 
@@ -106,20 +106,20 @@ strlen:
 
 	leave
 	ret
-strchr:
-	push rbp
-	mov rbp, rsp
-
-	push rdi
-	call strlen
-	pop rdi
-	mov r8, rax
-	cld
-	mov rcx, rax
-	mov rax, rsi
-	repne scasb
-	sub r8, rcx
-	mov rax, r8
-
-	leave
-	ret
+;strchr:
+;	push rbp
+;	mov rbp, rsp
+;
+;	push rdi
+;	call strlen
+;	pop rdi
+;	mov r8, rax
+;	cld
+;	mov rcx, rax
+;	mov rax, rsi
+;	repne scasb
+;	sub r8, rcx
+;	mov rax, r8
+;
+;	leave
+;	ret

@@ -66,7 +66,7 @@ OBOS_NO_UBSAN obos_status Net_UDPReceiveFrame(const frame* what, const frame* ra
         return OBOS_STATUS_INVALID_HEADER;
     }
     
-    udp_queue *queue = NetH_GetUDPQueueForPort(ent_, host_to_be16(hdr->dest_port), false);
+    udp_queue *queue = NetH_GetUDPQueueForPort(ent_, be16_to_host(hdr->dest_port), false);
     if (!queue)
     {
         // TODO: Send destination unreachable (port unreachable) on ICMP.
