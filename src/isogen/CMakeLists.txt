@@ -33,7 +33,7 @@ add_custom_target(isogen ALL
 	COMMAND	cmake -E copy ${CMAKE_SOURCE_DIR}/config/initrd.tar ${ISODIR}/obos ${SUPPRESS_OUTPUT}
 	COMMAND	xorriso -as mkisofs -b hyper_iso_boot -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot hyper_uefi_boot.bin -efi-boot-part --efi-boot-image --protective-msdos-label out/isodir -o ${OUTPUT_DIR}/obos.iso ${SUPPRESS_OUTPUT}
 	COMMAND	${hyper_install} ${OUTPUT_DIR}/obos.iso ${SUPPRESS_OUTPUT}
-	SOURCES ${CMAKE_SOURCE_DIR}/config/hyper.cfg ${CMAKE_SOURCE_DIR}/config/hyper_uefi_boot.bin ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot
+	SOURCES ${CMAKE_SOURCE_DIR}/config/hyper.cfg ${CMAKE_SOURCE_DIR}/config/hyper_uefi_boot.bin ${CMAKE_SOURCE_DIR}/dependencies/hyper/hyper_iso_boot ${CMAKE_SOURCE_DIR}/config/initrd.tar
 	BYPRODUCTS ${ISODIR}/hyper.cfg
 	BYPRODUCTS ${ISODIR}/EFI/BOOT/BOOTX64.efi
 	BYPRODUCTS ${ISODIR}/hyper_iso_boot
