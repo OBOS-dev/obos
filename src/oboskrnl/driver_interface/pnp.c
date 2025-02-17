@@ -84,7 +84,7 @@ struct allocation_header {
 
 static void *malloc(size_t sz)
 {
-    struct allocation_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz+sizeof(struct allocation_header), nullptr);
+    struct allocation_header* hdr = ZeroAllocate(OBOS_KernelAllocator, 1, sz+sizeof(struct allocation_header), nullptr);
     hdr->size = sz+sizeof(struct allocation_header);
     return hdr + 1;
 }
@@ -95,14 +95,14 @@ static void *realloc(void* oldblk, size_t sz)
     hdr--;
     size_t oldSz = hdr->size;
     hdr->size += sz;
-    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sz, oldSz, nullptr);
+    return Reallocate(OBOS_KernelAllocator, hdr, sz, oldSz, nullptr);
 }
 
 static void free(void* blk)
 {
     struct allocation_header* hdr = blk;
     hdr--;
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->size);
+    Free(OBOS_KernelAllocator, hdr, hdr->size);
 }
 
 static void free_pnp_device(struct hashmap* map, pnp_device* dev)
@@ -124,7 +124,7 @@ static void append_driver_to_pnp_device(pnp_device* dev, driver_header* drv)
     // NOTE(oberrow): I hate myself for not adding a kmalloc or something eariler
     // Goddamn is this more convinient
     // The time it took to write this comment is less than the time it takes to write all the
-    // 'OBOS_KernelAllocator->........' shit.
+    // '........' shit.
     driver_header_node* node = malloc(sizeof(driver_header_node));
     memzero(node, sizeof(*node));
     node->data = drv;
@@ -497,7 +497,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             ent = ent->d_next_child;
             continue;
         }
-        driver_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header), nullptr);
+        driver_header* hdr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header), nullptr);
         status = Drv_LoadDriverHeader(buf, filesize, hdr);
         if (obos_is_error(status))
         {
@@ -514,7 +514,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         else
             OBOS_Log("Found a driver.\n", uacpi_strnlen(hdr->driverName, 64), hdr->driverName);
         struct driver_file drv_file = { .hdr=hdr, .base=buf, .file=file };
-        driver_header_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header_node), nullptr);
+        driver_header_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header_node), nullptr);
         hashmap_set(drivers, &drv_file);
         node->data = hdr;
         APPEND_DRIVER_HEADER_NODE(what, node);
@@ -531,7 +531,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         {
             driver_header_node* next = node->next;
             driver_header* const curr = node->data;
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+            Free(OBOS_KernelAllocator, node, sizeof(*node));
             node = next;
             struct driver_file ele = { .hdr=curr };
             struct driver_file* file = (struct driver_file*)hashmap_get(drivers, &ele);
@@ -585,7 +585,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     for (driver_header_node* node = what.head; node; )
     {
         driver_header_node* next = node->next;
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+        Free(OBOS_KernelAllocator, node, sizeof(*node));
         node = next;
     }
     hashmap_clear(drivers, true);

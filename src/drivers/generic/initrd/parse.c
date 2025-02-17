@@ -24,7 +24,7 @@ struct allocation_hdr {
 void* malloc(size_t sz)
 {
     sz += sizeof(struct allocation_hdr);
-    struct allocation_hdr* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
+    struct allocation_hdr* hdr = ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
     hdr->sz = sz;
     return hdr+1;
 }
@@ -33,13 +33,13 @@ void* realloc(void* buf, size_t sz)
     struct allocation_hdr* hdr = buf;
     hdr--;
     hdr->sz += sz;
-    return OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, buf, sz, hdr->sz-sz, nullptr);
+    return Reallocate(OBOS_KernelAllocator, buf, sz, hdr->sz-sz, nullptr);
 }
 void free(void* buf)
 {
     struct allocation_hdr* hdr = buf;
     hdr--;
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->sz);
+    Free(OBOS_KernelAllocator, hdr, hdr->sz);
 }
 
 #define set_status(to) status ? (*status = to) : (void)0

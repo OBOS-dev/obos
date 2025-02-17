@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "arch/m68k/loader/Limine.h"
 #include "wait.h"
 #include <int.h>
 #include <klog.h>
@@ -31,6 +32,9 @@ obos_status Core_MutexAcquire(mutex* mut)
 {
     if (!mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    obos_status status = Core_MutexTryAcquire(mut);
+    if (obos_is_success(status))
+        return status;
     // oops
     // if (mut->who == Core_GetCurrentThread())
     //     return OBOS_STATUS_RECURSIVE_LOCK;
@@ -72,9 +76,9 @@ obos_status Core_MutexAcquire(mutex* mut)
         return OBOS_STATUS_SUCCESS;
     }
     //printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
-    obos_status st = Core_WaitOnObject(&mut->hdr);
-    if (st != OBOS_STATUS_SUCCESS)
-        return st;
+    status = Core_WaitOnObject(&mut->hdr);
+    if (status != OBOS_STATUS_SUCCESS)
+        return status;
     if (mut->ignoreAllAndBlowUp)
         return OBOS_STATUS_ABORTED;
     while (atomic_flag_test_and_set_explicit(&mut->lock, memory_order_seq_cst) && success)
@@ -91,9 +95,18 @@ obos_status Core_MutexTryAcquire(mutex* mut)
 {
     if (!mut)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (mut->locked)
-        return OBOS_STATUS_IN_USE;
-    return Core_MutexAcquire(mut);
+    if (mut->ignoreAllAndBlowUp)
+        return OBOS_STATUS_ABORTED;
+    if (!atomic_flag_test_and_set_explicit(&mut->lock, memory_order_acq_rel))
+    {
+        mut->who = Core_GetCurrentThread();
+#if OBOS_ENABLE_LOCK_PROFILING
+        mut->lastLockTimeNS = CoreH_TickToNS(CoreS_GetNativeTimerTick(), true);
+#endif
+        mut->locked = true;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_IN_USE;
 }
 
 obos_status Core_MutexRelease(mutex* mut)

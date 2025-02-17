@@ -70,12 +70,12 @@ void OBOSS_SuspendSavePlatformState()
     hpet_state.timer0.timerConfigAndCapabilities = Arch_HPETAddress->timer0.timerConfigAndCapabilities;
     Arch_HPETAddress->generalConfig |= BIT(0);
 
-    saved_ioapics = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, Arch_IOAPICCount, sizeof(struct ioapic_state), nullptr);
+    saved_ioapics = ZeroAllocate(OBOS_NonPagedPoolAllocator, Arch_IOAPICCount, sizeof(struct ioapic_state), nullptr);
     for (size_t i = 0; i < Arch_IOAPICCount; i++)
     {
         saved_ioapics[i].arbitrationId = (ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 8) >> 24) & 0xf;
         saved_ioapics[i].id = (ArchH_IOAPICReadRegister(Arch_IOAPICs[i].address, 0) >> 24) & 0xf;
-        saved_ioapics[i].redirection_entries = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator,
+        saved_ioapics[i].redirection_entries = ZeroAllocate(OBOS_NonPagedPoolAllocator,
                                                                                         Arch_IOAPICs[i].maxRedirectionEntries,
                                                                                         sizeof(uint64_t),
                                                                                         nullptr);
@@ -105,7 +105,7 @@ void OBOSS_SuspendSavePlatformState()
             entry = MmS_GetNextPMemMapEntry(entry, &index);
         }
 
-        saved_nvs = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, saved_nvs_count, sizeof(struct acpi_nvs), nullptr);
+        saved_nvs = ZeroAllocate(OBOS_NonPagedPoolAllocator, saved_nvs_count, sizeof(struct acpi_nvs), nullptr);
 
         index = 0;
         size_t nvs_index = 0;
@@ -115,7 +115,7 @@ void OBOSS_SuspendSavePlatformState()
             {
                 saved_nvs[nvs_index].region_address = Arch_MapToHHDM(entry->physical_address);
                 saved_nvs[nvs_index].size = entry->size;
-                saved_nvs[nvs_index].saved_region = OBOS_NonPagedPoolAllocator->Allocate(OBOS_NonPagedPoolAllocator,
+                saved_nvs[nvs_index].saved_region = Allocate(OBOS_NonPagedPoolAllocator,
                                                                                          saved_nvs[nvs_index].size,
                                                                                          nullptr);
                 memcpy(saved_nvs[nvs_index].saved_region, saved_nvs[nvs_index].region_address, saved_nvs[nvs_index].size);
@@ -134,9 +134,9 @@ static void restore_nvs()
     for (size_t i = 0; i < saved_nvs_count; i++)
     {
         memcpy(saved_nvs[i].region_address, saved_nvs[i].saved_region, saved_nvs[i].size);
-        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, saved_nvs[i].saved_region, saved_nvs[i].size);
+        Free(OBOS_NonPagedPoolAllocator, saved_nvs[i].saved_region, saved_nvs[i].size);
     }
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, saved_nvs, saved_nvs_count*sizeof(struct acpi_nvs));
+    Free(OBOS_NonPagedPoolAllocator, saved_nvs, saved_nvs_count*sizeof(struct acpi_nvs));
     saved_nvs_count = 0;
 #endif
 }
@@ -169,9 +169,9 @@ static void restore_ioapics()
             tmp = saved_ioapics[i].redirection_entries[entry] & 0xffffffff;
             ArchH_IOAPICWriteRegister(Arch_IOAPICs[i].address, 0x40+entry*8, tmp);
         }
-        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, saved_ioapics[i].redirection_entries, Arch_IOAPICs[i].maxRedirectionEntries*sizeof(uint64_t));
+        Free(OBOS_NonPagedPoolAllocator, saved_ioapics[i].redirection_entries, Arch_IOAPICs[i].maxRedirectionEntries*sizeof(uint64_t));
     }
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, saved_ioapics, Arch_IOAPICCount*sizeof(struct ioapic_state));
+    Free(OBOS_NonPagedPoolAllocator, saved_ioapics, Arch_IOAPICCount*sizeof(struct ioapic_state));
 }
 
 extern uint8_t Arch_SMPTrampolineStart[];

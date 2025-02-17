@@ -43,23 +43,8 @@ enum {
 	REGION_MAGIC = 0xb49ad907c56c8
 };
 
-typedef struct region {
-	void* start;
-	size_t sz;
-	size_t nFree;
-	size_t nBlocks;
-	uint64_t magic;
-	enum blockSource block_source;
-	struct basic_allocator* alloc;
-	struct region *next, *prev;
-} region;
-
 typedef struct cache {
 	freelist free;
-	struct {
-		region *head, *tail;
-		size_t nNodes;
-	} region_list;
 	spinlock lock;
 } cache;
 
@@ -67,6 +52,7 @@ typedef struct basic_allocator
 {
 	allocator_info header;
 	cache caches[28];
+	enum blockSource blkSource;
 } basic_allocator;
 
 obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This);

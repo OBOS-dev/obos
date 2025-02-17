@@ -232,3 +232,11 @@ rdtsc:
 	ret
 MmS_GetCurrentPageTable:
 	jmp getCR3
+
+extern Arch_cpu_local_currentIrql_offset
+global Core_RaiseIrqlNoThread: function weak
+Core_RaiseIrqlNoThread:
+	mov rax, [Arch_cpu_local_currentIrql_offset]
+	xchg [gs:rax], rdi
+	mov rax, rdi
+	ret

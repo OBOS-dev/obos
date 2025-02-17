@@ -241,30 +241,29 @@ static void init_serial_log_backend()
 	OBOS_AddLogSource(&serial_out_cb);
 }
 
-uintptr_t Arch_cpu_local_curr_offset;
+const uintptr_t Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
+const uintptr_t Arch_cpu_local_currentIrql_offset = offsetof(cpu_local, currentIrql);
 
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
-	Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
 	bsp_cpu.id = 0;
 	bsp_cpu.isBSP = true;
 	Core_CpuCount = 1;
 	Core_CpuInfo = &bsp_cpu;
 	Core_CpuInfo->curr = Core_CpuInfo;
+	Core_CpuInfo->currentIrql = 0xf;
 
 	extern uint64_t __stack_chk_guard;
 	Core_CpuInfo->arch_specific.stack_check_guard = __stack_chk_guard;
 
 	wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
 
-	// This call will ensure the IRQL is at the default IRQL (IRQL_MASKED).
-	Core_GetIrql();
 	ParseBootContext(bcontext);
 	Arch_BootContext = bcontext;
 	OBOS_ParseCMDLine();
 	asm("sti");
 
-	uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_DEBUG);
+	uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_LOG);
 	if (log_level > 4)
 		log_level = LOG_LEVEL_DEBUG;
 	OBOS_SetLogLevel(log_level);
@@ -304,7 +303,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 		OBOS_TextRendererState.column = 0;
 		OBOS_TextRendererState.row = 0;
 		OBOS_TextRendererState.font = font_bin;
-		OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+		// OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
 		if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
 			return;
 	}
@@ -518,9 +517,9 @@ void Arch_KernelMainBootstrap()
 		else
 			OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
 		if (initrd_module_name)
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
+			Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
 		if (initrd_driver_module_name)
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
+			Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
 	}
 	OBOS_Debug("%s: Setting up uACPI early table access\n", __func__);
 	OBOS_SetupEarlyTableAccess();
@@ -588,7 +587,7 @@ void Arch_KernelMainBootstrap()
 			for (size_t x = 0; x < Arch_Framebuffer->width; x++)
 				// OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);*/
 		OBOS_TextRendererState.fb.base = base_;
-		OBOS_TextRendererState.fb.modified_line_bitmap = OBOS_KernelAllocator->ZeroAllocate(
+		OBOS_TextRendererState.fb.modified_line_bitmap = ZeroAllocate(
 			OBOS_KernelAllocator,
 			get_line_bitmap_size(OBOS_TextRendererState.fb.height),
 			sizeof(uint32_t),
@@ -668,10 +667,10 @@ void Arch_KernelMainBootstrap()
 			default:
 				continue;
 		}
-		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = strtable + esymbol->st_name;
 		size_t szName = strlen(name);
-		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
 		symbol->address = esymbol->st_value;
 		symbol->size = esymbol->st_size;
 		symbol->type = symbolType;
@@ -800,13 +799,13 @@ void Arch_KernelMainBootstrap()
 				namelen--;
 			OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
 			char* path = memcpy(
-				OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, namelen+1, sizeof(char), nullptr),
+				ZeroAllocate(OBOS_KernelAllocator, namelen+1, sizeof(char), nullptr),
 				iter,
 				namelen
 			);
 			fd file = {};
 			status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
-			OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, namelen+1);
+			Free(OBOS_KernelAllocator, path, namelen+1);
 			if (obos_is_error(status))
 			{
 				OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);

@@ -49,8 +49,8 @@ void Arch_SaveMTRRs()
     if (~deftype & BIT(11) /* enabled? */)
         return; // nope, abort.
     nVariableMTRRs = cap & 0xff;
-    variableMTRRsBase = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, nVariableMTRRs, sizeof(uint64_t), nullptr);
-    variableMTRRsMask = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, nVariableMTRRs, sizeof(uint64_t), nullptr);
+    variableMTRRsBase = ZeroAllocate(OBOS_KernelAllocator, nVariableMTRRs, sizeof(uint64_t), nullptr);
+    variableMTRRsMask = ZeroAllocate(OBOS_KernelAllocator, nVariableMTRRs, sizeof(uint64_t), nullptr);
 
     for (size_t i = 0; i < nVariableMTRRs; i++)
     {

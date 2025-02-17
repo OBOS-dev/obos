@@ -55,10 +55,10 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD_CTX, &desc);
-    thread_ctx_handle *ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx_handle), nullptr);
+    thread_ctx_handle *ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx_handle), nullptr);
     desc->un.thread_ctx = ctx;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-    ctx->ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
+    ctx->ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
     ctx->canFree = true;
     ctx->lock = PUSHLOCK_INITIALIZE();
     ctx->vmm_ctx = vmm_ctx;
@@ -312,7 +312,7 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
         return OBOS_STATUS_SUCCESS;
     if (!objects)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    struct waitable_header** objs = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, nObjects, sizeof(struct waitable_header*), nullptr);
+    struct waitable_header** objs = ZeroAllocate(OBOS_KernelAllocator, nObjects, sizeof(struct waitable_header*), nullptr);
     for (size_t i = 0; i < nObjects; i++)
     {
         handle hnd = 0;
@@ -320,7 +320,7 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
         status = memcpy_usr_to_k(&hnd, &objects[i], sizeof(handle));
         if (obos_is_error(status))
         {
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
+            Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
             return status;
         }
         handle_type type = HANDLE_TYPE(hnd);
@@ -332,14 +332,14 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
             case HANDLE_TYPE_PROCESS:
                 break;
             default:
-                OBOS_KernelAllocator->Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
+                Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
                 return OBOS_STATUS_INVALID_ARGUMENT;
         }
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
         handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd, 0, true, &status);
         if (obos_is_error(status))
         {
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
+            Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
@@ -347,7 +347,7 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
     obos_status status = Core_WaitOnObjectsPtr(nObjects, objs);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
+    Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
     return status;
 }
 
@@ -440,7 +440,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                     OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_FD;
-                    new_hnd->un.fd = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
+                    new_hnd->un.fd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
                     new_hnd->un.fd->flags = hnd->un.fd->flags;
                     new_hnd->un.fd->offset = hnd->un.fd->offset;
                     new_hnd->un.fd->vn = hnd->un.fd->vn;

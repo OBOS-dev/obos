@@ -163,14 +163,14 @@ uacpi_status uacpi_kernel_io_write32(
 
 uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle)
 {
-    *out_handle = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(uacpi_pci_address), nullptr);
+    *out_handle = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(uacpi_pci_address), nullptr);
     memcpy(*out_handle, &address, sizeof(address));
     return UACPI_STATUS_OK;
 }
 
 void uacpi_kernel_pci_device_close(uacpi_handle hnd)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(uacpi_pci_address));
+    Free(OBOS_NonPagedPoolAllocator, hnd, sizeof(uacpi_pci_address));
 }
 
 uacpi_status uacpi_kernel_pci_read8(
@@ -320,7 +320,7 @@ void* uacpi_kernel_alloc(uacpi_size size)
         // s_uACPIAllocatorInitialized = true;
     // }
 
-    void* ret = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, size, nullptr);
+    void* ret = Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
     // void* ret = OBOS_BasicMMAllocatePages(size, nullptr);
     if (!ret)
         OBOS_Warning("%s: Allocation of 0x%lx bytes failed.\n", __func__, size);
@@ -342,7 +342,7 @@ void uacpi_kernel_free(void* mem, size_t sz)
     // if (!s_uACPIAllocatorInitialized)
         // logger::panic(nullptr, "Function %s, line %d: free before uACPI allocator is initialized detected. This is a bug, please report in some way.\n", 
         // __func__, __LINE__);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, mem, sz);
+    Free(OBOS_NonPagedPoolAllocator, mem, sz);
     //logger::debug("Freed 0x%p.\n", mem);
 }
 
@@ -411,32 +411,37 @@ void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size)
 }
 void uacpi_kernel_unmap(void* b, uacpi_size s)
 { OBOS_UNUSED(b); OBOS_UNUSED(s); /* Does nothing. */}
+
 uacpi_handle uacpi_kernel_create_spinlock(void)
 {
-    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(spinlock), nullptr);
+    return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(spinlock), nullptr);
 }
 void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(spinlock));
+    Free(OBOS_NonPagedPoolAllocator, hnd, sizeof(spinlock));
 }
+
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
     spinlock* lock = (spinlock*)hnd;
     irql r = Core_SpinlockAcquire(lock);
     return r;
 }
+
 void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
 }
+
 uacpi_handle uacpi_kernel_create_event(void)
 {
-    return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(size_t), nullptr);
+    return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(size_t), nullptr);
 }
+
 void uacpi_kernel_free_event(uacpi_handle e)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, e, sizeof(size_t));
+    Free(OBOS_NonPagedPoolAllocator, e, sizeof(size_t));
 }
 
 uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle _e, uacpi_u16 t)
@@ -454,6 +459,7 @@ uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle _e, uacpi_u16 t)
     *e -= ret;
     return ret;
 }
+
 void uacpi_kernel_signal_event(uacpi_handle _e)
 {
     volatile size_t* e = (size_t*)_e;
@@ -475,6 +481,7 @@ uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handl
     *out_handle = (uacpi_handle)base;
     return UACPI_STATUS_OK;
 }
+
 void uacpi_kernel_io_unmap(uacpi_handle handle)
 {
     OBOS_UNUSED(handle);
@@ -482,30 +489,38 @@ void uacpi_kernel_io_unmap(uacpi_handle handle)
 
 uacpi_handle uacpi_kernel_create_mutex(void)
 {
-    mutex* mut = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mutex), nullptr);
+    mutex* mut = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(mutex), nullptr);
     *mut = MUTEX_INITIALIZE();
     return (uacpi_handle)mut;
 }
+
 void uacpi_kernel_free_mutex(uacpi_handle hnd)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hnd, sizeof(struct mutex));
+    Free(OBOS_NonPagedPoolAllocator, hnd, sizeof(struct mutex));
 }
+
 uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
     OBOS_UNUSED(t);
     mutex *mut = hnd;
-    Core_MutexAcquire(mut);
+    if (t)
+        Core_MutexAcquire(mut);
+    else
+        Core_MutexTryAcquire(mut);
     return UACPI_STATUS_OK;
 }
+
 void uacpi_kernel_release_mutex(uacpi_handle hnd)
 {
     mutex *mut = (mutex*)hnd;
     Core_MutexRelease(mut);
 }
+
 uacpi_thread_id uacpi_kernel_get_thread_id()
 {
     return (uacpi_thread_id)Core_GetCurrentThread();
 }
+
 uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request* req)
 {
     switch (req->type)
@@ -571,7 +586,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
         OBOS_Error("%s: Could not initialize IRQ object. Status: %d.\n", __func__, status);
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
-    uintptr_t *udata = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(uintptr_t), nullptr);
+    uintptr_t *udata = ZeroAllocate(OBOS_NonPagedPoolAllocator, 2, sizeof(uintptr_t), nullptr);
     udata[0] = (uintptr_t)ctx;
     udata[1] = (uintptr_t)handler;
     irqHnd->handler = bootstrap_irq_handler;
@@ -592,7 +607,7 @@ uacpi_status uacpi_kernel_uninstall_interrupt_handler(
 {
     OBOS_UNUSED(unused);
     struct irq* irqHnd = (irq*)irq_handle;
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, irqHnd->handlerUserdata, sizeof(uintptr_t)*2);
+    Free(OBOS_NonPagedPoolAllocator, irqHnd->handlerUserdata, sizeof(uintptr_t)*2);
     Core_IrqObjectFree(irqHnd);
     return UACPI_STATUS_OK;
 }	
@@ -626,7 +641,7 @@ static void work_handler(dpc* dpc, void* userdata)
     s_nWork--;
     Core_SpinlockRelease(&s_workQueueLock, oldIrql);
     CoreH_FreeDPC(dpc, true);
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, work, sizeof(*work));
+    Free(OBOS_NonPagedPoolAllocator, work, sizeof(*work));
 }
 
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler cb, uacpi_handle ctx)
@@ -634,7 +649,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler
     if (!s_isWorkQueueLockInit)
         s_workQueueLock = Core_SpinlockCreate();
     // Make the work object.
-    uacpi_work* work = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(uacpi_work), nullptr);
+    uacpi_work* work = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(uacpi_work), nullptr);
     work->type = type;
     work->cb = cb;
     work->ctx = ctx;

@@ -1007,7 +1007,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
             MmH_RefPage(Mm_AnonPage);
             Mm_AnonPage->pagedCount++;
             Mm_AnonPage->cow_type = COW_ASYMMETRIC;
-            info.prot.present = false;
+            info.prot.present = true;
             info.prot.rw = false;
         }
         else

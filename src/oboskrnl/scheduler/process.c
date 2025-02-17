@@ -28,7 +28,7 @@ process* OBOS_KernelProcess;
 uint32_t Core_NextPID = 0;
 static OBOS_PAGEABLE_FUNCTION void free_node(thread_node* n)
 {
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, n, sizeof(*n));
+	Free(OBOS_KernelAllocator, n, sizeof(*n));
 }
 OBOS_PAGEABLE_FUNCTION process* Core_ProcessAllocate(obos_status* status) 
 {
@@ -45,8 +45,8 @@ OBOS_PAGEABLE_FUNCTION process* Core_ProcessAllocate(obos_status* status)
 		return nullptr;
 	}
 	if (!OBOS_NonPagedPoolAllocator)
-		return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
-	return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
+		return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
+	return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
 }
 OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* mainThread)
 {
@@ -81,7 +81,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	if (!mainThread)
 		return OBOS_STATUS_SUCCESS;
 	obos_status status = OBOS_STATUS_SUCCESS;
-	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
+	thread_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
 	if (obos_is_error(status))
 		return status;
 	node->free = free_node;
@@ -99,7 +99,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 	if (!thread->affinity || thread->proc)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	obos_status status = OBOS_STATUS_SUCCESS;
-	thread_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
+	thread_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_node), &status);
 	if (obos_is_error(status))
 		return status;
 	node->free = free_node;
@@ -130,7 +130,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 
 		if (!(--child->refcount))
 		{
-			OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, child, sizeof(*child));
+			Free(OBOS_NonPagedPoolAllocator, child, sizeof(*child));
 			child = next;
 			continue;
 		}
@@ -246,7 +246,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	proc->dead = true;
 
 	if (!(--proc->refcount))
-		OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, proc, sizeof(*proc));
+		Free(OBOS_NonPagedPoolAllocator, proc, sizeof(*proc));
 
 	Core_ExitCurrentThread();
 }

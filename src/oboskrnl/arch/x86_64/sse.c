@@ -16,12 +16,12 @@ bool Arch_HasXSAVE = false;
 
 void* Arch_AllocateXSAVERegion()
 {
-    return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size, nullptr);
+    return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size, nullptr);
 }
 
 void Arch_FreeXSAVERegion(void* buf)
 {
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, buf, xsave_size);
+    Free(OBOS_NonPagedPoolAllocator, buf, xsave_size);
 }
 
 // Enables stuff such as XSAVE, SSE(2), AVX, AVX512, etc.

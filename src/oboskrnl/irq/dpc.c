@@ -25,8 +25,8 @@ LIST_GENERATE(dpc_queue, dpc, node);
 dpc* CoreH_AllocateDPC(obos_status* status)
 {
     if (!OBOS_NonPagedPoolAllocator)
-        return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(dpc), status);
-    return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(dpc), status);
+        return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(dpc), status);
+    return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(dpc), status);
 }
 obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* userdata), thread_affinity affinity)
 {
@@ -64,5 +64,5 @@ obos_status CoreH_FreeDPC(dpc* dpc, bool dealloc)
         Core_SpinlockRelease(&dpc->cpu->dpc_queue_lock, oldIrql);
         dpc->cpu = nullptr;
     }
-    return dealloc ? OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, dpc, sizeof(*dpc)) : OBOS_STATUS_SUCCESS;
+    return dealloc ? Free(OBOS_NonPagedPoolAllocator, dpc, sizeof(*dpc)) : OBOS_STATUS_SUCCESS;
 }

@@ -351,10 +351,10 @@ Core_InitializeIRQInterface();
 			default:
 				continue;
 		}
-		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = strtable + esymbol->st_name;
 		size_t szName = strlen(name);
-		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
 		symbol->address = esymbol->st_value;
 		symbol->size = esymbol->st_size;
 		symbol->type = symbolType;

@@ -238,7 +238,7 @@ static void search_bus(pci_bus* bus)
             }
 
             nDevices++;
-            Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
+            Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
             Devices[nDevices-1].dev = dev;
             Devices[nDevices-1].bar = bar0;
             Devices[nDevices-1].irq_res = irq_res;

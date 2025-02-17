@@ -129,8 +129,8 @@ obos_status Core_InitializeTimerInterface()
 timer* Core_TimerObjectAllocate(obos_status* status)
 {
     if (!OBOS_NonPagedPoolAllocator)
-		return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
-	return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
+		return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
+	return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
 }
 obos_status Core_TimerObjectFree(timer* obj)
 {
@@ -139,7 +139,7 @@ obos_status Core_TimerObjectFree(timer* obj)
     if (obj->mode > TIMER_EXPIRED)
         return OBOS_STATUS_ACCESS_DENIED;
     CoreH_FreeDPC(&obj->handler_dpc, false);
-    return OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
+    return Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 }
 obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
 {

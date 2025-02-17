@@ -47,12 +47,12 @@ void cleanup()
     for (size_t i = 0; i < nSerialPorts; i++)
     {
         size_t sz = 0;
-        OBOS_KernelAllocator->QueryBlockSize(OBOS_KernelAllocator, serialPorts[i].user_name, &sz);
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, serialPorts[i].user_name, sz);
+        QueryBlockSize(OBOS_KernelAllocator, serialPorts[i].user_name, &sz);
+        Free(OBOS_KernelAllocator, serialPorts[i].user_name, sz);
         free_buffer(&serialPorts[i].in_buffer);
         free_buffer(&serialPorts[i].out_buffer);
     }
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, serialPorts, sizeof(*serialPorts)*nSerialPorts);
+    Free(OBOS_KernelAllocator, serialPorts, sizeof(*serialPorts)*nSerialPorts);
 }
 obos_status get_blk_size(dev_desc ign, size_t* sz)
 {
@@ -78,7 +78,7 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
     else
     {
         size_t sz = snprintf(nullptr, 0, "COM%d", port->com_port);
-        char* buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sz+1, nullptr);
+        char* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sz+1, nullptr);
         buf[sz] = 0;
         snprintf(buf, sz+1, "COM%d", port->com_port);
         port->user_name = buf;
@@ -227,7 +227,7 @@ static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *nod
     }
     size_t old_sz = nSerialPorts*sizeof(serial_port);
     size_t new_sz = (++nSerialPorts)*sizeof(serial_port);
-    serialPorts = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, serialPorts, new_sz, old_sz, nullptr);
+    serialPorts = Reallocate(OBOS_KernelAllocator, serialPorts, new_sz, old_sz, nullptr);
     memzero(&serialPorts[nSerialPorts - 1], sizeof(*serialPorts));
     serialPorts[nSerialPorts - 1].com_port = nSerialPorts;
     uacpi_for_each_resource(resources, resource_iterator, &serialPorts[nSerialPorts - 1]);

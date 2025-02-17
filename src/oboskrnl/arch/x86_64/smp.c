@@ -198,7 +198,7 @@ void Arch_SMPStartup()
 	// if (s_nLAPICIDs == 1)
 	// 	return; // No work to do.
 	//             ^ is not true
-	cpu_local* cpu_info = (cpu_local*)OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, s_nLAPICIDs, sizeof(cpu_local), nullptr);
+	cpu_local* cpu_info = (cpu_local*)ZeroAllocate(OBOS_KernelAllocator, s_nLAPICIDs, sizeof(cpu_local), nullptr);
 	memzero(cpu_info, s_nLAPICIDs * sizeof(cpu_local));
 	OBOS_STATIC_ASSERT(sizeof(*cpu_info) == sizeof(*Core_CpuInfo), "Size mismatch for Core_CpuInfo and cpu_info.");
 	cpu_info[0] = Core_CpuInfo[0];

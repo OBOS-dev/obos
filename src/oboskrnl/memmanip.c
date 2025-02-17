@@ -17,6 +17,7 @@
 #include <mm/alloc.h>
 #include <mm/pmm.h>
 
+#if !OBOS_ARCH_HAS_USR_MEMCPY
 obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
 {
     if (CoreS_GetCPULocalPtr()->currentContext == &Mm_KernelContext)
@@ -71,7 +72,9 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
     return OBOS_STATUS_SUCCESS;
 }
+#endif
 
+#if !OBOS_ARCH_HAS_MEMSET
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memset(void* blk, int val, size_t count)
 {
     char* buf = (char*)blk;
@@ -79,16 +82,25 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memset(void* blk, int val, size_t co
         buf[i] = val;
     return blk;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_MEMZERO
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memzero(void* blk, size_t count)
 {
     return memset(blk, 0, count);
 }
+#endif
+
+#if !OBOS_ARCH_HAS_MEMCPY
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memcpy(void* blk1_, const void* blk2_, size_t count)
 {
     for (size_t i = 0; i < count; i++)
         ((uint8_t*)blk1_)[i] = ((uint8_t*)blk2_)[i];
     return blk1_;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_MEMCMP
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp(const void* blk1_, const void* blk2_, size_t count)
 {
     const char *blk1 = (const char*)blk1_;
@@ -98,6 +110,9 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp(const void* blk1_, const void*
             return false;
     return true;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_MEMCMP_B
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp_b(const void* blk1_, int against, size_t count)
 {
     const uint8_t *blk1 = (const uint8_t*)blk1_;
@@ -106,6 +121,9 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp_b(const void* blk1_, int again
             return false;
     return true;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_STRCMP
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool strcmp(const char* str1, const char* str2)
 {
     size_t sz1 = strlen(str1);
@@ -114,6 +132,9 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool strcmp(const char* str1, const char* 
         return false;
     return memcmp(str1, str2, sz1);
 }
+#endif
+
+#if !OBOS_ARCH_HAS_STRLEN
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strlen(const char* str)
 {
     size_t i = 0;
@@ -121,6 +142,9 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strlen(const char* str)
         ;
     return i;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_STRNLEN
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strnlen(const char* str, size_t maxcnt)
 {
     if (!str)
@@ -129,6 +153,9 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strnlen(const char* str, size_t max
     for (; i < maxcnt && str[i]; i++);
     return i;
 }
+#endif
+
+#if !OBOS_ARCH_HAS_STRCHR
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strchr(const char* str, char ch)
 {
     size_t i = 0;
@@ -136,3 +163,4 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strchr(const char* str, char ch)
         ;
     return i + (str[i] == ch ? 1 : 0);
 }
+#endif

@@ -92,9 +92,9 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         siginfo.udata.integer = sig->udata;
         siginfo.signum = sigval;
         frame->rdi = sigval;
-        frame->rsi = (uintptr_t)OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(siginfo), nullptr);
+        frame->rsi = (uintptr_t)ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(siginfo), nullptr);
         memcpy((void*)frame->rsi, &siginfo, sizeof(siginfo));
-        frame->rdx = (uintptr_t)OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(ctx), nullptr);
+        frame->rdx = (uintptr_t)ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(ctx), nullptr);
         memcpy((void*)frame->rdx, &ctx, sizeof(ctx));
         frame->rip = (uintptr_t)OBOS_DefaultSignalHandler;
         frame->cs = 0x8;

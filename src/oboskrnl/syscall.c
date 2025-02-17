@@ -64,10 +64,10 @@ void Sys_LibCLog(const char* ustr)
         OBOS_Error("libc wanted to log, but we got status %d trying to read the message.\n", status);
         return;
     }
-    char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
+    char* buf = Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
     OBOSH_ReadUserString(ustr, buf, &str_len);
     OBOS_LibCLog("%s\n", buf);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, str_len+1);
+    Free(OBOS_KernelAllocator, buf, str_len+1);
 }
 
 static handle Sys_MmFork()

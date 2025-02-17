@@ -71,10 +71,10 @@ handle SysS_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, ha
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD_CTX, &desc);
-    thread_ctx_handle *ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx_handle), nullptr);
+    thread_ctx_handle *ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx_handle), nullptr);
     desc->un.thread_ctx = ctx;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-    ctx->ctx = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
+    ctx->ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
     ctx->canFree = true;
     ctx->lock = PUSHLOCK_INITIALIZE();
 

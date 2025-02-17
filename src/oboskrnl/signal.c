@@ -30,7 +30,7 @@
 
 signal_header* OBOSH_AllocateSignalHeader()
 {
-    signal_header* hdr = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(signal_header), nullptr);
+    signal_header* hdr = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(signal_header), nullptr);
     hdr->lock = MUTEX_INITIALIZE();
     hdr->event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     return hdr;
@@ -230,7 +230,7 @@ void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown)
         default:
             OBOS_ASSERT(!"unknown signal default action");
     }
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, info, sizeof(*info));
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, unknown, sizeof(ucontext_t));
+    Free(OBOS_NonPagedPoolAllocator, info, sizeof(*info));
+    Free(OBOS_NonPagedPoolAllocator, unknown, sizeof(ucontext_t));
     Core_ExitCurrentProcess(signum | (signum << 8));
 }

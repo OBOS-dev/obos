@@ -34,7 +34,7 @@ static void initialize()
     // Detect all PICs.
     BootInfoTag* cur = Arch_GetBootInfoFrom(BootInfoType_GoldfishPicBase, nullptr);
     Arch_PICCount = 6;
-    Arch_PICBases = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, Arch_PICCount, sizeof(*Arch_PICBases), nullptr);
+    Arch_PICBases = ZeroAllocate(OBOS_NonPagedPoolAllocator, Arch_PICCount, sizeof(*Arch_PICBases), nullptr);
     for (size_t i = 0; i < Arch_PICCount; i++)
     {
         memzero(&Arch_PICBases[i], sizeof(Arch_PICBases[0]));

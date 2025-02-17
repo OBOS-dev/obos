@@ -63,5 +63,12 @@ typedef struct allocator_info
 	/// <returns>The status of the function.</returns>
 	obos_status(*QueryBlockSize)(struct allocator_info* This, void* base, size_t* nBytes);
 } allocator_info;
+
+OBOS_EXPORT obos_status Free(struct allocator_info* This, void* base, size_t nBytes);
+OBOS_EXPORT __attribute__((malloc, malloc(Free, 2))) void* Allocate(struct allocator_info* This, size_t nBytes, obos_status* status);
+OBOS_EXPORT __attribute__((malloc, malloc(Free, 2))) void* ZeroAllocate(struct allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status);
+OBOS_EXPORT void* Reallocate(struct allocator_info* This, void* base, size_t nBytes, size_t old_size, obos_status* status);
+OBOS_EXPORT obos_status QueryBlockSize(struct allocator_info* This, void* base, size_t* nBytes);
+
 extern OBOS_EXPORT allocator_info* OBOS_KernelAllocator;
 extern OBOS_EXPORT allocator_info* OBOS_NonPagedPoolAllocator;
