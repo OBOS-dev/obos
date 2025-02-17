@@ -159,7 +159,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             *status = st;
         return nullptr;
     }
-    driver_id* driver = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_id), nullptr);
+    driver_id* driver = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_id), nullptr);
     Elf_Sym* dynamicSymbolTable = nullptr;
     size_t nEntriesDynamicSymbolTable = 0;
     const char* dynstrtab = nullptr;
@@ -171,7 +171,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     driver->base = DrvS_LoadRelocatableElf(driver, file_, szFile, &dynamicSymbolTable, &nEntriesDynamicSymbolTable, &dynstrtab, &top, status);
     if (!driver->base)
     {
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
+        Free(OBOS_KernelAllocator, driver, sizeof(*driver));
         return nullptr;
     }
     Elf_Shdr* driverHeaderSection = nullptr;
@@ -239,7 +239,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
 				symbolType = SYMBOL_TYPE_VARIABLE;
 				break;
 		}
-		driver_symbol* symbol = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = dynstrtab + esymbol->st_name;
         bool forceHidden = false;
         for (size_t j = 0; j < sizeof(forced_hidden_symbols)/sizeof(*forced_hidden_symbols); j++)
@@ -251,7 +251,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             }
         }
 		size_t szName = strlen(name);
-		symbol->name = memcpy(OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
 		symbol->address = OffsetPtr(driver->base, esymbol->st_value, uintptr_t);
 		symbol->size = esymbol->st_size;
 		symbol->type = symbolType;
@@ -372,7 +372,7 @@ obos_status Drv_UnloadDriver(driver_id* driver)
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
     Mm_VirtualMemoryFree(&Mm_KernelContext, driver->base, size);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, driver, sizeof(*driver));
+    Free(OBOS_KernelAllocator, driver, sizeof(*driver));
     return OBOS_STATUS_SUCCESS;
 }
 

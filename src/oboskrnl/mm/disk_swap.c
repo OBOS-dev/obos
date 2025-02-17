@@ -258,14 +258,14 @@ obos_status MmH_InitializeDiskSwapDevice(swap_dev *dev, void* vnode)
         return OBOS_STATUS_UNIMPLEMENTED;
     const size_t filesize = file.vn->filesize;
     struct obos_swap_header hdr = {};
-    uint8_t* buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
+    uint8_t* buf = ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
     if (obos_is_error(status = Vfs_FdRead(&file, buf, blkSize, nullptr)))
     {
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize);
+        Free(OBOS_KernelAllocator, buf, blkSize);
         return status;
     }
     memcpy(&hdr, buf, sizeof(hdr));
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize);
+    Free(OBOS_KernelAllocator, buf, blkSize);
     if (hdr.magic != OBOS_SWAP_HEADER_MAGIC)
     {
         Vfs_FdClose(&file);
@@ -299,21 +299,21 @@ obos_status MmH_InitializeDiskSwapDevice(swap_dev *dev, void* vnode)
         hdr.freelist.head = hdr.header_size;
         hdr.freelist.tail = hdr.header_size;
         hdr.freelist.nNodes = 1;
-        buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
+        buf = ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
         hdr.flags &= ~OBOS_SWAP_HEADER_DIRTY;
         memcpy(buf, &hdr, sizeof(hdr));
         Vfs_FdSeek(&file, 0, SEEK_SET);
         Vfs_FdWrite(&file, buf, blkSize, nullptr);
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize);
+        Free(OBOS_KernelAllocator, buf, blkSize);
     }
     else 
     {
         hdr.flags |= OBOS_SWAP_HEADER_DIRTY;
-        buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
+        buf = ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
         memcpy(buf, &hdr, sizeof(hdr));
         Vfs_FdSeek(&file, 0, SEEK_SET);
         Vfs_FdWrite(&file, buf, blkSize, nullptr);
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize);
+        Free(OBOS_KernelAllocator, buf, blkSize);
     }
     Vfs_FdClose(&file);
     dev->metadata = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(struct metadata), nullptr);
@@ -367,13 +367,13 @@ obos_status MmH_InitializeDiskSwap(void* vn_)
     hdr.freelist.nNodes++;
     hdr.freelist.freeBytes = free.size;
     Vfs_FdSeek(&file, 0, SEEK_SET);
-    uint8_t* buf = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
+    uint8_t* buf = ZeroAllocate(OBOS_KernelAllocator, 1, blkSize, nullptr);
     memcpy(buf, &hdr, sizeof(hdr));
     Vfs_FdWrite(&file, buf, blkSize, nullptr);
     memzero(buf, sizeof(hdr));
     memcpy(buf, &free, sizeof(free));
     Vfs_FdWrite(&file, buf, blkSize, nullptr);
     Vfs_FdClose(&file);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, buf, blkSize*2);
+    Free(OBOS_KernelAllocator, buf, blkSize*2);
     return OBOS_STATUS_SUCCESS;
 }

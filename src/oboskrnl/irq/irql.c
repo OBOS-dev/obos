@@ -27,6 +27,30 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_WEAK ir
 	return &CoreS_GetCPULocalPtr()->currentIrql;
 }
 
+#if !OBOS_LAZY_IRQL
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
+{
+	OBOS_ASSERT((to & ~0xf) == 0);
+	if ((to & ~0xf))
+		return IRQL_INVALID;
+	if (to == *Core_GetIRQLVar())
+		return to;
+	if (to < *Core_GetIRQLVar())
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
+//	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
+//		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
+	irql oldIRQL = Core_GetIrql();
+#if !OBOS_LAZY_IRQL
+	CoreS_SetIRQL(to, *Core_GetIRQLVar());
+// #else
+// 	if (to == IRQL_DISPATCH)
+// 		CoreS_SetIRQL(to, *Core_GetIRQLVar());
+#endif
+	*Core_GetIRQLVar() = to;
+	return oldIRQL;
+}
+#endif
+
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrql(irql to)
 {
 	irql oldIrql = Core_RaiseIrqlNoThread(to);
@@ -88,31 +112,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_Lo
 	CoreS_SetIRQL(to, old);
 }
 
-__attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
-{
-	OBOS_ASSERT((to & ~0xf) == 0);
-	if ((to & ~0xf))
-		return IRQL_INVALID;
-	if (to == *Core_GetIRQLVar())
-		return to;
-	if (to < *Core_GetIRQLVar())
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: IRQL %d is less than the current IRQL, %d.\n", __func__, to, *Core_GetIRQLVar());
-//	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-//		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
-	irql oldIRQL = Core_GetIrql();
-#if !OBOS_LAZY_IRQL
-	CoreS_SetIRQL(to, *Core_GetIRQLVar());
-// #else
-// 	if (to == IRQL_DISPATCH)
-// 		CoreS_SetIRQL(to, *Core_GetIRQLVar());
-#endif
-	*Core_GetIRQLVar() = to;
-	return oldIRQL;
-}
-
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_GetIrql()
 {
-	if (*Core_GetIRQLVar() != CoreS_GetIRQL())
-		CoreS_SetIRQL(*Core_GetIRQLVar(), *Core_GetIRQLVar());
 	return *Core_GetIRQLVar();
 }

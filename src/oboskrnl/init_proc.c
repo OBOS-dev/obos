@@ -37,7 +37,7 @@ void OBOS_LoadInit()
     fd init_fd = {};
 
     if (!init_path)
-        init_path = memcpy(OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, 6, nullptr), "/init", 6);
+        init_path = memcpy(Allocate(OBOS_KernelAllocator, 6, nullptr), "/init", 6);
 
     OBOS_Log("Loading %s\n", init_path);
 
@@ -68,7 +68,7 @@ void OBOS_LoadInit()
     aux.phdr.phent = ehdr->e_phentsize;
     aux.phdr.phnum = ehdr->e_phnum;
 
-    aux.argv = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(char*), nullptr);
+    aux.argv = ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(char*), nullptr);
     aux.argc = 1;
     aux.argv[0] = init_path;
 

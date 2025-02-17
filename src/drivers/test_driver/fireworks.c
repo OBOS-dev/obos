@@ -80,7 +80,7 @@ void reuse_stack(void* base, size_t sz, void* userdata)
 {
 	OBOS_UNUSED(sz);
 	OBOS_UNUSED(userdata);
-	thr_free_stack *node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*node), nullptr);
+	thr_free_stack *node = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*node), nullptr);
 	node->base = base;
 	irql oldIrql = Core_SpinlockAcquire(&free_thread_stacks.lock);
 	if (!free_thread_stacks.head)
@@ -112,7 +112,7 @@ thread* create_thread(void* entry, uintptr_t udata, thread_priority priority, th
 			node->prev->next = node->next;
 		free_thread_stacks.nNodes--;
 		Core_SpinlockRelease(&free_thread_stacks.lock, oldIrql);
-		OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
+		Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
 	}
 	else 
 	{
@@ -266,7 +266,7 @@ void particle_handler(void* udata)
 	int ExplosionRange = parent->explosion_range;
 	if (!(--parent->refcount) && parent->can_free)
 	{
-		OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, parent, sizeof(*parent));
+		Free(OBOS_NonPagedPoolAllocator, parent, sizeof(*parent));
 		parent = nullptr;
 	}
 	int Angle = mt_random() % 65536;
@@ -365,7 +365,7 @@ static void explodeable_handler(bool stress_test)
 		data.vel_y += -fixedpt_fromint(10)*temp_pt;
 	}
 	int nParticles = mt_random() % 100 + 100;
-	firework_data* fw_clone = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(firework_data), nullptr);
+	firework_data* fw_clone = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(firework_data), nullptr);
 	memcpy(fw_clone, &data, sizeof(data));
 	nParticlesLeft += nParticles;
 	for (int i = 0; i < nParticles; i++)

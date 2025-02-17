@@ -23,8 +23,8 @@
 irq* Core_IrqObjectAllocate(obos_status* status)
 {
 	if (!OBOS_NonPagedPoolAllocator)
-		return OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
-	return OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(irq), status);
+		return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq), status);
+	return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(irq), status);
 }
 static irq_vector s_irqVectors[OBOS_IRQ_VECTOR_ID_MAX];
 static spinlock s_lock;
@@ -123,7 +123,7 @@ static void append_irq_to_vector(irq_vector* This, irq* what)
 {
 	OBOS_ASSERT(This);
 	OBOS_ASSERT(what);
-	irq_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq_node), nullptr);
+	irq_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(irq_node), nullptr);
 	OBOS_ASSERT(node);
 	node->data = what;
 	if (!This->irqObjects.head)
@@ -373,7 +373,7 @@ obos_status Core_IrqObjectFree(irq* obj)
 		Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	// FIXME: Set a free callback in the irq object instead of assuming the kernel allocator.
-	OBOS_KernelAllocator->Free(OBOS_KernelAllocator, obj, sizeof(*obj));
+	Free(OBOS_KernelAllocator, obj, sizeof(*obj));
 	return OBOS_STATUS_SUCCESS;
 }
 bool Core_IrqInterfaceInitialized()

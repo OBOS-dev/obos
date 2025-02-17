@@ -37,35 +37,17 @@ spinlock Core_SpinlockCreate()
 
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
 {
-	if (!lock)
-		return IRQL_INVALID;
-	if (minIrql & 0xf0 && minIrql != IRQL_INVALID)
-		return IRQL_INVALID;
 	// IRQL_INVALID is used to specify not to raise the irql at all
 	// this way, LowerIrql can lock the DPC queue without breaking.
-#ifdef OBOS_DEBUG
-	if (lock->owner == Core_GetCurrentThread() && lock->owner)
-		OBOS_Warning("Recursive lock taken!\n");
-	// if (++lock->nCPUsWaiting == Core_CpuCount && Core_CpuCount != 1)
-	// 	OBOS_Warning("Deadlocked! Thread with spinlock has a tid of %ld.\n", lock->owner ? lock->owner->tid : UINT64_MAX);
-#endif
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() < minIrql)
-		oldIrql = irqlNthrVariant ?
-			Core_RaiseIrqlNoThread(minIrql) :
-			Core_RaiseIrql(minIrql);
-	//if (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
-    //    goto done_wait;
+		oldIrql = Core_RaiseIrqlNoThread(minIrql);
+	if (!atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+       goto done_wait;
     while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
 		OBOSS_SpinlockHint();
-    //done_wait:
-	// lock->nCPUsWaiting--;
-	lock->irqlNThrVariant = irqlNthrVariant;
-#ifdef OBOS_DEBUG
-	lock->owner = Core_GetCurrentThread();
-#endif
+    done_wait:
 	lock->locked = true;
-	lock->lastLockTimeNS = nanoseconds_since_boot();
 	return oldIrql;
 }
 
@@ -73,16 +55,12 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(
 {
     irql oldIrql = IRQL_INVALID;
     if (Core_GetIrql() < IRQL_DISPATCH)
-        oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
-    //if (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
-    //    goto locked;
+        oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+    if (!atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+       goto locked;
 	while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
 		OBOSS_SpinlockHint();
-    //locked:
-	lock->irqlNThrVariant = false;
-#ifdef OBOS_DEBUG
-	lock->owner = Core_GetCurrentThread();
-#endif
+    locked:
 	lock->locked = true;
 #if OBOS_ENABLE_LOCK_PROFILING
 	lock->lastLockTimeNS = nanoseconds_since_boot();
@@ -98,13 +76,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
 		return OBOS_STATUS_INVALID_IRQL;
 	}
 	atomic_flag_clear_explicit(&lock->val, memory_order_relaxed);
-#ifdef OBOS_DEBUG
-	lock->owner = nullptr;
-#endif
 	lock->locked = false;
-	if (oldIrql != IRQL_INVALID)
-		lock->irqlNThrVariant ? Core_LowerIrqlNoThread(oldIrql) : Core_LowerIrql(oldIrql);
-	lock->irqlNThrVariant = false;
+	Core_LowerIrqlNoThread(oldIrql);
 #if OBOS_ENABLE_LOCK_PROFILING
 	lock->lastLockTimeNS = nanoseconds_since_boot() - lock->lastLockTimeNS;
 #endif

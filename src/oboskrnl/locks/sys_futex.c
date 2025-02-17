@@ -38,7 +38,7 @@ static futex_object* find_futex(uint32_t* obj, bool create)
     futex_object* ret = RB_FIND(futex_tree, &futexes, &key);
     if (!ret && create)
     {
-        ret = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(futex_object), nullptr);
+        ret = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(futex_object), nullptr);
         ret->obj = obj;
         ret->wait_hdr = WAITABLE_HEADER_INITIALIZE(false, false);
         ret->ctx = CoreS_GetCPULocalPtr()->currentContext;
@@ -56,7 +56,7 @@ static void deref_futex(futex_object* fut)
     if (!(--fut->refs))
     {
         RB_REMOVE(futex_tree, &futexes, fut);
-        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, fut, sizeof(*fut));
+        Free(OBOS_KernelAllocator, fut, sizeof(*fut));
     }
 }
 

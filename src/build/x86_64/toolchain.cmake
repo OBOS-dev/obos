@@ -67,8 +67,8 @@ else()
 endif()
 
 
-set(TARGET_COMPILE_OPTIONS_C -mno-red-zone -fno-omit-frame-pointer -mgeneral-regs-only -mcmodel=kernel -march=x86-64-v2)
-set(TARGET_DRIVER_COMPILE_OPTIONS_C -mno-red-zone -fno-omit-frame-pointer -mgeneral-regs-only -march=x86-64-v2)
+set(TARGET_COMPILE_OPTIONS_C -mno-red-zone -mgeneral-regs-only -mcmodel=kernel -march=x86-64-v3)
+set(TARGET_DRIVER_COMPILE_OPTIONS_C -mno-red-zone -mgeneral-regs-only -march=x86-64-v3)
 set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set(TARGET_DRIVER_LINKER_OPTIONS)
 
@@ -103,6 +103,16 @@ add_compile_definitions(
     OBOS_USER_ADDRESS_SPACE_BASE=0x1000 OBOS_USER_ADDRESS_SPACE_LIMIT=0x7FFFFFFFFFFF
     OBOS_ARCH_USES_SOFT_FLOAT=0
     OBOS_ARCH_EMULATED_IRQL=0
+    OBOS_ARCH_HAS_USR_MEMCPY=0
+    OBOS_ARCH_HAS_MEMSET=1
+    OBOS_ARCH_HAS_MEMZERO=1
+    OBOS_ARCH_HAS_MEMCPY=1
+    OBOS_ARCH_HAS_MEMCMP=1
+    OBOS_ARCH_HAS_MEMCMP_B=1
+    OBOS_ARCH_HAS_STRCMP=1
+    OBOS_ARCH_HAS_STRLEN=1
+    OBOS_ARCH_HAS_STRNLEN=0
+    OBOS_ARCH_HAS_STRCHR=1
 )
 add_compile_options($<$<CONFIG:Debug>:-g>)
 

@@ -67,10 +67,10 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
     if (Arch_IOAPICCount > 16)
         return OBOS_STATUS_INTERNAL_ERROR;
     obos_status status = OBOS_STATUS_SUCCESS;
-    Arch_IRQRedirectionEntries = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, Arch_SizeofIRQRedirectionEntries, sizeof(ioapic_irq_redirection_entry), &status);
+    Arch_IRQRedirectionEntries = ZeroAllocate(OBOS_KernelAllocator, Arch_SizeofIRQRedirectionEntries, sizeof(ioapic_irq_redirection_entry), &status);
 	if (obos_is_error(status))
         return status;
-    Arch_IOAPICs = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, Arch_IOAPICCount, sizeof(ioapic_descriptor), &status);
+    Arch_IOAPICs = ZeroAllocate(OBOS_KernelAllocator, Arch_IOAPICCount, sizeof(ioapic_descriptor), &status);
 	if (obos_is_error(status))
         return status;
     size_t ioapic_index = 0;

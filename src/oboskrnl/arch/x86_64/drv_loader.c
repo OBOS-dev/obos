@@ -69,7 +69,7 @@ static void append_relocation_table(struct relocation_array* arr, const struct r
 {
     size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
     size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
+    arr->buf = Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
     arr->buf[arr->nRelocations - 1] = *what;
     // Note:
@@ -81,20 +81,20 @@ static void append_relocation_table(struct relocation_array* arr, const struct r
 }
 static void free_reloc_array(struct relocation_array* arr)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, arr->buf, arr->nRelocations*sizeof(*arr->buf));
+    Free(OBOS_KernelAllocator, arr->buf, arr->nRelocations*sizeof(*arr->buf));
     memzero(arr, sizeof(*arr));
 }
 static void append_copy_reloc(struct copy_reloc_array* arr, const struct copy_reloc* what)
 {
     size_t old_sz = arr->nRelocations*sizeof(*arr->buf);
     size_t new_sz = (++arr->nRelocations)*sizeof(*arr->buf);
-    arr->buf = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
+    arr->buf = Reallocate(OBOS_KernelAllocator, arr->buf, new_sz, old_sz, nullptr);
     OBOS_ASSERT(arr->buf); // oopsies
     arr->buf[arr->nRelocations - 1] = *what;
 }
 static void free_copy_reloc_array(struct copy_reloc_array* arr)
 {
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, arr->buf, arr->nRelocations*sizeof(*arr->buf));
+    Free(OBOS_KernelAllocator, arr->buf, arr->nRelocations*sizeof(*arr->buf));
     memzero(arr, sizeof(*arr));
 }
 
@@ -214,7 +214,7 @@ static void add_dependency(driver_id* depends, driver_id* dependency)
             return; // don't add an already added dependency to the list
         cur = cur->next;
     }
-    driver_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_node), nullptr);
+    driver_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_node), nullptr);
     node->data = dependency;
     driver_list* list = &depends->dependencies;
     if (!list->head)

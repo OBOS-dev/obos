@@ -54,7 +54,7 @@ static void* cmd_malloc(size_t sz)
     struct cmd_allocation_header* blk = nullptr;
     if (OBOS_KernelAllocator)
     {
-        blk = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz+sizeof(*blk), nullptr);
+        blk = Allocate(OBOS_KernelAllocator, sz+sizeof(*blk), nullptr);
         blk->basicmm = false;
         blk->alloc_size = sz;
         return blk + 1;
@@ -83,7 +83,7 @@ static void cmd_free(void* buf)
         memset(buf, 0x11, hdr->alloc_size);
         return;
     }
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, hdr, hdr->alloc_size+sizeof(*hdr));
+    Free(OBOS_KernelAllocator, hdr, hdr->alloc_size+sizeof(*hdr));
 }
 
 static void* cmd_realloc(void* buf, size_t newsize)
@@ -115,7 +115,7 @@ static void* cmd_realloc(void* buf, size_t newsize)
     }
     size_t oldsz = hdr->alloc_size;
     hdr->alloc_size = newsize;
-    hdr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, hdr, sizeof(*hdr)+newsize, sizeof(*hdr)+oldsz, nullptr);
+    hdr = Reallocate(OBOS_KernelAllocator, hdr, sizeof(*hdr)+newsize, sizeof(*hdr)+oldsz, nullptr);
     return hdr + 1;
 }
 

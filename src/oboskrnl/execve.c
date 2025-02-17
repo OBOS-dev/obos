@@ -72,7 +72,7 @@ static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, s
 {
     OBOS_UNUSED(ctx);
 
-    char** ret = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, count+1, sizeof(char*), statusp);
+    char** ret = ZeroAllocate(OBOS_KernelAllocator, count+1, sizeof(char*), statusp);
     if (!ret)
         return nullptr;
 
@@ -87,11 +87,11 @@ static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, s
         obos_status status = OBOSH_ReadUserString(vec[i], nullptr, &str_len);
         if (obos_is_error(status))
         {
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, ret, count*sizeof(char*));
+            Free(OBOS_KernelAllocator, ret, count*sizeof(char*));
             if (statusp) *statusp = status;
             return nullptr;
         }
-        char* buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
+        char* buf = Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
         OBOSH_ReadUserString(vec[i], buf, &str_len);
         buf[str_len] = 0;
         ret[i] = buf;

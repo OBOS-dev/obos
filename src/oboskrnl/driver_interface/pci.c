@@ -136,11 +136,11 @@ static void initialize_bar_resources(pci_device* dev)
         if (!tmp)
             continue; // No bar here :(
 
-        pci_resource* resource = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
+        pci_resource* resource = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
 
         resource->owner = dev;
 
-        resource->bar = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_bar), nullptr);
+        resource->bar = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_bar), nullptr);
         resource->bar->idx = bar;
 
         update_bar(dev, resource);
@@ -229,10 +229,10 @@ static void initialize_capability_resources(pci_device* dev)
         if (!cap_id)
             goto done; // don't register null capabilities, they are useless.
 
-        pci_resource* resource = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
+        pci_resource* resource = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
         resource->type = PCI_RESOURCE_CAPABILITY;
 
-        resource->cap = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_capability), nullptr);
+        resource->cap = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_capability), nullptr);
         resource->cap->id = cap_id;
         resource->cap->offset = offset;
 
@@ -313,10 +313,10 @@ static void initialize_irq_resources(pci_device* dev)
     done:
     (void)0;
 
-    pci_resource* resource = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
+    pci_resource* resource = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
     resource->type = PCI_RESOURCE_IRQ;
 
-    resource->irq = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_irq_handle), nullptr);
+    resource->irq = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_irq_handle), nullptr);
 
     resource->owner = dev;
     LIST_APPEND(pci_resource_list, &dev->resources, resource);
@@ -328,7 +328,7 @@ static void initialize_irq_resources(pci_device* dev)
 
 static void initialize_cmd_register_resource(pci_device* dev)
 {
-    pci_resource* resource = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
+    pci_resource* resource = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
     resource->type = PCI_RESOURCE_CMD_REGISTER;
     uint64_t cmd_register = 0;
     DrvS_ReadPCIRegister(dev->location, 0x4, 4, &cmd_register);
@@ -352,7 +352,7 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
     }
 
     pci_bus* bus = udata;
-    pci_device* dev = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_device), nullptr);
+    pci_device* dev = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_device), nullptr);
 
     // Location info
     dev->owner = bus;

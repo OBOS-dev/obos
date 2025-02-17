@@ -64,7 +64,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
 
 static void free_node(thread_node* n)
 {
-    OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, n, sizeof(*n));
+    Free(OBOS_NonPagedPoolAllocator, n, sizeof(*n));
 }
 obos_status Core_WaitOnObjects(size_t nObjects, ...)
 {
@@ -91,7 +91,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, ...)
             continue;
         }
 
-        thread_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
+        thread_node* node = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
         node->data = curr;
         node->free = free_node;
         obos_status status = CoreH_ThreadListAppend(&obj->waiting, node);
@@ -137,7 +137,7 @@ obos_status Core_WaitOnObjectsPtr(size_t nObjects, struct waitable_header** objs
             Core_SpinlockRelease(&obj->lock, oldIrql);
             continue;
         }
-        thread_node* node = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
+        thread_node* node = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(thread_node), nullptr);
         node->data = curr;
         node->free = free_node;
         obos_status status = CoreH_ThreadListAppend(&obj->waiting, node);

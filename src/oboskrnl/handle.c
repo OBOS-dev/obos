@@ -25,7 +25,7 @@ void OBOS_ExpandHandleTable(handle_table* table, size_t size)
         return;
     const size_t oldSize = table->size;
     table->size = size;
-    table->arr = OBOS_KernelAllocator->Reallocate(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*table->size, sizeof(*table->arr)*oldSize, nullptr);
+    table->arr = Reallocate(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*table->size, sizeof(*table->arr)*oldSize, nullptr);
     memzero(table->arr + oldSize, sizeof(handle_desc)*(table->size-oldSize));
     table->last_handle = oldSize;
 }

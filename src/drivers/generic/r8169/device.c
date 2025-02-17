@@ -300,7 +300,7 @@ void r8169_reset(r8169_device* dev)
         dev->magic = R8169_DEVICE_MAGIC;
 
         size_t len = snprintf(nullptr, 0, "r8169-eth%d", dev->idx);
-        dev->interface_name = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, len+1, nullptr);
+        dev->interface_name = Allocate(OBOS_KernelAllocator, len+1, nullptr);
         snprintf(dev->interface_name, len+1, "r8169-eth%d", dev->idx);
         dev->interface_name[len] = 0;
 
@@ -442,7 +442,7 @@ void r8169_release_desc(r8169_device* dev, r8169_descriptor* desc, uint8_t set)
 
     Core_MutexAcquire(&dev->free_descriptors_locks[set]);
     OBOS_ASSERT(set <= TxH_Set);
-    r8169_descriptor_node* node = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
+    r8169_descriptor_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(r8169_descriptor_node), nullptr);
     node->desc = desc;
     LIST_APPEND(r8169_descriptor_list, &dev->free_descriptors[set], node);
     Core_MutexRelease(&dev->free_descriptors_locks[set]);
@@ -459,7 +459,7 @@ r8169_descriptor* r8169_alloc_desc(r8169_device* dev, uint8_t set)
     r8169_descriptor* desc = node->desc;
     LIST_REMOVE(r8169_descriptor_list, &dev->free_descriptors[set], node);
     Core_MutexRelease(&dev->free_descriptors_locks[set]);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, node, sizeof(*node));
+    Free(OBOS_KernelAllocator, node, sizeof(*node));
 
     return desc;
 }
@@ -574,7 +574,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
     if (purpose == FRAME_PURPOSE_RX)
-        frame->buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
+        frame->buf = Allocate(OBOS_KernelAllocator, sz, nullptr);
     else
         frame->buf = map_registers(Mm_AllocatePhysicalPages(((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))) / OBOS_PAGE_SIZE, 1, nullptr), ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))), false, true);
     memcpy(frame->buf, data, sz);
@@ -588,7 +588,7 @@ obos_status r8169_buffer_add_frame(r8169_buffer* buff, r8169_frame* frame)
 {
     if (!frame->buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    r8169_frame* new_frame = OBOS_NonPagedPoolAllocator->ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*frame), nullptr);
+    r8169_frame* new_frame = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*frame), nullptr);
     *new_frame = *frame;
     LIST_APPEND(r8169_frame_list, &buff->frames, new_frame);
     return OBOS_STATUS_SUCCESS;
@@ -600,8 +600,8 @@ obos_status r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame)
     {
         LIST_REMOVE(r8169_frame_list, &buff->frames, frame);
         if (frame->purpose == FRAME_PURPOSE_RX)
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, frame->buf, frame->sz);
-        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, frame, sizeof(*frame));
+            Free(OBOS_KernelAllocator, frame->buf, frame->sz);
+        Free(OBOS_NonPagedPoolAllocator, frame, sizeof(*frame));
     }
     return OBOS_STATUS_SUCCESS;
 }

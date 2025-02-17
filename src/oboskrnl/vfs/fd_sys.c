@@ -52,7 +52,7 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
     status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
-    path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     if (strcmp(path, "/dev/stderr"))
     {
@@ -74,7 +74,7 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
     }
     printf("%s\n", path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
 
@@ -362,10 +362,10 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
             if (obos_is_error(status))
                 return status;
-            path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+            path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
             dirent* dent = VfsH_DirentLookup(path);
-            OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
+            Free(OBOS_KernelAllocator, path, sz_path);
             if (dent)
                 to_stat = dent->vnode;
             else
@@ -470,10 +470,10 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
             memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
         return HANDLE_INVALID;
     }
-    path = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     dirent* dent = VfsH_DirentLookup(path);
-    OBOS_KernelAllocator->Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path);
     if (!dent)
     {
         status = OBOS_STATUS_NOT_FOUND;

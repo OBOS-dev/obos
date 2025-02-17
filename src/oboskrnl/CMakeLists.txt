@@ -34,8 +34,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-strong>
-	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
@@ -52,6 +51,10 @@ target_link_libraries(oboskrnl
 )
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
+
+if (DEFINED OBOS_RELEASE)
+	set_property(TARGET oboskrnl PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
 target_include_directories(oboskrnl 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
