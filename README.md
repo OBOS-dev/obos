@@ -10,6 +10,15 @@ OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing
 - Git (unoptional, even if the repo was downloaded manually)
 - (Optionally): Qemu to run the iso
 ### Build
+#### Method 1
+1. Clone the obos-pkgs repo using git:
+```sh
+git clone https://github.com/OBOS-dev/obos-pkgs.git
+```
+2. Enter the newly clone repo
+3. Run the command `./obos-strap install all` to build an OBOS distribution. This will output an iso into the working directory of obos-strap.
+4. Use qemu or any other emulator to run your ISO.
+#### Method 2 (for kernel contributors)
 1. Clone the repo using git:
 ```sh
 git clone https://github.com/OBOS-dev/obos.git
@@ -18,6 +27,7 @@ git clone https://github.com/OBOS-dev/obos.git
 3. Run cmake to build the OS
 (x86_64)
 ```sh
+touch config/initrd.tar
 cmake -GNinja -DCMAKE_BUILD_TYPE=Debug --toolchain=src/build/x86_64/toolchain.cmake -B build/x86_64 .
 chmod +x dependencies/hyper/hyper_install-linux-x86_64
 cmake --build build/x86_64
