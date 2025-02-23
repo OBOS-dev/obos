@@ -57,8 +57,16 @@ __attribute__((no_instrument_function)) void Core_Schedule()
 	// NOTE: Do not remove.
 	if (suspendSched)
 		nSuspended++;
-	for (volatile bool b = suspendSched; b; )
-		;
+	if (suspendSched)
+	{
+		irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
+		for (volatile bool b = suspendSched; b; )
+#if defined(__x86_64__) || defined(__i686__)
+			asm volatile ("hlt")
+#endif
+			;
+		Core_LowerIrql(oldIrql);
+	}
 	getSchedulerTicks++;
 	if (!getCurrentThread)
 		goto schedule;

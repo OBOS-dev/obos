@@ -16,7 +16,12 @@ OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing
 git clone https://github.com/OBOS-dev/obos-pkgs.git
 ```
 2. Enter the newly clone repo
-3. Run the command `./obos-strap install all` to build an OBOS distribution. This will output an iso into the working directory of obos-strap.
+3. Run the following commands to build an OBOS distribution:
+```sh
+cp settings-x86_64.json settings.json
+./obos-strap setup-env
+./obos-strap install all
+```
 4. Use qemu or any other emulator to run your ISO.
 #### Method 2 (for kernel contributors)
 1. Clone the repo using git:
