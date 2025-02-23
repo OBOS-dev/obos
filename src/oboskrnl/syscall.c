@@ -213,6 +213,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FindDriverByName,
     (uintptr_t)Sys_EnumerateLoadedDrivers,
     (uintptr_t)Sys_QueryDriverName,
+    (uintptr_t)Sys_Sync,
 };
 
 // Arch syscall table is defined per-arch

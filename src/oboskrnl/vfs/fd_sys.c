@@ -16,6 +16,7 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+#include <mm/swap.h>
 
 #include <vfs/limits.h>
 #include <vfs/fd.h>
@@ -558,4 +559,13 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
     Vfs_FdOpen(stdin->un.fd, "/dev/COM1", FD_OFLAGS_READ);
     Vfs_FdOpen(stdout->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
     Vfs_FdOpen(stderr->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
+}
+
+// Writebacks all dirty pages in the page cache back to disk.
+// Do this twice, in case a file gets flushed, and then the filesystem driver
+// makes new dirty pages.
+void Sys_Sync()
+{
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
 }
