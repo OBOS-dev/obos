@@ -35,6 +35,8 @@ extern size_t Mm_DirtyPagesBytes;
 extern size_t Mm_DirtyPagesBytesThreshold;
 void Mm_MarkAsDirty(page_info* pg);
 void Mm_MarkAsStandby(page_info* pg);
+void Mm_MarkAsDirtyPhys(page* pg);
+void Mm_MarkAsStandbyPhys(page* pg);
 void Mm_InitializePageWriter();
 // Wakes up the page writer to free up memory
 // Set 'wait' to true to wait for the page writer to release

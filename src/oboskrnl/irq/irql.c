@@ -30,7 +30,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_WEAK ir
 #if !OBOS_LAZY_IRQL
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_RaiseIrqlNoThread(irql to)
 {
-	OBOS_ASSERT((to & ~0xf) == 0);
+	if (to != 0xff)
+		OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return IRQL_INVALID;
 	if (to == *Core_GetIRQLVar())
@@ -98,7 +99,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_Lo
 
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_LowerIrqlNoDPCDispatch(irql to)
 {
-	OBOS_ASSERT((to & ~0xf) == 0);
+	if (to != 0xff)
+		OBOS_ASSERT((to & ~0xf) == 0);
 	if ((to & ~0xf))
 		return;
 	if (to == *Core_GetIRQLVar())

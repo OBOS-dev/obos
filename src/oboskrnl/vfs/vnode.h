@@ -8,7 +8,6 @@
 
 #include <int.h>
 
-#include <vfs/pagecache.h>
 #include <vfs/fd.h>
 
 #include <driver_interface/header.h>
@@ -80,7 +79,6 @@ typedef struct vnode
     size_t refs;
     atomic_size_t nPendingAsyncIO;
     file_perm perm;
-    pagecache pagecache;
     size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.
     gid group_uid; // the group's GID.
@@ -88,6 +86,8 @@ typedef struct vnode
     fd_list opened;
     struct partition* partitions;
     size_t nPartitions;
+
+    size_t blkSize;
 } vnode;
 struct async_irp
 {

@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <partition.h>
 #include <error.h>
 
 #include <mm/bare_map.h>
@@ -24,6 +25,8 @@
 #include <locks/spinlock.h>
 #include <locks/wait.h>
 #include <locks/mutex.h>
+
+#include <vfs/mount.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
@@ -179,22 +182,45 @@ static __attribute__((no_instrument_function)) void page_writer()
         for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
-            if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
+            if (pg->backing_vn)
             {
-                pg = next;
-                continue;
+                // This is a file page, so writing it back is different than writing back an
+                // anonymous page.
+                size_t nBytes = OBOS_PAGE_SIZE;
+                mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
+                const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+                if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
+                    driver = &pg->backing_vn->un.device->driver->header;
+                size_t blkSize = 0;
+                driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
+                nBytes /= blkSize;
+                const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? pg->backing_vn->partitions[0].off : 0;
+                const uintptr_t offset = (pg->file_offset + base_offset) / blkSize;
+                if (!VfsH_LockMountpoint(point))
+                    goto abort;
+                driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
+                VfsH_UnlockMountpoint(point);
             }
-            swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
-            alloc->refs = pg->virt_pages.nNodes;
-            if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
+            else 
             {
-                alloc->refs = 1;
-                MmH_DerefSwapAllocation(alloc);
-                pg = next;
-                continue;
+                if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
+                {
+                    pg = next;
+                    continue;
+                }
+                swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
+                alloc->refs = pg->virt_pages.nNodes;
+                if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
+                {
+                    alloc->refs = 1;
+                    MmH_DerefSwapAllocation(alloc);
+                    pg = next;
+                    continue;
+                }
             }
             pg->flags &= ~PHYS_PAGE_DIRTY;
             mark_standby(pg);
+            abort:
             pg = next;
         }
         Core_SpinlockRelease(&swap_lock, oldIrql);
@@ -209,27 +235,9 @@ size_t Mm_DirtyPagesBytesThreshold = OBOS_PAGE_SIZE * 50;
 void Mm_MarkAsDirty(page_info* pg)
 {
     OBOS_ASSERT(pg->phys);
-    irql oldIrql = Core_SpinlockAcquire(&swap_lock);
     page what = {.phys=pg->phys};
     page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-    OBOS_ASSERT(node);
-
-    if (--node->pagedCount)
-    {
-        node->flags |= PHYS_PAGE_DIRTY;
-        Core_SpinlockRelease(&swap_lock, oldIrql);
-        return;
-    }
-
-    page_info* pg_copy = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_info), nullptr);
-    *pg_copy = *pg;
-    APPEND_PAGE_NODE(node->virt_pages, &pg_copy->ln_node);
-    node->flags |= PHYS_PAGE_DIRTY;
-    LIST_APPEND(phys_page_list, &Mm_DirtyPageList, node);
-    Mm_DirtyPagesBytes += pg->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    Core_SpinlockRelease(&swap_lock, oldIrql);
-    if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold)
-        Mm_WakePageWriter(true);
+    Mm_MarkAsDirtyPhys(node);
 }
 
 static void mark_standby(page* pg)
@@ -245,6 +253,30 @@ void Mm_MarkAsStandby(page_info* pg)
 {
     page what = {.phys=pg->phys};
     page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    Mm_MarkAsStandbyPhys(node);
+}
+
+void Mm_MarkAsDirtyPhys(page* node)
+{
+    OBOS_ASSERT(node);
+
+    if (--node->pagedCount)
+    {
+        node->flags |= PHYS_PAGE_DIRTY;
+        return;
+    }
+ 
+    irql oldIrql = Core_SpinlockAcquire(&swap_lock);
+    node->flags |= PHYS_PAGE_DIRTY;
+    LIST_APPEND(phys_page_list, &Mm_DirtyPageList, node);
+    Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    Core_SpinlockRelease(&swap_lock, oldIrql);
+    if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold)
+        Mm_WakePageWriter(false);
+}
+
+void Mm_MarkAsStandbyPhys(page* node)
+{
     OBOS_ASSERT(node);
     if (node->flags & PHYS_PAGE_STANDBY)
         return;
@@ -259,12 +291,7 @@ void Mm_MarkAsStandby(page_info* pg)
 
     if (node->flags & PHYS_PAGE_DIRTY)
         LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
-    else
-    {
-        page_info* pg_copy = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_info), nullptr);
-        *pg_copy = *pg;
-        APPEND_PAGE_NODE(node->virt_pages, &pg_copy->ln_node);
-    }
+    
     mark_standby(node);
     Core_SpinlockRelease(&swap_lock, oldIrql);
 }

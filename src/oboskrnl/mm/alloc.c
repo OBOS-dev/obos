@@ -174,7 +174,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         flags &= ~VMA_FLAGS_HUGE_PAGE;
     if (flags & VMA_FLAGS_32BITPHYS)
         file = nullptr;
-    size_t filesize = 0;
     if (file)
     {
         if (file->vn->vtype != VNODE_TYPE_REG && file->vn->vtype != VNODE_TYPE_BLK /* hopefully doesn't break */)
@@ -186,7 +185,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             size = file->vn->filesize; // Truncated.
         if ((file->offset+size > file->vn->filesize))
             size = (file->offset+size) - file->vn->filesize;
-        filesize = size;
         if (size % pgSize)
             size += (pgSize-(size%pgSize));
         if (!(file->flags & FD_FLAGS_READ))
@@ -202,8 +200,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         size += (pgSize-(size%pgSize));
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size += pgSize;
-    if ((flags & VMA_FLAGS_PREFAULT || flags & VMA_FLAGS_PRIVATE) && file)
-        OBOS_ASSERT(VfsH_PageCacheGetEntry(&file->vn->pagecache, file->offset, size, nullptr));
     irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
     top:
     if (!base)
@@ -267,32 +263,6 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     }
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
     off_t currFileOff = file ? file->offset : 0;
-    pagecache_mapped_region* reg = file ?
-        Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(pagecache_mapped_region), nullptr) : nullptr;
-    page_range* pc_range = nullptr;
-    if (file)
-    {
-        bool tried_again = false;
-        try_again1:
-        (void)0;
-        page_range what = {.virt=(uintptr_t)file->vn->pagecache.data};
-        pc_range = RB_FIND(page_tree, &Mm_KernelContext.pages, &what);
-        if (!pc_range)
-        {
-            OBOS_ASSERT(VfsH_PageCacheGetEntry(&file->vn->pagecache, file->offset, size, nullptr));
-            if (!tried_again)
-            {
-                tried_again = true;
-                goto try_again1;
-            }
-            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find pagecache region\n");
-        }
-        reg->fileoff = file->offset;
-        reg->sz = filesize;
-        reg->addr = base;
-        reg->owner = &file->vn->pagecache;
-        reg->ctx = ctx;
-    }
 
     bool present = false;
     volatile bool isNew = true;
@@ -308,15 +278,12 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
             rng->pageable = !(flags & VMA_FLAGS_NON_PAGED);
         }
-        if (!(flags & VMA_FLAGS_PRIVATE) && file)
-            rng->prot.rw = false; // force it off so that we can mark dirty pages.
 
         rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
         rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
         rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
         rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
         rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
-        rng->mapped_here = reg;
         rng->size = size;
         rng->virt = base;
 
@@ -328,6 +295,9 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
         rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
         rng->ctx = ctx;
+
+        if (file)
+            rng->un.mapped_vn = file->vn;
     }
     else
     {
@@ -360,30 +330,15 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
             else if (file)
             {
                 // File page.
-                page_info info = {};
-                MmS_QueryPageInfo(Mm_KernelContext.pt, (uintptr_t)reg->owner->data+currFileOff, &info, nullptr);
-                if (flags & VMA_FLAGS_PRIVATE)
-                {
-                    // Private.
-                    // Moooo (CoW)
-                    cow = true;
-                }
-                isPresent = info.prot.present;
-
-                page what = {.phys=info.phys};
-                phys = isPresent ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+                page what = {.backing_vn=file->vn,.file_offset=currFileOff};
+                phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &what);
+                if (flags & VMA_FLAGS_PREFAULT && !phys)
+                    phys = VfsH_PageCacheCreateEntry(file->vn, currFileOff, false);
                 if (phys)
-                    MmH_RefPage(phys);
-
-                if (cow)
                 {
-                    if (phys)
+                    MmH_RefPage(phys);
+                    if (cow)
                         phys->cow_type = COW_SYMMETRIC;
-                    if (info.prot.rw != false)
-                    {
-                        info.prot.rw = false;
-                        MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
-                    }
                 }
             }
             else
@@ -408,7 +363,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         curr.prot.present = isPresent;
         if (phys && phys->cow_type == COW_ASYMMETRIC)
             curr.prot.present = false;
-        OBOS_ASSERT(phys != 0 || !isPresent);
+        if (!phys && file)
+            curr.prot.present = false;
 
         MmS_SetPageMapping(ctx->pt, &curr, curr.phys, false);
 
@@ -592,7 +548,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             page what = {.phys=info.phys};
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
             // printf("derefing physical page %p representing %p\n", info.phys, addr);
-            MmH_DerefPage(pg);
+            if (pg)
+                MmH_DerefPage(pg);
         }
         MmS_SetPageMapping(ctx->pt, &pg, 0, true);
     }
@@ -900,13 +857,14 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             OBOS_ASSERT(user_rng);
         }
 
-
         page* phys = nullptr;
         page_info info = {};
         MmS_QueryPageInfo(user_context->pt, uaddr, &info, nullptr);
 
         page what = {.phys=info.phys};
         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+        if (user_rng->un.mapped_vn && !phys)
+            phys = VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), false);
 
         if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
         {

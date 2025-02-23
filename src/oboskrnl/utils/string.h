@@ -10,8 +10,6 @@
 
 #include <int.h>
 
-#include <allocators/base.h>
-
 typedef struct string
 {
     // small string optimization.
@@ -19,10 +17,10 @@ typedef struct string
     char sso[33];
     char *ls;
     size_t len, cap;
-    allocator_info* allocator;
+    struct allocator_info* allocator;
 } string;
 
-OBOS_EXPORT void OBOS_StringSetAllocator(string* obj, allocator_info* allocator);
+OBOS_EXPORT void OBOS_StringSetAllocator(string* obj, struct allocator_info* allocator);
 OBOS_EXPORT void OBOS_InitString(string* obj, const char* str);
 OBOS_EXPORT void OBOS_InitStringLen(string* obj, const char* str, size_t len);
 OBOS_EXPORT void OBOS_AppendStringC(string* obj, const char* str);

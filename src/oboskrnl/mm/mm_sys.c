@@ -19,6 +19,8 @@
 #include <mm/mm_sys.h>
 #include <mm/fork.h>
 
+#include <allocators/base.h>
+
 #define context_from_handle(hnd, return_status, return_on_failure, use_curr) \
 ({\
     context* result__ = nullptr;\

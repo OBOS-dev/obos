@@ -15,6 +15,8 @@
 
 #include <vfs/pagecache.h>
 
+#include <allocators/base.h>
+
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
 

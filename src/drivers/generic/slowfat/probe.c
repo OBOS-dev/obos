@@ -50,7 +50,7 @@ static size_t lfn_strlen(const lfn_dirent* lfn)
     return ret;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster);
-static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, const void* buff, fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
+static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uint32_t cluster, const void* buff, const fat_dirent* curr, lfn_dirent*** const lfn_entries, size_t* const lfn_entry_count, string* current_filename)
 {
     OBOS_UNUSED(cluster);
     if ((uint8_t)curr->filename_83[0] == 0xE5)
@@ -69,12 +69,14 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
         (*lfn_entries)[(lfn->order & ~0x40) - 1] = lfn;
         return;
     }
-    if (curr->filename_83[0] == 0x5)
-        curr->filename_83[0] = 0xE5;
+    char filename_83[11];
+    memcpy(filename_83, curr->filename_83, 11);
+    if (filename_83[0] == 0x5)
+        filename_83[0] = 0xE5;
 
-    if (memcmp_b(&curr->filename_83[0], '.', 2))
+    if (memcmp_b(&filename_83[0], '.', 2))
         return;
-    if (curr->filename_83[0] == '.')
+    if (filename_83[0] == '.')
         return;
     if (*lfn_entry_count)
     {
@@ -101,14 +103,14 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
     {
         char ch[2] = {};
         size_t len = 0;
-        for (len = 0; len < 8 && curr->filename_83[len] != ' ' && curr->filename_83[len]; len++)
+        for (len = 0; len < 8 && filename_83[len] != ' ' && filename_83[len]; len++)
             ;
         for (size_t i = 0; i < len; i++)
         {
-            ch[0] = curr->filename_83[i];
+            ch[0] = filename_83[i];
             OBOS_AppendStringC(current_filename, ch);
         }
-        for (len = 0; len < 3 && curr->filename_83[len+8] != ' ' && curr->filename_83[len+8]; len++)
+        for (len = 0; len < 3 && filename_83[len+8] != ' ' && filename_83[len+8]; len++)
             ;
         if (len != 0)
         {
@@ -116,7 +118,7 @@ static void process_dirent(fat_cache* cache, fat_dirent_cache* const parent, uin
             OBOS_AppendStringC(current_filename, ch);
             for (size_t i = 0; i < len; i++)
             {
-                ch[0] = curr->filename_83[i+8];
+                ch[0] = filename_83[i+8];
                 OBOS_AppendStringC(current_filename, ch);
             }
         }
@@ -153,11 +155,8 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
         return ITERATE_DECISION_STOP;
     fat_cache* cache = (void*)((uintptr_t*)udata)[0];
     fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
-    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize, cache->bpb->sectorsPerCluster*cache->blkSize, nullptr);
-    pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, ClusterToSector(cache, current_cluster)*cache->blkSize);
-    if (dr)
-        Core_MutexAcquire(&dr->lock);
-    fat_dirent* curr = buff;
+    const void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, current_cluster)*cache->blkSize, false);
+    const fat_dirent* curr = buff;
     string current_filename = {};
     lfn_dirent **lfn_entries = nullptr;
     size_t lfn_entry_count = 0;
@@ -169,14 +168,8 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
             curr, &lfn_entries, &lfn_entry_count, &current_filename);
         curr += 1;
         if ((uintptr_t)curr >= ((uintptr_t)buff + cache->blkSize))
-        {
-            if (dr)
-                Core_MutexRelease(&dr->lock);
             return ITERATE_DECISION_CONTINUE;
-        }
     }
-    if (dr)
-        Core_MutexRelease(&dr->lock);
     return ITERATE_DECISION_STOP;
 }
 static void dir_iterate(fat_cache* cache, fat_dirent_cache* parent, uint32_t cluster)
@@ -271,11 +264,8 @@ bool probe(void* vn_)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            void* buff = VfsH_PageCacheGetEntry(&((vnode*)volume->vn)->pagecache, i*cache->blkSize, cache->blkSize, nullptr);
-            pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize);
-            if (dr)
-                Core_MutexAcquire(&dr->lock);
-            fat_dirent* curr = buff;
+            const void* buff = VfsH_PageCacheGetEntry(volume->vn, i*cache->blkSize, false);
+            const fat_dirent* curr = buff;
             for (size_t j = 0; j < (cache->blkSize/sizeof(lfn_dirent)); j++, curr++)
             {
                 if (curr->filename_83[0] == (char)0xe5)
@@ -289,8 +279,6 @@ bool probe(void* vn_)
                     cache, cache->root, 0, buff, curr, 
                     &lfn_entries, &lfn_entry_count, &current_filename);
             }
-            if (dr)
-                Core_MutexRelease(&dr->lock);
             if (!curr)
                 break;
         }

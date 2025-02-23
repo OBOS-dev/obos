@@ -11,8 +11,6 @@
 
 #include <mm/context.h>
 
-#include <allocators/base.h>
-
 #include <vfs/fd.h>
 
 typedef enum vma_flags
@@ -64,7 +62,7 @@ typedef enum prot_flags
 	OBOS_PROTECTION_PLATFORM_END = 0x80000000,
 } prot_flags;
 
-extern OBOS_EXPORT allocator_info* Mm_Allocator;
+extern OBOS_EXPORT struct allocator_info* Mm_Allocator;
 
 // flags: PHYS_PAGE_HUGE_PAGE
 // phys32: true

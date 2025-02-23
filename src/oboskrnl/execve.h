@@ -14,7 +14,7 @@
 
 // envp can be nullptr
 // argv can be nullptr
-obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* const* envp);
+obos_status Sys_ExecVE(const char* path, char* const* argv, char* const* envp);
 
 struct exec_aux_values {
     elf_info elf;

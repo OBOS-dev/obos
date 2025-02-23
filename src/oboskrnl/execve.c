@@ -25,6 +25,10 @@
 #include <allocators/base.h>
 
 #include <mm/alloc.h>
+#include <mm/context.h>
+
+#include <vfs/fd.h>
+#include <vfs/vnode.h>
 
 #include <asan.h>
 
@@ -100,11 +104,11 @@ static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, s
     return ret;
 }
 
-obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* const* envp)
+obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 {
     if (!OBOSS_HandControlTo)
         return OBOS_STATUS_UNIMPLEMENTED;
-    if (!buf || !szBuf)
+    if (!upath)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -114,13 +118,36 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
     size_t argc = 0;
     size_t envpc = 0;
 
-    char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
+    // Read the file.
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+    fd file = {};
+    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
+    if (obos_is_error(status))
+        return status;
+    size_t szBuf = file.vn->filesize;
+    void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE, &file, nullptr);
+    Vfs_FdClose(&file);
+
+    char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
+    if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        return status;
+    }
 
     char** knvp = allocate_user_vector_as_kernel(ctx, envp, &envpc, &status);
     if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
+    }
 
     // Reallocate kargv+knvp to only use kernel pointers
     kargv = reallocate_user_vector_as_kernel(ctx, kargv, argc, &status);
@@ -129,12 +156,17 @@ obos_status Sys_ExecVE(const void* buf, size_t szBuf, char* const* argv, char* c
 
     knvp = reallocate_user_vector_as_kernel(ctx, knvp, envpc, &status);
     if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
+    }
 
-    const void* kbuf = Mm_MapViewOfUserMemory(ctx, (void*)buf, nullptr, szBuf, OBOS_PROTECTION_READ_ONLY, false, &status);
     status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
     if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
+    }
 
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     // For each thread in the current process, send SIGKILL, and wait for it to die.

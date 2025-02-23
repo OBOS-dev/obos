@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "mm/swap.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -154,19 +155,26 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionCreate(&desc->vn->pagecache, desc->offset, nBytes);
-        OBOS_ASSERT(obos_expect(dirty != nullptr, 0));
-        Core_MutexAcquire(&dirty->lock);
-        void* ent = VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr);
-        if (!ent)
+
+        size_t bytesLeft = nBytes;
+        size_t offset = desc->offset;
+        for (size_t i = 0; bytesLeft; i += OBOS_PAGE_SIZE)
         {
-            status = OBOS_STATUS_INTERNAL_ERROR;
-            goto done;
+            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, false) + (offset % OBOS_PAGE_SIZE);
+            if (!ent)
+            {
+                status = OBOS_STATUS_INTERNAL_ERROR;
+                goto done;
+            }
+            memcpy(ent, (const uint8_t*)buf+i, OBOS_MIN(bytesLeft, OBOS_PAGE_SIZE - (offset % OBOS_PAGE_SIZE)));
+            if (bytesLeft > OBOS_PAGE_SIZE)
+                bytesLeft -= OBOS_PAGE_SIZE;
+            else
+                bytesLeft = 0;
+            offset += OBOS_PAGE_SIZE;
         }
-        memcpy(ent, buf, nBytes);
         done:
         VfsH_UnlockMountpoint(point);
-        Core_MutexRelease(&dirty->lock);
 
         if (nWritten)
             *nWritten = nBytes;
@@ -225,23 +233,30 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
     }
     else 
     {
-        pagecache_dirty_region* dirty = VfsH_PCDirtyRegionLookup(&desc->vn->pagecache, desc->offset);
-        if (dirty)
-            Core_MutexAcquire(&dirty->lock);
         mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
         // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        void* ent = VfsH_PageCacheGetEntry(&desc->vn->pagecache, desc->offset, nBytes, nullptr);
-        if (!ent)
+        
+        size_t bytesLeft = nBytes;
+        size_t offset = desc->offset;
+        // for (volatile bool b = (nBytes==0x2918); b; );
+        while (bytesLeft)
         {
-            status = OBOS_STATUS_INTERNAL_ERROR;
-            goto done;
+            const uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, offset, false) + (offset % OBOS_PAGE_SIZE);
+            if (!ent)
+            {
+                status = OBOS_STATUS_INTERNAL_ERROR;
+                goto done;
+            }
+            memcpy((uint8_t*)buf+(offset-desc->offset), ent, OBOS_MIN(bytesLeft, OBOS_PAGE_SIZE - (offset % OBOS_PAGE_SIZE)));
+            if (bytesLeft > OBOS_PAGE_SIZE)
+                bytesLeft -= OBOS_PAGE_SIZE;
+            else
+                bytesLeft = 0;
+            offset += (OBOS_PAGE_SIZE-(offset%OBOS_PAGE_SIZE));
         }
-        memcpy(buf, ent, nBytes);
         done:
-        if (dirty)
-            Core_MutexRelease(&dirty->lock);
         VfsH_UnlockMountpoint(point);
 
         if (nRead)
@@ -342,7 +357,7 @@ obos_status Vfs_FdFlush(fd* desc)
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
-    VfsH_PageCacheFlush(&desc->vn->pagecache);
+    Mm_WakePageWriter(false);
     VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;
 }

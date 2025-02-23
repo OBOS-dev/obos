@@ -201,9 +201,8 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     off_t sector_offset = cache_entry->dirent_offset;
     // Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
     // Vfs_FdRead(cache->volume, sector, clusterSize, nullptr);
-    uint8_t* sector = VfsH_PageCacheGetEntry(&((vnode*)cache->vn)->pagecache, cache_entry->dirent_fileoff, clusterSize, nullptr);
-    pagecache_dirty_region* dr = VfsH_PCDirtyRegionCreate(&((vnode*)cache->volume->vn)->pagecache, cache_entry->dirent_fileoff, clusterSize);
-    Core_MutexAcquire(&dr->lock);
+    OBOS_ASSERT(clusterSize < OBOS_PAGE_SIZE);
+    uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, cache_entry->dirent_fileoff, true);
     fat_dirent* curr = (fat_dirent*)(sector + cache_entry->dirent_offset);
     curr--;
     while (curr->attribs & LFN)
@@ -228,9 +227,6 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     }
     cache_entry->data.filename_83[0] = DIRENT_FREE;
     memcpy(sector + cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
-    if (dr)
-        Core_MutexRelease(&dr->lock);
-    Vfs_FdFlush(cache->volume);
     // WriteFatDirent(cache, cache_entry);
 }
 static uint8_t checksum(const char *pFcbName)
@@ -242,7 +238,7 @@ static uint8_t checksum(const char *pFcbName)
         Sum = ((Sum & 1) ? 0x80 : 0) + (Sum >> 1) + *pFcbName++;
     return Sum;
 }
-static void process_dirent(fat_cache* cache, fat_dirent* curr, fat_dirent_cache* parent, uint32_t off, uint32_t* const fileoff, uint32_t* const nFree)
+static void process_dirent(fat_cache* cache, const fat_dirent* curr, fat_dirent_cache* parent, uint32_t off, uint32_t* const fileoff, uint32_t* const nFree)
 {
     if (curr->filename_83[0] == DIRENT_FREE)
     {
@@ -273,8 +269,8 @@ iterate_decision find_free_entry(uint32_t cluster, obos_status status, void* use
     const size_t clusterSize = cache->blkSize*cache->bpb->sectorsPerCluster;
     // Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster)*cache->blkSize, SEEK_SET);
     // Vfs_FdRead(cache->volume, buff, clusterSize, nullptr);
-    void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->vn)->pagecache, ClusterToSector(cache, cluster)*cache->blkSize, clusterSize, nullptr);
-    fat_dirent* curr = buff;
+    const void* buff = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster)*cache->blkSize, false);
+    const fat_dirent* curr = buff;
     for (size_t j = 0; j < (clusterSize/sizeof(fat_dirent)); j++)
     {
         if (curr->filename_83[0] == (char)0)
@@ -349,10 +345,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            void* buff = VfsH_PageCacheGetEntry(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize, cache->blkSize, nullptr);
-            pagecache_dirty_region* dr = VfsH_PCDirtyRegionLookup(&((vnode*)cache->volume->vn)->pagecache, i*cache->blkSize);
-            if (dr)
-                Core_MutexAcquire(&dr->lock);
+            void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, i*cache->blkSize, false);
             fat_dirent* curr = buff;
             for (size_t j = 0; j < (cache->blkSize/sizeof(fat_dirent)); j++)
             {
@@ -373,8 +366,6 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 }
                 curr++;
             }
-            if (dr)
-                Core_MutexRelease(&dr->lock);
             if (!curr)
                 break;
         }
@@ -416,21 +407,9 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             }
             for (size_t i = 0; i < szClusters; i++)
             {
-                // Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+i)*cache->blkSize, SEEK_SET);
-                // Vfs_FdRead(cache->volume, buf, bytesPerCluster, nullptr);
-                // Vfs_FdSeek(cache->volume, ClusterToSector(cache, newCluster+i)*cache->blkSize, SEEK_SET);
-                // Vfs_FdWrite(cache->volume, buf, bytesPerCluster, nullptr);
-                void* buf = VfsH_PageCacheGetEntry(&cache->vn->pagecache, ClusterToSector(cache, cluster+i)*cache->blkSize, bytesPerCluster, nullptr);
-                pagecache_dirty_region* dr1 = VfsH_PCDirtyRegionLookup(&cache->vn->pagecache, ClusterToSector(cache, cluster+i)*cache->blkSize);
-                if (dr1)
-                    Core_MutexAcquire(&dr1->lock);
-                void* out = VfsH_PageCacheGetEntry(&cache->vn->pagecache, ClusterToSector(cache, newCluster+i)*cache->blkSize, bytesPerCluster, nullptr);
-                pagecache_dirty_region* dr2 = VfsH_PCDirtyRegionCreate(&cache->vn->pagecache, ClusterToSector(cache, newCluster+i)*cache->blkSize, bytesPerCluster);
-                Core_MutexAcquire(&dr2->lock);
+                const void* buf = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, false);
+                void* out = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, true);
                 memcpy(out, buf, bytesPerCluster);
-                Core_MutexRelease(&dr2->lock);
-                if (dr1)
-                    Core_MutexRelease(&dr1->lock);
             }
             if (cluster)
                 FreeClusters(cache, cluster, szClusters);
@@ -447,26 +426,18 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 // memzero(buf, cache->blkSize);
                 // memcpy(buf, cache->bpb, sizeof(*cache->bpb));
                 // Vfs_FdWrite(cache->volume, buf, cache->blkSize, nullptr);
-                void* out = VfsH_PageCacheGetEntry(&cache->vn->pagecache, 0, cache->blkSize, nullptr);
-                pagecache_dirty_region* dr2 = VfsH_PCDirtyRegionCreate(&cache->vn->pagecache, 0, cache->blkSize);
-                Core_MutexAcquire(&dr2->lock);
-                memcpy(out, cache->bpb, sizeof(*cache->bpb));
-                Core_MutexRelease(&dr2->lock);
+                memcpy(VfsH_PageCacheGetEntry(cache->vn, 0, true), cache->bpb, sizeof(*cache->bpb));
             }
         }
         fileoff = ClusterToSector(cache, cluster)*cache->blkSize;
         entry_cluster = cluster;
     }
     Vfs_FdSeek(cache->volume, fileoff/cache->blkSize*cache->blkSize, SEEK_SET);
-    void* buf = VfsH_PageCacheGetEntry(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize, nullptr);
-    pagecache_dirty_region* dr = VfsH_PCDirtyRegionCreate(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize);
-    Core_MutexAcquire(&dr->lock);
+    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, false);
     fileoff = Vfs_FdTellOff(cache->volume);
     fat_dirent* curr = buf+(fileoff%blkSize);
-    bool wroteback = false;
     for (size_t i = 0; i < nEntries; i++)
     {
-        wroteback = false;
         fat_dirent* curr_dirent = &cache_entry->data;
         if (i < nLfnEntries)
             curr_dirent = (fat_dirent*)&lfnEntries[i];
@@ -478,28 +449,19 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             {
                 // Simply read the next sector.
                 Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-                Core_MutexRelease(&dr->lock);
                 fileoff = Vfs_FdTellOff(cache->volume);
-                buf = VfsH_PageCacheGetEntry(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize, nullptr);
-                dr = VfsH_PCDirtyRegionCreate(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize);
-                Core_MutexAcquire(&dr->lock);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, true);
                 curr = buf;
             }
             else
             {
                 // Read the next cluster.
                 Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-                Core_MutexRelease(&dr->lock);
                 uint32_t next = 0;
                 fat_entry_addr addr = {};
                 GetFatEntryAddrForCluster(cache, entry_cluster, &addr);
-                uint8_t* sector = VfsH_PageCacheGetEntry(&cache->vn->pagecache, addr.lba*cache->blkSize, blkSize, nullptr);
-                pagecache_dirty_region* dr1 = VfsH_PCDirtyRegionLookup(&cache->vn->pagecache, addr.lba*cache->blkSize);
-                if (dr)
-                    Core_MutexAcquire(&dr1->lock);
+                uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, false);
                 obos_status status = NextCluster(cache, entry_cluster, sector, &next);
-                if (dr)
-                    Core_MutexRelease(&dr1->lock);
                 if (status == OBOS_STATUS_EOF)
                     break;
                 if (next == 0)
@@ -517,16 +479,11 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 Vfs_FdSeek(cache->volume, ClusterToSector(cache, next)*cache->blkSize, SEEK_SET);
                 fileoff = Vfs_FdTellOff(cache->volume);
                 Vfs_FdRead(cache->volume, buf, blkSize, nullptr);
-                buf = VfsH_PageCacheGetEntry(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize, nullptr);
-                dr = VfsH_PCDirtyRegionCreate(&cache->vn->pagecache, fileoff/cache->blkSize*cache->blkSize, blkSize);
-                Core_MutexAcquire(&dr->lock);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, true);
                 curr = buf;
             }
-            wroteback = true;
         }
     }
-    if (!wroteback)
-        Core_MutexRelease(&dr->lock);
 }
 obos_status move_desc_to(dev_desc desc, const char* where)
 {

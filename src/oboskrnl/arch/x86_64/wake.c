@@ -32,6 +32,8 @@
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
 
+#include <allocators/base.h>
+
 #include <mm/alloc.h>
 #include <mm/context.h>
 

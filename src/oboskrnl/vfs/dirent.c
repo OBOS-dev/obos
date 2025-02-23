@@ -243,7 +243,6 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->vtype = type;
     vn->group_uid = ROOT_GID;
     vn->owner_uid = ROOT_UID;
-    vn->pagecache.owner = vn;
     if (dev_p)
         *dev_p = dev;
     return vn;    

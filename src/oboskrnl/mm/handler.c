@@ -17,7 +17,6 @@
 #include <mm/bare_map.h>
 #include <mm/alloc.h>
 
-#include <vfs/pagecache.h>
 #include <vfs/vnode.h>
 
 #include <scheduler/schedule.h>
@@ -30,59 +29,43 @@
 #include <locks/spinlock.h>
 #include <locks/mutex.h>
 
+#include <vfs/pagecache.h>
+
+#include <allocators/base.h>
+
 obos_status Mm_AgingPRA(context* ctx);
 obos_status Mm_AgingReferencePage(context* ctx, working_set_node* node);
 
-static void mark_file_region_dirty(page_range* rng, uintptr_t addr, uint32_t ec)
+static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_type *type, page_info *info)
 {
-    OBOS_UNUSED(ec);
-    context* const ctx = rng->ctx;
-    uintptr_t fileoff = addr-rng->virt + rng->mapped_here->fileoff;
-    vnode* vn = (vnode*)rng->mapped_here->owner->owner;
-    size_t sz = OBOS_PAGE_SIZE;
-    if (rng->mapped_here->fileoff+fileoff+sz > vn->filesize)
-        sz = (rng->mapped_here->fileoff+fileoff+sz) % OBOS_PAGE_SIZE;
-    VfsH_PCDirtyRegionCreate(&vn->pagecache, fileoff, sz);
-    uintptr_t phys = 0;
-    MmS_QueryPageInfo(ctx->pt, addr, nullptr, &phys);
-    page_info curr = {};
-    curr.virt = addr;
-    curr.phys = phys;
-    curr.range = rng;
-    curr.prot = rng->prot;
-    curr.prot.rw = true;
-    curr.prot.present = true;
-    MmS_SetPageMapping(ctx->pt, &curr, phys, false);
+    if (!rng->prot.rw && ec & PF_EC_RW)
+    {
+        *type = INVALID_FAULT;
+        return;
+    }
+    page what = {.backing_vn=rng->un.mapped_vn,.file_offset=addr-rng->virt};
+    page* phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &what);
+    if (!phys)
+    {
+        *type = HARD_FAULT;
+        phys = VfsH_PageCacheCreateEntry(rng->un.mapped_vn, addr-rng->virt, ec & PF_EC_RW);
+    }
+    else
+    {
+        *type = SOFT_FAULT;
+        if (ec & PF_EC_RW)
+            Mm_MarkAsDirtyPhys(phys);
+        MmH_RefPage(phys);
+    }
+    info->phys = phys->phys;
+    info->prot.present = true;
+    info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);
+    MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
 }
-static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_type *type)
-{
-    context* const ctx = rng->ctx;
-    const uintptr_t fileoff = addr-rng->virt + rng->mapped_here->fileoff;
-    vnode* vn = (vnode*)rng->mapped_here->owner->owner;
-    size_t sz = OBOS_PAGE_SIZE;
-    if (fileoff+sz > vn->filesize)
-        sz = (vn->filesize-fileoff);
-    void* pc_base = VfsH_PageCacheGetEntry(rng->mapped_here->owner, fileoff, sz, type);
-    uintptr_t phys = 0;
-    MmS_QueryPageInfo(ctx->pt, (uintptr_t)pc_base, nullptr, &phys);
-    page_info curr = {};
-    curr.virt = addr;
-    curr.phys = phys;
-    curr.range = rng;
-    curr.prot = rng->prot;
-    curr.prot.rw = (ec & PF_EC_RW) && !rng->prot.ro;
-    page what = {.phys=phys};
 
-    page* phys_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-    MmH_RefPage(phys_pg);
-
-    curr.prot.present = true;
-    MmS_SetPageMapping(ctx->pt, &curr, phys, true);
-    if (curr.prot.rw)
-        VfsH_PCDirtyRegionCreate(&vn->pagecache, fileoff, sz);
-}
 static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
 {
+    OBOS_UNUSED(addr && ec);
     info->prot.present = true;
     if (pg->refcount == 1 /* we're the only one left */)
     {
@@ -181,7 +164,10 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     done:
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
     info->range = rng;
-    ref_page(ctx, info);
+    if (ec & PF_EC_RW)
+        Mm_MarkAsDirtyPhys(pg);
+    else
+        Mm_MarkAsStandbyPhys(pg);
     return true;
 }
 
@@ -192,8 +178,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         ctx = &Mm_KernelContext;
     bool handled = false;
     page_range what = {.virt=addr,.size=OBOS_PAGE_SIZE};
-    if (ctx != &Mm_KernelContext)
-        OBOS_Debug("(pid %d) Handling page fault at 0x%p...\n", ctx->owner->pid, addr);
+    // if (ctx != &Mm_KernelContext)
+    //     OBOS_Debug("(pid %d) Handling page fault at 0x%p...\n", ctx->owner->pid, addr);
     fault_type type = INVALID_FAULT;
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
@@ -205,12 +191,16 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     {
         page what = {.phys=curr.phys};
         pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
-        OBOS_ENSURE(pg != nullptr);
+        if (!pg && !rng->un.mapped_vn)
+        {
+            OBOS_Debug("No physical page found for virtual page %p (curr.phys: %p, found nothing)\n", curr.virt, curr.phys);
+            goto done;
+        }
     } while(0);
     curr.range = rng;
     curr.prot.user = ec & PF_EC_UM;
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
-    if (rng->mapped_here && !pg->cow_type)
+    if (rng->un.mapped_vn)
     {
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Trying file mapping...\n", addr);
@@ -220,19 +210,19 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         handled = true;
         fault_type curr_type = SOFT_FAULT;
         if (~ec & PF_EC_PRESENT)
-            map_file_region(rng, addr, ec, &curr_type);
-        else if (ec & PF_EC_RW && rng->prot.rw)
-            mark_file_region_dirty(rng, addr, ec);
+            map_file_region(rng, addr, ec, &curr_type, &curr);
         else
             handled = false;
         if (curr_type > type && handled)
             type = curr_type;
+        if (type == INVALID_FAULT)
+            handled = true;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
-    if (pg->cow_type)
+    if (!handled && pg->cow_type)
     {
-        if (ctx != &Mm_KernelContext)
-            OBOS_Debug("Doing CoW...\n", addr);
+        // if (ctx != &Mm_KernelContext)
+        //     OBOS_Debug("Doing CoW...\n", addr);
         // Mooooooooo.
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         switch (pg->cow_type) {

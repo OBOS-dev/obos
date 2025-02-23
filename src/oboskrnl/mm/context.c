@@ -12,6 +12,8 @@
 
 #include <locks/spinlock.h>
 
+#include <allocators/base.h>
+
 #include <mm/alloc.h>
 #include <mm/context.h>
 #include <mm/swap.h>
@@ -92,10 +94,12 @@ extern volatile struct limine_boot_info_request Arch_BootInfo;
 		return true;
 	return false;
 }
-RB_GENERATE_INTERNAL(page_tree, page_range, rb_node, pg_cmp_pages, OBOS_EXPORT __attribute__((optimize("-O0"))));
+RB_GENERATE_INTERNAL(page_tree, page_range, rb_node, pg_cmp_pages, OBOS_EXPORT);
 RB_GENERATE_INTERNAL(phys_page_tree, page, rb_node, phys_page_cmp, OBOS_EXPORT);
+RB_GENERATE_INTERNAL(pagecache_tree, page, pc_rb_node, pagecache_tree_cmp, OBOS_EXPORT);
 LIST_GENERATE(phys_page_list, struct page, lnk_node);
 phys_page_tree Mm_PhysicalPages;
+pagecache_tree Mm_Pagecache;
 size_t Mm_PhysicalMemoryUsage;
 
 page* MmH_PgAllocatePhysical(bool phys32, bool huge)

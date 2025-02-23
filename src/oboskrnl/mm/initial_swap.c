@@ -172,8 +172,8 @@ static obos_status swap_write(struct swap_device* dev, uintptr_t id, page* in)
         return OBOS_STATUS_NOT_FOUND;
     }
     void* buffer = pg->buffer;
-    pg = nullptr;
     memcpy(buffer, MmS_MapVirtFromPhys(in->phys), pg->sz);
+    pg = nullptr;
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }

@@ -18,6 +18,8 @@
 #include <mm/bare_map.h>
 #include <mm/alloc.h>
 
+#include <allocators/base.h>
+
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
 

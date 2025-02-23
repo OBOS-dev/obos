@@ -4,8 +4,6 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "mm/pmm.h"
-#include "scheduler/cpu_local.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -20,6 +18,9 @@
 #include <scheduler/thread.h>
 #include <scheduler/sched_sys.h>
 #include <scheduler/process.h>
+#include <scheduler/cpu_local.h>
+
+#include <allocators/base.h>
 
 #include <driver_interface/drv_sys.h>
 
@@ -29,6 +30,7 @@
 #include <mm/mm_sys.h>
 #include <mm/context.h>
 #include <mm/fork.h>
+#include <mm/pmm.h>
 
 #include <locks/sys_futex.h>
 

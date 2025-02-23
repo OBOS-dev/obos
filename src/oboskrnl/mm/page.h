@@ -48,21 +48,33 @@ typedef enum phys_page_flags
     PHYS_PAGE_MMIO = BIT(3),
 } phys_page_flags;
 
+// TODO: Move this into an array for faster allocation and lookup?
 typedef RB_HEAD(phys_page_tree, page) phys_page_tree;
 RB_PROTOTYPE(phys_page_tree, page, rb_node, phys_page_cmp);
+
+typedef RB_HEAD(pagecache_tree, page) pagecache_tree;
+RB_PROTOTYPE(pagecache_tree, page, pc_rb_node, pagecache_tree_cmp);
+
 typedef LIST_HEAD(phys_page_list, struct page) phys_page_list;
 LIST_PROTOTYPE(phys_page_list, struct page, lnk_node);
 
 typedef struct page
 {
     RB_ENTRY(page) rb_node;
+    RB_ENTRY(page) pc_rb_node;
+    
     // only valid if the page is dirty/standby.
     LIST_NODE(phys_page_list, struct page) lnk_node;
+    
     uintptr_t phys;
+
+    struct vnode* backing_vn;
+    // Should always be aligned to a page offset (OBOS_PAGE_SIZE)
+    size_t file_offset;
 
     _Atomic(size_t) refcount;
     // A reference count of pages that have this page paged in.
-    // Must always be <= refcount.
+    // Should always be <= refcount.
     _Atomic(size_t) pagedCount;
 
     struct {
@@ -102,13 +114,22 @@ inline static int phys_page_cmp(struct page* lhs, struct page* rhs)
 {
     return (lhs->phys < rhs->phys) ? -1 : (lhs->phys == rhs->phys ? 0 : 1);
 }
+inline static int pagecache_tree_cmp(struct page* lhs, struct page* rhs)
+{
+    if (lhs->backing_vn < rhs->backing_vn)
+        return -1;
+    if (lhs->backing_vn > rhs->backing_vn)
+        return 1;
+    return (lhs->file_offset < rhs->file_offset) ? -1 : (lhs->file_offset == rhs->file_offset ? 0 : 1);
+}
 
-// Adds a reference to the page.
+// NOTE: Adds a reference to the page.
 OBOS_EXPORT page* MmH_PgAllocatePhysical(bool phys32, bool huge);
 OBOS_EXPORT page* MmH_AllocatePage(uintptr_t phys, bool huge);
 OBOS_EXPORT void MmH_RefPage(page* buf);
 OBOS_EXPORT void MmH_DerefPage(page* buf);
 OBOS_EXPORT extern phys_page_tree Mm_PhysicalPages;
+OBOS_EXPORT extern pagecache_tree Mm_Pagecache;
 OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
 
 typedef struct page_range
@@ -116,7 +137,6 @@ typedef struct page_range
     uintptr_t virt;
     size_t size;
     page_protection prot;
-    struct pagecache_mapped_region* mapped_here;
     RB_ENTRY(page_range) rb_node;
     struct {
         struct working_set_node *head, *tail;
@@ -132,6 +152,7 @@ typedef struct page_range
     bool kernelStack : 1; // See Mm_AllocateKernelStack
     union {
         struct context* userContext; // valid if kernelStack != nullptr
+        struct vnode* mapped_vn;
     } un;
 } page_range;
 
