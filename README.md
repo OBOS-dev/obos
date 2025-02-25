@@ -9,6 +9,7 @@ OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing
 - Ninja
 - Git (unoptional, even if the repo was downloaded manually)
 - (Optionally): Qemu to run the iso
+- (if using method one) libcjson
 ### Build
 #### Method 1
 1. Clone the obos-pkgs repo using git:
