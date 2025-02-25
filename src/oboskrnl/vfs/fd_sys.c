@@ -73,7 +73,6 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
         fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 0, HANDLE_TYPE_FD, false, &status)->un.fd;
         return OBOS_STATUS_SUCCESS;
     }
-    printf("%s\n", path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;

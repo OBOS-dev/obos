@@ -4,6 +4,7 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "klog.h"
 #include <int.h>
 #include <error.h>
 #include <execve.h>
@@ -223,11 +224,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     // Free all memory
     page_range* rng = nullptr;
     page_range* next = nullptr;
-
-    uintptr_t stack_base = 0, stack_limit = 0;
-    stack_base = (uintptr_t)CoreS_GetThreadStack(&Core_GetCurrentThread()->context);
-    stack_limit = stack_base + CoreS_GetThreadStackSize(&Core_GetCurrentThread()->context);
-
+    
     for ((rng) = RB_MIN(page_tree, &ctx->pages); (rng) != nullptr; )
     {
         next = RB_NEXT(page_tree, &ctx->pages, rng);
@@ -235,14 +232,15 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         if (rng->hasGuardPage)
             virt += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         uintptr_t limit = rng->virt+rng->size;
-        if (!(virt >= stack_base && limit <= stack_limit))
-            Mm_VirtualMemoryFree(ctx, (void*)virt, limit-virt);
+        Mm_VirtualMemoryFree(ctx, (void*)virt, limit-virt);
         rng = next;
     }
 
     // Load the ELF into the process.
     elf_info info = {};
-    OBOS_LoadELF(ctx, kbuf, szBuf, &info, false, false);
+    status = OBOS_LoadELF(ctx, kbuf, szBuf, &info, false, false);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
 
     struct exec_aux_values aux = {.elf=info};
     const Elf_Ehdr* ehdr = kbuf;
@@ -251,6 +249,9 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     aux.phdr.phnum = ehdr->e_phnum;
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kbuf, szBuf);
+
+    Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+    Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
 
     aux.argc = argc;
     aux.argv = kargv;

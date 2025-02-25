@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "mm/swap.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -18,6 +17,8 @@
 #include <vfs/dirent.h>
 #include <vfs/pagecache.h>
 #include <vfs/mount.h>
+
+#include <mm/swap.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>

@@ -20,6 +20,8 @@ OBOS_PAGEABLE_VARIABLE const char* volatile OBOS_InitrdBinary;
 OBOS_PAGEABLE_VARIABLE size_t volatile OBOS_InitrdSize;
 OBOS_PAGEABLE_VARIABLE char** OBOS_argv;
 OBOS_PAGEABLE_VARIABLE size_t OBOS_argc;
+OBOS_PAGEABLE_VARIABLE size_t OBOS_InitArgumentsStart = SIZE_MAX;
+OBOS_PAGEABLE_VARIABLE size_t OBOS_InitArgumentsCount;
 
 static const char* const help_message =
 "OBOSKRNL usage:\n"
@@ -39,6 +41,7 @@ static const char* const help_message =
 "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
 "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
 "--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
+"--init-args: Special argument, makes the kernel assume all following arguments are to be passed to the init process.\n"
 "--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
 "--help: Displays this help message.\n";
 
@@ -151,6 +154,28 @@ void OBOS_ParseCMDLine()
         }
         OBOS_argv[OBOS_argc - 1] = memcpy(cmd_calloc(arg_len + 1, sizeof(char)), iter, arg_len);
         iter += arg_len+1;
+    }
+    for (size_t i = 0; i < OBOS_argc; i++)
+    {
+        // *-(opt)
+        const char* arg = OBOS_argv[i];
+        while (*arg == '-')
+            arg++;
+        size_t arglen = strlen(arg);
+        if (!arglen)
+            continue;
+        size_t optlen = strchr(arg, '=');
+        if (arglen != optlen || arg[arglen - 1] == '=')
+            continue;
+        if (uacpi_strncmp("init-args", arg, optlen) == 0)
+        {
+            if ((i + 1) == OBOS_argc)
+                break;
+            OBOS_InitArgumentsStart = i+1;
+            OBOS_InitArgumentsCount = OBOS_argc - OBOS_InitArgumentsStart;
+            OBOS_argc = i;
+            break;
+        }
     }
     if (OBOS_GetOPTF("help"))
         printf("%s", help_message);

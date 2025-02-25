@@ -16,5 +16,5 @@ then
     mkdir tar/dev
 fi
 cd tar
-tar -H ustar -cf ../config/initrd.tar *
+tar -H ustar -cf ../config/initrd.tar `ls -A`
 cd $old_pwd

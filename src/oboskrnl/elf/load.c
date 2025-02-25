@@ -7,6 +7,7 @@
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
+#include <klog.h>
 
 #include <mm/context.h>
 #include <mm/alloc.h>
@@ -63,7 +64,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
     if (obos_is_error(status))
         return status;
 
-    const Elf_Ehdr* ehdr = file;
+    const Elf_Ehdr* const ehdr = file;
 
     bool load_dynld = false;
 

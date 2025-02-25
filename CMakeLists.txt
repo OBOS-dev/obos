@@ -242,6 +242,7 @@ add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/generic/r8169")
 add_subdirectory("src/isogen")
 
+add_subdirectory("src/init")
 if (OBOS_COMPILE_USER_EXAMPLES)
 	add_subdirectory("src/user_examples")
 endif()

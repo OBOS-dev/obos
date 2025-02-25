@@ -32,6 +32,7 @@ void OBOS_ExpandHandleTable(handle_table* table, size_t size)
 
 void OBOS_InitializeHandleTable(handle_table* table)
 {
+    memzero(table, sizeof(*table));
     table->lock = MUTEX_INITIALIZE();
     OBOS_ExpandHandleTable(table, 64);
 }
@@ -108,7 +109,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     else
     {
         hnd = table->last_handle++;
-        if (hnd >= table->size)
+        if (table->last_handle >= table->size)
             OBOS_ExpandHandleTable(table, OBOS_MAX(table->size + (table->size / 4), hnd));
     }
     *desc = &table->arr[hnd];

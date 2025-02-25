@@ -313,7 +313,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
     if (!file && !(flags & VMA_FLAGS_NON_PAGED) && !(flags & VMA_FLAGS_RESERVE))
     {
         OBOS_ASSERT(Mm_AnonPage);
-        // Use anon physical page.
+        // Use the anon physical page.
         phys = Mm_AnonPage;
     }
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
@@ -864,7 +864,12 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         page what = {.phys=info.phys};
         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
         if (user_rng->un.mapped_vn && !phys)
-            phys = VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), false);
+        {
+            void* ent = VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), ~prot & OBOS_PROTECTION_READ_ONLY);
+            what.phys = MmS_UnmapVirtFromPhys(ent);
+            phys = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            info.phys = what.phys;
+        }
 
         if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
         {
@@ -876,6 +881,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             MmS_QueryPageInfo(user_context->pt, uaddr, nullptr, &info.phys);
             what.phys = info.phys;
             phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+            OBOS_ENSURE(phys != Mm_AnonPage);
         }
 
         if (phys)
@@ -965,7 +971,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
             MmH_RefPage(Mm_AnonPage);
             Mm_AnonPage->pagedCount++;
             Mm_AnonPage->cow_type = COW_ASYMMETRIC;
-            info.prot.present = true;
+            info.prot.present = false;
             info.prot.rw = false;
         }
         else

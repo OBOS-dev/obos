@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <memmanip.h>
 
@@ -16,6 +17,8 @@
 #include <mm/bare_map.h>
 #include <mm/alloc.h>
 #include <mm/pmm.h>
+#include <mm/page.h>
+#include <mm/handler.h>
 
 #if !OBOS_ARCH_HAS_USR_MEMCPY
 obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
@@ -57,11 +60,24 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     long bytes_left = count;
     for (size_t i = 0; i < count; )
     {
-        MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, nullptr, &usrphys);
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, &info, &usrphys);
         if (!usrphys)
         {
             // Mm_VirtualMemoryUnlock(ctx, futex, sizeof(*futex));
             return OBOS_STATUS_PAGE_FAULT;
+        }
+        page what = {.phys=usrphys};
+        page* phys = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+        if (phys && phys->cow_type)
+        {
+            uintptr_t fault_addr = (uintptr_t)usr_dest + i;
+            fault_addr -= (fault_addr % (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE));
+            Mm_HandlePageFault(ctx, fault_addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
+            MmS_QueryPageInfo(ctx->pt, (uintptr_t)usr_dest + i, nullptr, &info.phys);
+            what.phys = info.phys;
+            phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+            OBOS_ENSURE(phys != Mm_AnonPage);
         }
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);

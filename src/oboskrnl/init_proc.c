@@ -68,9 +68,11 @@ void OBOS_LoadInit()
     aux.phdr.phent = ehdr->e_phentsize;
     aux.phdr.phnum = ehdr->e_phnum;
 
-    aux.argv = ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(char*), nullptr);
-    aux.argc = 1;
+    aux.argc = 1+OBOS_InitArgumentsCount;
+    aux.argv = ZeroAllocate(OBOS_KernelAllocator, aux.argc+1, sizeof(char*), nullptr);
     aux.argv[0] = init_path;
+    for (size_t i = 1; i < (OBOS_InitArgumentsCount+1); i++)
+        aux.argv[i] = OBOS_argv[OBOS_InitArgumentsStart+i-1];
 
     aux.envp = nullptr;
     aux.envpc = 0;
