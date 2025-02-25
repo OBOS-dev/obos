@@ -53,7 +53,7 @@ cd scripts
 call launch_qemu.bat
 ```
 ## Credits
-- My friend [@LemurLord16](https://github.com/LemurLord16) (@dudeplayer2 on discord) for listening to me yap about new features.
+- My friend [@LemurLord16](https://github.com/LemurLord16) (@sigsbeedrive on discord) for listening to me yap about new features.
 - My cousin Ali because why not.
 ## License Notice
 Most code in this repository is licensed under the MIT license.<br>
