@@ -366,7 +366,7 @@ static process* lookup_proc(uint64_t pid)
             if (curr->pid == pid)
                 return curr;
 
-            // root = curr->fdc_children.head ? curr->fdc_children.head : root;
+            root = curr->children.head ? curr->children.head : root;
             curr = curr->next;
         }
         if (!curr)
