@@ -3,7 +3,7 @@ OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing
 ## Building
 ### Prerequisites
 - (For an x86-64 build) NASM
-- (For an x86-64 build): [x86_64-elf gcc](https://github.com/lordmilko/i686-elf-tools/) or an x86_64-obos toolchain
+- (For an x86-64 build): [x86_64-elf gcc](https://github.com/lordmilko/i686-elf-tools/) or an x86_64-obos toolchain (if you use method one, this is automatically compiled for you)
 - CMake
 - xorriso
 - Ninja
@@ -21,6 +21,9 @@ git clone https://github.com/OBOS-dev/obos-pkgs.git
 ```sh
 cp settings-x86_64.json settings.json
 ./obos-strap setup-env
+./obos-strap install bootstrap-binutils
+export PATH=$PATH:$PWD/host_pkgs/bin
+./obos-strap install bootstrap-gcc
 ./obos-strap install all
 ```
 4. Use qemu or any other emulator to run your ISO.
