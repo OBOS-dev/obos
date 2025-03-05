@@ -42,6 +42,8 @@ static const char* const help_message =
 "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
 "--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
 "--init-args: Special argument, makes the kernel assume all following arguments are to be passed to the init process.\n"
+"--acpi-no-osi: Don't create the _OSI method when building the namespace. For more info, see documenation for UACPI_FLAG_NO_OSI.\n"
+"--acpi-bad-xsdt: Use the RSDT, even if the XSDT is present. For more info, see documenation for UACPI_FLAG_BAD_XSDT.\n"
 "--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
 "--help: Displays this help message.\n";
 

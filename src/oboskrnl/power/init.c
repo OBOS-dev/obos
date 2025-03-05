@@ -71,7 +71,13 @@ void OBOS_InitializeUACPI()
 {
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 
-    uacpi_status st = uacpi_initialize(0);
+    uint64_t flags = 0;
+    if (OBOS_GetOPTF("acpi-no-osi"))
+        flags |= UACPI_FLAG_NO_OSI;
+    if (OBOS_GetOPTF("acpi-bad-xsdt"))
+        flags |= UACPI_FLAG_BAD_XSDT;
+
+    uacpi_status st = uacpi_initialize(flags);
     verify_status_panic(st, uacpi_initialize);
 
     uacpi_context_set_log_level(UACPI_LOG_INFO);
