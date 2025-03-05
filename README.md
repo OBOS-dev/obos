@@ -3,7 +3,7 @@ OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing
 ## Building
 ### Prerequisites
 - (For an x86-64 build) NASM
-- (For an x86-64 build): [x86_64-elf gcc](https://github.com/lordmilko/i686-elf-tools/) or an x86_64-obos toolchain (if you use method one, this is automatically compiled for you)
+- (For an x86-64 build): [x86_64-elf gcc](https://github.com/lordmilko/i686-elf-tools/) or an x86_64-obos toolchain (if you use method one, this is done for you)
 - CMake
 - xorriso
 - Ninja
