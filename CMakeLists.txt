@@ -221,6 +221,13 @@ add_compile_definitions(
 	OBOS_ARCHITECTURE_HAS_PCI=${OBOS_ARCHITECTURE_HAS_PCI}
 )
 
+if (OBOS_USE_OBOS_GCC)
+	add_subdirectory("src/init")
+endif()
+if (OBOS_COMPILE_USER_EXAMPLES)
+	add_subdirectory("src/user_examples")
+endif()
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 if (OBOS_ARCHITECTURE STREQUAL "m68k")
@@ -241,8 +248,3 @@ add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/generic/r8169")
 add_subdirectory("src/isogen")
-
-add_subdirectory("src/init")
-if (OBOS_COMPILE_USER_EXAMPLES)
-	add_subdirectory("src/user_examples")
-endif()
