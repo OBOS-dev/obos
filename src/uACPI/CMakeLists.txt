@@ -4,7 +4,6 @@
 
 if (OBOS_ARCHITECTURE_HAS_ACPI)
 	include (${uacpi_cmake_file})
-	uacpi_add_sources()
 endif()
 
 add_library(uacpi STATIC ${UACPI_SOURCES} "kernel_api.c" "ec.c")
