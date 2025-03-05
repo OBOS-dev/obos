@@ -42,8 +42,6 @@ int main(int argc, char** argv)
 {
     if (getpid() != 1)
         return -1;
-    for (int i = 0; i < argc; i++)
-        puts(argv[i]);
     int ret = print_motd();
     if (ret != 0)
         return ret;
@@ -55,7 +53,6 @@ int main(int argc, char** argv)
         {
             case 'c':
             {
-                puts(optarg);
                 sigchld_action = optarg;
                 // what the hell is this?
                 if (!sigchld_action ||
