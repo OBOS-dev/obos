@@ -48,7 +48,7 @@ obos_status Net_ICMPv4ReceiveFrame(const frame* what, const frame* raw_frame, vo
     switch (hdr->type) {
         case ICMPv4_TYPE_ECHO_MSG:
         {
-            printf("sup\n");
+            // printf("sup\n");
             icmp_header* new_hdr = nullptr;
             size_t sz = what->sz-sizeof(*hdr);
             size_t hdr_sz = sz+sizeof(*hdr);
@@ -74,7 +74,7 @@ obos_status Net_ICMPv4ReceiveFrame(const frame* what, const frame* raw_frame, vo
             status = what->interface_vn->un.device->driver->header.ftable.write_sync(what->interface_vn->tables->desc, eth_hdr, frame_size, 0, nullptr);
             
             echo_cleanup:
-            printf("%d %p %p %p\n", status, dest_ip_hdr, new_hdr, eth_hdr);
+            // printf("%d %p %p %p\n", status, dest_ip_hdr, new_hdr, eth_hdr);
             if (dest_ip_hdr)
                 OBOS_KernelAllocator->Free(OBOS_KernelAllocator, dest_ip_hdr, be16_to_host(dest_ip_hdr->packet_length));
             if (new_hdr)
