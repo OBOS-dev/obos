@@ -4,6 +4,7 @@
  * Copyright (c) 2025 Omar Berrow
  */
 
+#include "net/icmp.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -172,6 +173,11 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
     what.source_ip = hdr->src_address.addr;
 
     switch (hdr->protocol) {
+        // ICMPv4
+        case 0x1:
+            data->base->refcount++;
+            Net_ICMPv4ReceiveFrame(&what, data, entry);
+            break;
         // UDP
         case 0x11:
             data->base->refcount++;
