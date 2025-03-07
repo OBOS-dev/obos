@@ -26,7 +26,7 @@ typedef struct ip_table_entry {
     uint8_t subnet_mask;
     udp_queue_tree received_udp_packets;
     rw_lock received_udp_packets_tree_lock;
-    bool enable_icmp_echo_replies; // Whether to allow ICMP echo replies for this IP.
+    bool icmp_echo_replies; // Whether to allow ICMP echo replies for this IP.
     LIST_NODE(ip_table, struct ip_table_entry) node;
 } ip_table_entry;
 typedef LIST_HEAD(ip_table, ip_table_entry) ip_table;

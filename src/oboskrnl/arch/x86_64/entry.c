@@ -904,7 +904,7 @@ void Arch_KernelMainBootstrap()
 		Net_EthernetUp(dent->vnode);
 		ip_table_entry* ent = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
 		ent->address.addr = host_to_be32(0xc0a86402);
-		ent->enable_icmp_echo_replies = true;
+		ent->icmp_echo_replies = true;
 		ent->received_udp_packets_tree_lock = RWLOCK_INITIALIZE();
 		ent->broadcast_address.addr =  host_to_be32(0xc0a864ff);
 		ent->subnet_mask = 24;

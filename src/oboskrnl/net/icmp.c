@@ -48,6 +48,9 @@ obos_status Net_ICMPv4ReceiveFrame(const frame* what, const frame* raw_frame, vo
     switch (hdr->type) {
         case ICMPv4_TYPE_ECHO_MSG:
         {
+            if (!ent->icmp_echo_replies)
+                break;
+
             // printf("sup\n");
             icmp_header* new_hdr = nullptr;
             size_t sz = what->sz-sizeof(*hdr);
