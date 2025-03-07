@@ -140,7 +140,7 @@ void Kdbg_GeneralDebugExceptionHandler(gdb_connection* conn, gdb_ctx* dbg_ctx, b
 		char* packet = nullptr;
 		size_t packetLen = 0;
 		Kdbg_ConnectionRecvPacket(conn, &packet, &packetLen);
-        // printf("<%s\n", packet);
+        printf("<%s\n", packet);
 		obos_status st = Kdbg_DispatchPacket(conn, packet, packetLen, dbg_ctx);
 		if (obos_is_error(st))
             OBOS_Debug("Kdbg: While dispatching packet: Got status %d\n", st);

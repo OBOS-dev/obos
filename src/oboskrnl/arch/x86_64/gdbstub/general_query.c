@@ -121,7 +121,7 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
     char* response = nullptr;
     for (size_t i = 0; arguments[i]; )
     {
-        size_t feature_len = strchr(arguments + i, ';')-1;
+        size_t feature_len = strnchr(arguments + i, ';', argumentsLen-i)-1;
         if (arguments[i+feature_len-1] == '+')
             feature_len--;
         bool isSupported = false;
@@ -175,7 +175,7 @@ obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t a
     for (size_t i = 0; i < argumentsLen; i++)
         arguments[i] = KdbgH_hex2bin(arguments_ + (i*2), 2);
     printf("%s\n%s\n", arguments, arguments_);
-    size_t commandLen = strchr(arguments, ' ');
+    size_t commandLen = strnchr(arguments, ' ', argumentsLen);
     char* response = "556E6B6E6F776E20636F6D6D616E640A";
     if (!commandLen)
         return Kdbg_ConnectionSendPacket(con, response);

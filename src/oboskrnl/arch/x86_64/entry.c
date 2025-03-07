@@ -898,9 +898,25 @@ void Arch_KernelMainBootstrap()
 
 	Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
 
+	dirent* dent = VfsH_DirentLookup("/dev/r8169-eth0");
+	if (dent)
+	{
+		Net_EthernetUp(dent->vnode);
+		ip_table_entry* ent = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
+		ent->address.addr = host_to_be32(0xc0a86402);
+		ent->enable_icmp_echo_replies = true;
+		ent->received_udp_packets_tree_lock = RWLOCK_INITIALIZE();
+		ent->broadcast_address.addr =  host_to_be32(0xc0a864ff);
+		ent->subnet_mask = 24;
+		LIST_APPEND(ip_table, &dent->vnode->tables->table, ent);
+		dent->vnode->tables->gateway_address.addr = host_to_be32(0xc0a86401);
+		dent->vnode->tables->gateway_entry = ent;
+	}
+
 	Kdbg_InitializeHandlers();
 	// TODO: Enable this through a syscall.
 	// static gdb_connection gdb_conn = {};
+	// Kdbg_ConnectionInitializeUDP(&gdb_conn, 1534, dent ? dent->vnode : nullptr);
 	// if (OBOS_GetOPTF("enable-kdbg") && gdb_conn.pipe)
 	// {
 	// 	Kdbg_CurrentConnection = &gdb_conn;

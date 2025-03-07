@@ -78,8 +78,9 @@ static OBOS_NO_UBSAN void set_checksum(ethernet2_header* hdr, size_t sz)
     *(uint32_t*)(&((uint8_t*)hdr)[sizeof(ethernet2_header) + sz]) = crc32_bytes(hdr, sizeof(ethernet2_header) + sz);
 }
 
-OBOS_NO_UBSAN obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_t sz, const mac_address* restrict dest, const mac_address* restrict src, uint16_t type, size_t *out_sz)
+OBOS_NO_UBSAN obos_status Net_FormatEthernet2Packet(ethernet2_header** phdr, void* data, size_t sz_, const mac_address* restrict dest, const mac_address* restrict src, uint16_t type, size_t *out_sz)
 {
+    const size_t sz = sz_;
     if (!phdr || !data || !sz || !src || !dest || !out_sz)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ethernet2_header* hdr = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ethernet2_header)+sz+4, nullptr);

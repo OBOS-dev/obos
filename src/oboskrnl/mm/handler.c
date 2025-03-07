@@ -205,7 +205,11 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     {
         page what = {.phys=curr.phys};
         pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
-        OBOS_ENSURE(pg != nullptr);
+        if (!pg)
+        {
+            OBOS_Debug("No physical page found for virtual page 0x%p (use after free?). curr.phys: 0x%p\n", curr.virt, curr.phys);
+            goto done;
+        }
     } while(0);
     curr.range = rng;
     curr.prot.user = ec & PF_EC_UM;

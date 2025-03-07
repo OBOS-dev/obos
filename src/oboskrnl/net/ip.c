@@ -29,9 +29,9 @@
 RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);
 LIST_GENERATE(ip_table, ip_table_entry, node);
 
-OBOS_NO_UBSAN uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
+OBOS_NO_UBSAN uint16_t NetH_OnesComplementSum(const void *buffer, size_t size)
 {
-    uint16_t *p = buffer;
+    const uint16_t *p = buffer;
     int sum = 0;
     int i;
     for (i = 0; i < ((int)size & ~(1)); i += 2) {
@@ -49,12 +49,12 @@ OBOS_NO_UBSAN uint16_t NetH_OnesComplementSum(void *buffer, size_t size)
     return ret;
 }
 
-OBOS_NO_UBSAN uint16_t Net_IPChecksum(ip_header* hdr)
+OBOS_NO_UBSAN uint16_t Net_IPChecksum(const ip_header* hdr)
 {
     return NetH_OnesComplementSum(hdr, IPv4_GET_HEADER_LENGTH(hdr));
 }
 
-OBOS_NO_UBSAN obos_status Net_FormatIPv4Packet(ip_header** phdr, void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size)
+OBOS_NO_UBSAN obos_status Net_FormatIPv4Packet(ip_header** phdr, const void* data, uint16_t sz, uint8_t precedence, const ip_addr* restrict source, const ip_addr* restrict destination, uint8_t lifetime_seconds, uint8_t protocol, uint8_t service_type, bool override_preferred_size)
 {
     if (!phdr || !data || !sz || !source || !destination)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -175,7 +175,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
         // UDP
         case 0x11:
             data->base->refcount++;
-            status = Net_UDPReceiveFrame(&what, data, entry);
+            status = Net_UDPReceiveFrame(&what, data, entry, tables->interface);
             break;
         default: break;
     }

@@ -31,6 +31,10 @@ file (TO_NATIVE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
 
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fno-omit-frame-pointer" CACHE STRING "Flags used by the CXX compiler during RELEASE builds.")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -fno-omit-frame-pointer" CACHE STRING "Flags used by the CXX compiler during RELWITHDEBINFO builds.")
+set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os -fno-omit-frame-pointer" CACHE STRING "Flags used by the CXX compiler during MINSIZEREL builds.")
+
 project(
 	OBOS
 	LANGUAGES C CXX ASM

@@ -13,7 +13,9 @@
 #include <net/udp.h>
 #include <net/ip.h>
 #include <net/frame.h>
+#include <net/icmp.h>
 #include <net/tables.h>
+#include <net/eth.h>
 
 #include <scheduler/schedule.h>
 
@@ -44,7 +46,7 @@ OBOS_NO_UBSAN obos_status Net_FormatUDPPacket(udp_header** phdr, const void* dat
     return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_NO_UBSAN obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent_)
+OBOS_NO_UBSAN obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent_, vnode* interface)
 {
     OBOS_UNUSED(raw_frame);
     udp_header* hdr = (void*)what->buff;
@@ -69,8 +71,9 @@ OBOS_NO_UBSAN obos_status Net_UDPReceiveFrame(const frame* what, const frame* ra
     udp_queue *queue = NetH_GetUDPQueueForPort(ent_, be16_to_host(hdr->dest_port), false);
     if (!queue)
     {
-        // TODO: Send destination unreachable (port unreachable) on ICMP.
+        ip_header* ip_hdr = (ip_header*)raw_frame->buff;
         OBOS_Debug("Destination unreachable (port unreachable)\n");
+        Net_ICMPv4DestUnreachable(interface->tables, ip_hdr, raw_frame, ICMPv4_CODE_PORT_UNREACHABLE);
         NetH_ReleaseSharedBuffer(what->base);
         return OBOS_STATUS_NOT_FOUND;
     }

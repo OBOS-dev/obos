@@ -54,8 +54,8 @@ struct args
 static struct args parse_arguments(const char* arguments, size_t argumentsLen)
 {
     struct args ret = {};
-    size_t addrLen = strchr(arguments, ',')-1;
-    size_t kindLen = strchr(arguments+addrLen, ';');
+    size_t addrLen = strnchr(arguments, ',', argumentsLen)-1;
+    size_t kindLen = strnchr(arguments+addrLen, ';', argumentsLen-addrLen);
     if (kindLen != argumentsLen)
         kindLen--;
     ret.address = KdbgH_hex2bin(arguments, addrLen);

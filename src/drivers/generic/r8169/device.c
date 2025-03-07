@@ -47,7 +47,7 @@ static void write_or_register(r8169_device* dev, uint8_t off, uint32_t mask, uin
 }
 
 static void dpc_handler(dpc* obj, void* userdata);
-static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio);
+static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool ref_twice);
 
 bool r8169_irq_checker(struct irq* i, void* userdata)
 {
@@ -109,7 +109,7 @@ void r8169_rx(r8169_device* dev)
         size_t packet_len = desc->command & PACKET_LEN_MASK;
 
         r8169_frame frame = {};
-        void* buff = map_registers(desc->buf, packet_len, false, true);
+        void* buff = map_registers(desc->buf, packet_len, false, true, false);
         r8169_frame_generate(dev, &frame, buff, packet_len, FRAME_PURPOSE_RX /* We're receiving a packet */);
         r8169_buffer_add_frame(&dev->rx_buffer, &frame);
         if (memcmp(buff, "OBOS_Shutdown", 13))
@@ -140,7 +140,16 @@ static void tx_set(r8169_device* dev, uint8_t set)
 
         dev->tx_count++;
 
-        Mm_FreePhysicalPages(desc->buf, TX_PACKET_SIZE*128);
+        size_t sz = TX_PACKET_SIZE*128;
+        if (sz % OBOS_PAGE_SIZE)
+            sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
+        for (uintptr_t phys = desc->buf; phys < (desc->buf + sz); phys += OBOS_PAGE_SIZE)
+        {
+            page what = {.phys=phys};
+            page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            MmH_DerefPage(pg);
+        }
+        // Mm_FreePhysicalPages(desc->buf, TX_PACKET_SIZE*128);
 
         Core_EventPulse(&dev->tx_buffer.envt, false);
 
@@ -345,7 +354,7 @@ void r8169_reset(r8169_device* dev)
     DrvS_WriteIOSpaceBar(dev->bar->bar, TimerInt, 0, 2);
 }
 
-static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio)
+static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool ref_twice)
 {
     size_t phys_page_offset = (phys % OBOS_PAGE_SIZE);
     phys -= phys_page_offset;
@@ -371,6 +380,8 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio)
         struct page* pg = MmH_AllocatePage(page.phys, false);
         if (mmio)
             pg->flags |= PHYS_PAGE_MMIO;
+        if (ref_twice)
+            MmH_RefPage(pg);
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
     return virt+phys_page_offset;
@@ -405,7 +416,7 @@ void r8169_alloc_set(r8169_device* dev, uint8_t set)
     uintptr_t phys = Mm_AllocatePhysicalPages(nPages, alignment, nullptr);
 
     // TODO: Do any platforms require this to be mapped as UC?
-    dev->sets[set] = map_registers(phys, nPages*OBOS_PAGE_SIZE, false, true);
+    dev->sets[set] = map_registers(phys, nPages*OBOS_PAGE_SIZE, false, true, false);
     dev->sets_phys[set] = phys;
     memzero(dev->sets[set], nPages*OBOS_PAGE_SIZE);
 
@@ -512,8 +523,9 @@ obos_status r8169_frame_tx_high_priority(r8169_frame* frame, bool priority)
 LIST_GENERATE(r8169_frame_list, r8169_frame, node);
 LIST_GENERATE(r8169_descriptor_list, r8169_descriptor_node, node);
 
-obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const void* data, size_t sz, uint32_t purpose)
+obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const void* data, size_t sz_, uint32_t purpose)
 {
+    const size_t sz = sz_;
     if (!dev->refcount)
     {
         dev->rx_dropped++;
@@ -530,6 +542,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             frame->refcount = dev->refcount;
+            frame->idx = dev->rx_count;
             break;
         }
         case FRAME_PURPOSE_TX:
@@ -540,6 +553,7 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             frame->refcount = 1;
+            frame->idx = dev->tx_count;
             break;
         }
         default:
@@ -548,10 +562,9 @@ obos_status r8169_frame_generate(r8169_device* dev, r8169_frame* frame, const vo
     if (purpose == FRAME_PURPOSE_RX)
         frame->buf = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, sz, nullptr);
     else
-        frame->buf = map_registers(Mm_AllocatePhysicalPages(((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))) / OBOS_PAGE_SIZE, 1, nullptr), ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))), false, true);
+        frame->buf = map_registers(Mm_AllocatePhysicalPages(((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))) / OBOS_PAGE_SIZE, 1, nullptr), ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))), false, true, true);
     memcpy(frame->buf, data, sz);
     frame->sz = sz;
-    frame->idx = dev->rx_count;
     frame->purpose = purpose;
     return OBOS_STATUS_SUCCESS;
 }

@@ -272,7 +272,7 @@ OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments,
 {
     NO_USERDATA;
     NO_CTX;
-    size_t addrLen = strchr(arguments, ',')-1;
+    size_t addrLen = strnchr(arguments, ',', argumentsLen)-1;
     if (addrLen > 16)
         return Kdbg_ConnectionSendPacket(con, "");
     uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
@@ -311,11 +311,11 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
     NO_USERDATA;
     NO_CTX;
     OBOS_UNUSED(argumentsLen);
-    size_t addrLen = strchr(arguments, ',')-1;
+    size_t addrLen = strnchr(arguments, ',', argumentsLen)-1;
     if (addrLen > 16)
         return Kdbg_ConnectionSendPacket(con, "E.Invalid address.");
     uintptr_t address = KdbgH_hex2bin(arguments, addrLen);
-    size_t argv2_len = strchr(arguments+addrLen+1, ':')-1;
+    size_t argv2_len = strnchr(arguments+addrLen+1, ':', argumentsLen-addrLen-1)-1;
     if (argv2_len > 16)
         return Kdbg_ConnectionSendPacket(con, "E.Invalid size.");
     size_t memoryLen = KdbgH_hex2bin(arguments+addrLen+1, argumentsLen-addrLen-1);
@@ -323,7 +323,7 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
     size_t i = 0;
     size_t nRead = 0;
     // static const char hexmask[16] = "0123456789abcdef";
-    const char* iter = arguments+strchr(arguments, ':');
+    const char* iter = arguments+strnchr(arguments, ':', argumentsLen);
     uintptr_t curr_phys = 0;
     uintptr_t last_virt = address & ~0xfff;
     const char* response = "OK";
@@ -493,7 +493,7 @@ static size_t parse_gdb_thread_id(const char* id, size_t len, uint32_t* pid, uin
     if (hasPid)
     {
         id++;
-        size_t pidLen = strchr(id, '.')-1;
+        size_t pidLen = strnchr(id, '.', len-1)-1;
         idSize += pidLen + 1;
         if (id[0] == '-' && id[1] == '1')
             *pid = 0xffffffff;
@@ -505,7 +505,7 @@ static size_t parse_gdb_thread_id(const char* id, size_t len, uint32_t* pid, uin
     }
     if (!(*id))
         return 0;
-    size_t tidLen = strchr(id, ';');
+    size_t tidLen = strnchr(id, ';', len);
     idSize += tidLen;
     if (id[0] == '-' && id[1] == '1')
         *tid = 0xffffffff;

@@ -52,7 +52,7 @@ RB_PROTOTYPE(udp_queue_tree, udp_queue, rb_node, cmp_udp_queue);
 
 obos_status Net_FormatUDPPacket(udp_header** hdr, const void* data, uint16_t length, uint16_t src_port, uint16_t dest_port);
 // ent points to struct ip_table_entry
-obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent);
+obos_status Net_UDPReceiveFrame(const frame* what, const frame* raw_frame, void *ent, vnode* interface);
 // ent points to struct ip_table_entry
 udp_queue* NetH_GetUDPQueueForPort(void* ent, uint16_t port, bool create);
 // ent points to struct ip_table_entry
