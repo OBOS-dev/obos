@@ -137,3 +137,45 @@ obos_status Net_ICMPv4DestUnreachable(tables* tbl, const ip_header* ip_hdr, cons
 
     return status;
 }
+
+obos_status Net_ICMPv4TimeExceeded(tables* tbl, const ip_header* ip_hdr, const frame* raw_frame, time_exceeded_ec ec)
+{
+    OBOS_UNUSED(ip_hdr);
+    if (!tbl || !ip_hdr || !raw_frame)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    const icmp_header* hdr = nullptr;
+    size_t sz = be16_to_host(ip_hdr->packet_length);
+    size_t hdr_sz = sz+sizeof(*hdr);
+    ip_header* dest_ip_hdr = nullptr;
+    ethernet2_header* eth_hdr = nullptr;
+    ethernet2_header* recv_eth_hdr = (ethernet2_header*)raw_frame->base->base;
+    size_t frame_size = 0;
+    
+    obos_status status = Net_FormatICMPv4Packet((icmp_header**)&hdr, ip_hdr, be16_to_host(ip_hdr->packet_length), ICMPv4_TYPE_TIME_EXCEEDED, ec, 0);
+    if (obos_is_error(status))
+        goto cleanup;
+    
+    status = Net_FormatIPv4Packet(&dest_ip_hdr, hdr, hdr_sz, IPv4_PRECEDENCE_ROUTINE, &ip_hdr->dest_address, &ip_hdr->src_address, 60, 0x1 /* ICMPv4 */, 0, true);
+    if (obos_is_error(status))
+        goto cleanup;
+
+    // We actually can't do this.
+    // status = Net_TransmitIPv4Packet(tbl->interface, dest_ip_hdr);
+
+    status = Net_FormatEthernet2Packet(&eth_hdr, dest_ip_hdr, be16_to_host(dest_ip_hdr->packet_length), &recv_eth_hdr->src, &tbl->interface_mac, ETHERNET2_TYPE_IPv4, &frame_size);
+    if (obos_is_error(status))
+        goto cleanup;
+
+    status = tbl->interface->un.device->driver->header.ftable.write_sync(tbl->desc, eth_hdr, frame_size, 0, nullptr);
+
+    cleanup:
+    if (dest_ip_hdr)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, dest_ip_hdr, be16_to_host(dest_ip_hdr->packet_length));
+    if (hdr)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, (icmp_header*)hdr, hdr_sz);
+    if (eth_hdr)
+        OBOS_KernelAllocator->Free(OBOS_KernelAllocator, eth_hdr, frame_size);
+
+    return status;
+}

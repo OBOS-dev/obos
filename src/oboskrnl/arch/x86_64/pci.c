@@ -21,6 +21,7 @@
 
 // Funny how these same functions for io from PCI registers have been in use since OBOS Rewrite #2
 // (Branch old_code2 in OBOS-dev/obos-old)
+// NOTE(oberrow): This is no longer true.
 
 static uint32_t pciAddress(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset)
 {

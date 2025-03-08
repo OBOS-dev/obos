@@ -15,9 +15,10 @@
 #include <net/tables.h>
 
 enum {
+    ICMPv4_TYPE_ECHO_REPLY_MSG = 0,
     ICMPv4_TYPE_DEST_UNREACHABLE = 3,
     ICMPv4_TYPE_ECHO_MSG = 8,
-    ICMPv4_TYPE_ECHO_REPLY_MSG = 0,
+    ICMPv4_TYPE_TIME_EXCEEDED = 11,
 };
 
 // For ICMPv4_TYPE_DEST_UNREACHABLE
@@ -29,6 +30,11 @@ typedef enum {
     ICMPv4_CODE_FRAG_DF_SET,
     ICMPv4_CODE_SOURCE_ROUTE_FAILED,
 } dest_unreachable_ec;
+// For ICMPv4_TYPE_TIME_EXCEEDED
+typedef enum {
+    ICMPv4_CODE_TTL_EXCEEDED = 0,
+    ICMPv4_CODE_FRAGMENT_REASSEMBLY_EXCEEDED = 1,
+} time_exceeded_ec;
 
 typedef struct icmp_header {
     uint8_t type;
@@ -47,3 +53,4 @@ obos_status Net_ICMPv4ReceiveFrame(const frame* what, const frame* raw_frame, vo
 
 // Sends a Destination Unreachable ICMPv4 message to hdr->src_address.
 obos_status Net_ICMPv4DestUnreachable(tables* tbl, const ip_header* hdr, const frame* raw_frame, dest_unreachable_ec code);
+obos_status Net_ICMPv4TimeExceeded(tables* tbl, const ip_header* hdr, const frame* raw_frame, time_exceeded_ec code);

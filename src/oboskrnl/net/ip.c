@@ -162,7 +162,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
     if (!entry)
     {
         if (hdr->dest_address.addr != 0xffffffff)
-            status = Net_IPv4ForwardPacket(data->interface_vn, hdr);
+            status = Net_IPv4ForwardPacket(data->interface_vn, hdr, data);
         goto out;
     }
 
@@ -191,7 +191,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
     return status;
 }
 
-OBOS_NO_UBSAN obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data)
+OBOS_NO_UBSAN obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* data, const frame* raw_frame)
 {
     OBOS_ASSERT(data->dest_address.addr != 0xffffffff);
 
@@ -205,7 +205,7 @@ OBOS_NO_UBSAN obos_status Net_IPv4ForwardPacket(vnode* interface, ip_header* dat
 
     if (data->time_to_live <= 1)
     {
-        // TODO: Send ICMP message telling the source that we timed out.
+        Net_ICMPv4TimeExceeded(tables, data, raw_frame, ICMPv4_CODE_TTL_EXCEEDED);
 
         return OBOS_STATUS_TIMED_OUT;
     }
