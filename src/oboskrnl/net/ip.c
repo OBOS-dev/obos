@@ -81,19 +81,23 @@ OBOS_NO_UBSAN obos_status Net_FormatIPv4Packet(ip_header** phdr, const void* dat
 OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
 {
     OBOS_UNUSED(data);
+    tables* tables = (void*)(uintptr_t)data->interface_vn->data;
     ip_header* hdr = (void*)data->buff;
+
     // verify the header's integrity.
     uint16_t tmp = hdr->chksum;
     hdr->chksum = 0;
     uint16_t chksum = Net_IPChecksum(hdr);
     hdr->chksum = tmp;
+
     if (be16_to_host(tmp) != chksum)
     {
         OBOS_Warning("On NIC %02x:%02x:%02x:%02x:%02x:%02x: Received IPv4 frame has invalid checksum. Expected 0x%04x, got 0x%04x. Dropping packet.\n", 
             data->interface_mac_address[0], data->interface_mac_address[1], data->interface_mac_address[2], 
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5],
-            chksum, be16_to_host(tmp)    
+            chksum, be16_to_host(tmp)
         );
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, chksum));
         return OBOS_STATUS_INVALID_HEADER;
     }
     if (IPv4_GET_HEADER_VERSION(hdr) != 4)
@@ -103,6 +107,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5],
             IPv4_GET_HEADER_VERSION(hdr)
         );
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, version_hdrlen));
         return OBOS_STATUS_UNIMPLEMENTED;
     }
     if (IPv4_GET_HEADER_LENGTH(hdr) < 5)
@@ -110,6 +115,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
         OBOS_Warning("On NIC %02x:%02x:%02x:%02x:%02x:%02x: Received IPv4 frame has header size less than 20. Dropping packet.\n", 
             data->interface_mac_address[0], data->interface_mac_address[1], data->interface_mac_address[2], 
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5]);
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, version_hdrlen));
         return OBOS_STATUS_INVALID_HEADER;
     }
     if (be16_to_host(hdr->packet_length) > data->sz)
@@ -118,6 +124,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
             data->interface_mac_address[0], data->interface_mac_address[1], data->interface_mac_address[2], 
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5]
         );
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, packet_length));
         return OBOS_STATUS_INVALID_HEADER;
     }
     if (IPv4_GET_HEADER_LENGTH(hdr) > data->sz)
@@ -126,6 +133,7 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
             data->interface_mac_address[0], data->interface_mac_address[1], data->interface_mac_address[2], 
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5]
         );
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, version_hdrlen));
         return OBOS_STATUS_INVALID_HEADER;
     }
     if (IPv4_GET_HEADER_LENGTH(hdr) > be16_to_host(hdr->packet_length))
@@ -134,10 +142,9 @@ OBOS_NO_UBSAN obos_status Net_IPReceiveFrame(const frame* data)
             data->interface_mac_address[0], data->interface_mac_address[1], data->interface_mac_address[2], 
             data->interface_mac_address[3], data->interface_mac_address[4], data->interface_mac_address[5]
         );
+        Net_ICMPv4ParameterProblem(tables, hdr, data, offsetof(ip_header, version_hdrlen));
         return OBOS_STATUS_INVALID_HEADER;
     }
-
-    tables* tables = (void*)(uintptr_t)data->interface_vn->data;
 
     ip_table_entry *entry = nullptr;
     if (hdr->dest_address.addr != 0xffffffff)

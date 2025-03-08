@@ -19,6 +19,7 @@ enum {
     ICMPv4_TYPE_DEST_UNREACHABLE = 3,
     ICMPv4_TYPE_ECHO_MSG = 8,
     ICMPv4_TYPE_TIME_EXCEEDED = 11,
+    ICMPv4_TYPE_PARAMETER_PROBLEM = 12,
 };
 
 // For ICMPv4_TYPE_DEST_UNREACHABLE
@@ -54,3 +55,4 @@ obos_status Net_ICMPv4ReceiveFrame(const frame* what, const frame* raw_frame, vo
 // Sends a Destination Unreachable ICMPv4 message to hdr->src_address.
 obos_status Net_ICMPv4DestUnreachable(tables* tbl, const ip_header* hdr, const frame* raw_frame, dest_unreachable_ec code);
 obos_status Net_ICMPv4TimeExceeded(tables* tbl, const ip_header* hdr, const frame* raw_frame, time_exceeded_ec code);
+obos_status Net_ICMPv4ParameterProblem(tables* tbl, const ip_header* hdr, const frame* raw_frame, uint8_t offset);
