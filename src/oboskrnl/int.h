@@ -44,9 +44,11 @@ enum {false=0,true=1};
 typedef _Bool bool;
 #endif
 #ifndef __cplusplus
-#	define nullptr ((void*)0)
-#	ifndef IS_UACPI_BUILD
-#		undef NULL
+#	if __STDC_VERSION__ < 202311L
+#		define nullptr ((void*)0)
+#		ifndef IS_UACPI_BUILD
+#			undef NULL
+#		endif
 #	endif
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
