@@ -1,10 +1,10 @@
-# drivers/x86/uart/CMakeLists.txt
+# drivers/x86/i8042/CMakeLists.txt
 # 
-# Copyright (c) 2024 Omar Berrow
+# Copyright (c) 2025 Omar Berrow
 
-add_executable(uart "main.c" "serial_port.c")
+add_executable(i8042 "main.c" "ctlr.c")
 
-target_compile_options(uart
+target_compile_options(i8042
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-ffreestanding>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
@@ -15,13 +15,13 @@ target_compile_options(uart
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
 )
 
-set_property(TARGET uart PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
+set_property(TARGET i8042 PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
 
-target_include_directories(uart 
+target_include_directories(i8042 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
-target_link_options(uart
+target_link_options(i8042
 	PRIVATE "-nostdlib"
 	PRIVATE "-fPIC"
 	PRIVATE "-Wl,-shared"
@@ -29,4 +29,4 @@ target_link_options(uart
     PRIVATE "-T" PRIVATE ${DRIVER_LINKER_SCRIPT}
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
-target_compile_definitions(uart PRIVATE OBOS_DRIVER=1)
+target_compile_definitions(i8042 PRIVATE OBOS_DRIVER=1)

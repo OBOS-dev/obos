@@ -128,7 +128,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
         return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!handler)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, false);
+    obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, true);
     if (obos_is_error(status))
         return status;
     Core_TimerIRQ->moveCallback  = hpet_irq_move_callback;

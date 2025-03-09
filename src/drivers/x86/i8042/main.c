@@ -30,22 +30,29 @@
 #include "uacpi/namespace.h"
 #include "uacpi/types.h"
 
-obos_status get_blk_size(dev_desc desc, size_t* blkSize);
-obos_status get_max_blk_count(dev_desc desc, size_t* count);
-obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
-obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
-obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
-obos_status query_user_readable_name(dev_desc what, const char** name);
-obos_status ioctl(dev_desc what, uint32_t request, void* argp);
-void cleanup();
+OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
+OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
+OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
+OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
+OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
+OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name);
+OBOS_WEAK obos_status ioctl(dev_desc what, uint32_t request, void* argp);
+OBOS_WEAK void cleanup();
 
-void on_suspend();
-void on_wake();
+OBOS_WEAK void on_suspend();
+OBOS_WEAK void on_wake();
+
+const char* const pnp_ids[] = {
+    "PNP0303",
+    "PNP0F13",
+    "PNP0F03",
+    nullptr,
+};
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
+    .flags = DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
     .acpiId = {
         .nPnpIds = 3,
         .pnpIds = {
@@ -68,7 +75,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     },
     .driverName = "PS/2 Controller Driver",
     .version = 1,
-    .uacpi_init_level_required = UACPI_INIT_LEVEL_SUBSYSTEM_INITIALIZED
+    .uacpi_init_level_required = UACPI_INIT_LEVEL_NAMESPACE_LOADED
 };
 
 driver_id* this_driver;
@@ -90,15 +97,16 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 
     uacpi_find_devices_at(
         uacpi_namespace_root(),
-        (const char* const*)drv_hdr.acpiId.pnpIds,
+        pnp_ids,
         match, nullptr   
     );
     if (!found_ps2_device)
-        return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not found a PS/2 Controller."};
+        return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find a PS/2 Controller."};
 
     obos_status status = PS2_InitializeController();
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize the PS/2 Controller."};
 
+    printf("hello, world\n");
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

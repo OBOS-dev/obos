@@ -303,7 +303,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         OBOS_TextRendererState.column = 0;
         OBOS_TextRendererState.row = 0;
         OBOS_TextRendererState.font = font_bin;
-        // OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+        OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
         if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
             return;
     }
@@ -814,9 +814,7 @@ void Arch_KernelMainBootstrap()
                 iter += namelen;
                 continue;
             }
-            Vfs_FdSeek(&file, 0, SEEK_END);
-            size_t filesize = Vfs_FdTellOff(&file);
-            Vfs_FdSeek(&file, 0, SEEK_SET);
+            size_t filesize = file.vn->filesize;
             void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
             if (obos_is_error(status))
             {

@@ -50,7 +50,7 @@ enum {
     PS2_CTLR_CONFIG_PORT_ONE_TRANSLATION = BIT(6),
 };
 
-#define IRQL_PS2 IRQL_DISPATCH
+#define IRQL_PS2 3
 
 typedef struct ps2_port {
     uint32_t gsi;
