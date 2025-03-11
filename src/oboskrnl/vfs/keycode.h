@@ -18,6 +18,7 @@ enum modifiers {
     FN = BIT(4),
     CAPS_LOCK = BIT(5),
     NUM_LOCK = BIT(6),
+    KEY_RELEASED = BIT(6),
 };
 
 typedef enum scancode {
