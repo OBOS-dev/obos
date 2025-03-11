@@ -50,15 +50,7 @@ enum {
     PS2_CTLR_CONFIG_PORT_ONE_TRANSLATION = BIT(6),
 };
 
-#define IRQL_PS2 3
-
-typedef struct ps2_port {
-    uint32_t gsi;
-    irq* irq;
-    void(*data_ready)(uint8_t data);
-    bool works : 1;
-    bool second : 1;
-} ps2_port;
+#include <generic/libps2/controller.h>
 
 extern struct ps2_ctlr_data {
     bool dual_channel : 1;
@@ -67,5 +59,3 @@ extern struct ps2_ctlr_data {
 } PS2_CtlrData;
 
 obos_status PS2_InitializeController();
-void PS2_DeviceWrite(bool port_two, uint8_t val);
-uint8_t PS2_DeviceRead(uint32_t spin_timeout, obos_status* status);

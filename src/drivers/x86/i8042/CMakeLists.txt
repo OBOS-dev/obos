@@ -19,6 +19,7 @@ set_property(TARGET i8042 PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
 
 target_include_directories(i8042 
 	PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl"
+	PRIVATE "${CMAKE_SOURCE_DIR}/src/drivers"
 	PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})
 
 target_link_options(i8042
@@ -30,3 +31,5 @@ target_link_options(i8042
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
 target_compile_definitions(i8042 PRIVATE OBOS_DRIVER=1)
+
+target_link_libraries(i8042 PRIVATE ps2)

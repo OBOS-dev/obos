@@ -26,6 +26,7 @@
 
 #include <uacpi/utilities.h>
 
+#include "generic/libps2/keyboard.h"
 #include "ps2_structs.h"
 #include "uacpi/namespace.h"
 #include "uacpi/types.h"
@@ -107,6 +108,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize the PS/2 Controller."};
 
-    printf("hello, world\n");
+    PS2_InitializeKeyboard(&PS2_CtlrData.ports[0]);
+
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

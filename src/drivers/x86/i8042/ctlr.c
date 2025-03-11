@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 
 #include <locks/spinlock.h>
@@ -15,7 +16,8 @@
 #include <arch/x86_64/ioapic.h>
 #include <arch/x86_64/asm_helpers.h>
 
-#include "klog.h"
+#include <generic/libps2/controller.h>
+
 #include "ps2_structs.h"
 
 struct ps2_ctlr_data PS2_CtlrData;
@@ -27,24 +29,22 @@ static void poll_status(uint8_t mask, uint8_t expected)
 }
 static uint8_t read_ctlr_status()
 {
+    irql oldIrql = Core_RaiseIrql(IRQL_PS2);
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
     outb(PS2_CMD_STATUS, PS2_CTLR_READ_RAM_CMD(0));
     poll_status(PS2_OUTPUT_BUFFER_FULL, PS2_OUTPUT_BUFFER_FULL);
-    return inb(PS2_DATA);
+    uint8_t res = inb(PS2_DATA);
+    Core_LowerIrql(oldIrql);
+    return res;
 }
 static void write_ctlr_status(uint8_t ctlr_config)
 {
+    irql oldIrql = Core_RaiseIrql(IRQL_PS2);
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
     outb(PS2_CMD_STATUS, PS2_CTLR_WRITE_RAM_CMD(0));
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, ctlr_config);
-}
-static uint8_t read_ctlr_output_port()
-{
-    poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_READ_CTLR_OUT_BUFFER);
-    poll_status(PS2_OUTPUT_BUFFER_FULL, PS2_OUTPUT_BUFFER_FULL);
-    return inb(PS2_DATA);
+    outb(PS2_DATA, ctlr_config);
+    Core_LowerIrql(oldIrql);
 }
 
 void ps2_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
@@ -64,10 +64,11 @@ void ps2_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
 {
     OBOS_UNUSED(i && frame && oldIrql);
     ps2_port* port = userdata;
-    OBOS_Debug("got ps/2 irq on port %d\n", port->second ? 2 : 1);
+    if (port->suppress_irqs)
+        return;
     uint8_t read = inb(PS2_DATA);
     if (port->data_ready)
-        port->data_ready(read);
+        port->data_ready(port, read);
 }
 
 obos_status PS2_InitializeController()
@@ -76,15 +77,12 @@ obos_status PS2_InitializeController()
 
     PS2_CtlrData.lock = Core_SpinlockCreate();
 
-    // Disable devices.
-    poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_ONE);    
-    poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_TWO);
+    PS2_FlushInput();
 
     // Write the controller configuration byte.
     uint8_t ctlr_config = read_ctlr_status();
     ctlr_config &= ~(PS2_CTLR_CONFIG_PORT_ONE_IRQ|PS2_CTLR_CONFIG_PORT_TWO_IRQ|PS2_CTLR_CONFIG_PORT_ONE_TRANSLATION);
+    write_ctlr_status(ctlr_config);
 
     // Run the PS/2 Controller self test.
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
@@ -97,22 +95,25 @@ obos_status PS2_InitializeController()
         return OBOS_STATUS_INTERNAL_ERROR;
     }
 
-    // Rewrite the status, in case.
+    // Rewrite the configuration, in case.
     write_ctlr_status(ctlr_config);
 
     // Determine if the controller is dual-channel.
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_TWO);
+    outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_TWO);
     ctlr_config = read_ctlr_status();
     PS2_CtlrData.dual_channel = ~ctlr_config & PS2_CTLR_CONFIG_PORT_TWO_CLOCK;
     if (PS2_CtlrData.dual_channel)
-        outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_TWO);
+    {
+        poll_status(PS2_INPUT_BUFFER_FULL, 0);
+        outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_TWO);
+    }
 
     // Run device tests.
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
     outb(PS2_CMD_STATUS, PS2_CTLR_TEST_PORT_ONE);
     poll_status(PS2_OUTPUT_BUFFER_FULL, PS2_OUTPUT_BUFFER_FULL);
-    test_result = inb(PS2_CMD_DATA);
+    test_result = inb(PS2_DATA);
     if (!test_result)
         PS2_CtlrData.ports[0].works = true;
     if (!PS2_CtlrData.dual_channel)
@@ -122,7 +123,7 @@ obos_status PS2_InitializeController()
         poll_status(PS2_INPUT_BUFFER_FULL, 0);
         outb(PS2_CMD_STATUS, PS2_CTLR_TEST_PORT_TWO);
         poll_status(PS2_OUTPUT_BUFFER_FULL, PS2_OUTPUT_BUFFER_FULL);
-        test_result = inb(PS2_CMD_DATA);
+        test_result = inb(PS2_DATA);
         if (!test_result)
             PS2_CtlrData.ports[1].works = true;
     }
@@ -135,10 +136,8 @@ obos_status PS2_InitializeController()
     }
 
     // Enable devices.
-    poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_ONE);    
-    poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_TWO);
+    PS2_EnableChannel(false, true);
+    PS2_EnableChannel(true, true);
 
     PS2_CtlrData.ports[1].second = true;
     // Initialize the structs.
@@ -154,7 +153,6 @@ obos_status PS2_InitializeController()
         PS2_CtlrData.ports[i].irq->moveCallback = ps2_irq_move_callback;
         PS2_CtlrData.ports[i].irq->handler = ps2_irq_handler;
         Core_IrqObjectInitializeIRQL(PS2_CtlrData.ports[i].irq, IRQL_PS2, false, true);
-        printf("%d\n", PS2_CtlrData.ports[i].irq->vector->id+0x20);
         Arch_IOAPICMapIRQToVector(PS2_CtlrData.ports[i].gsi, PS2_CtlrData.ports[i].irq->vector->id+0x20, PolarityActiveHigh, TriggerModeEdgeSensitive);
         Arch_IOAPICMaskIRQ(PS2_CtlrData.ports[i].gsi, false);
     }
@@ -171,13 +169,9 @@ obos_status PS2_InitializeController()
         ctlr_config |= PS2_CTLR_CONFIG_PORT_TWO_IRQ;
         ctlr_config &= ~PS2_CTLR_CONFIG_PORT_TWO_CLOCK;
     }
-    printf("wrote ctlr config as 0x%02x\n", ctlr_config);
-    printf("note: port1.works=%d, port2.works=%d\n", PS2_CtlrData.ports[0].works, PS2_CtlrData.ports[1].works);
     write_ctlr_status(ctlr_config);
 
-    printf("goodbye, world\n");
     Core_LowerIrql(oldIrql);
-    printf("hello, world\n");
     
     return OBOS_STATUS_SUCCESS;
 }
@@ -190,18 +184,55 @@ void PS2_DeviceWrite(bool port_two, uint8_t val)
         outb(PS2_CMD_STATUS, PS2_CTLR_WRITE_PORT_TWO);
     outb(PS2_DATA, val);
     Core_SpinlockRelease(&PS2_CtlrData.lock, oldIrql);
-    
 }
 uint8_t PS2_DeviceRead(uint32_t spin_timeout, obos_status* status)
 {
     size_t i = 0;
-    for (; ((inb(PS2_CMD_STATUS) & PS2_OUTPUT_BUFFER_FULL) != PS2_OUTPUT_BUFFER_FULL) && i < spin_timeout; i++)
-        pause();
+    uint8_t last_status = 0;
+    do {
+        i++;
+        last_status = inb(PS2_CMD_STATUS);
+    } while(i < spin_timeout && !(last_status & PS2_OUTPUT_BUFFER_FULL));
     if (status) *status = OBOS_STATUS_SUCCESS;
-    if ((inb(PS2_CMD_STATUS) & PS2_OUTPUT_BUFFER_FULL) != PS2_OUTPUT_BUFFER_FULL)
+    if (~last_status & PS2_OUTPUT_BUFFER_FULL)
     {
         if (status) *status = OBOS_STATUS_TIMED_OUT;
         return 0xff;
     }
-    return inb(PS2_DATA);
+    uint8_t data = inb(PS2_DATA);
+    return data;
+}
+
+obos_status PS2_EnableChannel(bool channel_two, bool status)
+{
+    if (channel_two && !PS2_CtlrData.dual_channel)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    status = !!status;
+    poll_status(PS2_INPUT_BUFFER_FULL, 0);
+    if (!channel_two)
+        outb(PS2_CMD_STATUS, status ? PS2_CTLR_ENABLE_PORT_ONE : PS2_CTLR_DISABLE_PORT_ONE);    
+    else
+        outb(PS2_CMD_STATUS, status ? PS2_CTLR_ENABLE_PORT_TWO : PS2_CTLR_DISABLE_PORT_TWO);
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status PS2_MaskChannelIRQs(bool channel_two, bool mask)
+{
+    if (channel_two && !PS2_CtlrData.dual_channel)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    mask = !!mask;
+    uint8_t ctlr_config = read_ctlr_status();
+    uint8_t bitmask = channel_two ? PS2_CTLR_CONFIG_PORT_TWO_IRQ : PS2_CTLR_CONFIG_PORT_ONE_IRQ;
+    if (mask)
+        ctlr_config &= ~bitmask;
+    else
+        ctlr_config |= bitmask;
+    write_ctlr_status(ctlr_config);
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status PS2_FlushInput()
+{
+    while (inb(PS2_CMD_STATUS) & PS2_INPUT_BUFFER_FULL)
+        inb(PS2_DATA);
+    return OBOS_STATUS_SUCCESS;
 }
