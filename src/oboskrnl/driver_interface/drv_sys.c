@@ -18,10 +18,17 @@
 #include <mm/alloc.h>
 
 #include <scheduler/cpu_local.h>
-// TODO: Permission checks?
+#include <scheduler/schedule.h>
+#include <scheduler/process.h>
 
 handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 {
+    if (Core_GetCurrentThread()->proc->currentUID != ROOT_UID)
+    {
+        if (ustatus) *ustatus = OBOS_STATUS_ACCESS_DENIED;
+        return HANDLE_INVALID;
+    }
+
     obos_status status = OBOS_STATUS_SUCCESS;
     if (!szFile)
     {
@@ -53,8 +60,17 @@ handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
     return ret;
 }
 
+#define perm_check_impl(ret) do {\
+    if (Core_GetCurrentThread()->proc->currentUID != ROOT_UID)\
+        return (ret);\
+} while(0)
+#define perm_check() perm_check_impl(OBOS_STATUS_ACCESS_DENIED)
+#define perm_check_hnd() perm_check_impl(HANDLE_INVALID)
+
 obos_status Sys_StartDriver(handle driver, handle* mainThread)
 {
+    perm_check();
+
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* drv = OBOS_HandleLookup(OBOS_CurrentHandleTable(), driver, HANDLE_TYPE_DRIVER_ID, false, &status);
@@ -87,6 +103,8 @@ obos_status Sys_StartDriver(handle driver, handle* mainThread)
 
 obos_status Sys_UnloadDriver(handle driver)
 {
+    perm_check();
+    
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* drv = OBOS_HandleLookup(OBOS_CurrentHandleTable(), driver, HANDLE_TYPE_DRIVER_ID, false, &status);
@@ -102,6 +120,8 @@ obos_status Sys_UnloadDriver(handle driver)
 
 obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
 {
+    perm_check();
+    
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* dirent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dent, HANDLE_TYPE_DIRENT, false, &status);
@@ -118,6 +138,8 @@ obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
 // Finds a loaded driver by its name, and returns a handle to it.
 handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */)
 {
+    perm_check_hnd();
+
     driver_id *id = nullptr;
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
     {
@@ -147,6 +169,8 @@ handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */
 // If 'curr' is HANDLE_INVALID, the first item in the list is returned.
 handle Sys_EnumerateLoadedDrivers(handle curr)
 {
+    perm_check_hnd();
+    
     driver_id* id = nullptr;
 
     if (curr != HANDLE_INVALID)
@@ -179,6 +203,8 @@ handle Sys_EnumerateLoadedDrivers(handle curr)
 // Queries the name of the driver in 'drv'.
 obos_status Sys_QueryDriverName(handle driver, char* namebuf, size_t *sznamebuf /* need not be over 64 */)
 {
+    perm_check();
+    
     if (!sznamebuf)
         return OBOS_STATUS_INVALID_ARGUMENT;
 

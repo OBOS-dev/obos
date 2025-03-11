@@ -17,11 +17,13 @@ obos_status Sys_UnloadDriver(handle driver);
 obos_status Sys_PnpLoadDriversAt(handle dent, bool wait);
 
 // Finds a loaded driver by its name, and returns a handle to it.
+// If the calling process has insufficient permissions, HANDLE_INVALID is returned.
 handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */);
 
 // Returns the next driver in the list
 // The handle 'curr' is not automatically closed.
 // If 'curr' is HANDLE_INVALID, the first item in the list is returned.
+// If the calling process has insufficient permissions, HANDLE_INVALID is returned.
 handle Sys_EnumerateLoadedDrivers(handle curr);
 
 // Queries the name of the driver in 'drv'.
