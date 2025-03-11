@@ -18,7 +18,8 @@ enum modifiers {
     FN = BIT(4),
     CAPS_LOCK = BIT(5),
     NUM_LOCK = BIT(6),
-    KEY_RELEASED = BIT(6),
+    KEY_RELEASED = BIT(7),
+    NUMPAD = BIT(8),
 };
 
 typedef enum scancode {
@@ -118,9 +119,9 @@ typedef enum scancode {
 
 /*
  * Format:
- *  0-7: Scancode (see enum scancode)
- * 8-15: Modifier bits (see enum modifiers)
+ *  0-15: Scancode (see enum scancode)
+ * 16-31: Modifier bits (see enum modifiers)
  * Reading from any keyboard device will yield a "keycode" as
  * defined above.
 */
-typedef uint16_t keycode;
+typedef uint32_t keycode;
