@@ -22,6 +22,7 @@ enum modifiers {
     NUMPAD = BIT(8),
 };
 
+/* NOTE: Only 7-bits! */
 typedef enum scancode {
     SCANCODE_UNKNOWN = 0,
     SCANCODE_A,
@@ -119,9 +120,9 @@ typedef enum scancode {
 
 /*
  * Format:
- *  0-15: Scancode (see enum scancode)
- * 16-31: Modifier bits (see enum modifiers)
+ *  0-6: Scancode (see enum scancode)
+ * 7-15: Modifier bits (see enum modifiers)
  * Reading from any keyboard device will yield a "keycode" as
  * defined above.
 */
-typedef uint32_t keycode;
+typedef uint16_t keycode;
