@@ -212,14 +212,6 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
         return;
     }
 
-    // Enable scanning.
-    res = PS2_SendCommand(port, 0xf4, 0);
-    if (res != PS2_ACK)
-    {
-        Core_LowerIrql(oldIrql);
-        return;
-    }
-
     // Clear keyboard LEDs.
     res = PS2_SendCommand(port, 0xed, 1, 0x0);
     if (res != PS2_ACK)
@@ -262,6 +254,14 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     if (!set)
     {
         OBOS_Error("PS/2: Could not put the keyboard into a defined scancode set (tried sets one and two, neither were recognized).\n");
+        return;
+    }
+
+    // Enable scanning.
+    res = PS2_SendCommand(port, 0xf4, 0);
+    if (res != PS2_ACK)
+    {
+        Core_LowerIrql(oldIrql);
         return;
     }
 
