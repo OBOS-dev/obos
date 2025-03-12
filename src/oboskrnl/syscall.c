@@ -27,6 +27,11 @@
 #include <power/shutdown.h>
 #include <power/suspend.h>
 
+#include <locks/event.h>
+#include <locks/wait.h>
+
+#include <irq/timer.h>
+
 #include <mm/mm_sys.h>
 #include <mm/context.h>
 #include <mm/fork.h>
@@ -136,6 +141,25 @@ void Sys_SetKLogLevel(log_level level)
     OBOS_SetLogLevel(level);
 }
 
+void slp_handler(void* userdata)
+{
+    Core_EventSet((event*)userdata, true);
+}
+
+obos_status Sys_SleepMS(uint64_t ms)
+{
+    event e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    timer* t = Core_TimerObjectAllocate(nullptr);
+    t->handler = slp_handler;
+    t->userdata = &e;
+    obos_status st = Core_TimerObjectInitialize(t, TIMER_MODE_DEADLINE, ms*1000);
+    if (obos_is_error(st))
+        return st;
+    Core_WaitOnObject(WAITABLE_OBJECT(e));
+    Core_TimerObjectFree(t);
+    return OBOS_STATUS_SUCCESS;
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -214,6 +238,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_EnumerateLoadedDrivers,
     (uintptr_t)Sys_QueryDriverName,
     (uintptr_t)Sys_Sync,
+    (uintptr_t)Sys_SleepMS,
 };
 
 // Arch syscall table is defined per-arch

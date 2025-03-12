@@ -329,7 +329,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         }
 
         // Register the GSI.
-        status = Arch_IOAPICMapIRQToVector(port->gsi, port->irq_obj->vector->id+0x20, true, TriggerModeEdgeSensitive);
+        status = Arch_IOAPICMapIRQToVector(port->gsi, port->irq_obj->vector->id+0x20, PolarityActiveHigh, TriggerModeEdgeSensitive);
         if (obos_is_error(status))
         {
             OBOS_Warning("Could not initialize GSI for COM%d. Status: %d.\n", port->com_port, status);

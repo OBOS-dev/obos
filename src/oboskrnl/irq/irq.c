@@ -101,7 +101,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			oldIrql2);
 	}
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoDPCDispatch(oldIrql2);
+	Core_LowerIrqlNoThread(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {
