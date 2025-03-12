@@ -29,7 +29,7 @@ OBOS_PAGEABLE_FUNCTION uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size
     uint8_t res = send_command_impl(port, &status, cmd, nArgs, list);
     if (obos_is_error(status))
     {
-        OBOS_Warning("Timeout while waiting for a response from the PS/2 Keyboard. Aborting\n");
+        OBOS_Warning("Timeout while waiting for a response from the PS/2 Device on channel %c. Aborting\n", port->second ? '2' : '1');
         res = PS2_INVALID_RESPONSE;
         goto done;
     }

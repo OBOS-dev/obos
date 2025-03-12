@@ -124,7 +124,7 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
     KEYCODE_ADD_MODIFIER(code, data->num_lock ? NUM_LOCK : 0);
     KEYCODE_ADD_MODIFIER(code, data->super_key ? SUPER_KEY : 0);
 
-    OBOS_Debug("Got key %s (0x%02x), modifiers 0x%02x\n", OBOS_ScancodeToString[SCANCODE_FROM_KEYCODE(code)], SCANCODE_FROM_KEYCODE(code), MODIFIERS_FROM_KEYCODE(code));
+    // OBOS_Debug("Got key %s (0x%02x), modifiers 0x%02x\n", OBOS_ScancodeToString[SCANCODE_FROM_KEYCODE(code)], SCANCODE_FROM_KEYCODE(code), MODIFIERS_FROM_KEYCODE(code));
     PS2_RingbufferAppend(&data->input, code, true);
 }
 
