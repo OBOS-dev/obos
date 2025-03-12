@@ -14,7 +14,7 @@ qemu-system-x86_64 \
 -monitor stdio \
 -serial tcp:0.0.0.0:1534,server,nowait \
 -smp cores=1,threads=1,sockets=1 \
--d trace:*ps2_* \
+-d int \
 -D qemu_log.txt "$@"
 
 # -nographic
