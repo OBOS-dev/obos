@@ -177,5 +177,19 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 
     PS2_InitializeKeyboard(&PS2_CtlrData.ports[0]);
 
+    for (size_t i = 0; i < (PS2_CtlrData.dual_channel ? 2 : 1); i++)
+    {
+        ps2_port* port = &PS2_CtlrData.ports[i];
+        if (port->type == PS2_DEV_TYPE_UNKNOWN)
+            continue;
+        vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)port, 0, nullptr, VNODE_TYPE_CHR);
+        char dev_name[6] = {};
+        memcpy(dev_name, port->str_id, 5);
+        dev_name[4] = i == 0 ? '1' : '2';
+        dev_name[5] = 0;
+        OBOS_Debug("%*s: Registering PS/2 Device at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
+        Drv_RegisterVNode(vn, dev_name);
+    }
+
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }
