@@ -43,12 +43,12 @@ OBOS_NO_KASAN OBOS_NO_UBSAN __attribute__((no_instrument_function)) uintptr_t Ar
 	return UNMAP_FROM_HHDM(virt);
 }
 
-__attribute__((no_instrument_function)) void* MmS_MapVirtFromPhys(uintptr_t addr)
+__attribute__((no_instrument_function)) OBOS_EXPORT void* MmS_MapVirtFromPhys(uintptr_t addr)
 {
 	return Arch_MapToHHDM(addr);
 }
 
-__attribute__((no_instrument_function)) uintptr_t MmS_UnmapVirtFromPhys(void* virt)
+__attribute__((no_instrument_function)) OBOS_EXPORT uintptr_t MmS_UnmapVirtFromPhys(void* virt)
 {
 	return Arch_UnmapFromHHDM(virt);
 }

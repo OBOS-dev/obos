@@ -100,10 +100,8 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 			irq_obj->handlerUserdata,
 			oldIrql2);
 	}
-	//else if (frame->vector == 0x60)
-		//printf("no irq handler\n");
 	CoreS_ExitIRQHandler(frame);
-	Core_LowerIrqlNoThread(oldIrql2);
+	Core_LowerIrqlNoDPCDispatch(oldIrql2);
 }
 obos_status Core_InitializeIRQInterface()
 {

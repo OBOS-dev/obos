@@ -23,15 +23,7 @@ obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     event->signaled = true;
-    if (event->type == EVENT_SYNC)
-    {
-        CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
-        event->signaled = false;
-        CoreH_ClearSignaledState(&event->hdr);
-        Core_LowerIrql(oldIrql);
-        return OBOS_STATUS_SUCCESS;
-    }
-    CoreH_SignalWaitingThreads(&event->hdr, false, boostWaitingThreadPriority);
+    CoreH_SignalWaitingThreads(&event->hdr, !(event->type == EVENT_SYNC), boostWaitingThreadPriority);
     event->signaled = false;
     CoreH_ClearSignaledState(&event->hdr);
     Core_LowerIrql(oldIrql);

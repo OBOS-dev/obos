@@ -165,9 +165,8 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_PIPE_STYLE_DEVICE|DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI|DRIVER_HEADER_HAS_VERSION_FIELD,
-    .acpiId.nPnpIds = 2,
+    .acpiId.nPnpIds = 1,
     .acpiId.pnpIds = {
-        "PNP0500", // Standard PC COM port
         "PNP0501", // 16550A-compatible COM port
     },
     .ftable = {

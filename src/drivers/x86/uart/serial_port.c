@@ -187,10 +187,11 @@ void com_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_ve
     OBOS_UNUSED(i);
     OBOS_UNUSED(from);
     serial_port* port = (serial_port*)userdata;
-    obos_status status = Arch_IOAPICMapIRQToVector(port->gsi, 0, true, TriggerModeEdgeSensitive);
+    obos_status status = Arch_IOAPICMapIRQToVector(port->gsi, 0, PolarityActiveHigh, TriggerModeEdgeSensitive);
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "IOAPIC: Could not unmap GSI %d. Status: %d\n", port->gsi, status);
-    status = Arch_IOAPICMapIRQToVector(port->gsi, to->id+0x20, true, TriggerModeEdgeSensitive);
+    status = Arch_IOAPICMapIRQToVector(port->gsi, to->id+0x20, PolarityActiveHigh, TriggerModeEdgeSensitive);
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "IOAPIC: Could not map GSI %d. Status: %d\n", port->gsi, status);
+    Arch_IOAPICMaskIRQ(port->gsi, false);
 }

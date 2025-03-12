@@ -98,6 +98,7 @@ typedef struct driver_id
     // The node in Drv_LoadedFsDrivers
     driver_node other_node;
     thread* main_thread;
+    bool started;
 } driver_id;
 // To be filled out by the arch-specific code of the kernel before the driver interface is called.
 extern driver_list Drv_LoadedDrivers;

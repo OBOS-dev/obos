@@ -32,6 +32,13 @@ static struct exec_aux_values aux;
 
 void OBOS_LoadInit()
 {
+    bool should_load_init = OBOS_GetOPTF("no-init");
+    if (should_load_init)
+    {
+        OBOS_Log("%s: Not loading init due to kernel command line option 'no-init'\n", __func__);
+        return;
+    }
+
     // Freed while handing off control to init.
     char* init_path = OBOS_GetOPTS("init-path");
     fd init_fd = {};

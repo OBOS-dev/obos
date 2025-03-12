@@ -303,7 +303,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         OBOS_TextRendererState.column = 0;
         OBOS_TextRendererState.row = 0;
         OBOS_TextRendererState.font = font_bin;
-        // OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+        OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
         if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
             return;
     }
@@ -808,23 +808,22 @@ void Arch_KernelMainBootstrap()
             Free(OBOS_KernelAllocator, path, namelen+1);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
                 continue;
             }
-            Vfs_FdSeek(&file, 0, SEEK_END);
-            size_t filesize = Vfs_FdTellOff(&file);
-            Vfs_FdSeek(&file, 0, SEEK_SET);
+            size_t filesize = file.vn->filesize;
             void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 Vfs_FdClose(&file);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+                left -= namelen;
                 continue;
             }
             driver_id* drv = 
@@ -833,10 +832,11 @@ void Arch_KernelMainBootstrap()
             Vfs_FdClose(&file);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+                left -= namelen;
                 continue;
             }
             thread* main = nullptr;
@@ -850,14 +850,15 @@ void Arch_KernelMainBootstrap()
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+                left -= namelen;
                 continue;
             }
             if (status != OBOS_STATUS_NO_ENTRY_POINT)
             {
-                while ((main->flags & THREAD_FLAGS_DIED))
+                while (drv->main_thread && !(drv->main_thread->flags & THREAD_FLAGS_DIED))
                     OBOSS_SpinlockHint();
-                if (!(--main->references) && main->free)
-                    main->free(main);
+                if (drv->main_thread && !(--drv->main_thread->references) && drv->main_thread->free)
+                    drv->main_thread->free(drv->main_thread);
             }
             if (namelen != len)
                 namelen++;
