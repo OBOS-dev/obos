@@ -66,6 +66,8 @@ typedef struct ps2_port {
     uint32_t magic;
     uint32_t gsi;
     
+    uint16_t model;
+
     char type;
 
     bool works : 1;
