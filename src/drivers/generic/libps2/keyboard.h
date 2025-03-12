@@ -20,7 +20,8 @@
 #define PS2K_INVALID 0xff
 
 enum {
-    PS2K_MAGIC_VALUE = 0xFEE1DEAD
+    PS2K_MAGIC_VALUE = 0xFEE1DEAD,
+    PS2K_HND_MAGIC_VALUE = 0xFEE1DEAE
 };
 
 typedef struct ps2k_ringbuffer
@@ -35,6 +36,12 @@ typedef struct ps2k_ringbuffer
     size_t out_ptr;
     size_t handle_count;
 } ps2k_ringbuffer;
+
+typedef struct ps2k_handle {
+    uint32_t magic; // PS2K_HND_MAGIC_VALUE
+    ps2_port* port;
+    size_t in_ptr;
+} ps2k_handle;
 
 obos_status PS2_RingbufferInitialize(ps2k_ringbuffer* buff);
 obos_status PS2_RingbufferAppend(ps2k_ringbuffer* buff, keycode code, bool signal);

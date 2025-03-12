@@ -152,6 +152,12 @@ obos_status PS2_InitializeController()
         PS2_CtlrData.ports[i].irq->handlerUserdata = PS2_CtlrData.ports+i;
         PS2_CtlrData.ports[i].irq->moveCallback = ps2_irq_move_callback;
         PS2_CtlrData.ports[i].irq->handler = ps2_irq_handler;
+        PS2_CtlrData.ports[i].id[0] = 'p';
+        PS2_CtlrData.ports[i].id[1] = 's';
+        PS2_CtlrData.ports[i].id[2] = '2';
+        PS2_CtlrData.ports[i].id[3] = PS2_CtlrData.ports[i].type;
+        PS2_CtlrData.ports[i].padding = 0;
+        PS2_CtlrData.ports[i].magic = PS2_PORT_MAGIC;
         Core_IrqObjectInitializeIRQL(PS2_CtlrData.ports[i].irq, IRQL_PS2, false, true);
         Arch_IOAPICMapIRQToVector(PS2_CtlrData.ports[i].gsi, PS2_CtlrData.ports[i].irq->vector->id+0x20, PolarityActiveHigh, TriggerModeEdgeSensitive);
         Arch_IOAPICMaskIRQ(PS2_CtlrData.ports[i].gsi, false);
@@ -172,7 +178,7 @@ obos_status PS2_InitializeController()
     write_ctlr_status(ctlr_config);
 
     Core_LowerIrql(oldIrql);
-    
+
     return OBOS_STATUS_SUCCESS;
 }
 

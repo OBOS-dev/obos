@@ -16,8 +16,11 @@
 #include <mm/pmm.h>
 
 #include <locks/event.h>
+#include <locks/wait.h>
 
 #include <vfs/keycode.h>
+
+#include <allocators/base.h>
 
 #include "keyboard.h"
 #include "scancode_tables.h"
@@ -91,13 +94,11 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
     {
         data->caps_lock = !data->caps_lock;
         changed_status = true;
-        printf("set caps lock to %s\n", data->caps_lock ? "true":"false");
     }
     if (MODIFIERS_FROM_KEYCODE(*raw_code) & NUM_LOCK && released)
     {
         data->num_lock = !data->num_lock;
         changed_status = true;
-        printf("set num lock to %s\n", data->num_lock ? "true":"false");
     }
 
     if (changed_status)
@@ -156,6 +157,49 @@ static OBOS_PAGEABLE_FUNCTION uint8_t send_command(ps2_port* port, uint8_t cmd, 
     done:
     va_end(list);
     return res;
+}
+
+obos_status read_code(void* handle, keycode* out, bool block)
+{
+    ps2k_handle* hnd = handle;
+    if (hnd->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = hnd->port;
+    ps2k_data* data = port->pudata;
+
+    if (hnd->in_ptr == data->input.out_ptr)
+    {
+        if (!Core_EventGetState(port->data_ready_event) && !block)
+            return OBOS_STATUS_WOULD_BLOCK;
+
+        Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
+    }
+
+    return PS2_RingbufferFetch(&data->input, &hnd->in_ptr, out);
+}
+
+obos_status get_readable_count(void* handle, size_t* nReadable)
+{
+    ps2k_handle* hnd = handle;
+    if (hnd->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = hnd->port;
+    ps2k_data* data = port->pudata;
+    *nReadable = (hnd->in_ptr - data->input.out_ptr);
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status make_handle(struct ps2_port* port, void** handle)
+{
+    ps2k_data* data = port->pudata;
+    if (data->ps2k_magic != PS2K_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2k_handle* hnd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ps2k_handle), nullptr);
+    hnd->magic = PS2K_HND_MAGIC_VALUE;
+    hnd->port = port;
+    hnd->in_ptr = data->input.out_ptr;
+    *handle = hnd;
+    return OBOS_STATUS_SUCCESS;
 }
 
 OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
@@ -253,10 +297,21 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     port->suppress_irqs = false;
 
     data->set = set;
+
+    port->data_ready_event = &data->input.e;
+    port->read_code = read_code;
+    port->make_handle = make_handle;
+    port->get_readable_count = get_readable_count;
+
     OBOS_Log("PS/2: Successfully initialized keyboard on channel %c\n", port->second ? '2' : '1');
     OBOS_Debug("PS/2 Keyboard is using scancode set %d\n", data->set);
     data->initialized = true;
     PS2_RingbufferInitialize(&data->input);
+
+    port->type = PS2_DEV_TYPE_KEYBOARD;
+    port->id[3] = port->type;
+    make_handle(port, &port->default_handle);
+    port->blk_size = sizeof(keycode);
 }
 
 obos_status PS2_RingbufferInitialize(ps2k_ringbuffer* buff)
