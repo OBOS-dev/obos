@@ -157,7 +157,7 @@ obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
         return st;
     timer_tick start = CoreS_GetTimerTick();
     st = Core_WaitOnObject(WAITABLE_OBJECT(e));
-    if (obos_is_error(st))
+    if (obos_is_error(st) && uleft)
     {
         timer_tick end = CoreS_GetTimerTick();
         Core_CancelTimer(t);
