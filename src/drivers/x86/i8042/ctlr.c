@@ -243,3 +243,10 @@ obos_status PS2_FlushInput()
         inb(PS2_DATA);
     return OBOS_STATUS_SUCCESS;
 }
+
+ps2_port* PS2_GetPort(bool channel_two)
+{
+    if (!PS2_CtlrData.ports[channel_two ? 1 : 0].works)
+        return nullptr;
+    return &PS2_CtlrData.ports[channel_two ? 1 : 0];
+}

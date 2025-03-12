@@ -31,5 +31,3 @@ target_link_options(i8042
 	PRIVATE ${TARGET_DRIVER_LINKER_OPTIONS}
 )
 target_compile_definitions(i8042 PRIVATE OBOS_DRIVER=1)
-
-target_link_libraries(i8042 PRIVATE ps2)

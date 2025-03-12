@@ -71,11 +71,11 @@ typedef struct ps2_port {
     bool works : 1;
     bool suppress_irqs : 1;
     bool second : 1;
-
 } ps2_port;
 
-void PS2_DeviceWrite(bool channel_two, uint8_t val);
-uint8_t PS2_DeviceRead(uint32_t spin_timeout, obos_status* status);
-obos_status PS2_EnableChannel(bool channel_two, bool status);
-obos_status PS2_MaskChannelIRQs(bool channel_two, bool mask);
-obos_status PS2_FlushInput();
+DRV_EXPORT void PS2_DeviceWrite(bool channel_two, uint8_t val);
+DRV_EXPORT uint8_t PS2_DeviceRead(uint32_t spin_timeout, obos_status* status);
+DRV_EXPORT obos_status PS2_EnableChannel(bool channel_two, bool status);
+DRV_EXPORT obos_status PS2_MaskChannelIRQs(bool channel_two, bool mask);
+DRV_EXPORT obos_status PS2_FlushInput();
+DRV_EXPORT ps2_port* PS2_GetPort(bool channel_two);

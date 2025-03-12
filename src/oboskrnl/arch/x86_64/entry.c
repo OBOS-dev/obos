@@ -808,7 +808,7 @@ void Arch_KernelMainBootstrap()
             Free(OBOS_KernelAllocator, path, namelen+1);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
@@ -818,11 +818,12 @@ void Arch_KernelMainBootstrap()
             void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 Vfs_FdClose(&file);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+                left -= namelen;
                 continue;
             }
             driver_id* drv = 
@@ -831,10 +832,11 @@ void Arch_KernelMainBootstrap()
             Vfs_FdClose(&file);
             if (obos_is_error(status))
             {
-                OBOS_Warning("Could not load driver %*s. Status: %d\n", namelen, iter, status);
+                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+                left -= namelen;
                 continue;
             }
             thread* main = nullptr;
@@ -848,6 +850,7 @@ void Arch_KernelMainBootstrap()
                 if (namelen != len)
                     namelen++;
                 iter += namelen;
+            left -= namelen;
                 continue;
             }
             if (status != OBOS_STATUS_NO_ENTRY_POINT)
