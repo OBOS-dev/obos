@@ -152,6 +152,7 @@ obos_status PS2_InitializeController()
         PS2_CtlrData.ports[i].irq->handlerUserdata = PS2_CtlrData.ports+i;
         PS2_CtlrData.ports[i].irq->moveCallback = ps2_irq_move_callback;
         PS2_CtlrData.ports[i].irq->handler = ps2_irq_handler;
+        PS2_CtlrData.ports[i].type = PS2_DEV_TYPE_UNKNOWN;
         PS2_CtlrData.ports[i].id[0] = 'p';
         PS2_CtlrData.ports[i].id[1] = 's';
         PS2_CtlrData.ports[i].id[2] = '2';

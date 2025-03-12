@@ -6,7 +6,7 @@
 # into a file is to allow PS/2 keyboard/mouse drivers to be shared between 
 # platforms with different controllers.
 
-add_library(ps2 STATIC "keyboard.c")
+add_library(ps2 STATIC "keyboard.c" "detect.c")
 
 target_compile_options(ps2
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>

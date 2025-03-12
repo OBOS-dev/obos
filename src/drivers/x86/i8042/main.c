@@ -26,7 +26,7 @@
 
 #include <uacpi/utilities.h>
 
-#include <generic/libps2/keyboard.h>
+#include <generic/libps2/detect.h>
 #include <generic/libps2/controller.h>
 
 #include "ps2_structs.h"
@@ -120,7 +120,7 @@ const char* const pnp_ids[] = {
 obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI,
+    .flags = DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_FLAGS_DETECT_VIA_ACPI|DRIVER_HEADER_HAS_STANDARD_INTERFACES,
     .acpiId = {
         .nPnpIds = 3,
         .pnpIds = {
@@ -175,11 +175,12 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize the PS/2 Controller."};
 
-    PS2_InitializeKeyboard(&PS2_CtlrData.ports[0]);
-
     for (size_t i = 0; i < (PS2_CtlrData.dual_channel ? 2 : 1); i++)
     {
         ps2_port* port = &PS2_CtlrData.ports[i];
+        if (!port->works)
+            continue;
+        PS2_DetectDevice(port);
         if (port->type == PS2_DEV_TYPE_UNKNOWN)
             continue;
         vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)port, 0, nullptr, VNODE_TYPE_CHR);

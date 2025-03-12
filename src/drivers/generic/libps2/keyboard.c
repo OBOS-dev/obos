@@ -25,8 +25,7 @@
 #include "keyboard.h"
 #include "scancode_tables.h"
 #include "controller.h"
-
-static OBOS_PAGEABLE_FUNCTION uint8_t send_command(ps2_port* port, uint8_t cmd, size_t nArgs, ...);
+#include "detect.h"
 
 static void keyboard_ready(ps2_port* port, uint8_t scancode)
 {
@@ -109,7 +108,7 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
         if (data->caps_lock)
             led_state |= BIT(2);
         // TODO: Scroll lock.
-        send_command(port, 0xed, 1, led_state);
+        PS2_SendCommand(port, 0xed, 1, led_state);
     }
     
     if (SCANCODE_FROM_KEYCODE(*raw_code) == SCANCODE_UNKNOWN)
@@ -129,35 +128,7 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
     PS2_RingbufferAppend(&data->input, code, true);
 }
 
-static OBOS_PAGEABLE_FUNCTION uint8_t send_command_impl(ps2_port* port, obos_status* status, uint8_t cmd, size_t nArgs, va_list list)
-{
-    PS2_DeviceWrite(port->second, cmd);
-    for (size_t i = 0; i < nArgs; i++)
-        PS2_DeviceWrite(port->second, va_arg(list, uint32_t) & 0xff);
-    return PS2_DeviceRead(0xffff, status);
-}
-
 ps2k_data keyboard_data_buf[2];
-
-static OBOS_PAGEABLE_FUNCTION uint8_t send_command(ps2_port* port, uint8_t cmd, size_t nArgs, ...)
-{
-    obos_status status = OBOS_STATUS_SUCCESS;
-    va_list list;
-    va_start(list, nArgs);
-    uint8_t res = send_command_impl(port, &status, cmd, nArgs, list);
-    if (obos_is_error(status))
-    {
-        OBOS_Warning("Timeout while waiting for a response from the PS/2 Keyboard. Aborting\n");
-        res = PS2K_INVALID;
-        goto done;
-    }
-    if (res == PS2K_ACK)
-        goto ack;
-    ack:
-    done:
-    va_end(list);
-    return res;
-}
 
 obos_status read_code(void* handle, keycode* out, bool block)
 {
@@ -219,7 +190,7 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
 
     port->data_ready = keyboard_ready;
 
-    uint8_t res = send_command(port, 0xff, 0);
+    uint8_t res = PS2_SendCommand(port, 0xff, 0);
     if (res != 0xfa)
     {
         Core_LowerIrql(oldIrql);
@@ -234,24 +205,24 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     }
 
 	// Keys need to held for 250 ms before repeating, and they repeat at a rate of 30 hz (33.33333 ms).
-    res = send_command(port, 0xf3, 1, 0x00);
-    if (res != PS2K_ACK)
+    res = PS2_SendCommand(port, 0xf3, 1, 0x00);
+    if (res != PS2_ACK)
     {
         Core_LowerIrql(oldIrql);
         return;
     }
 
     // Enable scanning.
-    res = send_command(port, 0xf4, 0);
-    if (res != PS2K_ACK)
+    res = PS2_SendCommand(port, 0xf4, 0);
+    if (res != PS2_ACK)
     {
         Core_LowerIrql(oldIrql);
         return;
     }
 
     // Clear keyboard LEDs.
-    res = send_command(port, 0xed, 1, 0x0);
-    if (res != PS2K_ACK)
+    res = PS2_SendCommand(port, 0xed, 1, 0x0);
+    if (res != PS2_ACK)
     {
         Core_LowerIrql(oldIrql);
         return;
@@ -272,18 +243,18 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     while (!found)
     {
         bool retried = false;
-        res = send_command(port, 0xf0, 1, set);
-        if (res == PS2K_RESEND && !retried)
+        res = PS2_SendCommand(port, 0xf0, 1, set);
+        if (res == PS2_RESEND && !retried)
         {
             retried = true;
             continue;
         }
-        if (set == ALTERNATE_SET && res == PS2K_RESEND)
+        if (set == ALTERNATE_SET && res == PS2_RESEND)
         {
             set = 0;
             break;
         }
-        if (res == PS2K_RESEND)
+        if (res == PS2_RESEND)
             set = ALTERNATE_SET;
         else
             found = true;

@@ -15,9 +15,9 @@
 
 #include "controller.h"
 
-#define PS2K_ACK 0xfa
-#define PS2K_RESEND 0xfe
-#define PS2K_INVALID 0xff
+#define PS2_ACK 0xfa
+#define PS2_RESEND 0xfe
+#define PS2_INVALID_RESPONSE 0xff
 
 enum {
     PS2K_MAGIC_VALUE = 0xFEE1DEAD,
