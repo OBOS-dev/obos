@@ -110,7 +110,10 @@ OBOS_EXPORT timer_tick CoreH_TimeFrameToTick(uint64_t us);
 /// <param name="tick">The tick to be converted.</param>
 /// <param name="native_tick">Whether the tick passed is a native tick or a normal tick.</param>
 /// <returns>The tick count in nanoseconds..</returns>
-OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, uint64_t native_tick);
+OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, bool native_tick);
+
+
+uint64_t CoreS_TimerTickToNS(timer_tick tp);
 
 /// <summary>
 /// Initializes the timer irq (should already be allocated) and the timer.

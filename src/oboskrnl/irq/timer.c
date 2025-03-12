@@ -212,7 +212,7 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us)
 // #endif
 }
 
-OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, uint64_t native_tick)
+OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, bool native_tick)
 {
     if (native_tick)
     {

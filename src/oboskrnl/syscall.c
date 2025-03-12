@@ -146,7 +146,7 @@ void slp_handler(void* userdata)
     Core_EventSet((event*)userdata, true);
 }
 
-obos_status Sys_SleepMS(uint64_t ms)
+obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
 {
     event e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     timer* t = Core_TimerObjectAllocate(nullptr);
@@ -155,9 +155,17 @@ obos_status Sys_SleepMS(uint64_t ms)
     obos_status st = Core_TimerObjectInitialize(t, TIMER_MODE_DEADLINE, ms*1000);
     if (obos_is_error(st))
         return st;
-    Core_WaitOnObject(WAITABLE_OBJECT(e));
+    timer_tick start = CoreS_GetTimerTick();
+    st = Core_WaitOnObject(WAITABLE_OBJECT(e));
+    if (obos_is_error(st))
+    {
+        timer_tick end = CoreS_GetTimerTick();
+        Core_CancelTimer(t);
+        uint64_t left = CoreS_TimerTickToNS(end-start) / 1000000;
+        memcpy_k_to_usr(uleft, &left, sizeof(size_t));
+    }
     Core_TimerObjectFree(t);
-    return OBOS_STATUS_SUCCESS;
+    return st;
 }
 
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
