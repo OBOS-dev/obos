@@ -118,6 +118,8 @@ typedef enum scancode {
     */
 } scancode;
 
+OBOS_EXPORT extern const char* OBOS_ScancodeToString[84];
+
 /*
  * Format:
  *  0-6: Scancode (see enum scancode)
@@ -126,3 +128,8 @@ typedef enum scancode {
  * defined above.
 */
 typedef uint16_t keycode;
+#define KEYCODE(scancode, modifiers) (uint16_t)((uint16_t)((scancode) & 0x7f) | ((uint16_t)((modifiers) & 0x1ff) << 7))
+#define MODIFIERS_FROM_KEYCODE(code) (enum modifiers)(((uint16_t)(code) >> 7) & 0x1ff)
+#define SCANCODE_FROM_KEYCODE(code) (enum scancode)((uint16_t)(code) & 0x7f)
+#define KEYCODE_ADD_MODIFIER(code, modifier) ((code) |= ((modifier) << 7))
+#define KEYCODE_CLEAR_MODIFIER(code, modifier) ((code) &= ~((modifier) << 7))
