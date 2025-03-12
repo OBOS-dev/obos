@@ -159,6 +159,12 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             *status = st;
         return nullptr;
     }
+    if (!header_.ftable.driver_cleanup_callback)
+    {
+        OBOS_Error("%s: Refusing to load a driver without a cleanup callback.\n", __func__);
+        if (status) *status = OBOS_STATUS_INVALID_HEADER;
+        return nullptr;
+    }
     driver_id* driver = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_id), nullptr);
     Elf_Sym* dynamicSymbolTable = nullptr;
     size_t nEntriesDynamicSymbolTable = 0;
