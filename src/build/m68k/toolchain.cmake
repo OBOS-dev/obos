@@ -21,9 +21,9 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 
-execute_process(COMMAND m68k-obos-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC)
+execute_process(COMMAND m68k-obos-gcc -print-file-name=libgcc.a OUTPUT_VARIABLE LIBGCC_TARGET)
 
-string(STRIP "${LIBGCC}" LIBGCC)
+string(STRIP "${LIBGCC_TARGET}" LIBGCC_TARGET)
 
 find_program(HAS_m68k_elf_objcopy "m68k-obos-objcopy")
 find_program(HAS_m68k_elf_nm "m68k-obos-nm")

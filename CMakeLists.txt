@@ -48,6 +48,8 @@ project(
 	HOMEPAGE_URL https://github.com/OBOS-dev/obos
 	)
 
+set (LIBGCC "${LIBGCC_TARGET}" CACHE STRING "A path to a libgcc binary for the target, if one does not exist yet")
+
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	enable_language(ASM_NASM)
 else()
