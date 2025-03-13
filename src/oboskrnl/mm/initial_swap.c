@@ -14,6 +14,7 @@
 #include <mm/page.h>
 #include <mm/pmm.h>
 #include <mm/initial_swap.h>
+#include <mm/alloc.h>
 
 #include <utils/tree.h>
 #include <utils/hashmap.h>
@@ -68,7 +69,7 @@ typedef struct swap_mem_tag
 } swap_mem_tag;
 static void* swap_malloc(size_t sz)
 {
-    allocator_info* alloc = OBOS_NonPagedPoolAllocator ? OBOS_NonPagedPoolAllocator : OBOS_KernelAllocator;
+    allocator_info* alloc = Mm_Allocator ? Mm_Allocator : OBOS_KernelAllocator;
     swap_mem_tag* tag = alloc->ZeroAllocate(alloc, 1, sz+sizeof(swap_mem_tag), nullptr);
     tag->allocator = alloc;
     tag->sz = sz+sizeof(swap_mem_tag);
