@@ -22,8 +22,10 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    - name: Make empty initrd.tar file
+      run: touch ${{ github.workspace }}/config/initrd.tar
+
     - name: Configure CMake
-      # TODO: Test m68k-obos.
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}/x86_64
         -DCMAKE_BUILD_TYPE=Release
@@ -34,8 +36,11 @@ jobs:
         -S ${{ github.workspace }}
 
     - name: Build
+      working-directory: ${{ github.workspace }}/scripts
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }}/x86_64 
+          ./generate_initrd-x86_64.sh
+          cmake --build ${{ steps.strings.outputs.build-output-dir }}/x86_64 
 
 # TODO: Tests
 #    - name: Test
