@@ -178,6 +178,7 @@ const char* syscall_to_string[] = {
     "Sys_EnumerateLoadedDrivers",
     "Sys_QueryDriverName",
     "Sys_Sync",
+    "Sys_SleepMS",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
