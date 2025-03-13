@@ -40,7 +40,7 @@ jobs:
         -DOBOS_USE_CLANG=ON
         -DOBOS_ENABLE_UBSAN=ON
         -DOBOS_ENABLE_WERROR=ON
-        -DLIBGCC=${{ libgcc-binaries-directory }}/libgcc-x86_64-no-red-zone.a
+        -DLIBGCC=${{ steps.strings.outputs.libgcc-binaries-directory }}/libgcc-x86_64-no-red-zone.a
         --toolchain ${{ github.workspace }}/src/build/x86_64/toolchain.cmake
         -S ${{ github.workspace }}
 
