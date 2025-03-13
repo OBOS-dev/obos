@@ -14,6 +14,7 @@
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
 #include <vfs/limits.h>
+#include <vfs/pagecache.h>
 
 #include <allocators/base.h>
 
@@ -40,7 +41,7 @@ static iterate_decision read_callback(uint32_t cluster, obos_status stat, void* 
     size_t cluster_offset = udata[5];
     fat_cache* cache = (void*)udata[6];
     obos_status* status = (void*)udata[7];
-    uint8_t* cluster_buf = (void*)udata[8];
+    const uint8_t* cluster_buf = nullptr;
     const size_t bytesPerCluster = (cache->bpb->sectorsPerCluster*cache->blkSize);
     if (stat != OBOS_STATUS_EOF && stat != OBOS_STATUS_SUCCESS)
     {
@@ -48,10 +49,9 @@ static iterate_decision read_callback(uint32_t cluster, obos_status stat, void* 
         return ITERATE_DECISION_STOP;
     }
     Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster)*cache->blkSize, SEEK_SET);
-    *status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
+    cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, false);
     if (obos_is_error(*status))
     {
-        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
         Core_MutexRelease(&cache->fd_lock);
         return ITERATE_DECISION_STOP;
     }
@@ -93,14 +93,13 @@ obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffs
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
     if (blkOffset)
         cluster += blkOffset/bytesPerCluster;
-    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     size_t current_offset = 0;
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
     uint8_t *buf = buf_;
     Core_MutexAcquire(&cache->fd_lock);
     obos_status status = OBOS_STATUS_SUCCESS;
-    uintptr_t udata[9] = {
+    uintptr_t udata[8] = {
         (uintptr_t)buf,
         (uintptr_t)0, /* i */
         (uintptr_t)nClustersToRead,
@@ -109,13 +108,11 @@ obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffs
         (uintptr_t)cluster_offset,
         (uintptr_t)cache,
         (uintptr_t)&status,
-        (uintptr_t)cluster_buf,
     };
     FollowClusterChain(cache, cluster, read_callback, udata);
     Core_MutexRelease(&cache->fd_lock);
     if (nBlkRead)
         *nBlkRead = (blkCount-(bytesLeft >= 0 ? bytesLeft : 0));
-    FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
     return status;
 }
 obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)

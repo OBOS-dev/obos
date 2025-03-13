@@ -432,8 +432,8 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         fileoff = ClusterToSector(cache, cluster)*cache->blkSize;
         entry_cluster = cluster;
     }
-    Vfs_FdSeek(cache->volume, fileoff/cache->blkSize*cache->blkSize, SEEK_SET);
-    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, false);
+    Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
+    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, false);
     fileoff = Vfs_FdTellOff(cache->volume);
     fat_dirent* curr = buf+(fileoff%blkSize);
     for (size_t i = 0; i < nEntries; i++)
@@ -450,7 +450,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 // Simply read the next sector.
                 Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
                 fileoff = Vfs_FdTellOff(cache->volume);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, true);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
                 curr = buf;
             }
             else
