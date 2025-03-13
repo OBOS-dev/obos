@@ -26,7 +26,7 @@ jobs:
       # TODO: Test m68k-obos.
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}/x86_64
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_BUILD_TYPE=Release
         -DOBOS_USE_CLANG=ON
         -DOBOS_ENABLE_UBSAN=ON
         -DOBOS_ENABLE_WERROR=ON
