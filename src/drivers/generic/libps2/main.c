@@ -83,8 +83,22 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what && request && argp);
-    return OBOS_STATUS_INVALID_IOCTL;
+    if (!argp || !what)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = (void*)what;
+    if (port->magic != PS2_PORT_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    obos_status st = OBOS_STATUS_SUCCESS;
+    switch (request)
+    {
+        case 1:
+            st = port->get_readable_count(port->default_handle, argp);
+            break;
+        default:
+            st = OBOS_STATUS_INVALID_IOCTL;
+            break;
+    }
+    return st;
 }
 void cleanup()
 {
