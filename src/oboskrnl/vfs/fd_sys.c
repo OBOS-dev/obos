@@ -584,7 +584,7 @@ obos_status Sys_Mount(const char* uat, const char* uon)
         return status;
     }
     on = ZeroAllocate(OBOS_KernelAllocator, sz_path_2 + 1, sizeof(char), nullptr);
-    OBOSH_ReadUserString(uat, on, nullptr);
+    OBOSH_ReadUserString(uon, on, nullptr);
 
     dirent* ent = VfsH_DirentLookup(on);
     if (!ent)

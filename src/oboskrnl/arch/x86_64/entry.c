@@ -855,10 +855,8 @@ void Arch_KernelMainBootstrap()
             }
             if (status != OBOS_STATUS_NO_ENTRY_POINT)
             {
-                while (drv->main_thread && !(drv->main_thread->flags & THREAD_FLAGS_DIED))
+                while (drv->main_thread)
                     OBOSS_SpinlockHint();
-                if (drv->main_thread && !(--drv->main_thread->references) && drv->main_thread->free)
-                    drv->main_thread->free(drv->main_thread);
             }
             if (namelen != len)
                 namelen++;

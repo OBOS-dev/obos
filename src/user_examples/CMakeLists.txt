@@ -15,6 +15,8 @@ add_executable (powerctl "powerctl_example.c")
 add_executable (klog-level "klog_level_example.c")
 add_executable (fork-test "fork_example.c")
 add_executable (mem-usage "mem_usage_example.c")
+add_executable (mount "mount_example.c")
+add_executable (umount "umount_example.c")
 
 if (${OBOS_ARCHITECTURE} STREQUAL "x86_64")
     add_executable(obos-gettime "x86_timeofday_example.c")
