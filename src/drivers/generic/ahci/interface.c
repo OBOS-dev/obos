@@ -79,8 +79,13 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     struct ahci_phys_region curr = {};
     bool wroteback = false;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+#ifndef __x86_64__
     if (base >= OBOS_KERNEL_ADDRESS_SPACE_BASE && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
         ctx = &Mm_KernelContext;
+#else
+    if (base >= 0xffff800000000000 && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
+        ctx = &Mm_KernelContext;
+#endif
     for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
     {
         if (data->physRegionCount >= MAX_PRDT_COUNT)
