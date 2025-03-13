@@ -27,7 +27,9 @@ jobs:
         git clone https://github.com/osdev0/libgcc-binaries.git
 
     - name: Install dependencies.
-      run: sudo apt install xorriso nasm 
+      run: |
+        sudo apt-get update
+        sudo apt-get install xorriso nasm 
 
     - name: Make empty initrd.tar file
       run: touch ${{ github.workspace }}/config/initrd.tar
@@ -44,8 +46,8 @@ jobs:
 
     - name: Build
       working-directory: ${{ github.workspace }}/scripts
-      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: |
+          chmod +x ${{ github.workspace }}/dependencies/hyper/hyper_install-linux-x86_64
           cmake --build ${{ steps.strings.outputs.build-output-dir }}/x86_64 
           ./generate_initrd-x86_64.sh
           cmake --build ${{ steps.strings.outputs.build-output-dir }}/x86_64 
