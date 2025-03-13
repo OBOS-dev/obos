@@ -87,7 +87,7 @@ extern uint64_t Arch_SMPTrampolineCPULocalPtr;
 static _Atomic(bool) ap_initialized;
 static void nmiHandler(interrupt_frame* frame);
 extern void Arch_FlushGDT(uintptr_t gdtr);
-void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackSize)
+OBOS_NO_UBSAN void Arch_CPUInitializeGDT(cpu_local *info, uintptr_t istStack, size_t istStackSize)
 {
 	memzero(info->arch_specific.gdtEntries, sizeof(info->arch_specific.gdtEntries));
 	memzero(&info->arch_specific.tss, sizeof(info->arch_specific.tss));

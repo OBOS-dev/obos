@@ -137,7 +137,7 @@ struct stack_frame
     uintptr_t rip;
 };
 
-stack_frame OBOSS_StackFrameNext(stack_frame curr)
+OBOS_NO_UBSAN stack_frame OBOSS_StackFrameNext(stack_frame curr)
 {
     if (!curr)
     {
@@ -150,7 +150,7 @@ stack_frame OBOSS_StackFrameNext(stack_frame curr)
         return nullptr;
     return curr->down;
 }
-uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
+OBOS_NO_UBSAN uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
 {
     if (!curr)
     {
