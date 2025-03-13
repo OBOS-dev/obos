@@ -323,6 +323,11 @@ obos_status Vfs_Unmount(mount* what)
 {
     if (!what)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
+    // Sync pages.
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
+
     Core_MutexAcquire(&what->lock);
     what->mounted_on->un.mounted = nullptr;
     what->mounted_on->flags &= ~VFLAGS_MOUNTPOINT;

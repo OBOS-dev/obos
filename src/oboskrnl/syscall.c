@@ -247,6 +247,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_QueryDriverName,
     (uintptr_t)Sys_Sync,
     (uintptr_t)Sys_SleepMS,
+    (uintptr_t)Sys_Mount,
+    (uintptr_t)Sys_Unmount,
 };
 
 // Arch syscall table is defined per-arch

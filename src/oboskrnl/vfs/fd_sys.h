@@ -74,3 +74,6 @@ obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRe
 
 // Opens stdin, stdout, and stderr.
 void OBOS_OpenStandardFDs(struct handle_table* tbl);
+
+obos_status Sys_Mount(const char* at, const char* on);
+obos_status Sys_Unmount(const char* at);

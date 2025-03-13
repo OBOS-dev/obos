@@ -179,6 +179,8 @@ const char* syscall_to_string[] = {
     "Sys_QueryDriverName",
     "Sys_Sync",
     "Sys_SleepMS",
+    "Sys_Mount",
+    "Sys_Unmount",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)

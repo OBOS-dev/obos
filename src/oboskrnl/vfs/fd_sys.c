@@ -9,6 +9,7 @@
 #include <handle.h>
 #include <memmanip.h>
 #include <syscall.h>
+#include <partition.h>
 
 #include <allocators/base.h>
 
@@ -25,6 +26,8 @@
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 #include <vfs/mount.h>
+
+#include <driver_interface/driverId.h>
 
 handle Sys_FdAlloc()
 {
@@ -55,24 +58,6 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
-    if (strcmp(path, "/dev/stderr"))
-    {
-        Vfs_Free(fd->un.fd);
-        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 2, HANDLE_TYPE_FD, false, &status)->un.fd;
-        return OBOS_STATUS_SUCCESS;
-    }
-    else if (strcmp(path, "/dev/stdout"))
-    {
-        Vfs_Free(fd->un.fd);
-        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 1, HANDLE_TYPE_FD, false, &status)->un.fd;
-        return OBOS_STATUS_SUCCESS;
-    }
-    else if (strcmp(path, "/dev/stdin"))
-    {
-        Vfs_Free(fd->un.fd);
-        fd->un.fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), 0, HANDLE_TYPE_FD, false, &status)->un.fd;
-        return OBOS_STATUS_SUCCESS;
-    }
     status = Vfs_FdOpen(fd->un.fd, path, oflags);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
@@ -567,4 +552,74 @@ void Sys_Sync()
 {
     Mm_WakePageWriter(true);
     Mm_WakePageWriter(true);
+}
+
+static driver_id* detect_fs_driver(vnode* vn)
+{
+    if (vn->nPartitions == 1)
+        return vn->partitions[0].fs_driver;
+    else
+        return nullptr;
+} 
+
+obos_status Sys_Mount(const char* uat, const char* uon)
+{
+    if (!uat || !uon)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    char* at = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uat, at, nullptr);
+
+    char* on = nullptr;
+    size_t sz_path_2 = 0;
+    status = OBOSH_ReadUserString(uon, nullptr, &sz_path_2);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, at, sz_path);
+        return status;
+    }
+    on = ZeroAllocate(OBOS_KernelAllocator, sz_path_2 + 1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uat, on, nullptr);
+
+    dirent* ent = VfsH_DirentLookup(on);
+    if (!ent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto done;
+    }
+
+    vdev dev = { .driver=detect_fs_driver(ent->vnode) };
+    if (!dev.driver)
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+    else
+        status = Vfs_Mount(at, ent->vnode, &dev, nullptr);
+
+    done:
+
+    Free(OBOS_KernelAllocator, at, sz_path);
+    Free(OBOS_KernelAllocator, on, sz_path_2);
+
+    return status;
+}
+
+obos_status Sys_Unmount(const char* uat)
+{
+    char* at = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uat, at, nullptr);
+
+    status = Vfs_UnmountP(at);
+
+    Free(OBOS_KernelAllocator, at, sz_path);
+
+    return status;
 }
