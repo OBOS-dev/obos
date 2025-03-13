@@ -9,6 +9,8 @@
 #include <int.h>
 #include <error.h>
 
+#include <vfs/limits.h>
+
 #include <mm/context.h>
 
 #include <vfs/fd.h>
@@ -71,6 +73,7 @@ extern OBOS_EXPORT page* Mm_AnonPage;
 OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.
 OBOS_EXPORT void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status);
+OBOS_EXPORT void* Mm_VirtualMemoryAllocEx(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, uoff_t offset, obos_status* status);
 OBOS_EXPORT obos_status Mm_VirtualMemoryFree(context* ctx, void* base, size_t size);
 // Note: base must be the exact address as returned by VirtualMemoryAlloc.
 // isPageable values:

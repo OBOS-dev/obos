@@ -74,7 +74,7 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
     prot &= ~OBOS_PROTECTION_CACHE_DISABLE;
     flags &= ~VMA_FLAGS_32BITPHYS; // userspace doesn't need this as much as kernel mode
 
-    void* ret = Mm_VirtualMemoryAlloc(vmm_ctx, base, size, prot, flags, file, &status);
+    void* ret = Mm_VirtualMemoryAllocEx(vmm_ctx, base, size, prot, flags, file, args.offset, &status);
     if (pstatus)
         memcpy_k_to_usr(pstatus, &status, sizeof(status));
     return ret;

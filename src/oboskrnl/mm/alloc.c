@@ -139,8 +139,13 @@ static bool pages_exist(context* ctx, void* base, size_t size, bool respectUserP
     return pages_exist(ctx, (void*)(rng->size+rng->virt), size - rng_size, respectUserProtection, kprot);
 }
 
+void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* status)
+{
+    return Mm_VirtualMemoryAllocEx(ctx, base, size, prot, flags, file, file ? file->offset : 0, status);
+}
+
 page* Mm_AnonPage = nullptr;
-void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, obos_status* ustatus)
+void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     set_statusp(ustatus, status);
@@ -183,8 +188,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
         if (file->vn->filesize < size)
             size = file->vn->filesize; // Truncated.
-        if ((file->offset+size > file->vn->filesize))
-            size = (file->offset+size) - file->vn->filesize;
+        if ((offset+size > file->vn->filesize))
+            size = (offset+size) - file->vn->filesize;
         if (size % pgSize)
             size += (pgSize-(size%pgSize));
         if (!(file->flags & FD_FLAGS_READ))
@@ -262,7 +267,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base_, size_t size, prot_flags p
         }
     }
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
-    off_t currFileOff = file ? file->offset : 0;
+    off_t currFileOff = file ? offset : 0;
 
     bool present = false;
     volatile bool isNew = true;
