@@ -22,6 +22,11 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    - name: Get libgcc binaries
+      run: |
+        git clone https://github.com/osdev0/libgcc-binaries.git
+        echo "libgcc-binaries-directory=`realpath libgcc-binaries`"  >> "$GITHUB_OUTPUT"
+
     - name: Install dependencies.
       run: sudo apt install xorriso nasm 
 
@@ -35,6 +40,7 @@ jobs:
         -DOBOS_USE_CLANG=ON
         -DOBOS_ENABLE_UBSAN=ON
         -DOBOS_ENABLE_WERROR=ON
+        -DLIBGCC=${{ libgcc-binaries-directory }}/libgcc-x86_64-no-red-zone.a
         --toolchain ${{ github.workspace }}/src/build/x86_64/toolchain.cmake
         -S ${{ github.workspace }}
 
