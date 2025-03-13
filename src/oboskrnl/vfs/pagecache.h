@@ -9,6 +9,7 @@
 #include <int.h>
 #include <error.h>
 #include <klog.h>
+#include <partition.h>
 
 #include <mm/page.h>
 #include <mm/pmm.h>
@@ -38,7 +39,8 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset, bool mar
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
         OBOS_ASSERT(vn->blkSize);
     }
-    driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset, nullptr);
+    const size_t base_offset = vn->flags & VFLAGS_PARTITION ? (vn->partitions[0].off/vn->blkSize) : 0;
+    OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
     return phys;
 }
 static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, bool mark_dirty)
@@ -52,18 +54,19 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, bool mark_d
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
         OBOS_ASSERT(vn->blkSize);
     }
-    offset *= vn->blkSize;
+    uintptr_t pg_offset = offset % OBOS_PAGE_SIZE;
     offset -= (offset % OBOS_PAGE_SIZE);
+    offset /= vn->blkSize;
     page key = {.file_offset=offset, .backing_vn=vn};
     page* phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &key);
     if (!phys)
     {
         phys = VfsH_PageCacheCreateEntry(vn, offset, mark_dirty);
-        return MmS_MapVirtFromPhys(phys->phys);
+        return MmS_MapVirtFromPhys(phys->phys) + pg_offset;
     }
     if (mark_dirty)
         Mm_MarkAsDirtyPhys(phys);
     else
         Mm_MarkAsStandbyPhys(phys);
-    return MmS_MapVirtFromPhys(phys->phys);
+    return MmS_MapVirtFromPhys(phys->phys) + pg_offset;
 }
