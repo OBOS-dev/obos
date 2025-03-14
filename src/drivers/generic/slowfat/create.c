@@ -149,6 +149,8 @@ static void gen_short_name_impl(const char* long_name, char* name)
         for (uint8_t i = 0; i < 3 && i < strlen(long_name+off); i++)
             name[i+8] = toupper(long_name[off+i]);
     }
+    else
+        memset(name+short_i, ' ', 11-short_i);    
 }
 static void gen_short_name(const char* long_name, char* name, fat_dirent_cache* parent, fat_dirent_cache* dirent)
 {
@@ -433,9 +435,9 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         entry_cluster = cluster;
     }
     Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, false);
+    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
     fileoff = Vfs_FdTellOff(cache->volume);
-    fat_dirent* curr = buf+(fileoff%blkSize);
+    fat_dirent* curr = buf;
     for (size_t i = 0; i < nEntries; i++)
     {
         fat_dirent* curr_dirent = &cache_entry->data;
@@ -479,7 +481,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 Vfs_FdSeek(cache->volume, ClusterToSector(cache, next)*cache->blkSize, SEEK_SET);
                 fileoff = Vfs_FdTellOff(cache->volume);
                 Vfs_FdRead(cache->volume, buf, blkSize, nullptr);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, true);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
                 curr = buf;
             }
         }
