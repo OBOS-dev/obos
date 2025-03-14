@@ -161,7 +161,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         size_t offset = desc->offset;
         for (size_t i = 0; bytesLeft; i += OBOS_PAGE_SIZE)
         {
-            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, false);
+            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, true);
             if (!ent)
             {
                 status = OBOS_STATUS_INTERNAL_ERROR;
