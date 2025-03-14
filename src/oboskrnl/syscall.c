@@ -249,6 +249,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SleepMS,
     (uintptr_t)Sys_Mount,
     (uintptr_t)Sys_Unmount,
+    (uintptr_t)Sys_FdCreat,
+    (uintptr_t)Sys_FdOpenEx,
+    (uintptr_t)Sys_FdOpenAtEx,
 };
 
 // Arch syscall table is defined per-arch

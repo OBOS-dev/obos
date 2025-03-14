@@ -32,6 +32,8 @@ enum
     FD_OFLAGS_WRITE = 2,
     FD_OFLAGS_UNCACHED = 4,
     FD_OFLAGS_NOEXEC = 8,
+    // NOTE: Only handled in syscalls, and is ignored in Vfs_FdOpen*.
+    FD_OFLAGS_CREATE = 16,
 };
 typedef struct fd
 {

@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <handle.h>
 #include <memmanip.h>
@@ -26,6 +27,7 @@
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 #include <vfs/mount.h>
+#include <vfs/create.h>
 
 #include <driver_interface/driverId.h>
 
@@ -39,7 +41,39 @@ handle Sys_FdAlloc()
     return ret;
 }
 
-obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
+static size_t strrfind(const char* str, char ch)
+{
+    int64_t i = strlen(str);
+    for (; i >= 0; i--)
+        if (str[i] == ch)
+           return i;
+    return SIZE_MAX;
+}
+
+static file_perm unix_to_obos_mode(uint32_t mode)
+{
+    file_perm real_mode;
+    if (mode & 001)
+        real_mode.other_exec = true;
+    if (mode & 002)
+        real_mode.other_write = true;
+    if (mode & 004)
+        real_mode.other_read = true;
+    if (mode & 010)
+        real_mode.group_exec = true;
+    if (mode & 020)
+        real_mode.group_write = true;
+    if (mode & 040)
+        real_mode.group_read = true;
+    if (mode & 100)
+        real_mode.owner_exec = true;
+    if (mode & 200)
+        real_mode.owner_write = true;
+    if (mode & 400)
+        real_mode.owner_read = true;
+    return real_mode;
+}
+obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32_t mode)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -58,9 +92,28 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
-    status = Vfs_FdOpen(fd->un.fd, path, oflags);
+    status = Vfs_FdOpen(fd->un.fd, path, oflags & ~FD_OFLAGS_CREATE);
     Free(OBOS_KernelAllocator, path, sz_path);
+    if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
+    {
+        size_t index = strrfind(path, '/');
+        if (index == SIZE_MAX)
+            index = sz_path;
+        char ch = path[index];
+        path[index] = 0;
+        const char* dirname = path;
+        dirent* parent = VfsH_DirentLookup(dirname);
+        path[index] = ch;
+        if (!parent)
+            return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
+        file_perm real_mode = unix_to_obos_mode(mode);
+        status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index), VNODE_TYPE_REG, real_mode);
+    }
     return status;
+}
+obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
+{
+    return Sys_FdOpenEx(desc, upath, oflags & ~FD_OFLAGS_CREATE, 0);
 }
 
 obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
@@ -82,10 +135,14 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags);
+    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags & ~FD_OFLAGS_CREATE);
 }
 
 obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags)
+{
+    return Sys_FdOpenAtEx(desc, ent, name, oflags & ~FD_OFLAGS_CREATE, 0);
+}
+obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -106,9 +163,21 @@ obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t ofl
 
     dirent* real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
     if (!real_dent)
-        return OBOS_STATUS_NOT_FOUND;
+    {
+        if (~oflags & FD_OFLAGS_CREATE)
+            return OBOS_STATUS_NOT_FOUND;
+        status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
+        if (obos_is_error(status))
+            return status;
+        real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
+        OBOS_ASSERT(real_dent);
+    }
 
-    return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags);
+    return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags & ~FD_OFLAGS_CREATE);
+}
+obos_status Sys_FdCreat(handle desc, const char* name, uint32_t mode)
+{
+    return Sys_FdOpenEx(desc, name, FD_OFLAGS_CREATE|FD_OFLAGS_WRITE, mode);
 }
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten)
