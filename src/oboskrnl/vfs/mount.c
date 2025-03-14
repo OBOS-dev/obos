@@ -378,7 +378,7 @@ obos_status Vfs_StatFSInfo(struct vnode* vn, struct drv_fs_info* out)
 {
     if (!vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (vn->flags & VFLAGS_MOUNTPOINT || !out)
+    if (~vn->flags & VFLAGS_MOUNTPOINT || !out)
         return OBOS_STATUS_INVALID_ARGUMENT;
     return vn->un.mounted->fs_driver->driver->header.ftable.stat_fs_info(vn->un.mounted->device, out);
 }
