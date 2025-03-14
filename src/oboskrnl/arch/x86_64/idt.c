@@ -21,22 +21,11 @@
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/irq_vector.h>
-
 #include <arch/x86_64/asm_helpers.h>
 
 extern char Arch_b_isr_handler;
 extern char Arch_e_isr_handler;
 
-struct idtEntry
-{
-	uint16_t offset1;
-	uint16_t selector;
-	uint8_t ist;
-	uint8_t typeAttributes;
-	uint16_t offset2;
-	uint32_t offset3;
-	uint32_t resv1;
-};
 struct idtEntry g_idtEntries[256];
 struct idtPointer
 {
