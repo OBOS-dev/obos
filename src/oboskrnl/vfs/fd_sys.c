@@ -591,6 +591,63 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
     return status;
 }
 
+obos_status Sys_Mkdir(const char* upath, uint32_t mode)
+{
+    char* path = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* found = VfsH_DirentLookup(path);
+    if (found)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+
+    size_t index = strrfind(path, '/');
+    if (index == SIZE_MAX)
+        index = sz_path;
+    char ch = path[index];
+    path[index] = 0;
+    const char* dirname = path;
+    dirent* parent = VfsH_DirentLookup(dirname);
+    path[index] = ch;
+    if (!parent)
+    {
+        Free(OBOS_KernelAllocator, path, sz_path);
+        return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
+    }
+    file_perm real_mode = unix_to_obos_mode(mode);
+    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index), VNODE_TYPE_REG, real_mode);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    return status;
+}
+obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    char* name = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(uname, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    name = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uname, name, nullptr);
+
+    status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    Free(OBOS_KernelAllocator, name, sz_path);
+
+    return status;
+}
+
 static handle alloc_fd(handle_table* tbl)
 {
     handle_desc* desc = nullptr;
