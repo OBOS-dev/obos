@@ -55,8 +55,8 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         *type = SOFT_FAULT;
         if (ec & PF_EC_RW)
             Mm_MarkAsDirtyPhys(phys);
-        MmH_RefPage(phys);
     }
+    MmH_RefPage(phys);
     info->phys = phys->phys;
     info->prot.present = true;
     info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);

@@ -37,9 +37,9 @@ swap_dev* Mm_SwapProvider;
 
 static thread page_writer_thread;
 static thread_node page_writer_thread_node;
-static spinlock swap_lock;
 static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
 static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
+static spinlock swap_lock;
 
 obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
 {
@@ -100,6 +100,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         }
         else if (onStandbyList && !node->pagedCount)
             LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
+        MmH_DerefPage(node);
         // else
         //     OBOS_ASSERT(!"Funny business");
         node->pagedCount++;
@@ -166,7 +167,6 @@ obos_status Mm_ChangeSwapProvider(swap_dev* to)
     OBOS_UNUSED(to);
     return OBOS_STATUS_UNIMPLEMENTED;
 }
-static void mark_standby(page* pg);
 
 static __attribute__((no_instrument_function)) void page_writer()
 {
@@ -182,6 +182,13 @@ static __attribute__((no_instrument_function)) void page_writer()
         for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (~pg->flags & PHYS_PAGE_DIRTY)
+            {
+                // Funny business
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+                pg = next;
+                continue;
+            }
             if (pg->backing_vn)
             {
                 // This is a file page, so writing it back is different than writing back an
@@ -194,12 +201,16 @@ static __attribute__((no_instrument_function)) void page_writer()
                 size_t blkSize = 0;
                 driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
                 nBytes /= blkSize;
-                const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? pg->backing_vn->partitions[0].off : 0;
-                const uintptr_t offset = (pg->file_offset + base_offset) / blkSize;
-                if (!VfsH_LockMountpoint(point))
-                    goto abort;
-                driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
-                VfsH_UnlockMountpoint(point);
+                const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
+                const uintptr_t offset = pg->file_offset + base_offset;
+                // if (!VfsH_LockMountpoint(point))
+                //     goto abort;
+                Core_SpinlockRelease(&swap_lock, oldIrql);
+                obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
+                if (obos_is_error(status))
+                    OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
+                oldIrql = Core_SpinlockAcquire(&swap_lock);
+                // VfsH_UnlockMountpoint(point);
             }
             else 
             {
@@ -219,8 +230,13 @@ static __attribute__((no_instrument_function)) void page_writer()
                 }
             }
             pg->flags &= ~PHYS_PAGE_DIRTY;
-            mark_standby(pg);
-            abort:
+            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+            Mm_DirtyPagesBytes -= (pg->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    
+            LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+            pg->flags |= PHYS_PAGE_STANDBY;
+            
+            // abort:
             pg = next;
         }
         Core_SpinlockRelease(&swap_lock, oldIrql);
@@ -240,15 +256,6 @@ void Mm_MarkAsDirty(page_info* pg)
     Mm_MarkAsDirtyPhys(node);
 }
 
-static void mark_standby(page* pg)
-{
-    // if (pg->virt == 0xffffff0000200000)
-    //     OBOS_Debug("hi");
-    Mm_DirtyPagesBytes -= (pg->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
-    pg->flags |= PHYS_PAGE_STANDBY;
-}
-
 void Mm_MarkAsStandby(page_info* pg)
 {
     page what = {.phys=pg->phys};
@@ -260,7 +267,7 @@ void Mm_MarkAsDirtyPhys(page* node)
 {
     OBOS_ASSERT(node);
 
-    if (--node->pagedCount)
+    if (node->pagedCount && --node->pagedCount)
     {
         node->flags |= PHYS_PAGE_DIRTY;
         return;
@@ -268,6 +275,8 @@ void Mm_MarkAsDirtyPhys(page* node)
  
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
     node->flags |= PHYS_PAGE_DIRTY;
+    node->flags &= ~PHYS_PAGE_STANDBY;
+    MmH_RefPage(node);
     LIST_APPEND(phys_page_list, &Mm_DirtyPageList, node);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Core_SpinlockRelease(&swap_lock, oldIrql);
@@ -282,17 +291,22 @@ void Mm_MarkAsStandbyPhys(page* node)
         return;
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
 
-    if (--node->pagedCount)
+    if (node->pagedCount && --node->pagedCount)
     {
-        node->flags |= PHYS_PAGE_DIRTY;
+        node->flags |= PHYS_PAGE_STANDBY;
         Core_SpinlockRelease(&swap_lock, oldIrql);
         return;
     }
 
     if (node->flags & PHYS_PAGE_DIRTY)
+    {
         LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, node);
+        Mm_DirtyPagesBytes -= (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
     
-    mark_standby(node);
+    MmH_RefPage(node);
+    LIST_APPEND(phys_page_list, &Mm_StandbyPageList, node);
+    node->flags |= PHYS_PAGE_STANDBY;
     Core_SpinlockRelease(&swap_lock, oldIrql);
 }
 
