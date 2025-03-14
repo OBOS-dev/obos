@@ -53,6 +53,13 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!has_write_perm(parent_vn))
         return OBOS_STATUS_ACCESS_DENIED;
+
+    do {
+        dirent* found = VfsH_DirentLookupFrom(name, parent);
+        if (found)
+            return OBOS_STATUS_ALREADY_INITIALIZED;
+    } while(0);
+
     file_type type = 0;
     switch (vtype)
     {
