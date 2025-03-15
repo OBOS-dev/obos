@@ -47,9 +47,10 @@ static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
 // vec is terminated with a nullptr entry.
 static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
 {
-    char** kstr = Mm_MapViewOfUserMemory(ctx, (void*)vec, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
+    char** kstr = Mm_MapViewOfUserMemory(ctx, (void*)((uintptr_t)vec - ((uintptr_t)vec % OBOS_PAGE_SIZE)), nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
     if (!kstr)
         return nullptr;
+    kstr = (void*)(((uintptr_t)kstr) + (uintptr_t)vec % OBOS_PAGE_SIZE);
 
     char** iter = kstr;
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;

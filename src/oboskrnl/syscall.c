@@ -266,9 +266,11 @@ obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 
     obos_status status = OBOS_STATUS_SUCCESS;
-    char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)ustr, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
+    // char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)ustr, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
+    char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)((uintptr_t)ustr - ((uintptr_t)ustr % OBOS_PAGE_SIZE)), nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
     if (!kstr)
         return status;
+    kstr += ((uintptr_t)ustr % OBOS_PAGE_SIZE);
 
     char* iter = kstr;
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
