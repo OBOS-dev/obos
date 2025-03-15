@@ -435,6 +435,8 @@ obos_status VfsH_Chdir(void* target_, const char *path)
     if (!ent)
         return OBOS_STATUS_NOT_FOUND;
     
+    Vfs_Free((char*)target->cwd_str);
+    
     target->cwd = ent;
     target->cwd_str = realpath(ent);
     
@@ -446,6 +448,8 @@ obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
     if (!ent || !target)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
+    Vfs_Free((char*)target->cwd_str);
+
     target->cwd = ent;
     target->cwd_str = realpath(ent);
     
