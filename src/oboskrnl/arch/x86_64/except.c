@@ -100,7 +100,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     down:
     asm("cli");
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
-        "Page fault at 0x%p in %s-mode while to %s page at 0x%p, which is %s. Error code: %d\n"
+        "Page fault at 0x%p in %s-mode while trying to %s page at 0x%p, which is %s. Error code: %d\n"
         "Register dump:\n"
         "\tRDI: 0x%016lx, RSI: 0x%016lx, RBP: 0x%016lx\n"
         "\tRSP: 0x%016lx, RBX: 0x%016lx, RDX: 0x%016lx\n"
