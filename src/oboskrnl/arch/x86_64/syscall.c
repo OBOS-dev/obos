@@ -186,6 +186,9 @@ const char* syscall_to_string[] = {
     "Sys_FdOpenAtEx",
     "Sys_Mkdir",
     "Sys_MkdirAt",
+    "Sys_Chdir",
+    "Sys_ChdirEnt",
+    "Sys_GetCWD",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
