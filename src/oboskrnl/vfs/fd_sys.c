@@ -109,7 +109,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
             return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
         }
         file_perm real_mode = unix_to_obos_mode(mode);
-        status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index), VNODE_TYPE_REG, real_mode);
+        status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_REG, real_mode);
     }
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
@@ -445,7 +445,25 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     driver->ftable.get_blk_size(to_stat->desc, &blkSize);
     driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
     st.st_blksize = blkSize;
-    st.st_mode = *(uint16_t*)&to_stat->perm;
+    st.st_mode = 0;
+    if (to_stat->perm.owner_read)
+        st.st_mode |= 400;
+    if (to_stat->perm.owner_write)
+        st.st_mode |= 200;
+    if (to_stat->perm.owner_exec)
+        st.st_mode |= 100;
+    if (to_stat->perm.group_read)
+        st.st_mode |= 040;
+    if (to_stat->perm.group_write)
+        st.st_mode |= 020;
+    if (to_stat->perm.group_exec)
+        st.st_mode |= 010;
+    if (to_stat->perm.other_read)
+        st.st_mode |= 004;
+    if (to_stat->perm.other_write)
+        st.st_mode |= 002;
+    if (to_stat->perm.other_exec)
+        st.st_mode |= 001;
     switch (to_stat->vtype) {
         case VNODE_TYPE_DIR:
             st.st_mode |= S_IFDIR;
@@ -619,7 +637,7 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
         return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
     }
     file_perm real_mode = unix_to_obos_mode(mode);
-    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index), VNODE_TYPE_REG, real_mode);
+    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_DIR, real_mode);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
