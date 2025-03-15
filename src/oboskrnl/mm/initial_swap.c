@@ -105,18 +105,18 @@ static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_p
     }
     else
         found = hdr->free_handles.bump++;
+
     swap_page *pg = swap_malloc(sizeof(swap_page));
-    pg->key = found;
+    pg->key = found << PAGE_SHIFT;
     pg->sz = sz;
     pg->buffer = swap_malloc(sz);
     RB_INSERT(swap_page_tree, &hdr->pages, pg);
+
     hdr->bytesLeft -= sz;
     if (hdr->bytesLeft < 0)
         OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "In-Ram SWAP corruption. hdr->bytesLeft < 0. bytesLeft: %ld\nThis is a bug, report it, or fix it yourself and send a PR.\n", hdr->bytesLeft);
     Core_SpinlockRelease(&hdr->lock, oldIrql);
     *id = found << PAGE_SHIFT;
-    if ((*id >> PAGE_SHIFT) != found)
-        OBOS_Panic(OBOS_PANIC_ASSERTION_FAILED, "File %s:%d: Whoops ((*id >> PAGE_SHIFT) != found)\n", __FILE__, __LINE__);
     return OBOS_STATUS_SUCCESS;
 }
 static void swap_free_impl(void* item)
@@ -192,6 +192,7 @@ obos_status Mm_InitializeInitialSwapDevice(swap_dev* dev, size_t size)
 {
     if (size < (sizeof(swap_header) + OBOS_HUGE_PAGE_SIZE))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_Log("Initializing initial swap device with a size of %ld\n", size);
     dev->metadata = swap_malloc(sizeof(swap_header));
     swap_header* hdr = dev->metadata;
     memzero(hdr, sizeof(*hdr));

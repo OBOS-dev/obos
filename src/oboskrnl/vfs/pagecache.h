@@ -20,16 +20,12 @@
 
 #include <driver_interface/header.h>
 
-static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset, bool mark_dirty)
+static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
 {
     page* phys = MmH_PgAllocatePhysical(false, false);
     phys->backing_vn = vn;
     phys->file_offset = offset;
     RB_INSERT(pagecache_tree, &Mm_Pagecache, phys);
-    if (mark_dirty)
-        Mm_MarkAsDirtyPhys(phys);
-    else
-        Mm_MarkAsStandbyPhys(phys);
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
@@ -43,7 +39,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset, bool mar
     OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
     return phys;
 }
-static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, bool mark_dirty)
+static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
 {
     if (!vn->blkSize)
     {
@@ -61,12 +57,12 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, bool mark_d
     page* phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &key);
     if (!phys)
     {
-        phys = VfsH_PageCacheCreateEntry(vn, offset, mark_dirty);
+        phys = VfsH_PageCacheCreateEntry(vn, offset);
+        if (ent)
+            *ent = phys;
         return MmS_MapVirtFromPhys(phys->phys) + pg_offset;
     }
-    if (mark_dirty)
-        Mm_MarkAsDirtyPhys(phys);
-    else
-        Mm_MarkAsStandbyPhys(phys);
+    if (ent)
+        *ent = phys;
     return MmS_MapVirtFromPhys(phys->phys) + pg_offset;
 }

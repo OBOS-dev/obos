@@ -161,7 +161,8 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         size_t offset = desc->offset;
         for (size_t i = 0; bytesLeft; i += OBOS_PAGE_SIZE)
         {
-            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, true);
+            page* pg = nullptr;
+            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, &pg);
             if (!ent)
             {
                 status = OBOS_STATUS_INTERNAL_ERROR;
@@ -173,6 +174,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
             else
                 bytesLeft = 0;
             offset += OBOS_PAGE_SIZE;
+            Mm_MarkAsDirtyPhys(pg);
         }
         done:
         VfsH_UnlockMountpoint(point);
@@ -244,7 +246,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         // for (volatile bool b = (nBytes==0x2918); b; );
         while (bytesLeft)
         {
-            const uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, offset, false);
+            const uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, offset, nullptr);
             if (!ent)
             {
                 status = OBOS_STATUS_INTERNAL_ERROR;

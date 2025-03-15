@@ -14,15 +14,17 @@
 #include <driver_interface/header.h>
 
 #include <vfs/fd.h>
+#include <vfs/pagecache.h>
+#include <vfs/vnode.h>
 
 #include <locks/mutex.h>
 
 #include <utils/string.h>
 
+#include <mm/swap.h>
+
 #include "alloc.h"
 #include "structs.h"
-#include "vfs/pagecache.h"
-#include "vfs/vnode.h"
 
 bool valid_filename(const char* filename, bool isPath)
 {
@@ -94,9 +96,41 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
     new->data.last_mod_time = new->data.creation_time;
     new->data.access_date = new->data.creation_date;
     new->data.filesize = 0;
-    new->data.first_cluster_low = 0;
-    new->data.first_cluster_high = 0;
     new->data.attribs |= (type == FILE_TYPE_DIRECTORY) ? DIRECTORY : 0;
+    
+    if (type == FILE_TYPE_DIRECTORY)
+    {
+        uint32_t cluster = AllocateClusters(cache, 1);
+        new->data.first_cluster_low = cluster & 0xffff;
+        if (cache->fatType == FAT32_VOLUME)
+            new->data.first_cluster_high = cluster >> 16;
+        fat_dirent dot_entries[2] = {};
+        dot_entries[0].filename_83[0] = '.';
+        memset(dot_entries[0].filename_83+1, ' ', 10);
+        dot_entries[0].attribs = new->data.attribs;
+        dot_entries[0].first_cluster_low = new->data.first_cluster_low;
+        dot_entries[0].first_cluster_high = new->data.first_cluster_high;
+        dot_entries[0].last_mod_time = new->data.last_mod_time;
+        dot_entries[0].last_mod_date = new->data.last_mod_date;
+        dot_entries[0].creation_time = new->data.creation_time;
+        dot_entries[0].creation_date = new->data.creation_date;
+        memcpy(dot_entries+1,dot_entries,sizeof(*dot_entries));
+        dot_entries[1].first_cluster_low = parent->data.first_cluster_low;
+        dot_entries[1].first_cluster_high = parent->data.first_cluster_high;
+        dot_entries[1].filename_83[1] = '.';
+        printf("%d\n", ClusterToSector(cache, cluster));
+        page* pg = nullptr;
+        void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, &pg);
+        memcpy(buff, dot_entries, sizeof(dot_entries));
+        Mm_MarkAsDirtyPhys(pg);
+    }
+    else 
+    {
+        new->data.first_cluster_low = 0;
+        new->data.first_cluster_high = 0;
+    }
+
+
     gen_short_name(name, new->data.filename_83, parent, new);
     new->owner = parent->owner;
     OBOS_InitString(&new->name, name);
@@ -204,7 +238,8 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     // Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
     // Vfs_FdRead(cache->volume, sector, clusterSize, nullptr);
     OBOS_ASSERT(clusterSize < OBOS_PAGE_SIZE);
-    uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, cache_entry->dirent_fileoff, true);
+    page* pg = nullptr;
+    uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, cache_entry->dirent_fileoff, &pg);
     fat_dirent* curr = (fat_dirent*)(sector + cache_entry->dirent_offset);
     curr--;
     while (curr->attribs & LFN)
@@ -229,6 +264,7 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     }
     cache_entry->data.filename_83[0] = DIRENT_FREE;
     memcpy(sector + cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
+    Mm_MarkAsDirtyPhys(pg);
     // WriteFatDirent(cache, cache_entry);
 }
 static uint8_t checksum(const char *pFcbName)
@@ -271,7 +307,7 @@ iterate_decision find_free_entry(uint32_t cluster, obos_status status, void* use
     const size_t clusterSize = cache->blkSize*cache->bpb->sectorsPerCluster;
     // Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster)*cache->blkSize, SEEK_SET);
     // Vfs_FdRead(cache->volume, buff, clusterSize, nullptr);
-    const void* buff = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster)*cache->blkSize, false);
+    const void* buff = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster)*cache->blkSize, nullptr);
     const fat_dirent* curr = buff;
     for (size_t j = 0; j < (clusterSize/sizeof(fat_dirent)); j++)
     {
@@ -347,8 +383,8 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, i*cache->blkSize, false);
-            fat_dirent* curr = buff;
+            const void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, i*cache->blkSize, nullptr);
+            const fat_dirent* curr = buff;
             for (size_t j = 0; j < (cache->blkSize/sizeof(fat_dirent)); j++)
             {
                 if (curr->filename_83[0] == (char)0)
@@ -391,6 +427,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         FollowClusterChain(cache, first_cluster, find_free_entry, udata);
     }
     // void *buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
+    page* pg = nullptr;
     if (nFree < nEntries)
     {
         // We need MOREEEEEEEEEEEE clusters
@@ -409,9 +446,10 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             }
             for (size_t i = 0; i < szClusters; i++)
             {
-                const void* buf = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, false);
-                void* out = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, true);
+                const void* buf = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, nullptr);
+                void* out = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, &pg);
                 memcpy(out, buf, bytesPerCluster);
+                Mm_MarkAsDirtyPhys(pg);
             }
             if (cluster)
                 FreeClusters(cache, cluster, szClusters);
@@ -428,14 +466,15 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 // memzero(buf, cache->blkSize);
                 // memcpy(buf, cache->bpb, sizeof(*cache->bpb));
                 // Vfs_FdWrite(cache->volume, buf, cache->blkSize, nullptr);
-                memcpy(VfsH_PageCacheGetEntry(cache->vn, 0, true), cache->bpb, sizeof(*cache->bpb));
+                memcpy(VfsH_PageCacheGetEntry(cache->vn, 0, &pg), cache->bpb, sizeof(*cache->bpb));
+                Mm_MarkAsDirtyPhys(pg);
             }
         }
         fileoff = ClusterToSector(cache, cluster)*cache->blkSize;
         entry_cluster = cluster;
     }
     Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
+    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
     fileoff = Vfs_FdTellOff(cache->volume);
     fat_dirent* curr = buf;
     for (size_t i = 0; i < nEntries; i++)
@@ -450,19 +489,20 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             if (inRoot && cache->fatType != FAT32_VOLUME)
             {
                 // Simply read the next sector.
-                Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-                fileoff = Vfs_FdTellOff(cache->volume);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
+                Mm_MarkAsDirtyPhys(pg);
+                fileoff += cache->blkSize;
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
                 curr = buf;
             }
             else
             {
+                Mm_MarkAsDirtyPhys(pg);
                 // Read the next cluster.
                 Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
                 uint32_t next = 0;
                 fat_entry_addr addr = {};
                 GetFatEntryAddrForCluster(cache, entry_cluster, &addr);
-                uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, false);
+                uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, nullptr);
                 obos_status status = NextCluster(cache, entry_cluster, sector, &next);
                 if (status == OBOS_STATUS_EOF)
                     break;
@@ -480,8 +520,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 }
                 Vfs_FdSeek(cache->volume, ClusterToSector(cache, next)*cache->blkSize, SEEK_SET);
                 fileoff = Vfs_FdTellOff(cache->volume);
-                Vfs_FdRead(cache->volume, buf, blkSize, nullptr);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
                 curr = buf;
             }
         }

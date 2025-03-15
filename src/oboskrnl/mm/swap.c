@@ -182,6 +182,7 @@ static __attribute__((no_instrument_function)) void page_writer()
         for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
                 // Funny business
@@ -206,6 +207,7 @@ static __attribute__((no_instrument_function)) void page_writer()
                 // if (!VfsH_LockMountpoint(point))
                 //     goto abort;
                 Core_SpinlockRelease(&swap_lock, oldIrql);
+                // printf("writing back %p:%d (real offset: %d)\n", pg->backing_vn, pg->file_offset, offset);
                 obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
                 if (obos_is_error(status))
                     OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
@@ -266,12 +268,6 @@ void Mm_MarkAsStandby(page_info* pg)
 void Mm_MarkAsDirtyPhys(page* node)
 {
     OBOS_ASSERT(node);
-
-    if (node->pagedCount && --node->pagedCount)
-    {
-        node->flags |= PHYS_PAGE_DIRTY;
-        return;
-    }
  
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
     node->flags |= PHYS_PAGE_DIRTY;
@@ -292,13 +288,6 @@ void Mm_MarkAsStandbyPhys(page* node)
     if (node->flags & PHYS_PAGE_STANDBY)
         return;
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
-
-    if (node->pagedCount && --node->pagedCount)
-    {
-        node->flags |= PHYS_PAGE_STANDBY;
-        Core_SpinlockRelease(&swap_lock, oldIrql);
-        return;
-    }
 
     if (node->flags & PHYS_PAGE_DIRTY)
     {

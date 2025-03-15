@@ -48,18 +48,17 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     if (!phys)
     {
         *type = HARD_FAULT;
-        phys = VfsH_PageCacheCreateEntry(rng->un.mapped_vn, addr-rng->virt, ec & PF_EC_RW);
+        phys = VfsH_PageCacheCreateEntry(rng->un.mapped_vn, addr-rng->virt);
     }
     else
-    {
         *type = SOFT_FAULT;
-        if (ec & PF_EC_RW)
-            Mm_MarkAsDirtyPhys(phys);
-    }
     MmH_RefPage(phys);
+    if (ec & PF_EC_RW)
+        Mm_MarkAsDirtyPhys(phys);
     info->phys = phys->phys;
     info->prot.present = true;
     info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);
+
     MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
 }
 
