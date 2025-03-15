@@ -92,6 +92,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
+    // printf("opening %s\n", path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags & ~FD_OFLAGS_CREATE);
     if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
     {
@@ -110,7 +111,13 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         }
         file_perm real_mode = unix_to_obos_mode(mode);
         status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_REG, real_mode);
+        if (obos_is_error(status))
+            goto err;
+        dirent* ent = VfsH_DirentLookupFrom(path+(index == sz_path ? 0 : index+1), parent);
+        OBOS_ENSURE(ent);
+        status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
+    err:
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
