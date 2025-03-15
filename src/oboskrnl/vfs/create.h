@@ -21,7 +21,7 @@
     if (!(_parent))\
         _status = (OBOS_STATUS_NOT_FOUND);\
     else\
-        _status = Vfs_CreateNode(_parent, (name), (vtype), (mode));\
+        _status = Vfzs_CreateNode(_parent, (name), (vtype), (mode));\
     (_status);\
 })
 

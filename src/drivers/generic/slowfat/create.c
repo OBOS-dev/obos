@@ -526,64 +526,106 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         }
     }
 }
-obos_status move_desc_to(dev_desc desc, const char* where)
+// obos_status move_desc_to(dev_desc desc, const char* where)
+// {
+//     if (!desc || !where)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (!valid_filename(where, true))
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+//     fat_cache* cache = cache_entry->owner;
+//     /*
+//     To move a entry:
+//         - IF the paths are the same
+//             - return SUCCESS
+//         - IF the new path already exists
+//             - return ALREADY_EXISTS
+//         - IF the new parent doesn't exist
+//             - return NOT_FOUND
+//         - Change it's name to the new name
+//         - Change it's path (and all its childrens' path) to the new path
+//         - IF the paths differ, and the parent directory of both paths differ
+//             - Dereference the cache node from its parent, and add it to the new parent.
+//             - Dereference the dirent from its parent, and add it to the new parent
+//         - else
+//             - Dereference the dirent from its parent, and add it with the new basename
+//         - exit
+//     */
+//     do {
+//         fat_dirent_cache* found = DirentLookupFrom(where, cache->root);
+//         if (found == cache_entry)
+//             return OBOS_STATUS_SUCCESS;
+//         if (found)
+//             return OBOS_STATUS_ALREADY_INITIALIZED;
+//     } while(0);
+//     string parent_path = {};
+//     OBOS_InitStringLen(&parent_path, where, strrfind(where, '/') == SIZE_MAX ? strlen(where) : strrfind(where, '/'));
+//     fat_dirent_cache* parent = DirentLookupFrom(OBOS_GetStringCPtr(&parent_path), cache->root);
+//     if (!parent && OBOS_GetStringSize(&parent_path) == strlen(where))
+//     {
+//         parent = cache->root;
+//         parent_path = cache->root->path;
+//     }
+//     if (!parent)
+//         return OBOS_STATUS_NOT_FOUND;
+//     OBOS_FreeString(&cache_entry->name);
+//     OBOS_FreeString(&cache_entry->path);
+//     cache_entry->path = parent_path;
+//     if (OBOS_GetStringSize(&cache_entry->path))
+//         if (OBOS_GetStringCPtr(&cache_entry->path)[OBOS_GetStringSize(&cache_entry->path) - 1] != '/')
+//             OBOS_AppendStringC(&cache_entry->path, "/");
+//     OBOS_InitString(&cache_entry->name, basename(where));
+//     OBOS_AppendStringS(&cache_entry->path, &cache_entry->name);
+//     if (parent != cache_entry->fdc_parent)
+//     {
+//         Core_MutexAcquire(&cache->fat_lock);
+//         Core_MutexAcquire(&cache->fd_lock);
+//         deref_dirent(cache_entry);
+//         CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
+//         CacheAppendChild(parent, cache_entry);
+//         gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
+//         ref_dirent(cache_entry);
+//         Core_MutexRelease(&cache->fd_lock);
+//         Core_MutexRelease(&cache->fat_lock);
+//     }
+//     else
+//     {
+//         deref_dirent(cache_entry);
+//         Core_MutexAcquire(&cache->fat_lock);
+//         Core_MutexAcquire(&cache->fd_lock);
+//         gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
+//         ref_dirent(cache_entry);
+//         Core_MutexRelease(&cache->fd_lock);
+//         Core_MutexRelease(&cache->fat_lock);
+//     }
+//     Vfs_FdFlush(cache->volume);
+//     return OBOS_STATUS_SUCCESS;
+// }
+obos_status move_desc_to(dev_desc desc, dev_desc new_parent_desc, const char* name)
 {
-    if (!desc || !where)
+    if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!valid_filename(where, true))
+    if (name && !valid_filename(name, true))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!new_parent_desc && !name)
+        return OBOS_STATUS_SUCCESS; // Nothing to do.
+
+    // If !new_parent && name, then we need to rename the file.
+    // If new_parent && !name, then we need to move the file to the new parent, and keep the filename.
+    // If new_parent && name, then we need to move the file to new parent and rename the file.
+
     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+    fat_dirent_cache* new_parent = (fat_dirent_cache*)new_parent_desc;
     fat_cache* cache = cache_entry->owner;
-    /*
-    To move a entry:
-        - IF the paths are the same
-            - return SUCCESS
-        - IF the new path already exists
-            - return ALREADY_EXISTS
-        - IF the new parent doesn't exist
-            - return NOT_FOUND
-        - Change it's name to the new name
-        - Change it's path (and all its childrens' path) to the new path
-        - IF the paths differ, and the parent directory of both paths differ
-            - Dereference the cache node from its parent, and add it to the new parent.
-            - Dereference the dirent from its parent, and add it to the new parent
-        - else
-            - Dereference the dirent from its parent, and add it with the new basename
-        - exit
-    */
-    do {
-        fat_dirent_cache* found = DirentLookupFrom(where, cache->root);
-        if (found == cache_entry)
-            return OBOS_STATUS_SUCCESS;
-        if (found)
-            return OBOS_STATUS_ALREADY_INITIALIZED;
-    } while(0);
-    string parent_path = {};
-    OBOS_InitStringLen(&parent_path, where, strrfind(where, '/') == SIZE_MAX ? strlen(where) : strrfind(where, '/'));
-    fat_dirent_cache* parent = DirentLookupFrom(OBOS_GetStringCPtr(&parent_path), cache->root);
-    if (!parent && OBOS_GetStringSize(&parent_path) == strlen(where))
+
+    if (!new_parent || new_parent == cache_entry->fdc_parent)
     {
-        parent = cache->root;
-        parent_path = cache->root->path;
-    }
-    if (!parent)
-        return OBOS_STATUS_NOT_FOUND;
-    OBOS_FreeString(&cache_entry->name);
-    OBOS_FreeString(&cache_entry->path);
-    cache_entry->path = parent_path;
-    if (OBOS_GetStringSize(&cache_entry->path))
-        if (OBOS_GetStringCPtr(&cache_entry->path)[OBOS_GetStringSize(&cache_entry->path) - 1] != '/')
-            OBOS_AppendStringC(&cache_entry->path, "/");
-    OBOS_InitString(&cache_entry->name, basename(where));
-    OBOS_AppendStringS(&cache_entry->path, &cache_entry->name);
-    if (parent != cache_entry->fdc_parent)
-    {
+        deref_dirent(cache_entry);
+        OBOS_FreeString(&cache_entry->name);
+        OBOS_InitString(&cache_entry->name, name);
+        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], cache_entry->fdc_parent, cache_entry);
         Core_MutexAcquire(&cache->fat_lock);
         Core_MutexAcquire(&cache->fd_lock);
-        deref_dirent(cache_entry);
-        CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
-        CacheAppendChild(parent, cache_entry);
-        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
         ref_dirent(cache_entry);
         Core_MutexRelease(&cache->fd_lock);
         Core_MutexRelease(&cache->fat_lock);
@@ -591,13 +633,21 @@ obos_status move_desc_to(dev_desc desc, const char* where)
     else
     {
         deref_dirent(cache_entry);
+        if (name)
+        {
+            OBOS_FreeString(&cache_entry->name);
+            OBOS_InitString(&cache_entry->name, name);
+            gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], cache_entry->fdc_parent, cache_entry);
+        }
+        CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
+        CacheAppendChild(new_parent, cache_entry);
         Core_MutexAcquire(&cache->fat_lock);
         Core_MutexAcquire(&cache->fd_lock);
-        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
         ref_dirent(cache_entry);
         Core_MutexRelease(&cache->fd_lock);
         Core_MutexRelease(&cache->fat_lock);
     }
+
     Vfs_FdFlush(cache->volume);
     return OBOS_STATUS_SUCCESS;
 }
