@@ -82,3 +82,7 @@ void OBOS_OpenStandardFDs(struct handle_table* tbl);
 
 obos_status Sys_Mount(const char* at, const char* on);
 obos_status Sys_Unmount(const char* at);
+
+obos_status Sys_Chdir(const char *path);
+obos_status Sys_ChdirEnt(handle ent);
+obos_status Sys_GetCWD(char* path, size_t len);

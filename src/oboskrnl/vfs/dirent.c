@@ -1,19 +1,26 @@
 /*
  * oboskrnl/vfs/dirent.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
-#include "vfs/vnode.h"
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <syscall.h>
 
 #include <vfs/dirent.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
+#include <vfs/vnode.h>
 #include <vfs/namecache.h>
 #include <vfs/limits.h>
+
+#include <allocators/base.h>
+
+#include <scheduler/schedule.h>
+#include <scheduler/process.h>
 
 #include <utils/string.h>
 #include <utils/list.h>
@@ -138,6 +145,29 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
     while(root)
     {
         dirent* curr = root;
+        if (tok[0] == '.')
+        {
+            if (tok[1] == '.')
+                root = root->d_parent;
+            else if (tok[1] != 0)
+                goto down;
+            const char *newtok = tok + str_search(tok, '/');
+            tok = newtok;
+            size_t currentPathLen = strlen(tok)-1;
+            if (tok[currentPathLen] != '/')
+                currentPathLen++;
+            while (tok[currentPathLen] == '/')
+                currentPathLen--;
+            tok_len = strchr(tok, '/');
+            if (tok_len != currentPathLen)
+                tok_len--;
+            while (tok[tok_len - 1] == '/')
+                tok_len--;
+            continue;
+        }
+        down:
+        if (!tok_len)
+            return root;
         if (OBOS_CompareStringNC(&root->name, tok, tok_len))
         {
             // Match!
@@ -177,12 +207,16 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
 }
 dirent* VfsH_DirentLookup(const char* path)
 {
-    dirent* root = Vfs_Root;
+    dirent* begin = Core_GetCurrentThread()->proc->cwd;
+    if (!begin)
+        begin = Vfs_Root;
     if (path[0] == 0)
-        return root;
+        return begin;
     if (strcmp(path, "/"))
-        return root;
-    return VfsH_DirentLookupFrom(path, root);
+        return Vfs_Root;
+    if (path[0] == '/')
+        begin = Vfs_Root;
+    return VfsH_DirentLookupFrom(path, begin);
 }
 void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 {
@@ -359,4 +393,103 @@ obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** l
 
     VfsH_UnlockMountpoint(dent->vnode->mount_point);
     return nReadableDirents ? OBOS_STATUS_SUCCESS : OBOS_STATUS_EOF;
+}
+
+static char* realpath(dirent* ent)
+{
+    size_t path_len = 0;
+    char* path = nullptr;
+
+    // Calculate path_len.
+    for (dirent* curr = ent; curr != Vfs_Root; )
+    {
+        path_len += OBOS_GetStringSize(&curr->name) + 1;
+        curr = curr->d_parent;
+    }
+
+    path = Vfs_Malloc(path_len+1);
+    path[path_len] = 0;
+
+    size_t left = path_len;
+    dirent* curr = ent;
+    while (left && curr)
+    {
+        memcpy(&path[left-OBOS_GetStringSize(&curr->name)], OBOS_GetStringCPtr(&curr->name), OBOS_GetStringSize(&curr->name));
+
+        left -= OBOS_GetStringSize(&curr->name);
+        path[left-1] = '/';
+        left -= 1;
+        curr = curr->d_parent;
+    }
+
+    return path;
+}
+
+obos_status VfsH_Chdir(void* target_, const char *path)
+{
+    if (!target_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    process* target = target_;
+    dirent* ent = VfsH_DirentLookup(path);
+    if (!ent)
+        return OBOS_STATUS_NOT_FOUND;
+    
+    target->cwd = ent;
+    target->cwd_str = realpath(ent);
+    
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
+{
+    process* target = target_;
+    if (!ent || !target)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    target->cwd = ent;
+    target->cwd_str = realpath(ent);
+    
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_GetCWD(char* path, size_t len)
+{
+    process* target = Core_GetCurrentThread()->proc;
+    if (!path)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (len < strlen(target->cwd_str))
+        return OBOS_STATUS_NO_SPACE;
+    memcpy_k_to_usr(path, target->cwd, strlen(target->cwd_str));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_Chdir(const char *upath)
+{
+    char* path = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    status = VfsH_Chdir(Core_GetCurrentThread()->proc, path);
+    Free(OBOS_KernelAllocator, path, sz_path);
+
+    return status;
+}
+
+obos_status Sys_ChdirEnt(handle desc)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return VfsH_ChdirEnt(Core_GetCurrentThread()->proc, dent->un.dirent);
 }

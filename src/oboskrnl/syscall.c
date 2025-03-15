@@ -254,6 +254,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FdOpenAtEx,
     (uintptr_t)Sys_Mkdir,
     (uintptr_t)Sys_MkdirAt,
+    (uintptr_t)Sys_Chdir,
+    (uintptr_t)Sys_ChdirEnt,
+    (uintptr_t)Sys_GetCWD,
 };
 
 // Arch syscall table is defined per-arch
