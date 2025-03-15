@@ -109,6 +109,8 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
 {
     if (!path)
         return nullptr;
+    if (path[0] == 0)
+        return root_par;
     dirent* root = root_par;
     size_t path_len = strlen(path);
     if (!path_len)
@@ -176,6 +178,8 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
 dirent* VfsH_DirentLookup(const char* path)
 {
     dirent* root = Vfs_Root;
+    if (path[0] == 0)
+        return root;
     if (strcmp(path, "/"))
         return root;
     return VfsH_DirentLookupFrom(path, root);
