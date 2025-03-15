@@ -231,7 +231,6 @@ static __attribute__((no_instrument_function)) void page_writer()
             }
             pg->flags &= ~PHYS_PAGE_DIRTY;
             LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
-            Mm_DirtyPagesBytes -= (pg->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     
             LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
             pg->flags |= PHYS_PAGE_STANDBY;
@@ -239,6 +238,7 @@ static __attribute__((no_instrument_function)) void page_writer()
             // abort:
             pg = next;
         }
+        Mm_DirtyPagesBytes = 0;
         Core_SpinlockRelease(&swap_lock, oldIrql);
         Core_EventSet(&page_writer_done, false);
     }
@@ -247,7 +247,7 @@ static __attribute__((no_instrument_function)) void page_writer()
 phys_page_list Mm_DirtyPageList;
 phys_page_list Mm_StandbyPageList;
 size_t Mm_DirtyPagesBytes;
-size_t Mm_DirtyPagesBytesThreshold = OBOS_PAGE_SIZE * 50;
+size_t Mm_DirtyPagesBytesThreshold = OBOS_PAGE_SIZE * 128;
 void Mm_MarkAsDirty(page_info* pg)
 {
     OBOS_ASSERT(pg->phys);
@@ -278,9 +278,11 @@ void Mm_MarkAsDirtyPhys(page* node)
     node->flags &= ~PHYS_PAGE_STANDBY;
     MmH_RefPage(node);
     LIST_APPEND(phys_page_list, &Mm_DirtyPageList, node);
+    // if (node->backing_vn)
+    //     printf("%p:%d\n", node->backing_vn, node->file_offset);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Core_SpinlockRelease(&swap_lock, oldIrql);
-    if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold)
+    if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold && !node->backing_vn)
         Mm_WakePageWriter(false);
 }
 
