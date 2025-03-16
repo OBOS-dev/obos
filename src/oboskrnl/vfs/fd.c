@@ -157,26 +157,35 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
 
-        size_t bytesLeft = nBytes;
-        size_t offset = desc->offset;
-        for (size_t i = 0; bytesLeft; i += OBOS_PAGE_SIZE)
+        size_t start = desc->offset;
+        size_t end = desc->offset + nBytes;
+        page* pg = nullptr;
+        if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
         {
-            page* pg = nullptr;
-            uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, desc->offset+i, &pg);
-            if (!ent)
-            {
-                status = OBOS_STATUS_INTERNAL_ERROR;
-                goto done;
-            }
-            memcpy(ent, (const uint8_t*)buf+i, OBOS_MIN(bytesLeft, OBOS_PAGE_SIZE - (offset % OBOS_PAGE_SIZE)));
-            if (bytesLeft > OBOS_PAGE_SIZE)
-                bytesLeft -= OBOS_PAGE_SIZE;
-            else
-                bytesLeft = 0;
-            offset += OBOS_PAGE_SIZE;
+            // The start and end are on the same page, and therefore, 
+            // use the same pagecache entry.
+        
+            memcpy(VfsH_PageCacheGetEntry(desc->vn, start, &pg), buf, nBytes);
             Mm_MarkAsDirtyPhys(pg);
         }
-        done:
+        else
+        {
+            size_t i = 0;
+            size_t end_rounded = end;
+            if (end_rounded % OBOS_PAGE_SIZE)
+                end_rounded = (end_rounded + (OBOS_PAGE_SIZE-(end_rounded%OBOS_PAGE_SIZE)));
+            for (size_t curr = start; curr < end_rounded && i < nBytes; )
+            {
+                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
+                size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
+                if (curr == end_rounded && end_rounded != (start & ~(OBOS_PAGE_SIZE-1)))
+                    nToRead = nBytes;
+                memcpy(ent, (const void*)((uintptr_t)buf+i), nToRead);
+                curr += nToRead;
+                i += nToRead;
+                Mm_MarkAsDirtyPhys(pg);
+            }
+        }
         VfsH_UnlockMountpoint(point);
 
         if (nWritten)
@@ -240,26 +249,34 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-        
-        size_t bytesLeft = nBytes;
-        size_t offset = desc->offset;
-        // for (volatile bool b = (nBytes==0x2918); b; );
-        while (bytesLeft)
+
+        size_t start = desc->offset;
+        size_t end = desc->offset + nBytes;
+        if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
         {
-            const uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, offset, nullptr);
-            if (!ent)
-            {
-                status = OBOS_STATUS_INTERNAL_ERROR;
-                goto done;
-            }
-            memcpy((uint8_t*)buf+(offset-desc->offset), ent, OBOS_MIN(bytesLeft, OBOS_PAGE_SIZE - (offset % OBOS_PAGE_SIZE)));
-            if (bytesLeft > OBOS_PAGE_SIZE)
-                bytesLeft -= OBOS_PAGE_SIZE;
-            else
-                bytesLeft = 0;
-            offset += (OBOS_PAGE_SIZE-(offset%OBOS_PAGE_SIZE));
+            // The start and end are on the same page, and therefore, 
+            // use the same pagecache entry.
+        
+            memcpy(buf, VfsH_PageCacheGetEntry(desc->vn, start, nullptr), nBytes);
         }
-        done:
+        else
+        {
+            size_t i = 0;
+            size_t end_rounded = end;
+            if (end_rounded % OBOS_PAGE_SIZE)
+                end_rounded = (end_rounded + (OBOS_PAGE_SIZE-(end_rounded%OBOS_PAGE_SIZE)));
+            for (size_t curr = start; curr < end_rounded && i < nBytes; )
+            {
+                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, nullptr);
+                size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
+                if (curr == end_rounded && end_rounded != (start & ~(OBOS_PAGE_SIZE-1)))
+                    nToRead = nBytes;
+                memcpy((void*)((uintptr_t)buf+i), ent, nToRead);
+                curr += nToRead;
+                i += nToRead;
+            }
+        }
+
         VfsH_UnlockMountpoint(point);
 
         if (nRead)
