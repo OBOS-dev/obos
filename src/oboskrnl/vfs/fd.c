@@ -364,7 +364,7 @@ obos_status Vfs_FdIoctl(fd* desc, uint64_t request, void* argp)
         return OBOS_STATUS_UNINITIALIZED;
     if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
         return OBOS_STATUS_INVALID_IOCTL;
-    return desc->vn->un.device->driver->header.ftable.ioctl(desc->vn->un.device->desc, request, argp);
+    return desc->vn->un.device->driver->header.ftable.ioctl(desc->vn->desc, request, argp);
 }
 obos_status Vfs_FdFlush(fd* desc)
 {

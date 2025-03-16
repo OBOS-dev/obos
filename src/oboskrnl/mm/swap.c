@@ -268,6 +268,12 @@ void Mm_MarkAsStandby(page_info* pg)
 void Mm_MarkAsDirtyPhys(page* node)
 {
     OBOS_ASSERT(node);
+
+    // NOTE: While this might seem like a fatal/impossible condition,
+    // stuff like fbdev use the pagecache to allow for mapping of the
+    // framebuffer from userspace.
+    if (node->flags & PHYS_PAGE_MMIO)
+        return;
  
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
     node->flags |= PHYS_PAGE_DIRTY;
@@ -287,6 +293,10 @@ void Mm_MarkAsStandbyPhys(page* node)
     OBOS_ASSERT(node);
     if (node->flags & PHYS_PAGE_STANDBY)
         return;
+    // See note for Mm_MarkAsDirtyPhys for why this is done.
+    if (node->flags & PHYS_PAGE_MMIO)
+        return;
+
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);
 
     if (node->flags & PHYS_PAGE_DIRTY)
