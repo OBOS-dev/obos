@@ -168,7 +168,7 @@ obos_status get_readable_count(void* handle, size_t* nReadable)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ps2_port* port = hnd->port;
     ps2k_data* data = port->pudata;
-    *nReadable = (hnd->in_ptr - data->input.out_ptr);
+    *nReadable = (data->input.out_ptr - hnd->in_ptr);
     return OBOS_STATUS_SUCCESS;
 }
 
