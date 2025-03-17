@@ -149,6 +149,8 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
         {
             if (tok[1] == '.')
                 root = root->d_parent;
+            else if (tok_len == 1)
+                OBOSS_SpinlockHint(); // this token is just a '.', so we need to ignore the next else if.
             else if (tok[1] != 0)
                 goto down;
             const char *newtok = tok + str_search(tok, '/');
