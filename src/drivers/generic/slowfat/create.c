@@ -118,7 +118,6 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
         dot_entries[1].first_cluster_low = parent->data.first_cluster_low;
         dot_entries[1].first_cluster_high = parent->data.first_cluster_high;
         dot_entries[1].filename_83[1] = '.';
-        printf("%d\n", ClusterToSector(cache, cluster));
         page* pg = nullptr;
         void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, &pg);
         memcpy(buff, dot_entries, sizeof(dot_entries));
