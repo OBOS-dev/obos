@@ -469,11 +469,11 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, u
 	if (ppage)
 	{
 		ppage->virt = addr;
-		ppage->phys = page.prot.huge_page ? (entry & ~0x1fffff) : Arch_MaskPhysicalAddressFromEntry(entry);
+		ppage->phys = page.prot.huge_page ? (entry & 0xFFFFFFFE00000) : Arch_MaskPhysicalAddressFromEntry(entry);
 		memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
 	}
 	if (phys)
-		*phys = Arch_MaskPhysicalAddressFromEntry(entry);
+		*phys = page.prot.huge_page ? (entry & 0xFFFFFFFE00000) : Arch_MaskPhysicalAddressFromEntry(entry);
 	return OBOS_STATUS_SUCCESS;	
 }
 obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t phys, bool free_pte)
