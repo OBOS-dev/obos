@@ -148,24 +148,11 @@ void slp_handler(void* userdata)
 
 obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
 {
-    event e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    timer* t = Core_TimerObjectAllocate(nullptr);
-    t->handler = slp_handler;
-    t->userdata = &e;
-    obos_status st = Core_TimerObjectInitialize(t, TIMER_MODE_DEADLINE, ms*1000);
-    if (obos_is_error(st))
-        return st;
-    timer_tick start = CoreS_GetTimerTick();
-    st = Core_WaitOnObject(WAITABLE_OBJECT(e));
-    if (obos_is_error(st) && uleft)
-    {
-        timer_tick end = CoreS_GetTimerTick();
-        Core_CancelTimer(t);
-        uint64_t left = CoreS_TimerTickToNS(end-start) / 1000000;
-        memcpy_k_to_usr(uleft, &left, sizeof(size_t));
-    }
-    Core_TimerObjectFree(t);
-    return st;
+    OBOS_UNUSED(uleft);
+    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
+    while (deadline > CoreS_GetTimerTick())
+        OBOSS_SpinlockHint();
+    return OBOS_STATUS_SUCCESS;
 }
 
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
@@ -269,11 +256,9 @@ obos_status OBOSH_ReadUserString(const char* ustr, char* buf, size_t* sz_buf)
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 
     obos_status status = OBOS_STATUS_SUCCESS;
-    // char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)ustr, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
-    char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)((uintptr_t)ustr - ((uintptr_t)ustr % OBOS_PAGE_SIZE)), nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
+    char* kstr = Mm_MapViewOfUserMemory(ctx, (void*)ustr, nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, &status);
     if (!kstr)
         return status;
-    kstr += ((uintptr_t)ustr % OBOS_PAGE_SIZE);
 
     char* iter = kstr;
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
