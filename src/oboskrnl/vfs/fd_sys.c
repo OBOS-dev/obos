@@ -92,7 +92,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
-    // printf("opening %s\n", path);
+    // printf("desc %d: opening %s\n", desc, path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags & ~FD_OFLAGS_CREATE);
     if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
     {
@@ -631,11 +631,17 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
     size_t index = strrfind(path, '/');
+    if (index == (sz_path-1))
+    {
+        path[index] = 0;
+        index = strrfind(path, '/');
+    }
     if (index == SIZE_MAX)
         index = sz_path;
     char ch = path[index];
     path[index] = 0;
     const char* dirname = path;
+    // printf("dirname = %s\n", dirname);
     dirent* parent = VfsH_DirentLookup(dirname);
     path[index] = ch;
     if (!parent)
@@ -643,9 +649,12 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
         Free(OBOS_KernelAllocator, path, sz_path);
         return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
     }
+    // printf("%s\n", OBOS_GetStringCPtr(&parent->name));
     file_perm real_mode = unix_to_obos_mode(mode);
+    // printf("%s\n", path);
     status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_DIR, real_mode);
     Free(OBOS_KernelAllocator, path, sz_path);
+    // printf("%d\n", status);
     return status;
 }
 obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
