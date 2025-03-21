@@ -6,9 +6,13 @@
 
 #include <int.h>
 #include <error.h>
+#include <memmanip.h>
 #include <handle.h>
 #include <klog.h>
 #include <signal.h>
+
+#include <vfs/alloc.h>
+#include <vfs/mount.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
@@ -73,6 +77,18 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->refcount++;
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
+
+	if (!proc->parent->cwd)
+	{
+		proc->cwd = Vfs_Root;
+		proc->cwd_str = memcpy(Vfs_Malloc(2), "/", 2);
+	}
+	else
+	{
+		proc->cwd = proc->parent->cwd;
+		size_t len = strlen(proc->parent->cwd_str);
+		proc->cwd_str = memcpy(Vfs_Malloc(len+1), proc->parent->cwd_str, len+1);
+	}
 
 	// If we fork using Sys_ProcessStart, then the handle table is conviniently
 	// already setup.

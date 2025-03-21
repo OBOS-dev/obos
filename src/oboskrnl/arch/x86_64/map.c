@@ -17,10 +17,6 @@
 
 #include <mm/pmm.h>
 
-#include <arch/x86_64/asm_helpers.h>
-
-#include <arch/x86_64/boot_info.h>
-
 #include <elf/elf.h>
 
 #include <scheduler/cpu_local.h>
@@ -28,6 +24,8 @@
 #include <locks/spinlock.h>
 
 #include <arch/x86_64/idt.h>
+#include <arch/x86_64/asm_helpers.h>
+#include <arch/x86_64/boot_info.h>
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
 
@@ -471,11 +469,11 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, u
 	if (ppage)
 	{
 		ppage->virt = addr;
-		ppage->phys = Arch_MaskPhysicalAddressFromEntry(entry);
+		ppage->phys = page.prot.huge_page ? (entry & 0xFFFFFFFE00000) : Arch_MaskPhysicalAddressFromEntry(entry);
 		memcpy(&ppage->prot, &page.prot, sizeof(page.prot));
 	}
 	if (phys)
-		*phys = Arch_MaskPhysicalAddressFromEntry(entry);
+		*phys = page.prot.huge_page ? (entry & 0xFFFFFFFE00000) : Arch_MaskPhysicalAddressFromEntry(entry);
 	return OBOS_STATUS_SUCCESS;	
 }
 obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t phys, bool free_pte)
@@ -540,7 +538,7 @@ page_table MmS_AllocatePageTable()
 		// Map cpu local structs.
 		map_range(cached_root, (uintptr_t)Core_CpuInfo, (uintptr_t)(Core_CpuInfo + Core_CpuCount), 1|BIT_TYPE(63, UL)|2);
 		// Map IDT
-		extern char g_idtEntries;
+		extern struct idtEntry g_idtEntries[256];
 		map_range(cached_root, (uintptr_t)&g_idtEntries, ((uintptr_t)&g_idtEntries) + 0x1000, 1|BIT_TYPE(63, UL)|2);
 		extern uintptr_t Arch_IRQHandlers[256];
 		map_range(cached_root, (uintptr_t)&Arch_IRQHandlers, ((uintptr_t)&Arch_IRQHandlers) + sizeof(Arch_IRQHandlers), 1|BIT_TYPE(63, UL)|2);

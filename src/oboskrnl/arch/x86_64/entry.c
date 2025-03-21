@@ -874,10 +874,6 @@ void Arch_KernelMainBootstrap()
     OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
     Vfs_FinalizeInitialization();
 
-    fd nic = {};
-    Vfs_FdOpen(&nic, "/dev/r8169-eth0", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
-    // OBOS_Suspend();
-
     fd com1 = {};
     Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
 

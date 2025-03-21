@@ -10,6 +10,8 @@
 #include <error.h>
 #include <handle.h>
 
+#include <vfs/dirent.h>
+
 #include <locks/spinlock.h>
 #include <locks/wait.h>
 
@@ -39,6 +41,9 @@ typedef struct process
 	} children;
 	spinlock children_lock;
 	struct process *next, *prev;
+
+	dirent* cwd;
+	const char* cwd_str;
 } process;
 extern uint32_t Core_NextPID;
 

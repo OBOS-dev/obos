@@ -338,7 +338,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
                 page what = {.backing_vn=file->vn,.file_offset=currFileOff};
                 phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &what);
                 if (flags & VMA_FLAGS_PREFAULT && !phys)
-                    phys = VfsH_PageCacheCreateEntry(file->vn, currFileOff, false);
+                    phys = VfsH_PageCacheCreateEntry(file->vn, currFileOff);
                 if (phys)
                 {
                     MmH_RefPage(phys);
@@ -870,10 +870,11 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
         if (user_rng->un.mapped_vn && !phys)
         {
-            void* ent = VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), ~prot & OBOS_PROTECTION_READ_ONLY);
-            what.phys = MmS_UnmapVirtFromPhys(ent);
-            phys = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-            info.phys = what.phys;
+            VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), &phys);
+            what.phys = phys->phys;
+            info.phys = phys->phys;
+            if (~prot & OBOS_PROTECTION_READ_ONLY)
+                Mm_MarkAsDirtyPhys(phys);
         }
 
         if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
@@ -902,6 +903,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         info.prot = rng->prot;
         info.prot.present = !!phys;
         info.prot.rw = rng->prot.rw;
+        OBOS_ENSURE(info.phys);
         MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
     }
 

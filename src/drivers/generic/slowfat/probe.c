@@ -155,7 +155,7 @@ static iterate_decision dir_iterate_impl(uint32_t current_cluster, obos_status s
         return ITERATE_DECISION_STOP;
     fat_cache* cache = (void*)((uintptr_t*)udata)[0];
     fat_dirent_cache* parent = (void*)((uintptr_t*)udata)[1];
-    const void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, current_cluster)*cache->blkSize, false);
+    const void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, current_cluster)*cache->blkSize, nullptr);
     const fat_dirent* curr = buff;
     string current_filename = {};
     lfn_dirent **lfn_entries = nullptr;
@@ -264,7 +264,7 @@ bool probe(void* vn_)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            const void* buff = VfsH_PageCacheGetEntry(volume->vn, i*cache->blkSize, false);
+            const void* buff = VfsH_PageCacheGetEntry(volume->vn, i*cache->blkSize, nullptr);
             const fat_dirent* curr = buff;
             for (size_t j = 0; j < (cache->blkSize/sizeof(lfn_dirent)); j++, curr++)
             {

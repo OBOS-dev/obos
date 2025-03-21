@@ -5,9 +5,13 @@
  */
 
 #include <int.h>
+#include <text.h>
 #include <error.h>
 #include <memmanip.h>
 #include <klog.h>
+
+#include <mm/context.h>
+#include <mm/page.h>
 
 #include <driver_interface/header.h>
 
@@ -22,11 +26,13 @@ enum {
     DUMMY_FULL,
     // /dev/zero
     DUMMY_ZERO,
-    DUMMY_MAX = DUMMY_ZERO,
+    // /dev/fb0
+    DUMMY_FB0,
+    DUMMY_MAX = DUMMY_FB0,
 };
 static const char* names[DUMMY_MAX+1] = {
     nullptr,
-    "null", "full", "zero"
+    "null", "full", "zero", "fb0"
 };
 
 static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
@@ -46,6 +52,9 @@ static obos_status get_max_blk_count(dev_desc desc, size_t* count)
         case DUMMY_FULL:
         case DUMMY_ZERO:
             *count = 0;
+            break;
+        case DUMMY_FB0:
+            *count = OBOS_TextRendererState.fb.pitch*OBOS_TextRendererState.fb.height;
             break;
         default:
             return OBOS_STATUS_INVALID_ARGUMENT;
@@ -68,6 +77,8 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
             if (nBlkRead)
                 *nBlkRead = blkCount;
             break;
+        case DUMMY_FB0:
+            return OBOS_STATUS_INVALID_OPERATION;
         default:
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
@@ -86,6 +97,8 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
             break;
         case DUMMY_FULL:
             return OBOS_STATUS_NOT_ENOUGH_MEMORY;
+        case DUMMY_FB0:
+            return OBOS_STATUS_INVALID_OPERATION;
         default:
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
@@ -93,13 +106,45 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
 }
 
 static void driver_cleanup_callback(){};
-static obos_status ioctl(dev_desc what, uint32_t request, void* argp) { OBOS_UNUSED(what); OBOS_UNUSED(request); OBOS_UNUSED(argp); return OBOS_STATUS_INVALID_IOCTL; }
+struct fb_mode {
+    uint32_t pitch;
+    uint32_t width;
+    uint32_t height;
+    uint16_t format;
+    uint8_t bpp; // See OBOS_FB_FORMAT_*
+};
+static obos_status ioctl_fb0(uint32_t request, void* argp)
+{
+    obos_status status = OBOS_STATUS_INVALID_IOCTL;
+    if (request == 1)
+    {
+        status = OBOS_STATUS_SUCCESS;
+        static struct fb_mode mode = {};
+        if (!mode.bpp)
+        {
+            mode.bpp = OBOS_TextRendererState.fb.bpp;
+            mode.height = OBOS_TextRendererState.fb.height;
+            mode.width = OBOS_TextRendererState.fb.width;
+            mode.pitch = OBOS_TextRendererState.fb.pitch;
+            mode.format = OBOS_TextRendererState.fb.format;
+        }
+        memcpy(argp, &mode, sizeof(mode));
+    }
+    return status;
+}
+static obos_status ioctl(dev_desc what, uint32_t request, void* argp) 
+{
+    printf("%d %d %p\n", what, request, argp);
+    if (what == DUMMY_FB0)
+        return ioctl_fb0(request, argp);
+    return OBOS_STATUS_INVALID_IOCTL; 
+}
 
 driver_id OBOS_DummyDriver = {
     .id=0,
     .header = {
         .magic = OBOS_DRIVER_MAGIC,
-        .flags = DRIVER_HEADER_FLAGS_NO_ENTRY|DRIVER_HEADER_HAS_VERSION_FIELD,
+        .flags = DRIVER_HEADER_FLAGS_NO_ENTRY|DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_HAS_STANDARD_INTERFACES,
         .ftable = {
             .get_blk_size = get_blk_size,
             .get_max_blk_count = get_max_blk_count,
@@ -117,12 +162,16 @@ vdev OBOS_DummyDriverVdev = {
 
 static void init_desc(dev_desc desc)
 {
+    if (desc == DUMMY_FB0 && !OBOS_TextRendererState.fb.base)
+        return;
+
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
 
     vn->owner_uid = 0;
     vn->group_uid = 0;
     vn->desc = desc;
+    get_max_blk_count(desc, &vn->filesize);
 
     vn->perm.owner_exec=false;
     vn->perm.group_exec=false;
@@ -142,6 +191,26 @@ static void init_desc(dev_desc desc)
     vn->refs++;
     OBOS_InitString(&ent->name, names[vn->desc]);
 
+    if (desc == DUMMY_FB0)
+    {
+        vn->vtype = VNODE_TYPE_BLK;
+        // Create pagecache entries.
+        size_t fb_size = OBOS_TextRendererState.fb.pitch*OBOS_TextRendererState.fb.height;
+        for (size_t i = 0; i < fb_size; i += OBOS_PAGE_SIZE)
+        {
+            page_info info = {};
+            MmS_QueryPageInfo(Mm_KernelContext.pt, (uintptr_t)OBOS_TextRendererState.fb.base+i, &info, nullptr);
+            uintptr_t phys = info.phys;
+            if (info.prot.huge_page)
+                phys += (i%OBOS_HUGE_PAGE_SIZE);
+            page *pg = MmH_AllocatePage(phys, false);
+            pg->flags |= PHYS_PAGE_MMIO;
+            pg->backing_vn = vn;
+            pg->file_offset = i;
+            RB_INSERT(pagecache_tree, &Mm_Pagecache, pg);
+        }
+    }
+
     dirent* parent = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!parent)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
@@ -154,6 +223,7 @@ void Vfs_InitDummyDevices()
     init_desc(DUMMY_NULL);
     init_desc(DUMMY_FULL);
     init_desc(DUMMY_ZERO);
+    init_desc(DUMMY_FB0);
 }
 
 OBOS_EXPORT const char* OBOS_ScancodeToString[84] = {

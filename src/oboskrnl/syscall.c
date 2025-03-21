@@ -148,24 +148,11 @@ void slp_handler(void* userdata)
 
 obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
 {
-    event e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    timer* t = Core_TimerObjectAllocate(nullptr);
-    t->handler = slp_handler;
-    t->userdata = &e;
-    obos_status st = Core_TimerObjectInitialize(t, TIMER_MODE_DEADLINE, ms*1000);
-    if (obos_is_error(st))
-        return st;
-    timer_tick start = CoreS_GetTimerTick();
-    st = Core_WaitOnObject(WAITABLE_OBJECT(e));
-    if (obos_is_error(st) && uleft)
-    {
-        timer_tick end = CoreS_GetTimerTick();
-        Core_CancelTimer(t);
-        uint64_t left = CoreS_TimerTickToNS(end-start) / 1000000;
-        memcpy_k_to_usr(uleft, &left, sizeof(size_t));
-    }
-    Core_TimerObjectFree(t);
-    return st;
+    OBOS_UNUSED(uleft);
+    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
+    while (deadline > CoreS_GetTimerTick())
+        OBOSS_SpinlockHint();
+    return OBOS_STATUS_SUCCESS;
 }
 
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
@@ -249,6 +236,14 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SleepMS,
     (uintptr_t)Sys_Mount,
     (uintptr_t)Sys_Unmount,
+    (uintptr_t)Sys_FdCreat,
+    (uintptr_t)Sys_FdOpenEx,
+    (uintptr_t)Sys_FdOpenAtEx,
+    (uintptr_t)Sys_Mkdir,
+    (uintptr_t)Sys_MkdirAt,
+    (uintptr_t)Sys_Chdir,
+    (uintptr_t)Sys_ChdirEnt,
+    (uintptr_t)Sys_GetCWD,
 };
 
 // Arch syscall table is defined per-arch

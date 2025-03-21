@@ -80,18 +80,20 @@ enum {
     ARCHIVE=0x20,
     LFN=READ_ONLY|HIDDEN|SYSTEM|VOLUME_ID,
 };
-typedef struct fat_date
-{
-    uint8_t      day : 5;
-    uint8_t    month : 4;
-    uint8_t year1980 : 7;
-} OBOS_PACK fat_date;
-typedef struct fat_time
-{
-    uint8_t seconds : 5; // multiply by two
-    uint8_t minutes : 6;
-    uint8_t hour : 5;
-} OBOS_PACK fat_time;
+// typedef struct fat_date
+// {
+//     uint8_t      day : 5;
+//     uint8_t    month : 4;
+//     uint8_t year1980 : 7;
+// } OBOS_PACK fat_date;
+// typedef struct fat_time
+// {
+//     uint8_t seconds : 5; // multiply by two
+//     uint8_t minutes : 6;
+//     uint8_t hour : 5;
+// } OBOS_PACK fat_time;
+typedef uint16_t fat_date;
+typedef uint16_t fat_time;
 typedef struct fat_dirent
 {
     char filename_83[11];

@@ -161,7 +161,10 @@ typedef struct driver_ftable
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
     obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type);
-    obos_status(*move_desc_to)(dev_desc desc, const char* where);
+    // If !new_parent && name, then we need to rename the file.
+    // If new_parent && !name, then we need to move the file to the new parent, and keep the filename.
+    // If new_parent && name, then we need to move the file to new parent and rename the file.
+    obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
     obos_status(*remove_file)(dev_desc desc);
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 

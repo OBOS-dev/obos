@@ -16,9 +16,14 @@
 
 handle Sys_FdAlloc();
 
-obos_status       Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
-obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags);
-obos_status     Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags);
+obos_status         Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
+obos_status       Sys_FdOpenEx(handle desc, const char* path, uint32_t oflags, uint32_t mode);
+obos_status   Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags);
+obos_status       Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags);
+obos_status     Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode);
+obos_status     Sys_FdCreat(handle desc, const char* name, uint32_t mode);
+obos_status     Sys_Mkdir(const char* name, uint32_t mode);
+obos_status     Sys_MkdirAt(handle dirent, const char* name, uint32_t mode);
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status  Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead);
@@ -77,3 +82,7 @@ void OBOS_OpenStandardFDs(struct handle_table* tbl);
 
 obos_status Sys_Mount(const char* at, const char* on);
 obos_status Sys_Unmount(const char* at);
+
+obos_status Sys_Chdir(const char *path);
+obos_status Sys_ChdirEnt(handle ent);
+obos_status Sys_GetCWD(char* path, size_t len);

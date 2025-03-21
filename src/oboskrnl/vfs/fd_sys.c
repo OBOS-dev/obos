@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <handle.h>
 #include <memmanip.h>
@@ -26,6 +27,7 @@
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 #include <vfs/mount.h>
+#include <vfs/create.h>
 
 #include <driver_interface/driverId.h>
 
@@ -39,7 +41,39 @@ handle Sys_FdAlloc()
     return ret;
 }
 
-obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
+static size_t strrfind(const char* str, char ch)
+{
+    int64_t i = strlen(str);
+    for (; i >= 0; i--)
+        if (str[i] == ch)
+           return i;
+    return SIZE_MAX;
+}
+
+static file_perm unix_to_obos_mode(uint32_t mode)
+{
+    file_perm real_mode;
+    if (mode & 001)
+        real_mode.other_exec = true;
+    if (mode & 002)
+        real_mode.other_write = true;
+    if (mode & 004)
+        real_mode.other_read = true;
+    if (mode & 010)
+        real_mode.group_exec = true;
+    if (mode & 020)
+        real_mode.group_write = true;
+    if (mode & 040)
+        real_mode.group_read = true;
+    if (mode & 100)
+        real_mode.owner_exec = true;
+    if (mode & 200)
+        real_mode.owner_write = true;
+    if (mode & 400)
+        real_mode.owner_read = true;
+    return real_mode;
+}
+obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32_t mode)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -58,9 +92,38 @@ obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
-    status = Vfs_FdOpen(fd->un.fd, path, oflags);
+    // printf("desc %d: opening %s\n", desc, path);
+    status = Vfs_FdOpen(fd->un.fd, path, oflags & ~FD_OFLAGS_CREATE);
+    if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
+    {
+        size_t index = strrfind(path, '/');
+        if (index == SIZE_MAX)
+            index = sz_path;
+        char ch = path[index];
+        path[index] = 0;
+        const char* dirname = path;
+        dirent* parent = VfsH_DirentLookup(dirname);
+        path[index] = ch;
+        if (!parent)
+        {
+            Free(OBOS_KernelAllocator, path, sz_path);
+            return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
+        }
+        file_perm real_mode = unix_to_obos_mode(mode);
+        status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_REG, real_mode);
+        if (obos_is_error(status))
+            goto err;
+        dirent* ent = VfsH_DirentLookupFrom(path+(index == sz_path ? 0 : index+1), parent);
+        OBOS_ENSURE(ent);
+        status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
+    }
+    err:
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
+}
+obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
+{
+    return Sys_FdOpenEx(desc, upath, oflags & ~FD_OFLAGS_CREATE, 0);
 }
 
 obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
@@ -82,10 +145,14 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags);
+    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags & ~FD_OFLAGS_CREATE);
 }
 
 obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags)
+{
+    return Sys_FdOpenAtEx(desc, ent, name, oflags & ~FD_OFLAGS_CREATE, 0);
+}
+obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -106,9 +173,21 @@ obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t ofl
 
     dirent* real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
     if (!real_dent)
-        return OBOS_STATUS_NOT_FOUND;
+    {
+        if (~oflags & FD_OFLAGS_CREATE)
+            return OBOS_STATUS_NOT_FOUND;
+        status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
+        if (obos_is_error(status))
+            return status;
+        real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
+        OBOS_ASSERT(real_dent);
+    }
 
-    return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags);
+    return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags & ~FD_OFLAGS_CREATE);
+}
+obos_status Sys_FdCreat(handle desc, const char* name, uint32_t mode)
+{
+    return Sys_FdOpenEx(desc, name, FD_OFLAGS_CREATE|FD_OFLAGS_WRITE, mode);
 }
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten)
@@ -373,7 +452,25 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     driver->ftable.get_blk_size(to_stat->desc, &blkSize);
     driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
     st.st_blksize = blkSize;
-    st.st_mode = *(uint16_t*)&to_stat->perm;
+    st.st_mode = 0;
+    if (to_stat->perm.owner_read)
+        st.st_mode |= 400;
+    if (to_stat->perm.owner_write)
+        st.st_mode |= 200;
+    if (to_stat->perm.owner_exec)
+        st.st_mode |= 100;
+    if (to_stat->perm.group_read)
+        st.st_mode |= 040;
+    if (to_stat->perm.group_write)
+        st.st_mode |= 020;
+    if (to_stat->perm.group_exec)
+        st.st_mode |= 010;
+    if (to_stat->perm.other_read)
+        st.st_mode |= 004;
+    if (to_stat->perm.other_write)
+        st.st_mode |= 002;
+    if (to_stat->perm.other_exec)
+        st.st_mode |= 001;
     switch (to_stat->vtype) {
         case VNODE_TYPE_DIR:
             st.st_mode |= S_IFDIR;
@@ -515,6 +612,72 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
     if (nRead)
         memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
+
+    return status;
+}
+
+obos_status Sys_Mkdir(const char* upath, uint32_t mode)
+{
+    char* path = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* found = VfsH_DirentLookup(path);
+    if (found)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+
+    size_t index = strrfind(path, '/');
+    if (index == (sz_path-1))
+    {
+        path[index] = 0;
+        index = strrfind(path, '/');
+    }
+    if (index == SIZE_MAX)
+        index = sz_path;
+    char ch = path[index];
+    path[index] = 0;
+    const char* dirname = path;
+    // printf("dirname = %s\n", dirname);
+    dirent* parent = VfsH_DirentLookup(dirname);
+    path[index] = ch;
+    if (!parent)
+    {
+        Free(OBOS_KernelAllocator, path, sz_path);
+        return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
+    }
+    // printf("%s\n", OBOS_GetStringCPtr(&parent->name));
+    file_perm real_mode = unix_to_obos_mode(mode);
+    // printf("%s\n", path);
+    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_DIR, real_mode);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    // printf("%d\n", status);
+    return status;
+}
+obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+    if (!dent)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    char* name = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(uname, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    name = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uname, name, nullptr);
+
+    status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    Free(OBOS_KernelAllocator, name, sz_path);
 
     return status;
 }

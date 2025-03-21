@@ -27,6 +27,8 @@
 
 #include <locks/mutex.h>
 
+#include <mm/swap.h>
+
 #include "structs.h"
 #include "alloc.h"
 
@@ -48,7 +50,6 @@ static iterate_decision read_callback(uint32_t cluster, obos_status stat, void* 
         *status = stat;
         return ITERATE_DECISION_STOP;
     }
-    Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster)*cache->blkSize, SEEK_SET);
     cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, false);
     if (obos_is_error(*status))
     {
@@ -138,17 +139,16 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         requiresExpand = expandClusters = true;
     size_t nToWrite = blkCount;
     size_t nClustersToWrite = (nToWrite / bytesPerCluster) + (((nToWrite % bytesPerCluster) != 0) ? 1 : 0);
-    obos_status status = OBOS_STATUS_SUCCESS;
     uint32_t cluster = cache_entry->data.first_cluster_low;
     if (cache->fatType == FAT32_VOLUME)
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
+    page* pg = nullptr;
     if (requiresExpand)
     {
         uint32_t szClusters = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
         cache_entry->data.filesize += blkCount;
         uint32_t newSizeCls = ((cache_entry->data.filesize / bytesPerCluster) + ((cache_entry->data.filesize % bytesPerCluster) != 0));
         Core_MutexAcquire(&cache->fat_lock);
-        uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
         if (expandClusters)
             if (!ExtendClusters(cache, cluster, newSizeCls, szClusters))
             {
@@ -162,23 +162,10 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
                 for (size_t i = 0; i < szClusters; i++)
                 {
                     Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+i)*cache->blkSize, SEEK_SET);
-                    status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-                    if (obos_is_error(status))
-                    {
-                        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-                        Core_MutexRelease(&cache->fat_lock);
-                        Core_MutexRelease(&cache->fd_lock);
-                        return status;
-                    }
-                    Vfs_FdSeek(cache->volume, ClusterToSector(cache, newCluster+i)*cache->blkSize, SEEK_SET);
-                    status = Vfs_FdWrite(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-                    if (obos_is_error(status))
-                    {
-                        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-                        Core_MutexRelease(&cache->fat_lock);
-                        Core_MutexRelease(&cache->fd_lock);
-                        return status;
-                    }
+                    const void* src = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, nullptr);
+                    void* dest = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, &pg);
+                    memcpy(dest, src, bytesPerCluster);
+                    Mm_MarkAsDirtyPhys(pg);
                 }
                 if (cluster)
                     FreeClusters(cache, cluster, szClusters);
@@ -190,34 +177,18 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
         Core_MutexRelease(&cache->fat_lock);
         WriteFatDirent(cache, cache_entry, true);
     }
-    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
     size_t current_offset = 0;
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
     Core_MutexAcquire(&cache->fd_lock);
     uint32_t base_cluster = blkOffset / bytesPerCluster;
-    Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+base_cluster)*cache->blkSize, SEEK_SET);
-    status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-    if (obos_is_error(status))
-    {
-        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-        Core_MutexRelease(&cache->fd_lock);
-        return status;
-    }
     const uint8_t *buf = buf_;
     for (size_t i = 0; i < nClustersToWrite && bytesLeft > 0; i++)
     {
-        Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster+base_cluster+i)*cache->blkSize, SEEK_SET);
+        void* cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster+base_cluster+i)*cache->blkSize, &pg);
         memcpy(cluster_buf + cluster_offset, buf+current_offset, ((size_t)bytesLeft <= bytesPerCluster ? (size_t)bytesLeft : bytesPerCluster-cluster_offset));
-        status = Vfs_FdWrite(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-        if (obos_is_error(status))
-        {
-            FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-            Core_MutexRelease(&cache->fd_lock);
-            return status;
-        }
+        Mm_MarkAsDirtyPhys(pg);
 
-        memzero(cluster_buf, bytesPerCluster);
         current_offset += bytesPerCluster;
         // cluster_offset += bytesPerCluster;
         cluster_offset = 0;
@@ -227,7 +198,6 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
     Core_MutexRelease(&cache->fd_lock);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
-    FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status trunc_file(dev_desc desc, size_t blkCount)
@@ -267,25 +237,10 @@ obos_status WriteFatDirent(fat_cache* cache, fat_dirent_cache* cache_entry, bool
     if (lock)
         Core_MutexAcquire(&cache->fd_lock);
     Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
-    uint8_t* cluster_buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
-    obos_status status = Vfs_FdRead(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-    if (obos_is_error(status))
-    {
-        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-        if (lock)
-            Core_MutexRelease(&cache->fd_lock);
-        return status;
-    }
+    page* pg = nullptr;
+    uint8_t* cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, cache_entry->dirent_fileoff, &pg);
     memcpy(cluster_buf+cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
-    Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
-    status = Vfs_FdWrite(cache->volume, cluster_buf, bytesPerCluster, nullptr);
-    if (obos_is_error(status))
-    {
-        FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);
-        if (lock)
-            Core_MutexRelease(&cache->fd_lock);
-        return status;
-    }
+    Mm_MarkAsDirtyPhys(pg);
     if (lock)
         Core_MutexRelease(&cache->fd_lock);
     FATAllocator->Free(FATAllocator, cluster_buf, bytesPerCluster);

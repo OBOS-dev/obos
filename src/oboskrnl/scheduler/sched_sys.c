@@ -231,7 +231,15 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
     if (old)
         memcpy_k_to_usr(old, &thr->priority, sizeof(thr->priority));
     if (new)
+    {
+        thread_priority old_priority = thr->priority;
         memcpy_usr_to_k(&thr->priority, new, sizeof(thr->priority));
+        if (thr->priority != old_priority && thr->masterCPU) 
+        {
+            CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[old_priority].list, thr->snode);
+            CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
+        }
+    }
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Sys_ThreadAffinity(handle thread_hnd, const thread_affinity *new, thread_affinity* old)
@@ -470,6 +478,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                 }
             }
         }
+        new->handles.last_handle = new->handles.size;
 
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }

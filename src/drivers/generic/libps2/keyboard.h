@@ -13,6 +13,8 @@
 
 #include <locks/event.h>
 
+#include <irq/dpc.h>
+
 #include "controller.h"
 
 #define PS2_ACK 0xfa
@@ -52,6 +54,7 @@ typedef struct ps2k_data {
     struct ps2k_ringbuffer input;
     ps2_port* port;
     uint32_t ps2k_magic;
+    dpc dpc;
     uint8_t set;
     bool initialized : 1;
     bool processing_extended : 1;

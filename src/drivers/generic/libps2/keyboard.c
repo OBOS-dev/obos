@@ -15,6 +15,8 @@
 #include <mm/page.h>
 #include <mm/pmm.h>
 
+#include <irq/dpc.h>
+
 #include <locks/event.h>
 #include <locks/wait.h>
 
@@ -26,6 +28,13 @@
 #include "scancode_tables.h"
 #include "controller.h"
 #include "detect.h"
+
+static void signal_ring_buffer_dpc(dpc* d, void* userdata)
+{
+    OBOS_UNUSED(d);
+    ps2k_ringbuffer* buff = userdata;
+    Core_EventSet(&buff->e, true);
+}
 
 static void keyboard_ready(ps2_port* port, uint8_t scancode)
 {
@@ -125,7 +134,10 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
     KEYCODE_ADD_MODIFIER(code, data->super_key ? SUPER_KEY : 0);
 
     // OBOS_Debug("Got key %s (0x%02x), modifiers 0x%02x\n", OBOS_ScancodeToString[SCANCODE_FROM_KEYCODE(code)], SCANCODE_FROM_KEYCODE(code), MODIFIERS_FROM_KEYCODE(code));
-    PS2_RingbufferAppend(&data->input, code, true);
+    PS2_RingbufferAppend(&data->input, code, false);
+    
+    data->dpc.userdata = &data->input;
+    CoreH_InitializeDPC(&data->dpc, signal_ring_buffer_dpc, 0);
 }
 
 ps2k_data keyboard_data_buf[2];
@@ -156,7 +168,7 @@ obos_status get_readable_count(void* handle, size_t* nReadable)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ps2_port* port = hnd->port;
     ps2k_data* data = port->pudata;
-    *nReadable = (hnd->in_ptr - data->input.out_ptr);
+    *nReadable = (data->input.out_ptr - hnd->in_ptr);
     return OBOS_STATUS_SUCCESS;
 }
 

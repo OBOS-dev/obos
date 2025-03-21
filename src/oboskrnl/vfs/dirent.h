@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <vfs/limits.h>
 
@@ -43,6 +44,8 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what);
 // the lookup
 dirent* VfsH_DirentLookup(const char* path);
 dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);
+obos_status VfsH_Chdir(void* /* struct process */ target, const char *path);
+obos_status VfsH_ChdirEnt(void* /* struct process */ target, dirent* ent);
 
 OBOS_EXPORT dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name);
 

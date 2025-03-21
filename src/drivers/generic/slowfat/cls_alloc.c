@@ -19,6 +19,8 @@
 
 #include <driver_interface/header.h>
 
+#include <mm/swap.h>
+
 #include "structs.h"
 #include "alloc.h"
 
@@ -34,7 +36,7 @@ static bool isClusterFree(fat_cache* volume, uint32_t cluster)
     bool res = false;
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    const uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, false);
+    const uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, nullptr);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -65,12 +67,25 @@ static bool isLastCluster(fat_cache* volume, uint32_t cluster)
     // return GetFatEntryAddrForCluster(volume, cluster).lba >= volume->fatSz;
     return cluster >= volume->CountofClusters;
 }
+
+static void sync_fat(fat_cache* volume, fat_entry_addr addr, uint8_t* sector)
+{
+    page* pg = nullptr;
+    // Start at the 2nd FAT.
+    for (size_t i = 1; i < volume->bpb->nFATs; i++)
+    {
+        memcpy(VfsH_PageCacheGetEntry(volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, &pg), sector, volume->blkSize);
+        Mm_MarkAsDirtyPhys(pg);
+    }
+}
+
 static void markAllocated(fat_cache* volume, uint32_t cluster)
 {
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
     OBOS_ASSERT(volume->blkSize <= OBOS_PAGE_SIZE);
-    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, true);
+    page* pg = nullptr;
+    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, &pg);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -100,15 +115,15 @@ static void markAllocated(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    // Start at the 2nd FAT.
-    for (size_t i = 1; i < volume->bpb->nFATs; i++)
-        memcpy(VfsH_PageCacheGetEntry(volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, true), sector, volume->blkSize);
+    Mm_MarkAsDirtyPhys(pg);
+    sync_fat(volume, addr, sector);
 }
 static void markFree(fat_cache* volume, uint32_t cluster)
 {
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, true);
+    page* pg = nullptr;
+    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, &pg);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -135,15 +150,15 @@ static void markFree(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    // Start at the 2nd FAT.
-    for (size_t i = 1; i < volume->bpb->nFATs; i++)
-        memcpy(VfsH_PageCacheGetEntry(volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, true), sector, volume->blkSize);
+    Mm_MarkAsDirtyPhys(pg);
+    sync_fat(volume, addr, sector);
 }
 static void markEnd(fat_cache* volume, uint32_t cluster)
 {
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, cluster, &addr);
-    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, true);
+    page* pg = nullptr;
+    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, &pg);
     switch (volume->fatType)
     {
         case FAT32_VOLUME:
@@ -173,9 +188,8 @@ static void markEnd(fat_cache* volume, uint32_t cluster)
             break;
         }
     }
-    // Start at the 2nd FAT.
-    for (size_t i = 1; i < volume->bpb->nFATs; i++)
-        memcpy(VfsH_PageCacheGetEntry(volume->volume->vn, (addr.lba+volume->fatSz*i)*volume->blkSize, true), sector, volume->blkSize);
+    Mm_MarkAsDirtyPhys(pg);
+    sync_fat(volume, addr, sector);
 }
 uint32_t AllocateClusters(fat_cache* volume, size_t nClusters)
 {
@@ -342,7 +356,7 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
 {
     fat_entry_addr addr = {};
     GetFatEntryAddrForCluster(volume, clus, &addr);
-    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, false);
+    uint8_t* sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, nullptr);
     uint32_t curr = clus;
     obos_status status = OBOS_STATUS_SUCCESS;
     do {
@@ -366,6 +380,6 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
         uint64_t prev_lba = addr.lba;
         GetFatEntryAddrForCluster(volume, clus, &addr);
         if (addr.lba != prev_lba)
-            sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, false);
+            sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, nullptr);
     } while(status != OBOS_STATUS_EOF);
 }

@@ -14,15 +14,17 @@
 #include <driver_interface/header.h>
 
 #include <vfs/fd.h>
+#include <vfs/pagecache.h>
+#include <vfs/vnode.h>
 
 #include <locks/mutex.h>
 
 #include <utils/string.h>
 
+#include <mm/swap.h>
+
 #include "alloc.h"
 #include "structs.h"
-#include "vfs/pagecache.h"
-#include "vfs/vnode.h"
 
 bool valid_filename(const char* filename, bool isPath)
 {
@@ -94,9 +96,40 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
     new->data.last_mod_time = new->data.creation_time;
     new->data.access_date = new->data.creation_date;
     new->data.filesize = 0;
-    new->data.first_cluster_low = 0;
-    new->data.first_cluster_high = 0;
     new->data.attribs |= (type == FILE_TYPE_DIRECTORY) ? DIRECTORY : 0;
+    
+    if (type == FILE_TYPE_DIRECTORY)
+    {
+        uint32_t cluster = AllocateClusters(cache, 1);
+        new->data.first_cluster_low = cluster & 0xffff;
+        if (cache->fatType == FAT32_VOLUME)
+            new->data.first_cluster_high = cluster >> 16;
+        fat_dirent dot_entries[2] = {};
+        dot_entries[0].filename_83[0] = '.';
+        memset(dot_entries[0].filename_83+1, ' ', 10);
+        dot_entries[0].attribs = new->data.attribs;
+        dot_entries[0].first_cluster_low = new->data.first_cluster_low;
+        dot_entries[0].first_cluster_high = new->data.first_cluster_high;
+        dot_entries[0].last_mod_time = new->data.last_mod_time;
+        dot_entries[0].last_mod_date = new->data.last_mod_date;
+        dot_entries[0].creation_time = new->data.creation_time;
+        dot_entries[0].creation_date = new->data.creation_date;
+        memcpy(dot_entries+1,dot_entries,sizeof(*dot_entries));
+        dot_entries[1].first_cluster_low = parent->data.first_cluster_low;
+        dot_entries[1].first_cluster_high = parent->data.first_cluster_high;
+        dot_entries[1].filename_83[1] = '.';
+        page* pg = nullptr;
+        void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, &pg);
+        memcpy(buff, dot_entries, sizeof(dot_entries));
+        Mm_MarkAsDirtyPhys(pg);
+    }
+    else 
+    {
+        new->data.first_cluster_low = 0;
+        new->data.first_cluster_high = 0;
+    }
+
+
     gen_short_name(name, new->data.filename_83, parent, new);
     new->owner = parent->owner;
     OBOS_InitString(&new->name, name);
@@ -149,6 +182,8 @@ static void gen_short_name_impl(const char* long_name, char* name)
         for (uint8_t i = 0; i < 3 && i < strlen(long_name+off); i++)
             name[i+8] = toupper(long_name[off+i]);
     }
+    else
+        memset(name+short_i, ' ', 11-short_i);    
 }
 static void gen_short_name(const char* long_name, char* name, fat_dirent_cache* parent, fat_dirent_cache* dirent)
 {
@@ -202,7 +237,8 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     // Vfs_FdSeek(cache->volume, cache_entry->dirent_fileoff, SEEK_SET);
     // Vfs_FdRead(cache->volume, sector, clusterSize, nullptr);
     OBOS_ASSERT(clusterSize < OBOS_PAGE_SIZE);
-    uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, cache_entry->dirent_fileoff, true);
+    page* pg = nullptr;
+    uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, cache_entry->dirent_fileoff, &pg);
     fat_dirent* curr = (fat_dirent*)(sector + cache_entry->dirent_offset);
     curr--;
     while (curr->attribs & LFN)
@@ -227,6 +263,7 @@ static void deref_dirent(fat_dirent_cache* cache_entry)
     }
     cache_entry->data.filename_83[0] = DIRENT_FREE;
     memcpy(sector + cache_entry->dirent_offset, &cache_entry->data, sizeof(cache_entry->data));
+    Mm_MarkAsDirtyPhys(pg);
     // WriteFatDirent(cache, cache_entry);
 }
 static uint8_t checksum(const char *pFcbName)
@@ -269,7 +306,7 @@ iterate_decision find_free_entry(uint32_t cluster, obos_status status, void* use
     const size_t clusterSize = cache->blkSize*cache->bpb->sectorsPerCluster;
     // Vfs_FdSeek(cache->volume, ClusterToSector(cache, cluster)*cache->blkSize, SEEK_SET);
     // Vfs_FdRead(cache->volume, buff, clusterSize, nullptr);
-    const void* buff = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster)*cache->blkSize, false);
+    const void* buff = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster)*cache->blkSize, nullptr);
     const fat_dirent* curr = buff;
     for (size_t j = 0; j < (clusterSize/sizeof(fat_dirent)); j++)
     {
@@ -345,8 +382,8 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         Vfs_FdSeek(cache->volume, cache->root_sector*cache->blkSize, SEEK_SET);
         for (size_t i = cache->root_sector; i < (cache->root_sector+cache->RootDirSectors); i++)
         {
-            void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, i*cache->blkSize, false);
-            fat_dirent* curr = buff;
+            const void* buff = VfsH_PageCacheGetEntry(cache->volume->vn, i*cache->blkSize, nullptr);
+            const fat_dirent* curr = buff;
             for (size_t j = 0; j < (cache->blkSize/sizeof(fat_dirent)); j++)
             {
                 if (curr->filename_83[0] == (char)0)
@@ -389,6 +426,7 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
         FollowClusterChain(cache, first_cluster, find_free_entry, udata);
     }
     // void *buf = FATAllocator->ZeroAllocate(FATAllocator, 1, bytesPerCluster, nullptr);
+    page* pg = nullptr;
     if (nFree < nEntries)
     {
         // We need MOREEEEEEEEEEEE clusters
@@ -407,9 +445,10 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             }
             for (size_t i = 0; i < szClusters; i++)
             {
-                const void* buf = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, false);
-                void* out = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, true);
+                const void* buf = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, cluster+i)*cache->blkSize, nullptr);
+                void* out = VfsH_PageCacheGetEntry(cache->vn, ClusterToSector(cache, newCluster+i)*cache->blkSize, &pg);
                 memcpy(out, buf, bytesPerCluster);
+                Mm_MarkAsDirtyPhys(pg);
             }
             if (cluster)
                 FreeClusters(cache, cluster, szClusters);
@@ -426,16 +465,17 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 // memzero(buf, cache->blkSize);
                 // memcpy(buf, cache->bpb, sizeof(*cache->bpb));
                 // Vfs_FdWrite(cache->volume, buf, cache->blkSize, nullptr);
-                memcpy(VfsH_PageCacheGetEntry(cache->vn, 0, true), cache->bpb, sizeof(*cache->bpb));
+                memcpy(VfsH_PageCacheGetEntry(cache->vn, 0, &pg), cache->bpb, sizeof(*cache->bpb));
+                Mm_MarkAsDirtyPhys(pg);
             }
         }
         fileoff = ClusterToSector(cache, cluster)*cache->blkSize;
         entry_cluster = cluster;
     }
     Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, false);
+    void* buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
     fileoff = Vfs_FdTellOff(cache->volume);
-    fat_dirent* curr = buf+(fileoff%blkSize);
+    fat_dirent* curr = buf;
     for (size_t i = 0; i < nEntries; i++)
     {
         fat_dirent* curr_dirent = &cache_entry->data;
@@ -448,19 +488,20 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
             if (inRoot && cache->fatType != FAT32_VOLUME)
             {
                 // Simply read the next sector.
-                Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
-                fileoff = Vfs_FdTellOff(cache->volume);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, true);
+                Mm_MarkAsDirtyPhys(pg);
+                fileoff += cache->blkSize;
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
                 curr = buf;
             }
             else
             {
+                Mm_MarkAsDirtyPhys(pg);
                 // Read the next cluster.
                 Vfs_FdSeek(cache->volume, fileoff, SEEK_SET);
                 uint32_t next = 0;
                 fat_entry_addr addr = {};
                 GetFatEntryAddrForCluster(cache, entry_cluster, &addr);
-                uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, false);
+                uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, nullptr);
                 obos_status status = NextCluster(cache, entry_cluster, sector, &next);
                 if (status == OBOS_STATUS_EOF)
                     break;
@@ -478,71 +519,112 @@ static void ref_dirent(fat_dirent_cache* cache_entry)
                 }
                 Vfs_FdSeek(cache->volume, ClusterToSector(cache, next)*cache->blkSize, SEEK_SET);
                 fileoff = Vfs_FdTellOff(cache->volume);
-                Vfs_FdRead(cache->volume, buf, blkSize, nullptr);
-                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff/cache->blkSize*cache->blkSize, true);
+                buf = VfsH_PageCacheGetEntry(cache->vn, fileoff, &pg);
                 curr = buf;
             }
         }
     }
 }
-obos_status move_desc_to(dev_desc desc, const char* where)
+// obos_status move_desc_to(dev_desc desc, const char* where)
+// {
+//     if (!desc || !where)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     if (!valid_filename(where, true))
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+//     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+//     fat_cache* cache = cache_entry->owner;
+//     /*
+//     To move a entry:
+//         - IF the paths are the same
+//             - return SUCCESS
+//         - IF the new path already exists
+//             - return ALREADY_EXISTS
+//         - IF the new parent doesn't exist
+//             - return NOT_FOUND
+//         - Change it's name to the new name
+//         - Change it's path (and all its childrens' path) to the new path
+//         - IF the paths differ, and the parent directory of both paths differ
+//             - Dereference the cache node from its parent, and add it to the new parent.
+//             - Dereference the dirent from its parent, and add it to the new parent
+//         - else
+//             - Dereference the dirent from its parent, and add it with the new basename
+//         - exit
+//     */
+//     do {
+//         fat_dirent_cache* found = DirentLookupFrom(where, cache->root);
+//         if (found == cache_entry)
+//             return OBOS_STATUS_SUCCESS;
+//         if (found)
+//             return OBOS_STATUS_ALREADY_INITIALIZED;
+//     } while(0);
+//     string parent_path = {};
+//     OBOS_InitStringLen(&parent_path, where, strrfind(where, '/') == SIZE_MAX ? strlen(where) : strrfind(where, '/'));
+//     fat_dirent_cache* parent = DirentLookupFrom(OBOS_GetStringCPtr(&parent_path), cache->root);
+//     if (!parent && OBOS_GetStringSize(&parent_path) == strlen(where))
+//     {
+//         parent = cache->root;
+//         parent_path = cache->root->path;
+//     }
+//     if (!parent)
+//         return OBOS_STATUS_NOT_FOUND;
+//     OBOS_FreeString(&cache_entry->name);
+//     OBOS_FreeString(&cache_entry->path);
+//     cache_entry->path = parent_path;
+//     if (OBOS_GetStringSize(&cache_entry->path))
+//         if (OBOS_GetStringCPtr(&cache_entry->path)[OBOS_GetStringSize(&cache_entry->path) - 1] != '/')
+//             OBOS_AppendStringC(&cache_entry->path, "/");
+//     OBOS_InitString(&cache_entry->name, basename(where));
+//     OBOS_AppendStringS(&cache_entry->path, &cache_entry->name);
+//     if (parent != cache_entry->fdc_parent)
+//     {
+//         Core_MutexAcquire(&cache->fat_lock);
+//         Core_MutexAcquire(&cache->fd_lock);
+//         deref_dirent(cache_entry);
+//         CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
+//         CacheAppendChild(parent, cache_entry);
+//         gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
+//         ref_dirent(cache_entry);
+//         Core_MutexRelease(&cache->fd_lock);
+//         Core_MutexRelease(&cache->fat_lock);
+//     }
+//     else
+//     {
+//         deref_dirent(cache_entry);
+//         Core_MutexAcquire(&cache->fat_lock);
+//         Core_MutexAcquire(&cache->fd_lock);
+//         gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
+//         ref_dirent(cache_entry);
+//         Core_MutexRelease(&cache->fd_lock);
+//         Core_MutexRelease(&cache->fat_lock);
+//     }
+//     Vfs_FdFlush(cache->volume);
+//     return OBOS_STATUS_SUCCESS;
+// }
+obos_status move_desc_to(dev_desc desc, dev_desc new_parent_desc, const char* name)
 {
-    if (!desc || !where)
+    if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!valid_filename(where, true))
+    if (name && !valid_filename(name, true))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!new_parent_desc && !name)
+        return OBOS_STATUS_SUCCESS; // Nothing to do.
+
+    // If !new_parent && name, then we need to rename the file.
+    // If new_parent && !name, then we need to move the file to the new parent, and keep the filename.
+    // If new_parent && name, then we need to move the file to new parent and rename the file.
+
     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
+    fat_dirent_cache* new_parent = (fat_dirent_cache*)new_parent_desc;
     fat_cache* cache = cache_entry->owner;
-    /*
-    To move a entry:
-        - IF the paths are the same
-            - return SUCCESS
-        - IF the new path already exists
-            - return ALREADY_EXISTS
-        - IF the new parent doesn't exist
-            - return NOT_FOUND
-        - Change it's name to the new name
-        - Change it's path (and all its childrens' path) to the new path
-        - IF the paths differ, and the parent directory of both paths differ
-            - Dereference the cache node from its parent, and add it to the new parent.
-            - Dereference the dirent from its parent, and add it to the new parent
-        - else
-            - Dereference the dirent from its parent, and add it with the new basename
-        - exit
-    */
-    do {
-        fat_dirent_cache* found = DirentLookupFrom(where, cache->root);
-        if (found == cache_entry)
-            return OBOS_STATUS_SUCCESS;
-        if (found)
-            return OBOS_STATUS_ALREADY_INITIALIZED;
-    } while(0);
-    string parent_path = {};
-    OBOS_InitStringLen(&parent_path, where, strrfind(where, '/') == SIZE_MAX ? strlen(where) : strrfind(where, '/'));
-    fat_dirent_cache* parent = DirentLookupFrom(OBOS_GetStringCPtr(&parent_path), cache->root);
-    if (!parent && OBOS_GetStringSize(&parent_path) == strlen(where))
+
+    if (!new_parent || new_parent == cache_entry->fdc_parent)
     {
-        parent = cache->root;
-        parent_path = cache->root->path;
-    }
-    if (!parent)
-        return OBOS_STATUS_NOT_FOUND;
-    OBOS_FreeString(&cache_entry->name);
-    OBOS_FreeString(&cache_entry->path);
-    cache_entry->path = parent_path;
-    if (OBOS_GetStringSize(&cache_entry->path))
-        if (OBOS_GetStringCPtr(&cache_entry->path)[OBOS_GetStringSize(&cache_entry->path) - 1] != '/')
-            OBOS_AppendStringC(&cache_entry->path, "/");
-    OBOS_InitString(&cache_entry->name, basename(where));
-    OBOS_AppendStringS(&cache_entry->path, &cache_entry->name);
-    if (parent != cache_entry->fdc_parent)
-    {
+        deref_dirent(cache_entry);
+        OBOS_FreeString(&cache_entry->name);
+        OBOS_InitString(&cache_entry->name, name);
+        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], cache_entry->fdc_parent, cache_entry);
         Core_MutexAcquire(&cache->fat_lock);
         Core_MutexAcquire(&cache->fd_lock);
-        deref_dirent(cache_entry);
-        CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
-        CacheAppendChild(parent, cache_entry);
-        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
         ref_dirent(cache_entry);
         Core_MutexRelease(&cache->fd_lock);
         Core_MutexRelease(&cache->fat_lock);
@@ -550,13 +632,21 @@ obos_status move_desc_to(dev_desc desc, const char* where)
     else
     {
         deref_dirent(cache_entry);
+        if (name)
+        {
+            OBOS_FreeString(&cache_entry->name);
+            OBOS_InitString(&cache_entry->name, name);
+            gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], cache_entry->fdc_parent, cache_entry);
+        }
+        CacheRemoveChild(cache_entry->fdc_parent, cache_entry);
+        CacheAppendChild(new_parent, cache_entry);
         Core_MutexAcquire(&cache->fat_lock);
         Core_MutexAcquire(&cache->fd_lock);
-        gen_short_name(OBOS_GetStringCPtr(&cache_entry->name), &cache_entry->data.filename_83[0], parent, cache_entry);
         ref_dirent(cache_entry);
         Core_MutexRelease(&cache->fd_lock);
         Core_MutexRelease(&cache->fat_lock);
     }
+
     Vfs_FdFlush(cache->volume);
     return OBOS_STATUS_SUCCESS;
 }
