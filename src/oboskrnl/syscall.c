@@ -295,7 +295,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ThreadGetTid, // 16
     (uintptr_t)Sys_WaitOnObject,
     (uintptr_t)Sys_WaitOnObjects,
-    (uintptr_t)Sys_ProcessOpen,  // Unimplemented
+    (uintptr_t)Sys_ProcessOpen,
     (uintptr_t)Sys_ProcessStart,
     (uintptr_t)Sys_KillProcess,  // signal-related
     (uintptr_t)Sys_VirtualMemoryAlloc, // 22

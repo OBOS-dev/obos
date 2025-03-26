@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <klog.h>
 #include <syscall.h>
 #include <handle.h>
 
@@ -213,5 +214,8 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     OBOS_UNUSED(eax);
     if (eax > sizeof(syscall_to_string)/sizeof(const char*))
         return;
-    OBOS_Debug("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+    if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 2)
+        OBOS_Debug("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+    else
+        OBOS_Warning("(thread %ld) syscall %s returned 0x%016x (possible error status)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
 }
