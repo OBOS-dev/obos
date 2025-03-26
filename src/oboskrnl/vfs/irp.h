@@ -48,3 +48,4 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);
 obos_status VfsH_IRPWait(irp* request);
 void VfsH_IRPRef(irp* request);
 void VfsH_IRPUnref(irp* request);
+irp* VfsH_IRPAllocate();
