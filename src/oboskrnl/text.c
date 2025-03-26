@@ -120,6 +120,12 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {
 	if (!state->fb.base)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
+	if (ch < 0x20 && ch != '\r' && ch != '\n' && ch != '\t' && ch != '\b')
+	{
+		OBOS_WriteCharacter(state, '^');
+		OBOS_WriteCharacter(state, ch+0x40);
+		return OBOS_STATUS_SUCCESS;
+	}
 	switch (ch)
 	{
 	case '\n':
@@ -132,6 +138,7 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 		state->column += 4 - (state->column % 4);
 		break;
 	case '\b':
+	case '\177':
 		if (!state->column)
 			break;
 		putch(state, ' ', --state->column, state->row, state->fg_color, OBOS_TEXT_BACKGROUND);

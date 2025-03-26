@@ -152,7 +152,7 @@ typedef enum
 	OBOS_STATUS_PIPE_CLOSED,
 	/// <summary>
 	/// Returned if the write request could not be completed, as there is simply not enough space in the device<para/>
-	/// For example, this can happen if the size of a write to a pipe is greater than the pipe's size.'
+	/// For example, this can happen if the size of a write to a pipe is greater than the pipe's size.
 	/// </summary>
 	OBOS_STATUS_NO_SPACE,
 	/// <summary>
@@ -171,4 +171,8 @@ typedef enum
 	/// The operation would block.
 	/// </summary>
 	OBOS_STATUS_WOULD_BLOCK,
+	/// <summary>
+	/// The passed file or handle is not a TTY.
+	/// </summary>
+	OBOS_STATUS_NOT_A_TTY,
 } obos_status;

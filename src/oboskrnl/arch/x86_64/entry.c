@@ -96,6 +96,7 @@
 #include <vfs/mount.h>
 #include <vfs/fd.h>
 #include <vfs/limits.h>
+#include <vfs/tty.h>
 
 #include <locks/mutex.h>
 #include <locks/wait.h>
@@ -873,6 +874,17 @@ void Arch_KernelMainBootstrap()
     // 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
     OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
     Vfs_FinalizeInitialization();
+
+    dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
+    if (ps2k1)
+    {
+        tty_interface i = {};
+        VfsH_MakeScreenTTY(&i, ps2k1->vnode, &OBOS_TextRendererState);
+        dirent* tty = nullptr;
+        Vfs_RegisterTTY(&i, &tty, false);
+        Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
+        Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
+    }
 
     fd com1 = {};
     Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);

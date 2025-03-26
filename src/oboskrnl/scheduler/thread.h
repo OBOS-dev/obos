@@ -103,6 +103,7 @@ typedef struct thread
 	struct signal_header* signal_info;
 
 	void* kernelStack; // size: 0x10000 bytes
+	void* userStack; // size: 0x10000 bytes, used for signals dispatched in kernel-mode.
 
 	// Thread profiling info
 

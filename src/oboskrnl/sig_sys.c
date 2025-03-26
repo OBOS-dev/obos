@@ -58,69 +58,7 @@ obos_status Sys_KillProcess(handle proc_hnd, int sigval)
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
-    proc->refcount++;
-    thread* ready = nullptr;
-    thread* running = nullptr;
-    thread* blocked = nullptr;
-    for (thread_node* node = proc->threads.head; node; )
-    {
-        thread* const thr = node->data;
-        node = node->next;
-
-        switch (sigval)
-        {
-            case SIGCONT:
-            case SIGSTOP:
-                OBOS_Kill(Core_GetCurrentThread(), thr, sigval);
-                continue;
-            default:
-                break;
-        }
-
-        if (thr->status == THREAD_STATUS_READY)
-            ready = thr;
-        if (thr->status == THREAD_STATUS_BLOCKED && ~thr->flags & THREAD_FLAGS_DIED)
-            blocked = thr;
-
-        if (thr->status == THREAD_STATUS_RUNNING)
-        {
-            running = thr;
-            break;
-        }
-    }
-
-    switch (sigval)
-    {
-        case SIGCONT:
-        {
-            // look at linux's WIFCONTINUED for reference
-            proc->exitCode = 0xffff;
-            CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*proc), true, false);
-            return OBOS_STATUS_SUCCESS;
-        }
-        case SIGSTOP:
-        {
-            // look at linux's WIFSTOPPED for reference
-            proc->exitCode = 0x007f;
-            CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*proc), true, false);
-            return OBOS_STATUS_SUCCESS;
-        }
-        default:
-            break;
-    }
-
-    obos_status status = OBOS_STATUS_SUCCESS;
-
-    if (running)
-        status = OBOS_Kill(Core_GetCurrentThread(), running, sigval);
-    else if (ready)
-        status = OBOS_Kill(Core_GetCurrentThread(), ready, sigval);
-    else if (blocked)
-        status = OBOS_Kill(Core_GetCurrentThread(), blocked, sigval);
-    else
-        status = OBOS_STATUS_NOT_FOUND;
-
-    return status;
+    return OBOS_KillProcess(proc, sigval);
 }
 
 obos_status Sys_SigAction(int signum, const user_sigaction* act, user_sigaction* oldact)

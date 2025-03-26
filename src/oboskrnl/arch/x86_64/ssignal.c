@@ -12,6 +12,7 @@
 
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/asm_helpers.h>
+#include <arch/x86_64/sse.h>
 
 #include <locks/event.h>
 
@@ -19,10 +20,15 @@
 
 #include <allocators/base.h>
 
+#include <irq/irql.h>
+
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
+#include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
+
+#include <mm/alloc.h>
 
 // Abandon all hope, ye who enter here.
 
@@ -31,42 +37,51 @@
 #define KERNEL_GS_BASE (0xC0000102)
 
 #define ALLOWED_FLAGS (0b1000011000110111111111)
-void OBOSS_SigReturn(interrupt_frame* frame)
+void OBOSS_SigReturn(ucontext_t* uctx)
 {
-    // Use frame->rsp to restore the previous thread context.
-    ucontext_t ctx = {};
-    if (obos_is_error(memcpy_usr_to_k(&ctx, (void*)frame->rsp, sizeof(ctx))))
+    ucontext_t* ctx = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, uctx, nullptr, sizeof(ucontext_t), OBOS_PROTECTION_READ_ONLY, true, nullptr);
+    if (!ctx)
         return;
     Core_EventClear(&Core_GetCurrentThread()->signal_info->event);
-    wrmsr(KERNEL_GS_BASE, ctx.gs_base);
-    wrmsr(FS_BASE, ctx.fs_base);
-    memcpy(frame, &ctx.frame, sizeof(*frame));
-    frame->cs = 0x18|3;
-    frame->ss = 0x20|3;
-    frame->ds = 0x20|3;
-    frame->rflags |= RFLAGS_INTERRUPT_ENABLE;
-    frame->rflags &= ALLOWED_FLAGS;
-    frame->cr3 = CoreS_GetCPULocalPtr()->currentContext->pt;
-    // TODO: Restore extended context.
+    irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+    OBOS_UNUSED(oldIrql);
+    thread_ctx* thread_ctx = &Core_GetCurrentThread()->context;
+    memcpy(&thread_ctx->frame, &ctx->frame, sizeof(interrupt_frame));
+    thread_ctx->cr3 = ctx->cr3;
+    thread_ctx->fs_base = ctx->fs_base;
+    thread_ctx->gs_base = ctx->gs_base;
+    if (thread_ctx->signal_extended_ctx_ptr)
+        memcpy(thread_ctx->extended_ctx_ptr, thread_ctx->signal_extended_ctx_ptr, Arch_GetXSaveRegionSize());
+    thread_ctx->irql = ctx->irql;
+    Mm_VirtualMemoryFree(&Mm_KernelContext, uctx, sizeof(*uctx));
+    CoreS_SwitchToThreadContext(thread_ctx);
 }
 void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
 {
-    if (!(frame->cs & 0x3))
-        return;
+    // if (!(frame->cs & 0x3))
+    //     return;
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval-1];
-    ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(KERNEL_GS_BASE),.fs_base=rdmsr(FS_BASE) };
-    if (Core_GetCurrentThread()->context.extended_ctx_ptr)
-    {
-        ctx.extended_ctx_ptr = Core_GetCurrentThread()->context.extended_ctx_ptr;
-        xsave(ctx.extended_ctx_ptr);
-    }
+    ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(!(frame->cs & 0x3) ? KERNEL_GS_BASE : GS_BASE),.fs_base=rdmsr(FS_BASE),.cr3=frame->cr3 };
+    if (!Core_GetCurrentThread()->context.signal_extended_ctx_ptr)
+        Core_GetCurrentThread()->context.signal_extended_ctx_ptr = Arch_AllocateXSAVERegion();
+    if (Arch_HasXSAVE)
+        xsave(Core_GetCurrentThread()->context.signal_extended_ctx_ptr);
+    else
+        __builtin_ia32_fxsave(Core_GetCurrentThread()->context.signal_extended_ctx_ptr);
+    bool is_kernel_stack = !(frame->cs & 0x3);
     if (sig->flags & SA_ONSTACK && Core_GetCurrentThread()->signal_info->sp)
         frame->rsp = Core_GetCurrentThread()->signal_info->sp;
-    ctx.irql = 0;
+    if (is_kernel_stack)
+        frame->rsp = (uintptr_t)Core_GetCurrentThread()->userStack + 0x10000;
+    ctx.irql = Core_GetIrql();
+    
     frame->rsp -= sizeof(ctx);
-    memcpy_k_to_usr((void*)frame->rsp, &ctx, sizeof(ctx));
+    uint8_t *rsp = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, (void*)frame->rsp, nullptr, sizeof(ucontext_t), 0, true, nullptr);
+    memcpy(rsp, &ctx, sizeof(ctx));
+    Mm_VirtualMemoryFree(&Mm_KernelContext, rsp, sizeof(ucontext_t));
     frame->rsp -= sizeof(sig->trampoline_base);
     memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
+    
     uintptr_t ucontext_loc = frame->rsp;
     if (!sig->un.handler || sigval == SIGKILL || sigval == SIGSTOP)
     {
@@ -104,6 +119,11 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         frame->rsp = (uintptr_t)Core_GetCurrentThread()->kernelStack + 0x10000;
         return;
     }
+    frame->cr3 = Core_GetCurrentThread()->proc->ctx->pt;
+    frame->rflags = 0x200202;
+    frame->cs = 0x23;
+    frame->ss = 0x1b;
+    frame->ds = 0x1b;
     if (sig->flags & SA_SIGINFO)
     {
         siginfo_t siginfo = {};

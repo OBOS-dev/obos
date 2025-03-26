@@ -38,12 +38,12 @@ signal_header* OBOSH_AllocateSignalHeader()
 
 obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
-    if (sigval == 0)
-        return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
     if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (thr->proc->pid == 0)
         return OBOS_STATUS_INVALID_OPERATION;
+    if (sigval == 0)
+        return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
 
     OBOS_ENSURE(thr->signal_info);
 
@@ -170,6 +170,78 @@ obos_status OBOS_SigAltStack(const uintptr_t* sp, uintptr_t* oldsp)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status OBOS_KillProcess(struct process* proc, int sigval)
+{
+    if (!proc || !(sigval >= 0 && sigval <= SIGMAX))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (proc->pid == 0)
+        return OBOS_STATUS_INVALID_OPERATION;
+    
+    proc->refcount++;
+    thread* ready = nullptr;
+    thread* running = nullptr;
+    thread* blocked = nullptr;
+    for (thread_node* node = proc->threads.head; node; )
+    {
+        thread* const thr = node->data;
+        node = node->next;
+
+        switch (sigval)
+        {
+            case SIGCONT:
+            case SIGSTOP:
+                OBOS_Kill(Core_GetCurrentThread(), thr, sigval);
+                continue;
+            default:
+                break;
+        }
+
+        if (thr->status == THREAD_STATUS_READY)
+            ready = thr;
+        if (thr->status == THREAD_STATUS_BLOCKED && ~thr->flags & THREAD_FLAGS_DIED)
+            blocked = thr;
+
+        if (thr->status == THREAD_STATUS_RUNNING)
+        {
+            running = thr;
+            break;
+        }
+    }
+
+    switch (sigval)
+    {
+        case SIGCONT:
+        {
+            // look at linux's WIFCONTINUED for reference
+            proc->exitCode = 0xffff;
+            CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*proc), true, false);
+            return OBOS_STATUS_SUCCESS;
+        }
+        case SIGSTOP:
+        {
+            // look at linux's WIFSTOPPED for reference
+            proc->exitCode = 0x007f;
+            CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*proc), true, false);
+            return OBOS_STATUS_SUCCESS;
+        }
+        default:
+            break;
+    }
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    if (running)
+        status = OBOS_Kill(Core_GetCurrentThread(), running, sigval);
+    else if (ready)
+        status = OBOS_Kill(Core_GetCurrentThread(), ready, sigval);
+    else if (blocked)
+        status = OBOS_Kill(Core_GetCurrentThread(), blocked, sigval);
+    else
+        status = OBOS_STATUS_NOT_FOUND;
+
+    return status;
+}
+
 void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 {
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval];
@@ -183,20 +255,21 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame)
         sig->un.handler = SIG_DFL;
     }
 }
-void OBOS_SyncPendingSignal(interrupt_frame* frame)
+bool OBOS_SyncPendingSignal(interrupt_frame* frame)
 {
     if (!CoreS_GetCPULocalPtr()->currentThread)
-        return;
+        return false;
     if (!Core_GetCurrentThread()->signal_info)
-        return;
+        return false;
     if (!(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask))
-        return;
+        return false;
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
-    int sigval = __builtin_clzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
+    int sigval = __builtin_ctzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
     Core_GetCurrentThread()->signal_info->pending &= ~BIT_TYPE(sigval, L);
     sigval += 1;
     OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
+    return true;
 }
 
 #define T SIGNAL_DEFAULT_TERMINATE_PROC,

@@ -4,6 +4,7 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -40,6 +41,10 @@
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
+#include <vfs/fd.h>
+#include <vfs/tty.h>
+
+#include <utils/string.h>
 
 // TODO: Check permissions?
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
@@ -155,6 +160,121 @@ obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
     return OBOS_STATUS_SUCCESS;
 }
 
+// desc can be set to HANDLE_INVALID to unset the
+// controlling TTY.
+obos_status Sys_SetControllingTTY(handle desc, bool fg)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = HANDLE_TYPE(desc) == HANDLE_TYPE_INVALID ? nullptr : OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    tty* t = nullptr;
+    if (fd)
+    {
+        if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+            return OBOS_STATUS_UNINITIALIZED;
+        if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
+            return OBOS_STATUS_NOT_A_TTY;
+        t = fd->un.fd->vn->data;
+    }
+
+    process* proc = Core_GetCurrentThread()->proc;
+    
+    // FIXME: If the parent's controlling TTY is not the same as ours, then we have a problem.
+    if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
+        proc->controlling_tty->fg_job = proc->parent;
+    
+    proc->controlling_tty = t;
+    if (fg && t)
+        proc->controlling_tty->fg_job = proc;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+// Initializes 'desc' with a file descriptor to the 
+// controlling TTY of the process.
+obos_status Sys_GetControllingTTY(handle desc, uint32_t oflags)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    process* proc = Core_GetCurrentThread()->proc;
+    if (!proc->controlling_tty)
+        return OBOS_STATUS_NOT_FOUND; // No controlling TTY.
+
+    return Vfs_FdOpenVnode(fd->un.fd, proc->controlling_tty->vn, oflags);
+}
+obos_status Sys_TTYName(handle desc, char* ubuf, size_t size)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = HANDLE_TYPE(desc) == HANDLE_TYPE_INVALID ? nullptr : OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    
+    if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
+        return OBOS_STATUS_NOT_A_TTY;
+
+    const size_t dev_prefix_len = sizeof(OBOS_DEV_PREFIX)-1;
+    bool needs_trailing_slash = needs_trailing_slash = ((OBOS_DEV_PREFIX)[dev_prefix_len-1] != '/');
+    tty* t = fd->un.fd->vn->data;
+    size_t name_len = dev_prefix_len+needs_trailing_slash+OBOS_GetStringSize(&t->ent->name);
+    if (size < name_len)
+        return OBOS_STATUS_NO_SPACE;
+
+    char* kbuf = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, ubuf, nullptr, size, 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    size_t offset = 0;
+    memcpy(kbuf, OBOS_DEV_PREFIX, dev_prefix_len);
+    offset += dev_prefix_len;
+    if (needs_trailing_slash)
+    {
+        memcpy(kbuf+offset, "/", 1);
+        offset += 1;
+    }
+    memcpy(kbuf+offset, OBOS_GetStringCPtr(&t->ent->name), OBOS_GetStringSize(&t->ent->name));
+    offset += OBOS_GetStringSize(&t->ent->name);
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
+
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status Sys_IsATTY(handle desc)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = HANDLE_TYPE(desc) == HANDLE_TYPE_INVALID ? nullptr : OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
+        return OBOS_STATUS_NOT_A_TTY;
+    return OBOS_STATUS_SUCCESS;
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -244,6 +364,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_Chdir,
     (uintptr_t)Sys_ChdirEnt,
     (uintptr_t)Sys_GetCWD,
+    (uintptr_t)Sys_SetControllingTTY,
+    (uintptr_t)Sys_GetControllingTTY,
+    (uintptr_t)Sys_TTYName,
+    (uintptr_t)Sys_IsATTY,
 };
 
 // Arch syscall table is defined per-arch

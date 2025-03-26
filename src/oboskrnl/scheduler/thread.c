@@ -75,7 +75,9 @@ obos_status CoreH_ThreadReady(thread* thr)
 	allocator_info* info = OBOS_NonPagedPoolAllocator;
 	if (!info)
 		info = OBOS_KernelAllocator;
-	thread_node* node = (thread_node*)info->ZeroAllocate(info, 1, sizeof(thread_node), nullptr);
+	if (thr->proc && thr->proc->pid > 0 && !thr->userStack)
+	    thr->userStack = Mm_VirtualMemoryAlloc(thr->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+    thread_node* node = (thread_node*)info->ZeroAllocate(info, 1, sizeof(thread_node), nullptr);
 	node->free = info == OBOS_KernelAllocator ? free_node_kalloc : free_node;
 	obos_status status = CoreH_ThreadReadyNode(thr, node);
 	if (status != OBOS_STATUS_SUCCESS)
@@ -246,6 +248,8 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	}
 	if (currentThread->kernelStack)
 		Mm_VirtualMemoryFree(&Mm_KernelContext, currentThread->kernelStack, 0x10000);
+	if (currentThread->userStack)
+		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
