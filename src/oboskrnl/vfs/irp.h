@@ -28,6 +28,7 @@ typedef struct irp {
         void *buff;
         const void* cbuff;
     };
+    void* drvData;
     size_t refs;
     uoff_t blkOffset;
     size_t blkCount;
@@ -43,9 +44,10 @@ typedef struct irp {
     enum irp_op op : 1;
 } irp;
 // desc can be nullptr if request->desc can be implied from vn.
-obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc);
-obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);
-obos_status VfsH_IRPWait(irp* request);
-void VfsH_IRPRef(irp* request);
-void VfsH_IRPUnref(irp* request);
-irp* VfsH_IRPAllocate();
+OBOS_EXPORT obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc);
+OBOS_EXPORT obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);
+OBOS_EXPORT obos_status VfsH_IRPWait(irp* request);
+OBOS_EXPORT obos_status VfsH_IRPSignal(irp* request, obos_status status);
+OBOS_EXPORT void VfsH_IRPRef(irp* request);
+OBOS_EXPORT void VfsH_IRPUnref(irp* request);
+OBOS_EXPORT irp* VfsH_IRPAllocate();

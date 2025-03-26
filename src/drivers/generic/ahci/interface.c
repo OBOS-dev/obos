@@ -27,6 +27,8 @@
 
 #include <allocators/base.h>
 
+#include <vfs/irp.h>
+
 #include "command.h"
 #include "structs.h"
 
@@ -47,8 +49,8 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data);
-#pragma GCC push_options
-#pragma GCC optimize ("-O0")
+// #pragma GCC push_options
+// #pragma GCC optimize ("-O0")
 static OBOS_NO_KASAN void page_in(uintptr_t base, size_t sz)
 {
     uintptr_t curr_base = base;
@@ -139,7 +141,7 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
     //     return status;
     return OBOS_STATUS_SUCCESS;
 }
-#pragma GCC pop_options
+// #pragma GCC pop_options
 obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
 {
     if (!desc || !buf)
@@ -301,5 +303,65 @@ obos_status query_user_readable_name(dev_desc desc, const char** name)
         return OBOS_STATUS_INVALID_ARGUMENT;
     Port* port = (Port*)desc;
     *name = port->dev_name;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status submit_irp(void* request_)
+{
+    if (!request_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    irp* request = request_;
+    Port* port = (Port*)request->desc;
+    if (!port || !request->buff || !request->refs)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!port->works)
+    {
+        VfsH_IRPSignal(request, OBOS_STATUS_ABORTED);
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (request->blkCount > port->nSectors)
+    {
+        request->nBlkRead = 0;
+        VfsH_IRPSignal(request, OBOS_STATUS_SUCCESS);
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (request->blkOffset > port->nSectors)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if ((request->blkOffset + request->blkCount) > port->nSectors)
+        request->blkCount = request->blkOffset - port->nSectors;
+    if (!request->blkCount)
+    {
+        request->nBlkRead = 0;
+        VfsH_IRPSignal(request, OBOS_STATUS_SUCCESS);
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (request->dryOp)
+    {
+        // Assume the AHCI driver can always do I/O.
+        // This is probably true, considering there are 32 command slots
+        // and not enough disk I/O done in the kernel to exhaust that.
+        VfsH_IRPSignal(request, OBOS_STATUS_SUCCESS);
+        return OBOS_STATUS_SUCCESS;
+    }
+    obos_status status = OBOS_STATUS_SUCCESS;
+    struct command_data *data = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(struct command_data), nullptr);
+    switch (request->op) {
+        case IRP_READ:
+            data->cmd = port->supports48bitLBA ? ATA_READ_DMA_EXT : ATA_READ_DMA;
+            data->direction = COMMAND_DIRECTION_READ;
+            break;
+        case IRP_WRITE:
+            data->cmd = port->supports48bitLBA ? ATA_READ_DMA_EXT : ATA_READ_DMA;
+            data->direction = COMMAND_DIRECTION_READ;
+            break;
+    }
+    data->completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    data->irp = request;
+    VfsH_IRPRef(request);
+    status = populate_physical_regions((uintptr_t)request->buff, request->blkCount*port->sectorSize, data);
+    if (obos_is_error(status))
+        return status;
+    SendCommand(port, data, request->blkOffset, 0x40, request->blkCount == 0x10000 ? 0 : request->blkCount);
+    HBA->ghc |= BIT(1) /* GhcIE */;
     return OBOS_STATUS_SUCCESS;
 }

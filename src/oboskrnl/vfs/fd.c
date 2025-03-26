@@ -132,6 +132,8 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     {
         status = VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
+        if (nWritten_)
+            *nWritten_ = req->nBlkRead * desc->vn->blkSize;
         return status;
     }
     VfsH_IRPUnref(req);
@@ -242,6 +244,8 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     if (obos_is_success(status))
     {
         obos_status status = VfsH_IRPWait(req);
+        if (nRead_)
+            *nRead_ = req->nBlkRead * desc->vn->blkSize;
         VfsH_IRPUnref(req);
         return status;
     }
@@ -498,6 +502,12 @@ obos_status VfsH_IRPWait(irp* request)
 {
     Core_WaitOnObject(WAITABLE_OBJECT(request->evnt));
     return request->status;
+}
+
+obos_status VfsH_IRPSignal(irp* request, obos_status status)
+{
+    request->status = status;
+    return Core_EventSet(&request->evnt, true);
 }
 
 void VfsH_IRPRef(irp* request)
