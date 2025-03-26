@@ -22,8 +22,10 @@ enum irp_op {
 };
 typedef struct irp {
     // Set when the operation is complete.
+    // The lifetime of the pointed object is completely controlled
+    // by the driver, but needs to be alive until the event is set.
     // EVENT_NOTIFICATION.
-    event evnt;
+    event *evnt;
     union {
         void *buff;
         const void* cbuff;
@@ -37,6 +39,8 @@ typedef struct irp {
         size_t nBlkWritten;
     };
     dev_desc desc;
+    vnode *vn;
+    // NOTE: Call finalize_irp, if it exists, before checking this variable.
     obos_status status;
     // If dryOp is true, then no bytes should be read/written, but
     // evnt should still be set when blkCount bytes can be read/written.
@@ -44,7 +48,7 @@ typedef struct irp {
     enum irp_op op : 1;
 } irp;
 // desc can be nullptr if request->desc can be implied from vn.
-OBOS_EXPORT obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc);
+OBOS_EXPORT obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc);
 OBOS_EXPORT obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);
 OBOS_EXPORT obos_status VfsH_IRPWait(irp* request);
 OBOS_EXPORT obos_status VfsH_IRPSignal(irp* request, obos_status status);

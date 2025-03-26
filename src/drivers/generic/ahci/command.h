@@ -31,7 +31,6 @@ struct command_data
     bool awaitingSignal;
     // Set when the command is done.
     event completionEvent;
-    struct irp* irp;
     obos_status commandStatus;
     struct {
         uint8_t cmdSlot;
