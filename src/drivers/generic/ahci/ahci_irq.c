@@ -12,10 +12,13 @@
 #include <irq/irql.h>
 #include <irq/dpc.h>
 
+#include <vfs/irp.h>
+
 #include <locks/event.h>
 #include <locks/semaphore.h>
 
 #include "ahci_irq.h"
+#include "allocators/base.h"
 #include "structs.h"
 #include "command.h"
 
@@ -33,8 +36,22 @@ static void ahci_dpc_handler(dpc* d, void* userdata)
         {
             Core_SemaphoreRelease(&curr->lock);
             Core_EventSet(&curr->PendingCommands[slot]->completionEvent, false);
+            if (curr->PendingCommands[slot]->irp)
+            {
+                VfsH_IRPSignal(curr->PendingCommands[slot]->irp, curr->PendingCommands[slot]->commandStatus);
+                if (obos_is_success(curr->PendingCommands[slot]->commandStatus))
+                    curr->PendingCommands[slot]->irp->nBlkRead = curr->PendingCommands[slot]->irp->blkCount;
+                else
+                    curr->PendingCommands[slot]->irp->nBlkRead = 0;
+                VfsH_IRPUnref(curr->PendingCommands[slot]->irp);
+                curr->PendingCommands[slot]->irp = nullptr;
+                struct command_data* data = curr->PendingCommands[slot];
+                curr->PendingCommands[slot] = nullptr;
+                Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
+            }
+            else
+                curr->PendingCommands[slot]->awaitingSignal = false;
         }
-        curr->PendingCommands[slot]->awaitingSignal = false;
     }
 }
 OBOS_NO_KASAN OBOS_NO_UBSAN bool ahci_irq_checker(struct irq* i, void* userdata)
@@ -82,6 +99,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void ahci_irq_handler(struct irq* i, interrupt_frame
                 continue; // There was never a command issued in the first place.
             if (curr->PendingCommands[slot]->awaitingSignal)
                 continue;
+            // TODO: Is this valid?
+            if (curr->PendingCommands[slot]->irp)
+                curr->PendingCommands[slot]->irp->nBlkRead = (((HBA_CMD_HEADER*)curr->clBase) + slot)->prdbc / curr->sectorSize;
             curr->PendingCommands[slot]->awaitingSignal = true;
             requires_dpc = true;
             curr->PendingCommands[slot]->commandStatus = status;
