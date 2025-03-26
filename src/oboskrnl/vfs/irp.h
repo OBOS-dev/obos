@@ -20,12 +20,22 @@ enum irp_op {
     IRP_READ,
     IRP_WRITE,
 };
+
+// Before using data from the IRP, make sure to call VfsH_IRPWait on the IRP.
+// Do not try to manually wait on the IRP, as there is tedious logic, and 
+// getting it wrong can cause weird bugs.
+// If you do, then good luck,
+// and godspeed.
 typedef struct irp {
     // Set when the operation is complete.
     // The lifetime of the pointed object is completely controlled
     // by the driver, but needs to be alive until the event is set.
+    // If set to nullptr, there is data immediately available.
+    // Always check if status != OBOS_STATUS_IRP_RETRY before calling finalize_irp.
     // EVENT_NOTIFICATION.
     event *evnt;
+    // If not nullptr, should be called by the IRP owner after waiting for the event.
+    void(*on_event_set)(struct irp* irp);
     union {
         void *buff;
         const void* cbuff;
@@ -40,7 +50,6 @@ typedef struct irp {
     };
     dev_desc desc;
     vnode *vn;
-    // NOTE: Call finalize_irp, if it exists, before checking this variable.
     obos_status status;
     // If dryOp is true, then no bytes should be read/written, but
     // evnt should still be set when blkCount bytes can be read/written.
