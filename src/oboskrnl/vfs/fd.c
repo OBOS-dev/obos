@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/wait.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -17,6 +18,7 @@
 #include <vfs/dirent.h>
 #include <vfs/pagecache.h>
 #include <vfs/mount.h>
+#include <vfs/irp.h>
 
 #include <mm/swap.h>
 
@@ -400,3 +402,32 @@ obos_status Vfs_FdClose(fd* desc)
     return OBOS_STATUS_SUCCESS;
 }
 LIST_GENERATE_INTERNAL(fd_list, struct fd, node, OBOS_EXPORT);
+
+obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
+{
+    if (!request || !vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        driver = &vn->un.device->driver->header;
+    if (!vn->blkSize)
+        driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
+
+    const size_t base_offset = vn->flags & VFLAGS_PARTITION ? (vn->partitions[0].off / vn->blkSize) : 0;
+    const uintptr_t offset = request->blkOffset + base_offset;
+    request->blkOffset = offset;
+
+    if (!desc)
+        request->desc = vn->desc;
+    else
+        request->desc = *desc;
+
+    // return driver->ftable.submit_irp(irp);
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status VfsH_IRPWait(irp* request)
+{
+    return Core_WaitOnObject(WAITABLE_OBJECT(request->evnt));
+}
