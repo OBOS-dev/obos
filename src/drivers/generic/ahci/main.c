@@ -59,6 +59,7 @@ OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
 OBOS_WEAK obos_status submit_irp(void*);
+OBOS_WEAK obos_status finalize_irp(void*);
 OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
     OBOS_UNUSED(what);
@@ -106,6 +107,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .on_wake = on_wake,
         .on_suspend = on_suspend,
         .submit_irp = submit_irp,
+        .finalize_irp = finalize_irp,
     },
     .driverName = "AHCI Driver",
     .version=1,
