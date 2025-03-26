@@ -423,8 +423,10 @@ obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
     else
         request->desc = *desc;
 
-    // return driver->ftable.submit_irp(irp);
-    return OBOS_STATUS_SUCCESS;
+    if (!driver->ftable.submit_irp)
+        return OBOS_STATUS_UNIMPLEMENTED;
+
+    return driver->ftable.submit_irp(request);
 }
 
 obos_status VfsH_IRPWait(irp* request)
