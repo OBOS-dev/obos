@@ -212,10 +212,11 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     nBytes /= blkSize;
     const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
     const uintptr_t offset = (desc->offset+base_offset) / blkSize;
-    if (!VfsH_LockMountpoint(point))
+    if (desc->vn->vtype == VNODE_TYPE_REG && !VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     obos_status status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, offset, nRead_);
-    VfsH_UnlockMountpoint(point);
+    if (desc->vn->vtype == VNODE_TYPE_REG)
+        VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
     if (nRead_)

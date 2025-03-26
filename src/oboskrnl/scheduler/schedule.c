@@ -4,6 +4,7 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "signal.h"
 #include <int.h>
 #include <klog.h>
 
@@ -162,6 +163,13 @@ void Core_Yield()
 			return; // No rescheduling needed, as the thread's quantum isn't finished yet.
 		}
 		CoreS_SaveRegisterContextAndYield(&getCurrentThread->context);
+// #ifdef __x86_64__
+// 		if (OBOS_SyncPendingSignal(&getCurrentThread->context.frame))
+// 		{
+// 			getCurrentThread->context.cr3 = getCurrentThread->context.frame.cr3;
+// 			CoreS_SwitchToThreadContext(&getCurrentThread->context);
+// 		}
+// #endif
 		if (oldIrql != IRQL_INVALID)
 		{
 			OBOS_ASSERT(!(oldIrql & ~0xf));

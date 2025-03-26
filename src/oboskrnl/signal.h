@@ -111,14 +111,16 @@ enum {
 obos_status OBOS_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset);
 obos_status OBOS_SigAltStack(const uintptr_t* sp, uintptr_t* oldsp);
 
+obos_status OBOS_KillProcess(struct process* proc, int sigval);
+
 typedef struct thread_context_info ucontext_t;
 
-void OBOS_SyncPendingSignal(interrupt_frame* frame);
+bool OBOS_SyncPendingSignal(interrupt_frame* frame);
 void OBOS_RunSignal(int sigval, interrupt_frame* frame);
 
 // NOTE: This function is implemented as if it is a syscall,
 // i.e., frame is `memcpy_usr_to_k`ed to a kernel buffer.
-OBOS_WEAK void OBOSS_SigReturn(interrupt_frame* frame);
+OBOS_WEAK void OBOSS_SigReturn(ucontext_t* frame);
 
 OBOS_WEAK void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame);
 

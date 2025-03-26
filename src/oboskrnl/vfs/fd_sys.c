@@ -352,12 +352,23 @@ obos_status Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_arg
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    void* kargp = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, argp, nullptr, sz_argp, 0, true, &status);
+    if (sz_argp == SIZE_MAX)
+    {
+        if (fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size)
+            status = fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size(request, &sz_argp);
+        else
+            status = OBOS_STATUS_UNIMPLEMENTED;
+        if (obos_is_error(status))
+            return status;
+    }
+
+    void* kargp = (sz_argp != 0) ? Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, argp, nullptr, sz_argp, 0, true, &status) : 0;
     if (obos_is_error(status))
         return status;
 
     status = Vfs_FdIoctl(fd->un.fd, request, kargp);
-    Mm_VirtualMemoryFree(&Mm_KernelContext, kargp, sz_argp);
+    if (kargp)
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kargp, sz_argp);
 
     return status;
 }
@@ -703,9 +714,9 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
     handle_desc* stdout = OBOS_HandleLookup(tbl, hnd_stdout, HANDLE_TYPE_FD, false, &status);
     handle_desc* stderr = OBOS_HandleLookup(tbl, hnd_stderr, HANDLE_TYPE_FD, false, &status);
     OBOS_UnlockHandleTable(tbl);
-    Vfs_FdOpen(stdin->un.fd, "/dev/COM1", FD_OFLAGS_READ);
-    Vfs_FdOpen(stdout->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
-    Vfs_FdOpen(stderr->un.fd, "/dev/COM1", FD_OFLAGS_WRITE);
+    Vfs_FdOpen(stdin->un.fd, "/dev/tty0", FD_OFLAGS_READ);
+    Vfs_FdOpen(stdout->un.fd, "/dev/tty0", FD_OFLAGS_WRITE);
+    Vfs_FdOpen(stderr->un.fd, "/dev/tty0", FD_OFLAGS_WRITE);
 }
 
 // Writebacks all dirty pages in the page cache back to disk.
@@ -786,3 +797,17 @@ obos_status Sys_Unmount(const char* uat)
 
     return status;
 }
+
+// TODO
+// obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, uint8_t *uexcept_set, const struct pselect_extra_args* uextra)
+// {
+//     struct pselect_extra_args extra = {};
+//     obos_status status = memcpy_usr_to_k(&extra, uextra, sizeof(extra));
+//     if (obos_is_error(status))
+//         return status;
+//     if (nFds > 1024)
+//         return OBOS_STATUS_INVALID_ARGUMENT; // uh oh
+//     if (!uread_set && !uwrite_set && !uexcept_set)
+//         return OBOS_STATUS_SUCCESS; // We waited for nothing, so assume success.
+//     OBOS_UNUSED(uexcept_set && "We can't really monitor exceptional cases...");
+// }

@@ -577,7 +577,7 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         process = Core_GetCurrentThread()->proc->children.head;
         while (process && process->dead)
             process = process->next;
-        status = process ? OBOS_STATUS_NOT_FOUND : OBOS_STATUS_SUCCESS;
+        status = process ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
         if (!process)
             return status;
         process->refcount++;

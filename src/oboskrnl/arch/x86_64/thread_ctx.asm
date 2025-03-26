@@ -53,6 +53,7 @@ align 8
 .frame: resq 0x1b
 .stackBase: resq 1
 .stackSize: resq 1
+.signal_extended_ctx_ptr: resq 1
 endstruc
 
 extern Core_GetIRQLVar
@@ -144,8 +145,14 @@ CoreS_FreeThreadContext:
 	push rbp
 	mov rbp, rsp
 
+	push rdi
 	mov rdi, [rdi+thread_ctx.extended_ctx_ptr]
 	call Arch_FreeXSAVERegion
+	pop rdi
+	push rdi
+	mov rdi, [rdi+thread_ctx.signal_extended_ctx_ptr]
+	call Arch_FreeXSAVERegion
+	pop rdi
 
 	xor rax,rax ; OBOS_STATUS_SUCCESS
 

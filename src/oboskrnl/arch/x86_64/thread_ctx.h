@@ -21,6 +21,7 @@ struct thread_context_info
 	interrupt_frame frame;
 	void* stackBase;
 	size_t stackSize;
+	void* signal_extended_ctx_ptr;
 } OBOS_ALIGN(8);
 
 extern void Arch_UserYield(void* kstck);

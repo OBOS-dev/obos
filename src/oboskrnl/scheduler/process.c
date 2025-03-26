@@ -77,6 +77,9 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->refcount++;
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
+	proc->controlling_tty = proc->parent->controlling_tty;
+	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc->parent)
+		proc->controlling_tty->fg_job = proc; // we are the new foreground job.
 
 	if (!proc->parent->cwd)
 	{
@@ -134,6 +137,9 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Attempt to exit current process in the kernel process\n");
 
 	proc->exitCode = code;
+
+	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
+		proc->controlling_tty->fg_job = proc->parent;
 
 	// Disown all children.
 	for (process* child = proc->children.head; child; )

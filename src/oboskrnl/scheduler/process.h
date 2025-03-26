@@ -12,6 +12,8 @@
 
 #include <vfs/dirent.h>
 
+#include <vfs/tty.h>
+
 #include <locks/spinlock.h>
 #include <locks/wait.h>
 
@@ -44,6 +46,8 @@ typedef struct process
 
 	dirent* cwd;
 	const char* cwd_str;
+
+	tty* controlling_tty;
 } process;
 extern uint32_t Core_NextPID;
 
