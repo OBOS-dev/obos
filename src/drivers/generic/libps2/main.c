@@ -12,6 +12,8 @@
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
 
+#include <vfs/irp.h>
+
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 
@@ -100,9 +102,48 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     }
     return st;
 }
+
+// TODO: Implement.
 void cleanup()
 {
     
+}
+
+static void irp_event_set(irp* req)
+{
+    ps2_port* port = (void*)req->desc;
+    size_t nReady = 0;
+    port->get_readable_count(port->default_handle, &nReady);
+    if (nReady >= req->blkCount)
+        req->status = !req->dryOp ? read_sync(req->desc, req->buff, req->blkCount, 0, &req->nBlkRead) : OBOS_STATUS_SUCCESS;
+    else
+        req->status = OBOS_STATUS_IRP_RETRY;
+}
+obos_status submit_irp(void* req_)
+{
+    irp* req = req_;
+    if (!req)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!req->buff || !req->refs || !req->desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (req->op == IRP_WRITE)
+        return OBOS_STATUS_INVALID_OPERATION;
+
+    ps2_port* port = (void*)req->desc;
+    if (port->magic != PS2_PORT_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    size_t nReady = 0;
+    port->get_readable_count(port->default_handle, &nReady);
+    if (nReady >= req->blkCount)
+    {
+        req->evnt = nullptr;
+        req->status = req->dryOp ? OBOS_STATUS_SUCCESS : read_sync(req->desc, req->buff, req->blkCount, 0, &req->nBlkRead);
+    }
+    else
+        req->evnt = port->data_ready_event;
+
+    return OBOS_STATUS_SUCCESS;
 }
 
 OBOS_WEAK void on_suspend();
@@ -122,6 +163,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .write_sync = write_sync,
         .on_suspend = on_suspend,
         .on_wake = on_wake,
+        .submit_irp = submit_irp,
     },
     .driverName = "PS/2 Driver",
     .version = 1,

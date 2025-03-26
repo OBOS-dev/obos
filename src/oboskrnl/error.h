@@ -175,4 +175,8 @@ typedef enum
 	/// The passed file or handle is not a TTY.
 	/// </summary>
 	OBOS_STATUS_NOT_A_TTY,
+	/// <summary>
+	/// The IRP operation has not completed, and the caller should wait on the event again.
+	/// </summary>
+	OBOS_STATUS_IRP_RETRY,
 } obos_status;

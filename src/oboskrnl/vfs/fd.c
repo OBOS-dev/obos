@@ -504,7 +504,15 @@ obos_status VfsH_IRPWait(irp* request)
     if (!request || !request->vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* const vn = request->vn;
-    Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+    while (request->evnt)
+    {
+        Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        if (request->on_event_set)
+            request->on_event_set(request);
+        if (request->status != OBOS_STATUS_IRP_RETRY)
+            break;
+    }
+    // If request-evnt == nullptr, there is data available immediately.
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
