@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "locks/wait.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -19,6 +18,9 @@
 #include <vfs/pagecache.h>
 #include <vfs/mount.h>
 #include <vfs/irp.h>
+
+#include <locks/event.h>
+#include <locks/wait.h>
 
 #include <mm/swap.h>
 
@@ -113,6 +115,27 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
 }
 static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
 {
+    // First, try making an IRP.
+    irp* req = Vfs_Calloc(1, sizeof(irp));
+    VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
+    VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
+    req->cbuff = from;
+    VfsH_IRPRef(req);
+    req->op = IRP_WRITE;
+    req->dryOp = false;
+    req->status = OBOS_STATUS_SUCCESS;
+    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    obos_status status = VfsH_IRPSubmit(desc->vn, req, nullptr);
+    if (obos_is_success(status))
+    {
+        obos_status status = VfsH_IRPWait(req);
+        VfsH_IRPUnref(req);
+        return status;
+    }
+    VfsH_IRPUnref(req);
+
+    // Unimplemented, so fallback to write_sync
+
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
@@ -126,7 +149,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     const uintptr_t offset = (desc->offset + base_offset) / blkSize;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
-    obos_status status = driver->ftable.write_sync(desc->vn->desc, from, nBytes, offset, nWritten_);
+    status = driver->ftable.write_sync(desc->vn->desc, from, nBytes, offset, nWritten_);
     VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
         return status;
@@ -203,6 +226,27 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
 }
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
 {
+    // First, try making an IRP.
+    irp* req = Vfs_Calloc(1, sizeof(irp));
+    VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
+    VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
+    req->buff = into;
+    VfsH_IRPRef(req);
+    req->op = IRP_READ;
+    req->dryOp = false;
+    req->status = OBOS_STATUS_SUCCESS;
+    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    obos_status status = VfsH_IRPSubmit(desc->vn, req, nullptr);
+    if (obos_is_success(status))
+    {
+        obos_status status = VfsH_IRPWait(req);
+        VfsH_IRPUnref(req);
+        return status;
+    }
+    VfsH_IRPUnref(req);
+
+    // Unimplemented, so fallback to read_sync
+
     mount* const point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK)
@@ -216,7 +260,7 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     const uintptr_t offset = (desc->offset+base_offset) / blkSize;
     if (desc->vn->vtype == VNODE_TYPE_REG && !VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
-    obos_status status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, offset, nRead_);
+    status = driver->ftable.read_sync(desc->vn->desc, into, nBytes, offset, nRead_);
     if (desc->vn->vtype == VNODE_TYPE_REG)
         VfsH_UnlockMountpoint(point);
     if (obos_expect(obos_is_error(status) == true, 0))
@@ -403,6 +447,25 @@ obos_status Vfs_FdClose(fd* desc)
 }
 LIST_GENERATE_INTERNAL(fd_list, struct fd, node, OBOS_EXPORT);
 
+obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
+{
+    if (!vn || !out)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!nBytes)
+    {
+        *out = 0;
+        return OBOS_STATUS_SUCCESS;
+    }
+    mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        driver = &vn->un.device->driver->header;
+    if (!vn->blkSize)
+        driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
+
+    *out = nBytes / vn->blkSize;
+    return OBOS_STATUS_SUCCESS;
+}
 obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
 {
     if (!request || !vn)
@@ -431,5 +494,17 @@ obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
 
 obos_status VfsH_IRPWait(irp* request)
 {
-    return Core_WaitOnObject(WAITABLE_OBJECT(request->evnt));
+    Core_WaitOnObject(WAITABLE_OBJECT(request->evnt));
+    return request->status;
+}
+
+void VfsH_IRPRef(irp* request)
+{
+    if (request)
+        ++(request->refs);
+}
+void VfsH_IRPUnref(irp* request)
+{
+    if (request && !(--request->refs))
+        Vfs_Free(request);
 }
