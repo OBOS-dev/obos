@@ -11,10 +11,13 @@
 #include <klog.h>
 #include <partition.h>
 
+#include <locks/event.h>
+
 #include <mm/page.h>
 #include <mm/pmm.h>
 #include <mm/swap.h>
 
+#include <vfs/irp.h>
 #include <vfs/vnode.h>
 #include <vfs/mount.h>
 
@@ -36,7 +39,27 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
         OBOS_ASSERT(vn->blkSize);
     }
     const size_t base_offset = vn->flags & VFLAGS_PARTITION ? (vn->partitions[0].off/vn->blkSize) : 0;
-    OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
+    // Make an IRP, then try read_sync.
+    irp* req = VfsH_IRPAllocate();
+    req->blkCount = OBOS_PAGE_SIZE / vn->blkSize;
+    req->blkOffset = base_offset+offset;
+    req->op = IRP_READ;
+    req->buff = MmS_MapVirtFromPhys(phys->phys);
+    req->dryOp = false;
+    req->nBlkRead = 0;
+    req->desc = vn->desc;
+    req->status = OBOS_STATUS_SUCCESS;
+    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    if (driver->ftable.submit_irp)
+    {
+        obos_status status = driver->ftable.submit_irp(req);
+        OBOS_ENSURE(obos_is_success(status) && "driver->ftable.submit_irp(req)");
+        VfsH_IRPWait(req);
+        OBOS_ENSURE(obos_is_success(req->status) && "Read IRP failed.");
+    }
+    else
+        OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
+    VfsH_IRPUnref(req);
     return phys;
 }
 static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)

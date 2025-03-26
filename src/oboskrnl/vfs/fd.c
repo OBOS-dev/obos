@@ -19,6 +19,8 @@
 #include <vfs/mount.h>
 #include <vfs/irp.h>
 
+#include <allocators/base.h>
+
 #include <locks/event.h>
 #include <locks/wait.h>
 
@@ -116,7 +118,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
 static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
 {
     // First, try making an IRP.
-    irp* req = Vfs_Calloc(1, sizeof(irp));
+    irp* req = VfsH_IRPAllocate();
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
     VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
     req->cbuff = from;
@@ -128,7 +130,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     obos_status status = VfsH_IRPSubmit(desc->vn, req, nullptr);
     if (obos_is_success(status))
     {
-        obos_status status = VfsH_IRPWait(req);
+        status = VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
         return status;
     }
@@ -227,7 +229,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
 {
     // First, try making an IRP.
-    irp* req = Vfs_Calloc(1, sizeof(irp));
+    irp* req = VfsH_IRPAllocate();
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
     VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
     req->buff = into;
@@ -506,5 +508,11 @@ void VfsH_IRPRef(irp* request)
 void VfsH_IRPUnref(irp* request)
 {
     if (request && !(--request->refs))
-        Vfs_Free(request);
+        Free(OBOS_NonPagedPoolAllocator, request, sizeof(*request));
+}
+irp* VfsH_IRPAllocate()
+{
+    irp* ret = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(irp), nullptr);
+    ret->refs = 1;
+    return ret;
 }
