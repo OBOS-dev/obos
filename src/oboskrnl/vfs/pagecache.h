@@ -49,7 +49,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
     req->nBlkRead = 0;
     req->desc = vn->desc;
     req->status = OBOS_STATUS_SUCCESS;
-    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    req->vn = vn;
     if (driver->ftable.submit_irp)
     {
         obos_status status = driver->ftable.submit_irp(req);

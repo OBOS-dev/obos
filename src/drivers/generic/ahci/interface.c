@@ -356,12 +356,27 @@ obos_status submit_irp(void* request_)
             break;
     }
     data->completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    data->irp = request;
+    request->evnt = &data->completionEvent;
+    request->drvData = data;
     VfsH_IRPRef(request);
     status = populate_physical_regions((uintptr_t)request->buff, request->blkCount*port->sectorSize, data);
     if (obos_is_error(status))
         return status;
     SendCommand(port, data, request->blkOffset, 0x40, request->blkCount == 0x10000 ? 0 : request->blkCount);
     HBA->ghc |= BIT(1) /* GhcIE */;
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status finalize_irp(void* request_)
+{
+    if (!request_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    irp* request = request_;
+    struct command_data* data = request->drvData;
+    if (obos_is_success(data->commandStatus))
+        request->nBlkRead = request->blkCount;
+    else
+        request->nBlkRead = 0;
+    Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
+    VfsH_IRPUnref(request);
     return OBOS_STATUS_SUCCESS;
 }

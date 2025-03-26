@@ -126,8 +126,8 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     req->op = IRP_WRITE;
     req->dryOp = false;
     req->status = OBOS_STATUS_SUCCESS;
-    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    obos_status status = VfsH_IRPSubmit(desc->vn, req, nullptr);
+    req->vn = desc->vn;
+    obos_status status = VfsH_IRPSubmit(req, nullptr);
     if (obos_is_success(status))
     {
         status = VfsH_IRPWait(req);
@@ -239,8 +239,8 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     req->op = IRP_READ;
     req->dryOp = false;
     req->status = OBOS_STATUS_SUCCESS;
-    req->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    obos_status status = VfsH_IRPSubmit(desc->vn, req, nullptr);
+    req->vn = desc->vn;
+    obos_status status = VfsH_IRPSubmit(req, nullptr);
     if (obos_is_success(status))
     {
         obos_status status = VfsH_IRPWait(req);
@@ -472,8 +472,9 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
     *out = nBytes / vn->blkSize;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
+obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
 {
+    vnode* const vn = request->vn; 
     if (!request || !vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
@@ -500,14 +501,23 @@ obos_status VfsH_IRPSubmit(vnode* vn, irp* request, const dev_desc* desc)
 
 obos_status VfsH_IRPWait(irp* request)
 {
-    Core_WaitOnObject(WAITABLE_OBJECT(request->evnt));
+    if (!request || !request->vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    vnode* const vn = request->vn;
+    Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+    mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        driver = &vn->un.device->driver->header;
+    if (driver->ftable.finalize_irp)
+        driver->ftable.finalize_irp(request);
     return request->status;
 }
 
 obos_status VfsH_IRPSignal(irp* request, obos_status status)
 {
     request->status = status;
-    return Core_EventSet(&request->evnt, true);
+    return Core_EventSet(request->evnt, true);
 }
 
 void VfsH_IRPRef(irp* request)
