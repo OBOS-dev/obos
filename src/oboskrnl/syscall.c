@@ -4,7 +4,6 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "mm/alloc.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -22,6 +21,8 @@
 #include <scheduler/cpu_local.h>
 
 #include <allocators/base.h>
+
+#include <mm/alloc.h>
 
 #include <driver_interface/drv_sys.h>
 

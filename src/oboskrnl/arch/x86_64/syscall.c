@@ -195,6 +195,49 @@ const char* syscall_to_string[] = {
     "Sys_TTYName",
     "Sys_IsATTY",
 };
+const char* status_to_string[] = {
+    "OBOS_STATUS_SUCCESS",
+    "OBOS_STATUS_INVALID_IRQL",
+    "OBOS_STATUS_INVALID_ARGUMENT",
+    "OBOS_STATUS_UNIMPLEMENTED",
+    "OBOS_STATUS_INVALID_INIT_PHASE",
+    "OBOS_STATUS_INVALID_AFFINITY",
+    "OBOS_STATUS_NOT_ENOUGH_MEMORY",
+    "OBOS_STATUS_MISMATCH",
+    "OBOS_STATUS_INTERNAL_ERROR",
+    "OBOS_STATUS_RETRY",
+    "OBOS_STATUS_ALREADY_INITIALIZED",
+    "OBOS_STATUS_NOT_FOUND",
+    "OBOS_STATUS_IN_USE",
+    "OBOS_STATUS_ACCESS_DENIED",
+    "OBOS_STATUS_UNINITIALIZED",
+    "OBOS_STATUS_UNHANDLED",
+    "OBOS_STATUS_UNPAGED_POOL",
+    "OBOS_STATUS_INVALID_FILE",
+    "OBOS_STATUS_INVALID_HEADER",
+    "OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL",
+    "OBOS_STATUS_DRIVER_SYMBOL_MISMATCH",
+    "OBOS_STATUS_NO_ENTRY_POINT",
+    "OBOS_STATUS_INVALID_IOCTL",
+    "OBOS_STATUS_INVALID_OPERATION",
+    "OBOS_STATUS_DPC_ALREADY_ENQUEUED",
+    "OBOS_STATUS_RECURSIVE_LOCK",
+    "OBOS_STATUS_READ_ONLY",
+    "OBOS_STATUS_NOT_A_FILE",
+    "OBOS_STATUS_ALREADY_MOUNTED",
+    "OBOS_STATUS_EOF",
+    "OBOS_STATUS_ABORTED",
+    "OBOS_STATUS_PAGE_FAULT",
+    "OBOS_STATUS_TIMED_OUT",
+    "OBOS_STATUS_PIPE_CLOSED",
+    "OBOS_STATUS_NO_SPACE",
+    "OBOS_STATUS_NO_SYSCALL",
+    "OBOS_STATUS_WAKE_INCAPABLE",
+    "OBOS_STATUS_INVALID_ELF_TYPE",
+    "OBOS_STATUS_WOULD_BLOCK",
+    "OBOS_STATUS_NOT_A_TTY",
+    "OBOS_STATUS_IRP_RETRY",
+};
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
 {
@@ -215,7 +258,7 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     if (eax > sizeof(syscall_to_string)/sizeof(const char*))
         return;
     if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 2)
-        OBOS_Debug("(thread %ld) syscall %s returned 0x%016x\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+        OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
-        OBOS_Warning("(thread %ld) syscall %s returned 0x%016x (possible error status)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret);
+        OBOS_Warning("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
 }
