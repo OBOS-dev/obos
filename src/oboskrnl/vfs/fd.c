@@ -235,7 +235,6 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
     VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
     req->buff = into;
-    VfsH_IRPRef(req);
     req->op = IRP_READ;
     req->dryOp = false;
     req->status = OBOS_STATUS_SUCCESS;

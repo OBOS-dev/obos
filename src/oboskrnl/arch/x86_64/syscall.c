@@ -140,9 +140,9 @@ const char* syscall_to_string[] = {
     "Sys_FdOpen",
     "Sys_FdOpenDirent",
     "Sys_FdWrite",
-    "Sys_FdAWrite",
+    "Sys_IRPCreate",
     "Sys_FdRead",
-    "Sys_FdARead",
+    "Sys_IRPWait",
     "Sys_FdSeek",
     "Sys_FdTellOff",
     "Sys_FdEOF",
@@ -194,6 +194,10 @@ const char* syscall_to_string[] = {
     "Sys_GetControllingTTY",
     "Sys_TTYName",
     "Sys_IsATTY",
+    "Sys_IRPWait",
+    "Sys_IRPQueryState",
+    "Sys_IRPGetBuffer",
+    "Sys_IRPGetStatus",
 };
 const char* status_to_string[] = {
     "OBOS_STATUS_SUCCESS",

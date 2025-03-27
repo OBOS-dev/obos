@@ -12,25 +12,34 @@
 #include <signal.h>
 
 #include <vfs/limits.h>
+#include <vfs/irp.h>
 
 #include <driver_interface/header.h>
 
 handle Sys_FdAlloc();
 
-obos_status         Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
-obos_status       Sys_FdOpenEx(handle desc, const char* path, uint32_t oflags, uint32_t mode);
-obos_status   Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags);
-obos_status       Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags);
-obos_status     Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode);
-obos_status     Sys_FdCreat(handle desc, const char* name, uint32_t mode);
-obos_status     Sys_Mkdir(const char* name, uint32_t mode);
-obos_status     Sys_MkdirAt(handle dirent, const char* name, uint32_t mode);
+obos_status       Sys_FdOpen(handle desc, const char* path, uint32_t oflags);
+obos_status     Sys_FdOpenEx(handle desc, const char* path, uint32_t oflags, uint32_t mode);
+obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags);
+obos_status     Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags);
+obos_status   Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode);
+obos_status      Sys_FdCreat(handle desc, const char* name, uint32_t mode);
+obos_status        Sys_Mkdir(const char* name, uint32_t mode);
+obos_status      Sys_MkdirAt(handle dirent, const char* name, uint32_t mode);
 
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status  Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead);
 
-obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
-obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
+// obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
+// obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
+handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* status);
+obos_status Sys_IRPSubmit(handle irp);
+// If close is true, the IRP is closed after waiting for it.
+obos_status Sys_IRPWait(handle irp, obos_status* irp_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */, bool close);
+// Returns OBOS_STATUS_WOULD_BLOCK if the IRP has not completed, otherwise OBOS_STATUS_SUCCESS, or an error code.
+obos_status Sys_IRPQueryState(handle irp);
+obos_status Sys_IRPGetBuffer(handle irp, void** buff);
+obos_status Sys_IRPGetStatus(handle irp, obos_status* irp_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */);
 
 obos_status Sys_FdSeek(handle desc, off_t off, whence_t whence);
 uoff_t   Sys_FdTellOff(const handle desc);

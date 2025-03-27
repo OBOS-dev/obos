@@ -36,6 +36,8 @@ typedef enum handle_type
     HANDLE_TYPE_DRIVER_ID,
     // scheduler/thread_context_info.h
     HANDLE_TYPE_THREAD_CTX,
+    // vfs/irp.h
+    HANDLE_TYPE_IRP,
 
     LAST_VALID_HANDLE_TYPE,
 
@@ -61,6 +63,7 @@ typedef struct handle_desc
         struct driver_id* driver_id;
         struct thread_ctx_handle* thread_ctx;
         struct waitable_header* waitable;
+        struct user_irp* irp;
         void* generic; // just in case
         uintptr_t as_int; // just in case
     } un;
