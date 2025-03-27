@@ -10,6 +10,8 @@
 #include <text.h>
 #include <error.h>
 
+#include <locks/event.h>
+
 #include <vfs/keycode.h>
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
@@ -22,6 +24,8 @@ typedef struct tty_interface {
     // void* tty is a struct tty *tty
     void(*set_data_ready_cb)(void* tty, void(*cb)(void* tty, const void* buf, size_t nBytesReady));
     obos_status(*write)(void* tty, const char* buf, size_t szBuf);
+    // Drain output buffers, optional to implement.
+    obos_status(*tcdrain)(void* tty);
 } tty_interface;
 
 #define VINTR    0
@@ -96,8 +100,9 @@ struct termios
 
 typedef struct tty {
 #define TTY_MAGIC 0x63EA62F4
-    uint32_t magic;
+    event paused;
     tty_interface interface;
+    uint32_t magic;
     vnode* vn;
     dirent* ent;
     struct termios termios;

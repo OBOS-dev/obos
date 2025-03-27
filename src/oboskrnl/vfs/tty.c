@@ -4,6 +4,7 @@
  * Copyright (c) 2025 Omar Berrow
  */
 
+#include "locks/wait.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -21,6 +22,8 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+
+#include <locks/event.h>
 
 #include <irq/timer.h>
 
@@ -197,6 +200,8 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
             *ret = 0;
             break;
         case TTY_IOCTL_FLOW:
+            *ret = sizeof(uint32_t);
+            break;
         case TTY_IOCTL_FLUSH:
             *ret = 0;
             status = OBOS_STATUS_UNIMPLEMENTED;
@@ -208,6 +213,12 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
     }
     return status;
 }
+enum {
+    TCOOFF,
+    TCOON,
+    TCIOFF,
+    TCION,
+};
 static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp) 
 {
     tty *tty = (struct tty *)what;
@@ -224,16 +235,33 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             memcpy(argp, &tty->termios, sizeof(struct termios));
             break;
         case TTY_IOCTL_FLOW:
+            switch (*(uint32_t*)argp) {
+                case TCOOFF:
+                    Core_EventClear(&tty->paused);
+                    break;
+                case TCOON:
+                    Core_EventSet(&tty->paused, true);
+                    break;
+                case TCIOFF:
+                    tty->interface.write(tty, "\023", 1);
+                    break;
+                case TCION:
+                    tty->interface.write(tty, "\021", 1);
+                    break;
+                default:
+                    status = OBOS_STATUS_INVALID_ARGUMENT;
+                    break;
+            }
+            break;
         case TTY_IOCTL_FLUSH:
             status = OBOS_STATUS_UNIMPLEMENTED;
             break;
-        // "tcdrain() waits until all output written to the object referred to by fd has been transmitted."
-        // We always immediately transmit data.
         case TTY_IOCTL_DRAIN:
-            status = OBOS_STATUS_SUCCESS;
+            status = tty->interface.tcdrain ? tty->interface.tcdrain(tty) : OBOS_STATUS_SUCCESS;
             break;
         default:
             status = OBOS_STATUS_INVALID_IOCTL;
+            break;
     }
     return status;
 }
@@ -303,6 +331,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
     const uint8_t *buf8 = buf;
     for (size_t i = 0; i < nBytesReady; i++) 
     {
+        Core_WaitOnObject(WAITABLE_OBJECT(tty->paused));
         bool insert_byte = true;
         if (!tty->quoted) 
         {
@@ -376,6 +405,7 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     tty *tty = Vfs_Calloc(1, sizeof(struct tty));
 
     tty->magic = TTY_MAGIC;
+    tty->paused = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 
     tty->interface = *i;
 
