@@ -358,7 +358,6 @@ obos_status submit_irp(void* request_)
     data->completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     request->evnt = &data->completionEvent;
     request->drvData = data;
-    VfsH_IRPRef(request);
     status = populate_physical_regions((uintptr_t)request->buff, request->blkCount*port->sectorSize, data);
     if (obos_is_error(status))
         return status;
@@ -377,6 +376,5 @@ obos_status finalize_irp(void* request_)
     else
         request->nBlkRead = 0;
     Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
-    VfsH_IRPUnref(request);
     return OBOS_STATUS_SUCCESS;
 }
