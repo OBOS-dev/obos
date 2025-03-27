@@ -134,7 +134,6 @@ static obos_status ioctl_fb0(uint32_t request, void* argp)
 }
 static obos_status ioctl(dev_desc what, uint32_t request, void* argp) 
 {
-    printf("%d %d %p\n", what, request, argp);
     if (what == DUMMY_FB0)
         return ioctl_fb0(request, argp);
     return OBOS_STATUS_INVALID_IOCTL; 
