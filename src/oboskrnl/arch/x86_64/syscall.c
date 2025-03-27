@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <error.h>
 #include <klog.h>
 #include <syscall.h>
 #include <handle.h>
@@ -261,7 +262,7 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     OBOS_UNUSED(eax);
     if (eax > sizeof(syscall_to_string)/sizeof(const char*))
         return;
-    if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19 || eax == 2)
+    if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19 || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY))
         OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
         OBOS_Warning("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
