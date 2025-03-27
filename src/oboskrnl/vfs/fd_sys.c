@@ -839,8 +839,8 @@ handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     obj->obj = VfsH_IRPAllocate();
 
-    VfsH_IRPBytesToBlockCount(vn, size, &obj->obj.blkCount);
-    VfsH_IRPBytesToBlockCount(vn, offset, &obj->obj.blkOffset);
+    VfsH_IRPBytesToBlockCount(vn, size, &obj->obj->blkCount);
+    VfsH_IRPBytesToBlockCount(vn, offset, &obj->obj->blkOffset);
     obj->obj->op = operation;
     obj->obj->dryOp = !!dry;
     obj->obj->buff = buff;
