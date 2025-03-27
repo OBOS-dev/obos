@@ -56,6 +56,12 @@ typedef struct irp {
     bool dryOp : 1;
     enum irp_op op : 1;
 } irp;
+
+typedef struct user_irp {
+    irp* obj;
+    void* ubuffer;
+} user_irp;
+
 // desc can be nullptr if request->desc can be implied from vn.
 OBOS_EXPORT obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc);
 OBOS_EXPORT obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);

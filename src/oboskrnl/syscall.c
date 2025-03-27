@@ -315,9 +315,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FdOpen,
     (uintptr_t)Sys_FdOpenDirent,
     (uintptr_t)Sys_FdWrite,
-    (uintptr_t)Sys_FdAWrite,
+    (uintptr_t)Sys_IRPCreate,
     (uintptr_t)Sys_FdRead,
-    (uintptr_t)Sys_FdARead,
+    (uintptr_t)Sys_IRPSubmit,
     (uintptr_t)Sys_FdSeek,
     (uintptr_t)Sys_FdTellOff,
     (uintptr_t)Sys_FdEOF,
@@ -369,6 +369,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_GetControllingTTY,
     (uintptr_t)Sys_TTYName,
     (uintptr_t)Sys_IsATTY,
+    (uintptr_t)Sys_IRPWait,
+    (uintptr_t)Sys_IRPQueryState,
+    (uintptr_t)Sys_IRPGetBuffer,
+    (uintptr_t)Sys_IRPGetStatus,
 };
 
 // Arch syscall table is defined per-arch
