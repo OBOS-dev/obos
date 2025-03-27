@@ -91,6 +91,7 @@ int main(int argc, char** argv)
         perror("execlp");
         exit(EXIT_FAILURE);
     }
-    while (1)
-        asm volatile ("" :::"memory");
+    syscall1(Sys_ThreadBlock, HANDLE_CURRENT);
+    // while (1)
+    //     asm volatile ("" :::"memory");
 }
