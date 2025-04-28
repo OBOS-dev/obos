@@ -12,6 +12,8 @@
 
 #include <stdarg.h>
 
+#include <vfs/irp.h>
+
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
 
@@ -86,6 +88,19 @@ OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
+OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
+{
+    if (!request_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    irp* request = request_;
+    if (request->op == IRP_WRITE)
+        return OBOS_STATUS_INVALID_OPERATION;
+    request->status = read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead);
+    Core_EventSet(request->evnt, false);
+    return OBOS_STATUS_SUCCESS;
+}
+OBOS_WEAK obos_status finalize_irp(void* /* irp* */ request_);
+
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|OBOS_STATUS_NO_ENTRY_POINT,
@@ -98,6 +113,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .foreach_device = foreach_device,
         .read_sync = read_sync,
         .write_sync = write_sync,
+        .submit_irp = submit_irp,
+        .finalize_irp = finalize_irp,
 
         .query_path = query_path,
         .path_search = path_search,
