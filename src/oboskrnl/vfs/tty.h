@@ -101,6 +101,7 @@ struct termios
 typedef struct tty {
 #define TTY_MAGIC 0x63EA62F4
     event paused;
+    event data_ready_evnt;
     tty_interface interface;
     uint32_t magic;
     vnode* vn;
