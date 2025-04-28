@@ -4,7 +4,6 @@
  * Copyright (c) 2025 Omar Berrow
  */
 
-#include "locks/wait.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -27,12 +26,15 @@
 
 #include <irq/timer.h>
 
+#include <locks/wait.h>
+
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
 #include <vfs/keycode.h>
 #include <vfs/tty.h>
 #include <vfs/vnode.h>
 #include <vfs/fd.h>
+#include <vfs/irp.h>
 
 static obos_status tty_get_blk_size(dev_desc ign, size_t *sz)
 {
@@ -229,7 +231,7 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
     obos_status status = OBOS_STATUS_SUCCESS;
     switch (request) {
         case TTY_IOCTL_SETATTR:
-            memcpy(&tty->termios, argp, sizeof(struct termios));
+            // memcpy(&tty->termios, argp, sizeof(struct termios));
             break;
         case TTY_IOCTL_GETATTR:
             memcpy(argp, &tty->termios, sizeof(struct termios));
@@ -406,6 +408,7 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
 
     tty->magic = TTY_MAGIC;
     tty->paused = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    Core_EventSet(&tty->paused, false);
 
     tty->interface = *i;
 
@@ -491,19 +494,23 @@ static char number_to_secondary(enum scancode code)
 
 static void poll_keyboard(struct screen_tty* data)
 {
+    keycode tmp_code = 0;
+    keycode* keycode_buffer = &tmp_code;
     while (1)
     {
-        size_t nReady = 0;
-        Vfs_FdIoctl(&data->keyboard, 1 /* query bytes ready */, &nReady);
-        if (!nReady)
-        {
-            Core_Yield();
-            continue;
-        }
+        size_t nReady = 1;
+        irp* req = VfsH_IRPAllocate();
+        req->vn = data->keyboard.vn;
+        req->buff = keycode_buffer;
+        req->blkCount = 1;
+        req->op = IRP_READ;
+        req->dryOp = false;
+        req->status = OBOS_STATUS_SUCCESS;
+        VfsH_IRPSubmit(req, nullptr);
+        VfsH_IRPWait(req);
+        VfsH_IRPUnref(req);
         char* buffer = Vfs_Malloc(nReady);
         // size_t bufSize = nReady;
-        keycode *keycode_buffer = Vfs_Calloc(nReady, sizeof(keycode));
-        Vfs_FdRead(&data->keyboard, keycode_buffer, nReady*2, nullptr);
         for (size_t i = 0; i < nReady;)
         {
             keycode code = keycode_buffer[i];
@@ -614,7 +621,6 @@ static void poll_keyboard(struct screen_tty* data)
                 i++;
             }
         }
-        Vfs_Free(keycode_buffer);
         if (nReady)
             data->data_ready(data->tty, buffer, nReady);
         Vfs_Free(buffer);

@@ -12,6 +12,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include <sys/wait.h>
+
 #include <obos/syscall.h>
 
 int print_motd();
@@ -85,13 +87,16 @@ int main(int argc, char** argv)
         signal(SIGCHLD, sigchld_handler);
     handoff_process = argv[optind];
     // Start a shell, I guess.
-    if (fork() == 0)
+    pid_t pid = fork();
+    if (pid == 0)
     {
         execlp(handoff_process, "");
         perror("execlp");
         exit(EXIT_FAILURE);
     }
-    syscall1(Sys_ThreadBlock, HANDLE_CURRENT);
+    waitpid(pid, NULL, 0);
+    sigchld_handler(SIGCHLD);
+    abort();
     // while (1)
     //     asm volatile ("" :::"memory");
 }
