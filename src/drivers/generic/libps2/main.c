@@ -17,6 +17,8 @@
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 
+#include <locks/event.h>
+
 #include "controller.h"
 #include "detect.h"
 
@@ -118,6 +120,7 @@ static void irp_event_set(irp* req)
         req->status = !req->dryOp ? read_sync(req->desc, req->buff, req->blkCount, 0, &req->nBlkRead) : OBOS_STATUS_SUCCESS;
     else
         req->status = OBOS_STATUS_IRP_RETRY;
+    Core_EventClear(req->evnt);
 }
 obos_status submit_irp(void* req_)
 {
@@ -141,7 +144,10 @@ obos_status submit_irp(void* req_)
         req->status = req->dryOp ? OBOS_STATUS_SUCCESS : read_sync(req->desc, req->buff, req->blkCount, 0, &req->nBlkRead);
     }
     else
+    {
+        req->on_event_set = irp_event_set;
         req->evnt = port->data_ready_event;
+    }
 
     return OBOS_STATUS_SUCCESS;
 }
