@@ -4,14 +4,16 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "locks/spinlock.h"
-#include "memmanip.h"
 #include <int.h>
+#include <memmanip.h>
+#include <klog.h>
 #include <error.h>
 #include <handle.h>
 
 #include <scheduler/process.h>
 #include <scheduler/schedule.h>
+
+#include <locks/spinlock.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -87,6 +89,7 @@ obos_status Sys_VirtualMemoryFree(handle ctx, void* base, size_t size)
 obos_status Sys_VirtualMemoryProtect(handle ctx, void* base, size_t size, prot_flags newProt)
 {
     context* vmm_ctx = context_from_handle(ctx, false, 0, true);
+    newProt |= OBOS_PROTECTION_USER_PAGE;
     return Mm_VirtualMemoryProtect(vmm_ctx, base, size, newProt, 2);
 }
 obos_status Sys_VirtualMemoryLock(handle ctx, void* base, size_t size)
