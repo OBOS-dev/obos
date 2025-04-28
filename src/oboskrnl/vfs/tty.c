@@ -74,6 +74,9 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
     if (!tty || tty->magic != TTY_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    if (tty->fg_job != Core_GetCurrentThread()->proc)
+        return OBOS_STATUS_INTERNAL_ERROR; // EIO
+
     obos_status status = OBOS_STATUS_SUCCESS;
     uint8_t *out_buf = buf;
     if (tty->termios.lflag & ICANON)
@@ -91,13 +94,13 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
         // }
         size_t nBytesRead = 0;
         do {
-            nBytesRead = find_eol(tty, tty->input_buffer.buf+tty->input_buffer.in_ptr);
+            nBytesRead = find_eol(tty, tty->input_buffer.buf + (tty->input_buffer.in_ptr % tty->input_buffer.size));
             if (nBytesRead == SIZE_MAX)
                 Core_Yield();
         } while(nBytesRead == SIZE_MAX);
         nBytesRead++;
         nBytesRead = OBOS_MIN(blkCount, nBytesRead);
-        memcpy(out_buf, tty->input_buffer.buf+tty->input_buffer.in_ptr, nBytesRead);
+        memcpy(out_buf, tty->input_buffer.buf + (tty->input_buffer.in_ptr % tty->input_buffer.size), nBytesRead);
         tty->input_buffer.in_ptr += nBytesRead;
         if (nBlkRead)
             *nBlkRead = nBytesRead;
@@ -116,7 +119,7 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
                 status = OBOS_STATUS_TIMED_OUT;
                 break;
             }
-            out_buf[i] = tty->input_buffer.buf[tty->input_buffer.in_ptr++];
+            out_buf[i] = tty->input_buffer.buf[(tty->input_buffer.in_ptr++ % tty->input_buffer.size)];
         }
         if (nBlkRead)
             *nBlkRead = i;
@@ -232,6 +235,7 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
     switch (request) {
         case TTY_IOCTL_SETATTR:
             // memcpy(&tty->termios, argp, sizeof(struct termios));
+            // Abort any asynchronous reads, as this can mess up the data read.
             break;
         case TTY_IOCTL_GETATTR:
             memcpy(argp, &tty->termios, sizeof(struct termios));
@@ -245,11 +249,17 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
                     Core_EventSet(&tty->paused, true);
                     break;
                 case TCIOFF:
-                    tty->interface.write(tty, "\023", 1);
+                {
+                    char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTOP] : '\023' /* assume it is this */;
+                    tty->interface.write(tty, &ch, 1);
                     break;
+                }
                 case TCION:
-                    tty->interface.write(tty, "\021", 1);
+                {
+                    char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTART] : '\021' /* assume it is this */;
+                    tty->interface.write(tty, &ch, 1);
                     break;
+                }
                 default:
                     status = OBOS_STATUS_INVALID_ARGUMENT;
                     break;
@@ -266,6 +276,63 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             break;
     }
     return status;
+}
+
+void irp_on_event_set(irp* req)
+{
+    OBOS_UNUSED(req);
+    tty *tty = (struct tty *)req->desc;
+
+    size_t nToRead = OBOS_MIN(tty->input_buffer.out_ptr - tty->input_buffer.in_ptr, req->blkCount);
+
+    if (!req->dryOp)
+    {
+        memcpy(req->drvData, tty->input_buffer.buf + (tty->input_buffer.in_ptr % tty->input_buffer.size), nToRead);
+        req->drvData = (void*)(uintptr_t)req->drvData + nToRead;
+        tty->input_buffer.in_ptr += nToRead;
+    }
+    if (nToRead < req->blkCount && ~tty->termios.iflag & ICANON)
+        req->status = OBOS_STATUS_IRP_RETRY;
+    else
+        req->status = OBOS_STATUS_SUCCESS;
+    req->nBlkRead += nToRead;
+    // Only if we have satisfied all bytes.
+    if (tty->input_buffer.out_ptr <= tty->input_buffer.in_ptr)
+        Core_EventClear(req->evnt);
+}
+
+static obos_status tty_submit_irp(void* request)
+{
+    irp* req = request;
+    if (!req)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    tty *tty = (struct tty *)req->desc;
+    if (!tty || tty->magic != TTY_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (req->op == IRP_WRITE)
+    {
+        // Writes don't need to be done asynchronously (if even possible to do without a worker thread).
+        if (!req->dryOp)
+            req->status = tty_write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
+        req->evnt = nullptr;
+        return OBOS_STATUS_SUCCESS;
+    }
+
+    // Reads can be done asynchronously, so do that.
+
+    if (tty->fg_job != Core_GetCurrentThread()->proc)
+    {
+        req->status = OBOS_STATUS_INTERNAL_ERROR; // EIO
+        req->evnt = nullptr;
+        return OBOS_STATUS_SUCCESS;
+    }
+
+    req->drvData = req->buff;
+    req->evnt = &tty->data_ready_evnt;
+    req->on_event_set = irp_on_event_set;
+    return OBOS_STATUS_SUCCESS;
 }
 
 static size_t last_tty_index = 0;
@@ -285,6 +352,8 @@ driver_id OBOS_TTYDriver = {
                        .read_sync = tty_read_sync,
                        .ioctl = tty_ioctl,
                        .ioctl_argp_size = tty_ioctl_argp_size,
+                       .submit_irp = tty_submit_irp,
+                       .finalize_irp = nullptr,
                        .driver_cleanup_callback = nullptr,
                    },
                .driverName = "TTY Driver"}};
@@ -357,10 +426,10 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 {
                     size_t index_space = strrfind(tty->input_buffer.buf, ' ');
                     if (index_space != SIZE_MAX)
-                        nBytesToErase = tty->input_buffer.out_ptr - index_space - 1;
+                        nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - index_space - 1;
                     size_t last_ln = strrfind(tty->input_buffer.buf, '\n');
                     if (last_ln > index_space && last_ln != SIZE_MAX)
-                        nBytesToErase = tty->input_buffer.out_ptr - last_ln - 1;
+                        nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - last_ln - 1;
                 }
                 if ((~tty->termios.lflag & IEXTEN) && buf8[i] == tty->termios.cc[VWERASE])
                     nBytesToErase = 0;
@@ -369,7 +438,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
             }
             if (buf8[i] == tty->termios.cc[VKILL] && (tty->termios.lflag & (ICANON|ECHOK)))
             {
-                size_t nBytesToErase = tty->input_buffer.out_ptr - strrfind(tty->input_buffer.buf, '\n') - 1;
+                size_t nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - strrfind(tty->input_buffer.buf, '\n') - 1;
                 erase_bytes(tty, nBytesToErase);
                 insert_byte = false;
             }
@@ -396,6 +465,10 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
             (tty->termios.iflag & (IUCLC|IEXTEN|ICANON)) ? 
                 toupper(buf8[i] & mask) : 
                 (buf8[i] & mask);
+        if (tty->termios.lflag & ICANON)
+            find_eol(tty, &tty->input_buffer.buf[(tty->input_buffer.out_ptr - 1) % tty->input_buffer.size]) == SIZE_MAX ? (void)0 : Core_EventSet(&tty->data_ready_evnt, true);
+        else
+            Core_EventSet(&tty->data_ready_evnt, true);
     }
 }
 
@@ -409,6 +482,7 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     tty->magic = TTY_MAGIC;
     tty->paused = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     Core_EventSet(&tty->paused, false);
+    tty->data_ready_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 
     tty->interface = *i;
 
