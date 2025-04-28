@@ -88,6 +88,27 @@ OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
+dev_desc irp_process_dryop(irp* req)
+{
+    dev_desc desc = req->desc;
+    size_t blkCount = req->blkCount;
+    size_t blkOffset = req->blkOffset;
+    const ustar_hdr* hdr = (ustar_hdr*)desc;
+    if (!hdr)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!blkCount)
+        return OBOS_STATUS_SUCCESS;
+    if (hdr->type != AREGTYPE && hdr->type != REGTYPE)
+        return OBOS_STATUS_NOT_A_FILE;
+    size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+    if (blkOffset >= filesize)
+    {
+        req->nBlkRead = 0;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
 OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
 {
     if (!request_)
@@ -95,7 +116,10 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
     irp* request = request_;
     if (request->op == IRP_WRITE)
         return OBOS_STATUS_INVALID_OPERATION;
-    request->status = read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead);
+    if (request->dryOp)
+        request->status = irp_process_dryop(request);
+    else
+        request->status = read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead);
     Core_EventSet(request->evnt, false);
     return OBOS_STATUS_SUCCESS;
 }
