@@ -120,7 +120,7 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
         request->status = irp_process_dryop(request);
     else
         request->status = read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead);
-    Core_EventSet(request->evnt, false);
+    request->evnt = nullptr;
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_WEAK obos_status finalize_irp(void* /* irp* */ request_);
