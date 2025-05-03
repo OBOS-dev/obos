@@ -7,6 +7,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 
 #include <allocators/base.h>
 
@@ -51,6 +52,8 @@ OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
 OBOS_WEAK bool probe(void* vn);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
+OBOS_WEAK obos_status submit_irp(void* request);
+OBOS_WEAK obos_status finalize_irp(void* request);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -64,6 +67,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .foreach_device = foreach_device,
         .read_sync = read_sync,
         .write_sync = write_sync,
+        .submit_irp = submit_irp,
+        .finalize_irp = finalize_irp,
 
         .query_path = query_path,
         .path_search = path_search,

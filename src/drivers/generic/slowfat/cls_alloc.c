@@ -1,7 +1,7 @@
 /*
  * drivers/generic/slowfat/cls_alloc.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  *
  * Abandon all hope ye who enter here
 */
@@ -352,6 +352,28 @@ obos_status NextCluster(fat_cache* cache, uint32_t cluster, uint8_t* sec_buf, ui
     *ret = res;
     return res >= last_clus_val ? OBOS_STATUS_EOF : OBOS_STATUS_SUCCESS;
 }
+
+static iterate_decision cluster_seek_cb(uint32_t cluster, obos_status status, void* userdata)
+{
+    uint32_t* data = userdata;
+    uint32_t* const nClusters = data+1;
+    uint32_t* const res = data;
+    if (!(--(*nClusters)))
+    {
+        *res = cluster;
+        return ITERATE_DECISION_STOP;
+    }
+    return ITERATE_DECISION_CONTINUE;
+}
+uint32_t ClusterSeek(fat_cache* cache, uint32_t cluster, uint32_t nClusters)
+{
+    if (!nClusters)
+        return cluster;
+    uint32_t udata[2] = {UINT32_MAX,nClusters};
+    FollowClusterChain(cache, cluster, cluster_seek_cb, udata);
+    return udata[0]; // If UINT32_MAX, then nClusters is out of bounds.
+}
+
 void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback, void* userdata)
 {
     fat_entry_addr addr = {};

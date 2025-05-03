@@ -1,7 +1,7 @@
 /*
  * drivers/generic/slowfat/io.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  *
  * Abandon all hope ye who enter here
 */
@@ -77,7 +77,7 @@ obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffs
     fat_dirent_cache* cache_entry = (fat_dirent_cache*)desc;
     fat_cache* cache = cache_entry->owner;
     if (cache_entry->data.attribs & DIRECTORY)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_NOT_A_FILE;
     if (blkOffset >= cache_entry->data.filesize)
     {
         if (nBlkRead)
@@ -92,8 +92,9 @@ obos_status read_sync(dev_desc desc, void* buf_, size_t blkCount, size_t blkOffs
     uint32_t cluster = cache_entry->data.first_cluster_low;
     if (cache->fatType == FAT32_VOLUME)
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
-    if (blkOffset)
-        cluster += blkOffset/bytesPerCluster;
+    cluster = ClusterSeek(cache, cluster, blkOffset/bytesPerCluster);
+    if (cluster == UINT32_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT; // TODO: Handle properly.
     size_t current_offset = 0;
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
@@ -142,6 +143,9 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
     uint32_t cluster = cache_entry->data.first_cluster_low;
     if (cache->fatType == FAT32_VOLUME)
         cluster |= ((uint32_t)cache_entry->data.first_cluster_high << 16);
+    cluster = ClusterSeek(cache, cluster, blkOffset/bytesPerCluster);
+    if (cluster == UINT32_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT; // TODO: Handle properly.
     page* pg = nullptr;
     if (requiresExpand)
     {
@@ -181,17 +185,24 @@ obos_status write_sync(dev_desc desc, const void* buf_, size_t blkCount, size_t 
     size_t cluster_offset = blkOffset % bytesPerCluster;
     int64_t bytesLeft = blkCount;
     Core_MutexAcquire(&cache->fd_lock);
-    uint32_t base_cluster = blkOffset / bytesPerCluster;
     const uint8_t *buf = buf_;
     for (size_t i = 0; i < nClustersToWrite && bytesLeft > 0; i++)
     {
-        void* cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster+base_cluster+i)*cache->blkSize, &pg);
+        void* cluster_buf = VfsH_PageCacheGetEntry(cache->volume->vn, ClusterToSector(cache, cluster)*cache->blkSize, &pg);
         memcpy(cluster_buf + cluster_offset, buf+current_offset, ((size_t)bytesLeft <= bytesPerCluster ? (size_t)bytesLeft : bytesPerCluster-cluster_offset));
         Mm_MarkAsDirtyPhys(pg);
 
         current_offset += bytesPerCluster;
-        // cluster_offset += bytesPerCluster;
         cluster_offset = 0;
+        
+        // Get the next cluster to write.
+        uint32_t next = 0;
+        fat_entry_addr addr = {};
+        GetFatEntryAddrForCluster(cache, cluster, &addr);
+        uint8_t* sector = VfsH_PageCacheGetEntry(cache->vn, addr.lba*cache->blkSize, nullptr);
+        NextCluster(cache, cluster, sector, &next);
+
+        cluster = next;
         bytesLeft -= bytesPerCluster;
     }
     Vfs_FdFlush(cache->volume);

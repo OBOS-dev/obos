@@ -1,7 +1,7 @@
 /*
  * drivers/generic/slowfat/alloc.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -26,4 +26,5 @@ void InitializeCacheFreelist(fat_cache* volume);
 // if status is passed as OBOS_STATUS_ABORTED, the cluster passed is not valid, as an error has occurred following the chain.
 typedef iterate_decision(*clus_chain_cb)(uint32_t cluster, obos_status status, void* userdata);
 obos_status NextCluster(fat_cache* cache, uint32_t cluster, uint8_t* sec_buf, uint32_t* ret);
+uint32_t ClusterSeek(fat_cache* cache, uint32_t cluster, uint32_t nClusters);
 void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback, void* userdata);
