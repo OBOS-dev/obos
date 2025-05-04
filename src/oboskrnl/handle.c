@@ -17,15 +17,30 @@
 
 #include <locks/mutex.h>
 
+#include <vfs/alloc.h>
+#include <vfs/fd.h>
+
 #include <allocators/base.h>
 
-void OBOS_ExpandHandleTable(handle_table* table, size_t size)
+OBOS_NO_UBSAN void OBOS_ExpandHandleTable(handle_table* table, size_t size)
 {
     if (size <= table->size)
         return;
     const size_t oldSize = table->size;
     table->size = size;
-    table->arr = Reallocate(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*table->size, sizeof(*table->arr)*oldSize, nullptr);
+    handle_desc* tmp_arr = ZeroAllocate(OBOS_KernelAllocator, table->size, sizeof(*table->arr), nullptr);
+    memcpy(tmp_arr, table->arr, sizeof(*table->arr)*oldSize);
+    for (handle_desc* desc = table->head; desc; )
+    {
+        handle_desc *next = desc->un.next;
+        if (next)
+            desc->un.next = tmp_arr + (next - table->arr);
+        desc = next;
+    }
+    if (table->head)
+        table->head = tmp_arr + (table->head - table->arr);
+    Free(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*oldSize);
+    table->arr = tmp_arr;
     memzero(table->arr + oldSize, sizeof(handle_desc)*(table->size-oldSize));
     table->last_handle = oldSize;
 }
@@ -129,8 +144,25 @@ void unimpl_handle_clone(handle_desc *hnd, handle_desc *new)
     OBOS_UNUSED(new);
     OBOS_Warning("Cannot clone handle descriptor %p. Unimplemented.\n", hnd);
 }
+
+void fd_clone(handle_desc* hnd, handle_desc* new)
+{
+    new->un.fd = Vfs_Calloc(1, sizeof(fd));
+    uint32_t oflags = 0;
+    if (hnd->un.fd->flags & FD_FLAGS_READ)
+        oflags |= FD_OFLAGS_READ;
+    if (hnd->un.fd->flags & FD_FLAGS_WRITE)
+        oflags |= FD_OFLAGS_WRITE;
+    if (hnd->un.fd->flags & FD_FLAGS_UNCACHED)
+        oflags |= FD_OFLAGS_UNCACHED;
+    if (hnd->un.fd->flags & FD_FLAGS_NOEXEC)
+        oflags |= FD_OFLAGS_NOEXEC;
+    Vfs_FdOpenVnode(new->un.fd, hnd->un.fd->vn, oflags);
+    new->un.fd->offset = hnd->un.fd->offset;
+}
+
 void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handle_desc *new) = {
-    unimpl_handle_clone,
+    fd_clone,
     unimpl_handle_clone,
     unimpl_handle_clone,
     unimpl_handle_clone,
@@ -148,8 +180,12 @@ void unimpl_handle_close(handle_desc* hnd)
 {
     OBOS_Warning("Cannot close handle descriptor %p. Unimplemented.\n", hnd);
 }
+void fd_close(handle_desc* hnd)
+{
+    Vfs_FdClose(hnd->un.fd);
+}
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
-    unimpl_handle_close,
+    fd_close,
     unimpl_handle_close,
     unimpl_handle_close,
     unimpl_handle_close,
@@ -162,6 +198,8 @@ void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     unimpl_handle_close,
     unimpl_handle_close,
 };
+
+static obos_status handle_close_unlocked(handle_table* current_table, handle hnd);
 
 obos_status Sys_HandleClone(handle hnd, handle* unew)
 {
@@ -184,26 +222,35 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
     }
 
     handle_desc* new_desc = nullptr;
-    handle new = OBOS_HandleAllocate(current_table, type, &new_desc);
-    status = memcpy_k_to_usr(unew, &new, sizeof(new));
-    if (obos_is_error(status))
+    handle new = 0;
+    memcpy_usr_to_k(&new, unew, sizeof(handle));
+    if (new == HANDLE_ANY)
     {
-        OBOS_UnlockHandleTable(current_table);
-        OBOS_HandleFree(current_table, new_desc);
-        return status;
+        new = OBOS_HandleAllocate(current_table, type, &new_desc);
+        status = memcpy_k_to_usr(unew, &new, sizeof(new));
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(current_table);
+            OBOS_HandleFree(current_table, new_desc);
+            return status;
+        }
+    }
+    else 
+    {
+        OBOS_ExpandHandleTable(current_table, new+1);
+        new_desc = &current_table->arr[new];
+        handle_close_unlocked(current_table, new);
     }
 
     void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[type];
     cb(desc, new_desc);
+    new_desc->type = type;
     OBOS_UnlockHandleTable(current_table);
 
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Sys_HandleClose(handle hnd)
+static obos_status handle_close_unlocked(handle_table* current_table, handle hnd)
 {
-    handle_table* const current_table = &CoreS_GetCPULocalPtr()->currentThread->proc->handles;
-    OBOS_LockHandleTable(current_table);
-
     // Get the handle descriptor.
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* desc = OBOS_HandleLookup(current_table, hnd, 0, true, &status);
@@ -219,7 +266,16 @@ obos_status Sys_HandleClose(handle hnd)
     if (cb)
         cb(desc);
     OBOS_HandleFree(current_table, desc);
+    return status;
+}
+obos_status Sys_HandleClose(handle hnd)
+{
+    handle_table* const current_table = &CoreS_GetCPULocalPtr()->currentThread->proc->handles;
+    OBOS_LockHandleTable(current_table);
+
+    obos_status status = handle_close_unlocked(current_table, hnd);
+
     OBOS_UnlockHandleTable(current_table);
 
-    return OBOS_STATUS_SUCCESS;
+    return status;
 }
