@@ -190,6 +190,8 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
     return status;
 }
 
+#define TIOCGPGRP 0x540F
+#define TIOCSPGRP 0x5410
 static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret) 
 {
     if (!ret)
@@ -210,6 +212,10 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
         case TTY_IOCTL_FLUSH:
             *ret = 0;
             status = OBOS_STATUS_UNIMPLEMENTED;
+            break;
+        case TIOCSPGRP:
+        case TIOCGPGRP:
+            *ret = sizeof(uint32_t);
             break;
         default: 
             *ret = 0;
@@ -240,6 +246,22 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         case TTY_IOCTL_GETATTR:
             memcpy(argp, &tty->termios, sizeof(struct termios));
             break;
+        case TIOCSPGRP:
+        {
+            uint32_t /* pid_t */ *pid = argp;
+            process* proc = Core_LookupProc(*pid);
+            if (!proc || *pid == 0)
+                status = OBOS_STATUS_NOT_FOUND;
+            else
+                tty->fg_job = proc;
+            break;
+        }
+        case TIOCGPGRP:
+        {
+            uint32_t /* pid_t */ *pid = argp;
+            *pid = tty->fg_job->pid;
+            break;
+        }
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
                 case TCOOFF:
@@ -324,7 +346,11 @@ static obos_status tty_submit_irp(void* request)
 
     if (tty->fg_job != Core_GetCurrentThread()->proc)
     {
-        req->status = OBOS_STATUS_INTERNAL_ERROR; // EIO
+        OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTTIN);
+        if (~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
+            req->status = OBOS_STATUS_INTERNAL_ERROR; // EIO
+        else
+            req->status = OBOS_STATUS_SUCCESS; // EIO
         req->evnt = nullptr;
         return OBOS_STATUS_SUCCESS;
     }
@@ -723,8 +749,9 @@ static obos_status screen_write(void* tty_, const char* buf, size_t szBuf)
 {
     tty* tty = tty_;
     struct screen_tty *data = tty->interface.userdata;
-    for (size_t i = 0; i < szBuf; i++)
-        OBOS_WriteCharacter(data->out, buf[i]);
+    // for (size_t i = 0; i < szBuf; i++)
+    //     OBOS_WriteCharacter(data->out, buf[i]);
+    printf("%.*s", szBuf, buf);
     OBOS_FlushBuffers(data->out);
     return OBOS_STATUS_SUCCESS;
 }

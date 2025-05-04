@@ -361,7 +361,7 @@ obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
 
 // scheduler/process.h
 
-static process* lookup_proc(uint64_t pid)
+process* Core_LookupProc(uint64_t pid)
 {
     process* root = OBOS_KernelProcess;
     while(root)
@@ -388,7 +388,7 @@ handle Sys_ProcessOpen(uint64_t pid)
     OBOS_UNUSED(pid);
     if (pid > Core_NextPID)
         return HANDLE_INVALID;
-    process* proc = lookup_proc(pid);
+    process* proc = Core_LookupProc(pid);
     if (!proc)
         return HANDLE_INVALID;
     proc->refcount++;
@@ -605,7 +605,7 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 
     again:
     status = Core_WaitOnObject(WAITABLE_OBJECT(*process));
-    if (obos_is_error(status))
+    if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
         return status;
 
     if ((process->exitCode == 0xffff) && ~options & WCONTINUED)
