@@ -83,7 +83,8 @@ int main(int argc, char** argv)
         fprintf(stderr, "Usage: %s handoff_path", argv[0]);
         return 1;
     }
-    if (strcasecmp(sigchld_action, "ignore") != 0)
+    // if (strcasecmp(sigchld_action, "ignore") != 0)
+    if (0)
         signal(SIGCHLD, sigchld_handler);
     handoff_process = argv[optind];
     // Start a shell, I guess.
@@ -94,7 +95,10 @@ int main(int argc, char** argv)
         perror("execlp");
         exit(EXIT_FAILURE);
     }
-    waitpid(pid, NULL, 0);
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFSIGNALED(status))
+        printf("Child exitted due to signal %d\n", WTERMSIG(status));
     sigchld_handler(SIGCHLD);
     abort();
     // while (1)
