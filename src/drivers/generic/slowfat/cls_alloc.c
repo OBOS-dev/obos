@@ -382,7 +382,7 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
     uint32_t curr = clus;
     obos_status status = OBOS_STATUS_SUCCESS;
     do {
-        if (callback(clus, status, userdata) == ITERATE_DECISION_STOP)
+        if (callback(curr, status, userdata) == ITERATE_DECISION_STOP)
             break;
         status = NextCluster(volume, curr, sector, &curr);
         if (status == OBOS_STATUS_EOF)
@@ -400,7 +400,7 @@ void FollowClusterChain(fat_cache* volume, uint32_t clus, clus_chain_cb callback
             break;
         }
         uint64_t prev_lba = addr.lba;
-        GetFatEntryAddrForCluster(volume, clus, &addr);
+        GetFatEntryAddrForCluster(volume, curr, &addr);
         if (addr.lba != prev_lba)
             sector = VfsH_PageCacheGetEntry(volume->volume->vn, addr.lba*volume->blkSize, nullptr);
     } while(status != OBOS_STATUS_EOF);
