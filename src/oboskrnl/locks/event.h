@@ -20,7 +20,7 @@ typedef enum event_type
     EVENT_NOTIFICATION,
     EVENT_SYNC,
 } event_type;
-typedef struct event {
+typedef volatile struct event {
     struct waitable_header hdr;
     atomic_bool signaled;
     event_type type;
