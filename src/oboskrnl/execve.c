@@ -53,22 +53,24 @@ static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, siz
     kstr = (void*)(((uintptr_t)kstr) + (uintptr_t)vec % OBOS_PAGE_SIZE);
 
     char** iter = kstr;
+    char* const* uiter = vec;
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
     size_t currSize = OBOS_PAGE_SIZE;
 
     while ((*iter++) != 0)
     {
-        if (OBOS_CROSSES_PAGE_BOUNDARY(iter, sizeof(*iter)*2))
+        if (OBOS_CROSSES_PAGE_BOUNDARY(iter, sizeof(*iter)))
         {
             Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)kstr, currSize);
             currSize += OBOS_PAGE_SIZE;
-            kstr = Mm_MapViewOfUserMemory(ctx, (void*)(iter+1), nullptr, currSize, OBOS_PROTECTION_READ_ONLY, true, status);
+            kstr = Mm_MapViewOfUserMemory(ctx, (void*)((uintptr_t)vec + (offset % OBOS_PAGE_SIZE) + sizeof(*iter)), nullptr, currSize, OBOS_PROTECTION_READ_ONLY, true, status);
             if (!kstr)
                 return nullptr;
-            iter = (char**)((uintptr_t)kstr + offset);
+            iter = (char**)((uintptr_t)kstr + (offset % OBOS_PAGE_SIZE));
         }
-        offset += 8;
+        offset += sizeof(*iter);
         (*szvec)++;
+        uiter++;
     }
 
     return kstr;
@@ -253,6 +255,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
     Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
+    Core_GetCurrentThread()->userStack = Mm_VirtualMemoryAlloc(Core_GetCurrentThread()->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
 
     aux.argc = argc;
     aux.argv = kargv;
