@@ -78,3 +78,5 @@ OBOS_EXPORT obos_status Core_ProcessAppendThread(process* proc, thread* thread);
 /// </summary>
 /// <param name="code">The exit code of the process.</param>
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code);
+
+process* Core_LookupProc(uint64_t pid);
