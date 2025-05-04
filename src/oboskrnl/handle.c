@@ -183,6 +183,7 @@ void unimpl_handle_close(handle_desc* hnd)
 void fd_close(handle_desc* hnd)
 {
     Vfs_FdClose(hnd->un.fd);
+    Vfs_Free(hnd->un.fd);
 }
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
