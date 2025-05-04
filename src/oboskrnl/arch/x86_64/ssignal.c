@@ -53,7 +53,7 @@ void OBOSS_SigReturn(ucontext_t* uctx)
     if (thread_ctx->signal_extended_ctx_ptr)
         memcpy(thread_ctx->extended_ctx_ptr, thread_ctx->signal_extended_ctx_ptr, Arch_GetXSaveRegionSize());
     thread_ctx->irql = ctx->irql;
-    Mm_VirtualMemoryFree(&Mm_KernelContext, uctx, sizeof(*uctx));
+    Mm_VirtualMemoryFree(&Mm_KernelContext, ctx, sizeof(*ctx));
     CoreS_SwitchToThreadContext(thread_ctx);
 }
 void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
@@ -61,7 +61,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     // if (!(frame->cs & 0x3))
     //     return;
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval-1];
-    ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(!(frame->cs & 0x3) ? KERNEL_GS_BASE : GS_BASE),.fs_base=rdmsr(FS_BASE),.cr3=frame->cr3 };
+    ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(!(frame->cs & 0x3) ? GS_BASE : KERNEL_GS_BASE),.fs_base=rdmsr(FS_BASE),.cr3=frame->cr3 };
     if (!Core_GetCurrentThread()->context.signal_extended_ctx_ptr)
         Core_GetCurrentThread()->context.signal_extended_ctx_ptr = Arch_AllocateXSAVERegion();
     if (Arch_HasXSAVE)
