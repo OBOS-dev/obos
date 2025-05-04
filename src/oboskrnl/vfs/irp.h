@@ -33,7 +33,7 @@ typedef struct irp {
     // If set to nullptr, there is data immediately available.
     // Always check if status != OBOS_STATUS_IRP_RETRY before calling finalize_irp.
     // EVENT_NOTIFICATION.
-    event *evnt;
+    event* volatile evnt;
     // If not nullptr, should be called by the IRP owner after waiting for the event.
     void(*on_event_set)(struct irp* irp);
     union {
