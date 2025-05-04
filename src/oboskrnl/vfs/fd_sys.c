@@ -95,15 +95,15 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
-    // printf("desc %d: opening %s\n", desc, path);
     status = Vfs_FdOpen(fd->un.fd, path, oflags & ~FD_OFLAGS_CREATE);
     if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
     {
         size_t index = strrfind(path, '/');
         if (index == SIZE_MAX)
-            index = sz_path;
+            index = 0;
         char ch = path[index];
         path[index] = 0;
+        
         const char* dirname = path;
         dirent* parent = VfsH_DirentLookup(dirname);
         path[index] = ch;
