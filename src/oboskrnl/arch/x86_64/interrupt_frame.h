@@ -38,7 +38,7 @@ typedef struct __interrupt_frame
 	uintptr_t ds;
 	// 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x58
 	// 0x60, 0x68, 0x70, 0x78, 0x80, 0x88, 0x90
-	uintptr_t rbp, ignored1, r8, r9, r10, r11, r12, r13, r14, r15,
+	uintptr_t rbp, ignored1, r15, r14, r13, r12, r11, r10, r9, r8,
 	rdi, rsi, ignored2, rbx, rdx, rcx, rax;
 	// 0x98, 0xA0, 0xA8
 	uintptr_t vector, intNumber, errorCode;
