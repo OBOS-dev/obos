@@ -240,8 +240,7 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
     obos_status status = OBOS_STATUS_SUCCESS;
     switch (request) {
         case TTY_IOCTL_SETATTR:
-            // memcpy(&tty->termios, argp, sizeof(struct termios));
-            // Abort any asynchronous reads, as this can mess up the data read.
+            memcpy(&tty->termios, argp, sizeof(struct termios));
             break;
         case TTY_IOCTL_GETATTR:
             memcpy(argp, &tty->termios, sizeof(struct termios));
