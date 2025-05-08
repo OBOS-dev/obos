@@ -4,10 +4,12 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "arch/x86_64/lapic.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
 #include <syscall.h>
+#include <signal.h>
 #include <handle.h>
 
 #include <scheduler/schedule.h>
@@ -266,4 +268,9 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
         OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
         OBOS_Warning("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+    if (Core_GetCurrentThread()->signal_info->pending)
+        Arch_LAPICSendIPI(
+            (ipi_lapic_info){.isShorthand=true,.info={.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF}},
+            (ipi_vector_info){.deliveryMode=LAPIC_DELIVERY_MODE_FIXED,.info.vector=Core_SchedulerIRQ->vector->id+0x20}
+        );
 }

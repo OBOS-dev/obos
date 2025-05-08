@@ -31,7 +31,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
     RB_INSERT(pagecache_tree, &Mm_Pagecache, phys);
     mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
         driver = &vn->un.device->driver->header;
     if (!vn->blkSize)
     {
@@ -68,7 +68,7 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
     {
         mount* const point = vn->mount_point ? vn->mount_point : vn->un.mounted;
         driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
             driver = &vn->un.device->driver->header;
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
         OBOS_ASSERT(vn->blkSize);

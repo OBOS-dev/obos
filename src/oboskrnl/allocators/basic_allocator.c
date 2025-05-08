@@ -310,6 +310,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	{
 		irql oldIrql = lock(c);
 		append_node(c->free, (freelist_node*)blk);
+		memset(((freelist_node*)blk)+1, 0xff, nBytes-sizeof(freelist_node));
 		unlock(c, oldIrql);
 	}
 	return OBOS_STATUS_SUCCESS;

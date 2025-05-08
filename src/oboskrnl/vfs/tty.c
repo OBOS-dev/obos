@@ -178,7 +178,8 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
                 status = tty->interface.write(tty, str, 1);
                 break;
             }
-            if (obos_is_error(status)) {
+            if (obos_is_error(status)) 
+            {
                 if (nBlkWritten)
                     *nBlkWritten = i;
                 return status;
@@ -250,7 +251,7 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             uint32_t /* pid_t */ *pid = argp;
             process* proc = Core_LookupProc(*pid);
             if (!proc || *pid == 0)
-                status = OBOS_STATUS_NOT_FOUND;
+                status = OBOS_STATUS_INVALID_ARGUMENT;
             else
                 tty->fg_job = proc;
             break;
@@ -264,10 +265,10 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
                 case TCOOFF:
-                    Core_EventClear(&tty->paused);
+                    tty->paused = false;
                     break;
                 case TCOON:
-                    Core_EventSet(&tty->paused, true);
+                    tty->paused = true;
                     break;
                 case TCIOFF:
                 {
@@ -312,7 +313,7 @@ void irp_on_event_set(irp* req)
         req->drvData = (void*)(uintptr_t)req->drvData + nToRead;
         tty->input_buffer.in_ptr += nToRead;
     }
-    if (nToRead < req->blkCount && ~tty->termios.iflag & ICANON)
+    if (nToRead < req->blkCount && ~tty->termios.lflag & ICANON)
         req->status = OBOS_STATUS_IRP_RETRY;
     else
         req->status = OBOS_STATUS_SUCCESS;
@@ -427,11 +428,11 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
     const uint8_t *buf8 = buf;
     for (size_t i = 0; i < nBytesReady; i++) 
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(tty->paused));
         bool insert_byte = true;
         if (!tty->quoted) 
         {
             insert_byte = false;
+            // when you come back, fix VLNEXT ("quoting" the control characters)
             if (buf8[i] == tty->termios.cc[VLNEXT] && (tty->termios.lflag & (ICANON|IEXTEN)))
                 insert_byte = !(tty->quoted = true);
             else
@@ -468,6 +469,8 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 insert_byte = false;
             }
         }
+        else
+            tty->quoted = false;
         if (!insert_byte)
             continue;
         if (tty->termios.lflag & ICANON)
@@ -505,8 +508,7 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     tty *tty = Vfs_Calloc(1, sizeof(struct tty));
 
     tty->magic = TTY_MAGIC;
-    tty->paused = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    Core_EventSet(&tty->paused, false);
+    tty->paused = false;
     tty->data_ready_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 
     tty->interface = *i;
@@ -620,7 +622,7 @@ static void poll_keyboard(struct screen_tty* data)
                 nReady--;
                 continue;
             }
-            if (scancode < SCANCODE_Z)
+            if (scancode <= SCANCODE_Z)
                 buffer[i++] = (mod & CTRL) ? scancode : ((((mod & CAPS_LOCK) || (mod & SHIFT)) ? 'A' : 'a') + (scancode-SCANCODE_A));
             else
             {
@@ -751,7 +753,9 @@ static obos_status screen_write(void* tty_, const char* buf, size_t szBuf)
     // for (size_t i = 0; i < szBuf; i++)
     //     OBOS_WriteCharacter(data->out, buf[i]);
     printf("%.*s", szBuf, buf);
-    OBOS_FlushBuffers(data->out);
+    data->out->paused = tty->paused;
+    if (!data->out->paused)
+        OBOS_FlushBuffers(data->out);
     return OBOS_STATUS_SUCCESS;
 }
 

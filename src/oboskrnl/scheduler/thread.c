@@ -251,8 +251,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	if (currentThread->userStack)
 		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
+	currentThread->kernelStack = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
+	CoreS_SetKernelStack(nullptr);
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }

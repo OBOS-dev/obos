@@ -4,6 +4,7 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "irq/irql.h"
 #include "klog.h"
 #include <int.h>
 #include <error.h>
@@ -191,6 +192,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     sigaction sigact = {.un.handler = SIG_DFL};
     for (int sigval = 1; sigval <= SIGMAX; sigval++)
         OBOS_SigAction(sigval, &sigact, nullptr);
+    Core_GetCurrentThread()->signal_info->pending = 0;
+    Core_GetCurrentThread()->signal_info->mask = 0;
 
     // TODO: Cancel any outstanding async I/O.
     // NOTE(oberrow): POSIX doesn't mandate this, but it is better do so.
@@ -223,6 +226,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
                 break;
         }
     }
+
+    oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 
     // Free all memory
     page_range* rng = nullptr;

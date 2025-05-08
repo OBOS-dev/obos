@@ -98,8 +98,10 @@ typedef struct thread
 	thread_node lock_node;
 	size_t nWaiting; // the count of objects the thread is waiting on.
 	size_t nSignaled; // the count of objects that have signaled the thread.
-	bool interrupted;
-
+	bool interrupted : 1;
+	bool signalInterrupted : 1; // if interrupted is true because of a signal.
+	bool inWaitProcess : 1;
+	
 	struct signal_header* signal_info;
 
 	void* kernelStack; // size: 0x10000 bytes

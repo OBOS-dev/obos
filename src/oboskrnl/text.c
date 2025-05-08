@@ -69,7 +69,7 @@ static OBOS_NO_UBSAN __attribute__((no_instrument_function)) void putch(text_ren
 }
 void OBOS_FlushBuffers(text_renderer_state* state)
 {
-	if (!state->fb.backbuffer_base)
+	if (!state->fb.backbuffer_base || !state->fb.modified_line_bitmap)
 		return;
 	uintptr_t currentLine = (uintptr_t)state->fb.base;
 	uintptr_t currentLineBackbuffer = (uintptr_t)state->fb.backbuffer_base;
@@ -114,7 +114,8 @@ static void newlineHandler(text_renderer_state* state)
 			state->fb.modified_line_bitmap[get_line_bitmap_size(state->fb.height)-1] &= ~BIT(31);
 		}
 	}
-	OBOS_FlushBuffers(state);
+	if (!state->paused)
+		OBOS_FlushBuffers(state);
 }
 obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 {
@@ -149,11 +150,8 @@ obos_status OBOS_WriteCharacter(text_renderer_state* state, char ch)
 		putch(state, ch, state->column++, state->row, state->fg_color, OBOS_TEXT_BACKGROUND);
 		break;
 	}
-	if (state->fb.backbuffer_base)
-	{
-		OBOS_ASSERT(state->fb.modified_line_bitmap);
+	if (state->fb.backbuffer_base && state->fb.modified_line_bitmap)
 		state->fb.modified_line_bitmap[state->row / 32] |= BIT(state->row % 32);
-	}
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status OBOS_WriteCharacterAt(text_renderer_state* state, char ch, uint32_t column, uint32_t row)

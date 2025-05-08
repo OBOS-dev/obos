@@ -94,7 +94,6 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
                 CoreH_ThreadBlock(Core_GetCurrentThread(), true);
                 return;
             case SIGNAL_DEFAULT_CONTINUE:
-                CoreH_ThreadReady(Core_GetCurrentThread());
                 return;
             default:
                 OBOS_ASSERT(!"unknown signal default action");

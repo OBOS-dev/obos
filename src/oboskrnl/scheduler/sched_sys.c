@@ -604,7 +604,9 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         return OBOS_STATUS_RETRY;
 
     again:
+    Core_GetCurrentThread()->inWaitProcess = true;
     status = Core_WaitOnObject(WAITABLE_OBJECT(*process));
+    Core_GetCurrentThread()->inWaitProcess = false;
     if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
         return status;
 

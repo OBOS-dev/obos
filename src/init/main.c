@@ -91,14 +91,23 @@ int main(int argc, char** argv)
     pid_t pid = fork();
     if (pid == 0)
     {
+        while (tcgetpgrp(0) != getpgid(0))
+            syscall0(Sys_Yield);
         execlp(handoff_process, "");
         perror("execlp");
         exit(EXIT_FAILURE);
     }
+    else 
+    {
+        tcsetpgrp(0, getpgid(pid));
+    }
     int status;
+    top:
     waitpid(pid, &status, 0);
     if (WIFSIGNALED(status))
         printf("Child exitted due to signal %d\n", WTERMSIG(status));
+    if (!WIFEXITED(status) && !WIFSIGNALED(status))
+        goto top;
     sigchld_handler(SIGCHLD);
     abort();
     // while (1)

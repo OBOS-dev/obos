@@ -15,11 +15,16 @@
 #include <allocators/base.h>
 
 #include <scheduler/cpu_local.h>
+#include <scheduler/schedule.h>
+#include <scheduler/process.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
 #include <mm/swap.h>
 
+#include <utils/list.h>
+
+#include <vfs/pipe.h>
 #include <vfs/limits.h>
 #include <vfs/fd.h>
 #include <vfs/fd_sys.h>
@@ -151,11 +156,13 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags & ~FD_OFLAGS_CREATE);
 }
 
+#define AT_FDCWD (handle)-100
+
 obos_status Sys_FdOpenAt(handle desc, handle ent, const char* name, uint32_t oflags)
 {
     return Sys_FdOpenAtEx(desc, ent, name, oflags & ~FD_OFLAGS_CREATE, 0);
 }
-obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t oflags, uint32_t mode)
+obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t oflags, uint32_t mode)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -166,26 +173,47 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* name, uint32_t o
         return status;
     }
 
-    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
-    if (!dent)
+    dirent* real_dent = nullptr;
+    dirent* parent_dent = nullptr;
+    if (ent == AT_FDCWD)
+        parent_dent = Core_GetCurrentThread()->proc->cwd;
+    else 
     {
-        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-        return status;
+        handle_desc* dent = nullptr;
+        dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+        if (!dent)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        parent_dent = dent->un.dirent;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    dirent* real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
+    char* name = nullptr;
+    size_t sz_name = 0;
+    status = OBOSH_ReadUserString(uname, nullptr, &sz_name);
+    if (obos_is_error(status))
+        return status;
+    name = ZeroAllocate(OBOS_KernelAllocator, sz_name+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uname, name, nullptr);
+    real_dent = VfsH_DirentLookupFrom(name, parent_dent);
+
     if (!real_dent)
     {
         if (~oflags & FD_OFLAGS_CREATE)
             return OBOS_STATUS_NOT_FOUND;
-        status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
+        status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
         if (obos_is_error(status))
+        {
+            Free(OBOS_KernelAllocator, name, sz_name);
             return status;
-        real_dent = VfsH_DirentLookupFrom(name, dent->un.dirent);
+        }
+        real_dent = VfsH_DirentLookupFrom(name, parent_dent);
         OBOS_ASSERT(real_dent);
     }
-
+    
+    Free(OBOS_KernelAllocator, name, sz_name);
     return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags & ~FD_OFLAGS_CREATE);
 }
 obos_status Sys_FdCreat(handle desc, const char* name, uint32_t mode)
@@ -458,7 +486,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_size = to_stat->filesize;
     mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
     const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK)
+    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
         driver = &to_stat->un.device->driver->header;
     size_t blkSize = 0;
     size_t blocks = 0;
@@ -512,7 +540,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK)
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK &&  to_stat->vtype != VNODE_TYPE_FIFO)
     {
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
@@ -952,6 +980,36 @@ obos_status Sys_IRPGetStatus(handle desc, obos_status* out_status, size_t* nComp
         memcpy_k_to_usr(nCompleted, &req->nBlkRead, sizeof(*nCompleted));
 
     return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
+{
+    fd* kfds = Vfs_Calloc(2, sizeof(fd));
+    obos_status status = Vfs_CreatePipe(kfds, pipesize);
+    if (obos_is_error(status))
+    {
+        Vfs_Free(kfds);
+        return status;
+    }
+    handle tmp[2] = {0,0};
+    handle_desc *tmp_descs[2] = {nullptr,nullptr};
+    tmp[0] = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &tmp_descs[0]);
+    tmp[1] = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &tmp_descs[1]);
+    tmp_descs[0]->un.fd = Vfs_Malloc(sizeof(fd));
+    tmp_descs[1]->un.fd = Vfs_Malloc(sizeof(fd));
+    memcpy(tmp_descs[0]->un.fd, &kfds[0], sizeof(fd));
+    memcpy(tmp_descs[1]->un.fd, &kfds[1], sizeof(fd));
+    Vfs_FdClose(&kfds[0]);
+    Vfs_FdClose(&kfds[1]);
+    memzero(&tmp_descs[0]->un.fd->node, sizeof(tmp_descs[0]->un.fd->node));
+    memzero(&tmp_descs[1]->un.fd->node, sizeof(tmp_descs[1]->un.fd->node));
+    LIST_APPEND(fd_list, &tmp_descs[0]->un.fd->vn->opened, tmp_descs[0]->un.fd);
+    LIST_APPEND(fd_list, &tmp_descs[1]->un.fd->vn->opened, tmp_descs[1]->un.fd);
+    tmp_descs[0]->un.fd->vn->refs++;
+    tmp_descs[1]->un.fd->vn->refs++;
+    Vfs_Free(kfds);
+
+    return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
 }
 
 // TODO

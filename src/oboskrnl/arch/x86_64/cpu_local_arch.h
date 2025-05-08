@@ -44,4 +44,5 @@ typedef struct cpu_local_arch
 	gdb_ctx dbg_ctx;
 	dpc dbg_dpc;
 	uint64_t stack_check_guard;
+	uint8_t lapicId;
 } cpu_local_arch;

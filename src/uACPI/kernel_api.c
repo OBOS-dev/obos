@@ -355,6 +355,8 @@ void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 }
 void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_list list)
 {
+    if (OBOS_GetLogLevel() == LOG_LEVEL_NONE)
+        return;
     const char* prefix = "UNKNOWN";
     color c = 0;
     switch (level)
