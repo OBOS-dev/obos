@@ -54,6 +54,11 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     Core_LowerIrql(oldIrql);
     if (curr->interrupted)
     {
+        if (curr->signalInterrupted)
+        {
+            curr->signalInterrupted = false;
+            CoreH_ThreadListRemove(&obj->waiting, &curr->lock_node);
+        }
         curr->interrupted = false;
         return OBOS_STATUS_ABORTED;
     }

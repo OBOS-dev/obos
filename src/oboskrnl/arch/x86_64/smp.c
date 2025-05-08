@@ -228,7 +228,8 @@ void Arch_SMPStartup()
 		memcpy((void*)0x1000, Arch_SMPTrampolineStart, Arch_SMPTrampolineEnd - Arch_SMPTrampolineStart);
 		for (thread_priority j = 0; j <= THREAD_PRIORITY_MAX_VALUE; j++)
 			cpu_info[i].priorityLists[j].priority = j;
-		cpu_info[i].id = s_lapicIDs[i];
+		cpu_info[i].id = i;
+		cpu_info[i].arch_specific.lapicId = s_lapicIDs[i];
 		cpu_info[i].currentIrql = 0;
 		cpu_info[i].isBSP = false;
 		cpu_info[i].schedulerTicks = 0;

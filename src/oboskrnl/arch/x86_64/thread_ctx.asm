@@ -18,6 +18,7 @@ global CoreS_SwitchToThreadContext:function hidden
 global CoreS_SaveRegisterContextAndYield:function hidden
 global CoreS_FreeThreadContext:function hidden
 global CoreS_CallFunctionOnStack:function default
+global CoreS_CallFunctionOnThreadStack:function hidden
 global CoreS_SetThreadIRQL:function hidden
 global CoreS_GetThreadIRQL:function hidden
 global CoreS_ThreadAlloca:function hidden
@@ -222,6 +223,7 @@ CoreS_SetThreadPageTable:
 	ret
 section .text
 extern Arch_GetCPUTempStack
+extern Arch_GetIST1Stack
 CoreS_CallFunctionOnStack:
 	push rbp
 	mov rbp, rsp

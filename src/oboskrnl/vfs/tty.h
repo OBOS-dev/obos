@@ -100,7 +100,6 @@ struct termios
 
 typedef struct tty {
 #define TTY_MAGIC 0x63EA62F4
-    event paused;
     event data_ready_evnt;
     tty_interface interface;
     uint32_t magic;
@@ -115,6 +114,7 @@ typedef struct tty {
     } input_buffer;
     struct process* fg_job;
     bool quoted : 1;
+    bool paused : 1;
 } tty;
 
 #define TTY_IOCTL_SETATTR 0x01

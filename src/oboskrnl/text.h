@@ -38,6 +38,7 @@ typedef struct
 		uint8_t bpp;
 	} fb;
 	uint32_t fg_color; // rgbx
+	bool paused;
 } text_renderer_state;
 extern OBOS_EXPORT text_renderer_state OBOS_TextRendererState;
 // Plots a pixel at fb. fbFmt is of OBOS_FB_FORMAT_*

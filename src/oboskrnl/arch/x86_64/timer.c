@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <error.h>
+#include <signal.h>
 #include <memmanip.h>
 
 #include <irq/irq.h>

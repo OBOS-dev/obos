@@ -12,6 +12,7 @@
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>
+#include <scheduler/schedule.h>
 
 #include <irq/irql.h>
 
@@ -29,7 +30,8 @@ OBOS_NO_UBSAN void OBOS_ExpandHandleTable(handle_table* table, size_t size)
     const size_t oldSize = table->size;
     table->size = size;
     handle_desc* tmp_arr = ZeroAllocate(OBOS_KernelAllocator, table->size, sizeof(*table->arr), nullptr);
-    memcpy(tmp_arr, table->arr, sizeof(*table->arr)*oldSize);
+    if (table->arr)
+        memcpy(tmp_arr, table->arr, sizeof(*table->arr)*oldSize);
     for (handle_desc* desc = table->head; desc; )
     {
         handle_desc *next = desc->un.next;
@@ -41,7 +43,6 @@ OBOS_NO_UBSAN void OBOS_ExpandHandleTable(handle_table* table, size_t size)
         table->head = tmp_arr + (table->head - table->arr);
     Free(OBOS_KernelAllocator, table->arr, sizeof(*table->arr)*oldSize);
     table->arr = tmp_arr;
-    memzero(table->arr + oldSize, sizeof(handle_desc)*(table->size-oldSize));
     table->last_handle = oldSize;
 }
 
@@ -128,6 +129,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
             OBOS_ExpandHandleTable(table, OBOS_MAX(table->size + (table->size / 4), hnd));
     }
     *desc = &table->arr[hnd];
+    memzero(&table->arr[hnd], sizeof(table->arr[hnd]));
     table->arr[hnd].type = type;
     hnd |= (type << HANDLE_TYPE_SHIFT);
     return hnd;
@@ -240,6 +242,7 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
     {
         OBOS_ExpandHandleTable(current_table, new+1);
         new_desc = &current_table->arr[new];
+        desc = &current_table->arr[hnd];
         handle_close_unlocked(current_table, new);
     }
 

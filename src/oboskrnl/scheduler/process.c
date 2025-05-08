@@ -270,5 +270,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	if (!(--proc->refcount))
 		Free(OBOS_NonPagedPoolAllocator, proc, sizeof(*proc));
 
+	Core_GetCurrentThread()->userStack = nullptr;
+	Core_GetCurrentThread()->proc = nullptr;
 	Core_ExitCurrentThread();
 }

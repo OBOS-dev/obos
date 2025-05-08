@@ -45,6 +45,8 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     if (sigval == 0)
         return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
 
+    // printf("Sending signal %d as thread %d to thread %d\n", sigval, as->tid, thr->tid);
+
     OBOS_ENSURE(thr->signal_info);
 
     if (thr->signal_info->pending & BIT(sigval - 1))
@@ -70,6 +72,7 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     else if (sigval == SIGSTOP)
     {
         // Stop the thread.
+        thr->signal_info->signals[sigval].sender = as;
         CoreH_ThreadBlock(thr, true);
         Core_MutexRelease(&thr->signal_info->lock);
         return OBOS_STATUS_SUCCESS;
@@ -84,8 +87,12 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     Core_MutexRelease(&thr->signal_info->lock);
     if (thr->status == THREAD_STATUS_BLOCKED)
     {
+        if (sigval == SIGTSTP && thr->signal_info->mask & BIT(SIGTSTP - 1))
+            return OBOS_STATUS_SUCCESS;
         // TODO: Use CoreH_AbortWaitingThreads instead of this?
         thr->interrupted = true;
+        if (!thr->inWaitProcess)
+            thr->signalInterrupted = true; 
         CoreH_ThreadReady(thr);
     }
     return OBOS_STATUS_SUCCESS;
@@ -190,6 +197,7 @@ obos_status OBOS_KillProcess(struct process* proc, int sigval)
         {
             case SIGCONT:
             case SIGSTOP:
+            case SIGTSTP:
                 OBOS_Kill(Core_GetCurrentThread(), thr, sigval);
                 continue;
             default:
@@ -218,6 +226,7 @@ obos_status OBOS_KillProcess(struct process* proc, int sigval)
             return OBOS_STATUS_SUCCESS;
         }
         case SIGSTOP:
+        case SIGTSTP:
         {
             // look at linux's WIFSTOPPED for reference
             proc->exitCode = 0x007f;
@@ -255,7 +264,7 @@ void OBOS_RunSignal(int sigval, interrupt_frame* frame)
         sig->un.handler = SIG_DFL;
     }
 }
-bool OBOS_SyncPendingSignal(interrupt_frame* frame)
+OBOS_NO_UBSAN bool OBOS_SyncPendingSignal(interrupt_frame* frame)
 {
     if (!CoreS_GetCPULocalPtr()->currentThread)
         return false;
@@ -267,8 +276,8 @@ bool OBOS_SyncPendingSignal(interrupt_frame* frame)
     int sigval = __builtin_ctzll(Core_GetCurrentThread()->signal_info->pending & ~Core_GetCurrentThread()->signal_info->mask);
     Core_GetCurrentThread()->signal_info->pending &= ~BIT_TYPE(sigval, L);
     sigval += 1;
-    OBOS_RunSignal(sigval, frame);
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
+    OBOS_RunSignal(sigval, frame);
     return true;
 }
 

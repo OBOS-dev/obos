@@ -80,7 +80,8 @@ void OBOS_InitializeUACPI()
     uacpi_status st = uacpi_initialize(flags);
     verify_status_panic(st, uacpi_initialize);
 
-    uacpi_context_set_log_level(UACPI_LOG_INFO);
+    if (OBOS_GetLogLevel() <= LOG_LEVEL_LOG)
+        uacpi_context_set_log_level(UACPI_LOG_INFO);
 
     OBOS_InitializeECFromECDT();
 

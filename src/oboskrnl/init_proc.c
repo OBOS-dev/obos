@@ -93,6 +93,8 @@ void OBOS_LoadInit()
 
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 
+    new->controlling_tty->fg_job = new;
+
     // CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 
     CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &thr_ctx);

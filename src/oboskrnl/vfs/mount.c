@@ -253,6 +253,8 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
 }
 bool VfsH_LockMountpoint(mount* point)
 {
+    if (!point)
+        return true;
     point->nWaiting++;
     obos_status status = Core_MutexAcquire(&point->lock);
     if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
@@ -268,13 +270,15 @@ bool VfsH_LockMountpoint(mount* point)
 }
 bool VfsH_UnlockMountpoint(mount* point)
 {
+    if (!point)
+        return true;
     return obos_is_success(Core_MutexRelease(&point->lock));
 }
 static void deref_vnode(vnode* vn)
 {
     if (!(--vn->refs))
     {
-        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK)
+        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
             if (!(vn->un.device->refs--))
                 Vfs_Free(vn->un.device);
         Vfs_Free(vn);

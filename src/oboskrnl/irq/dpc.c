@@ -44,7 +44,7 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
         if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes))
             target = (affinity & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)) ? &Core_CpuInfo[i] : nullptr;
     // If this fails, something stupid has happened.
-    OBOS_ASSERT(target);
+    OBOS_ENSURE(target);
     dpc->cpu = target;
     irql oldIrql = Core_SpinlockAcquireExplicit(&target->dpc_queue_lock, IRQL_MASKED, false);
     LIST_PREPEND(dpc_queue, &target->dpcs, dpc);
