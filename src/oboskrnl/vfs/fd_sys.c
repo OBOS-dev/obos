@@ -1015,6 +1015,7 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     req->op = op;
     req->vn = fd->un.fd->vn;
     req->blkCount = 1;
+    VfsH_IRPBytesToBlockCount(req->vn, fd->un.fd->offset, &req->blkOffset);
     *status = VfsH_IRPSubmit(req, nullptr);
     if (obos_is_error(*status))
     {
