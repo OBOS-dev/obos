@@ -37,6 +37,7 @@
 #include <vfs/create.h>
 
 #include <locks/event.h>
+#include <locks/wait.h>
 
 #include <driver_interface/driverId.h>
 
@@ -1018,7 +1019,7 @@ for (size_t _i = 0; _i < size; _i++)\
     for (size_t _j = 0, fd = _i * 8; _j < 8; _j++, fd++) \
         if ((set)[_i] & BIT(_j))
 
-bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status)
+bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** oreq)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ufd, HANDLE_TYPE_FD, false, status);
@@ -1034,15 +1035,19 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status)
     req->op = op;
     req->vn = fd->un.fd->vn;
     req->blkCount = 1;
-    VfsH_IRPSubmit(req, nullptr);
-    if (obos_is_error(req->status))
+    *status = VfsH_IRPSubmit(req, nullptr);
+    if (obos_is_error(*status))
     {
-        *status = req->status;
         VfsH_IRPUnref(req);
         return false;
     }
-    bool res = req->evnt;
-    VfsH_IRPUnref(req);
+    bool res = !req->evnt;
+    if (req->evnt && req->evnt->signaled)
+        res = true;
+    if (res)
+        VfsH_IRPUnref(req);
+    else
+        *oreq = req;
     return res;
 }
 
@@ -1058,9 +1063,6 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         return OBOS_STATUS_SUCCESS; // We waited for nothing, so assume success.
     OBOS_UNUSED(uexcept_set && "We can't really monitor exceptional cases...");
     
-    if (uexcept_set)
-        return OBOS_STATUS_UNIMPLEMENTED;
-
     uint8_t *read_set = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, uread_set, nullptr, 128, 0, true, &status);
     if (obos_is_error(status) && uread_set)
         return status;
@@ -1083,35 +1085,72 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
 
     uint8_t read_set_tmp[128];
     uint8_t write_set_tmp[128];
+    memzero(read_set_tmp, 128);
+    memzero(write_set_tmp, 128);
     int num_events = 0;
+    size_t nPossibleEvents = 0;
+    if (read_set)
+        set_foreach(read_set, 128)
+            nPossibleEvents++;
+    if (write_set)
+        set_foreach(write_set, 128)
+            nPossibleEvents++;
+    irp** unsignaledIRPs = ZeroAllocate(OBOS_NonPagedPoolAllocator, nPossibleEvents, sizeof(irp*), nullptr);
+    size_t unsignaledIRPIndex = 0;
+    again:
     if (read_set)
     {
         set_foreach(read_set, 128)
         {
-            if (fd_avaliable_for(IRP_READ, fd, &status))
+            irp* tmp = nullptr;
+            if (fd_avaliable_for(IRP_READ, fd, &status, &tmp))
             {
                 // printf("fd %d is ready for reading\n", fd);
                 num_events++;
                 read_set_tmp[_i] |= BIT(_j);
             }
+            else if (!num_events)
+                unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
+            {
+                printf("%d\n", status);
                 goto out;
+            }
         }
     }
     if (write_set)
     {
         set_foreach(write_set, 128)
         {
-            if (fd_avaliable_for(IRP_WRITE, fd, &status))
+            irp* tmp = nullptr;
+            if (fd_avaliable_for(IRP_WRITE, fd, &status, &tmp))
             {
                 // printf("fd %d is ready for writing\n", fd);
                 write_set_tmp[_i] |= BIT(_j);
                 num_events++;
             }
+            else if (!num_events)
+                unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
                 goto out;
         }
     }
+    
+    out:
+    if (!num_events)
+    {
+        struct waitable_header** waitable_list = ZeroAllocate(OBOS_NonPagedPoolAllocator, unsignaledIRPIndex, sizeof(struct waitable_header*), nullptr);
+        for (size_t i = 0; i < unsignaledIRPIndex; i++)
+            waitable_list[i] = WAITABLE_OBJECT(*unsignaledIRPs[i]->evnt);
+        struct waitable_header* signaled = nullptr;
+        Core_WaitOnObjects(unsignaledIRPIndex, waitable_list, &signaled);
+        unsignaledIRPIndex = 0;
+        Free(OBOS_NonPagedPoolAllocator, waitable_list, unsignaledIRPIndex*sizeof(struct waitable_header*));
+        goto again;
+    }
+    Free(OBOS_NonPagedPoolAllocator, unsignaledIRPs, nPossibleEvents*sizeof(irp*));
+    if (extra.sigmask)
+        OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
 
     if (read_set)
         memcpy(read_set, read_set_tmp, 128);
@@ -1119,10 +1158,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         memcpy(write_set, write_set_tmp, 128);
     if (extra.num_events)
         memcpy_k_to_usr(extra.num_events, &num_events, sizeof(num_events));
-    
-    out:
-    if (extra.sigmask)
-        OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
+
     out2:
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);

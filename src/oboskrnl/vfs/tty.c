@@ -356,8 +356,7 @@ static obos_status tty_submit_irp(void* request)
     }
 
     req->drvData = req->buff;
-    if (!tty->data_ready_evnt.signaled)
-        req->evnt = &tty->data_ready_evnt;
+    req->evnt = &tty->data_ready_evnt;
     req->on_event_set = irp_on_event_set;
     return OBOS_STATUS_SUCCESS;
 }
