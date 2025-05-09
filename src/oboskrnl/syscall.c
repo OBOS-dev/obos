@@ -374,6 +374,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_IRPGetBuffer,
     (uintptr_t)Sys_IRPGetStatus,
     (uintptr_t)Sys_CreatePipe,
+    (uintptr_t)Sys_PSelect,
 };
 
 // Arch syscall table is defined per-arch

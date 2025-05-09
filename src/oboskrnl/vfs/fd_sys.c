@@ -5,6 +5,7 @@
  */
 
 #include <int.h>
+#include <signal.h>
 #include <klog.h>
 #include <error.h>
 #include <handle.h>
@@ -746,9 +747,9 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
     handle_desc* stdout = OBOS_HandleLookup(tbl, hnd_stdout, HANDLE_TYPE_FD, false, &status);
     handle_desc* stderr = OBOS_HandleLookup(tbl, hnd_stderr, HANDLE_TYPE_FD, false, &status);
     OBOS_UnlockHandleTable(tbl);
-    Vfs_FdOpen(stdin->un.fd, "/dev/tty0", FD_OFLAGS_READ);
-    Vfs_FdOpen(stdout->un.fd, "/dev/tty0", FD_OFLAGS_WRITE);
-    Vfs_FdOpen(stderr->un.fd, "/dev/tty0", FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stdin->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_READ);
+    Vfs_FdOpenVnode(stdout->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stderr->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_WRITE);
 }
 
 // Writebacks all dirty pages in the page cache back to disk.
@@ -1012,16 +1013,118 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
     return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
 }
 
-// TODO
-// obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, uint8_t *uexcept_set, const struct pselect_extra_args* uextra)
-// {
-//     struct pselect_extra_args extra = {};
-//     obos_status status = memcpy_usr_to_k(&extra, uextra, sizeof(extra));
-//     if (obos_is_error(status))
-//         return status;
-//     if (nFds > 1024)
-//         return OBOS_STATUS_INVALID_ARGUMENT; // uh oh
-//     if (!uread_set && !uwrite_set && !uexcept_set)
-//         return OBOS_STATUS_SUCCESS; // We waited for nothing, so assume success.
-//     OBOS_UNUSED(uexcept_set && "We can't really monitor exceptional cases...");
-// }
+#define set_foreach(set, size) \
+for (size_t _i = 0; _i < size; _i++)\
+    for (size_t _j = 0, fd = _i * 8; _j < 8; _j++, fd++) \
+        if ((set)[_i] & BIT(_j))
+
+bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ufd, HANDLE_TYPE_FD, false, status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return false;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    irp* req = VfsH_IRPAllocate();
+    req->dryOp = true;
+    req->op = op;
+    req->vn = fd->un.fd->vn;
+    req->blkCount = 1;
+    VfsH_IRPSubmit(req, nullptr);
+    if (obos_is_error(req->status))
+    {
+        *status = req->status;
+        VfsH_IRPUnref(req);
+        return false;
+    }
+    bool res = req->evnt;
+    VfsH_IRPUnref(req);
+    return res;
+}
+
+obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, uint8_t *uexcept_set, const struct pselect_extra_args* uextra)
+{
+    struct pselect_extra_args extra = {};
+    obos_status status = memcpy_usr_to_k(&extra, uextra, sizeof(extra));
+    if (obos_is_error(status))
+        return status;
+    if (nFds > 1024)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!uread_set && !uwrite_set && !uexcept_set)
+        return OBOS_STATUS_SUCCESS; // We waited for nothing, so assume success.
+    OBOS_UNUSED(uexcept_set && "We can't really monitor exceptional cases...");
+    
+    if (uexcept_set)
+        return OBOS_STATUS_UNIMPLEMENTED;
+
+    uint8_t *read_set = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, uread_set, nullptr, 128, 0, true, &status);
+    if (obos_is_error(status) && uread_set)
+        return status;
+    uint8_t* write_set = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, uwrite_set, nullptr, 128, 0, true, &status);
+    if (obos_is_error(status) && uwrite_set)
+    {
+        Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
+        return status;
+    }
+
+
+    sigset_t sigmask = 0, oldmask = 0;
+    if (extra.sigmask)
+    {
+        status = memcpy_usr_to_k(&sigmask, extra.sigmask, sizeof(sigset_t));
+        if (obos_is_error(status))
+            goto out2;
+        OBOS_SigProcMask(SIG_SETMASK, &sigmask, &oldmask);
+    }
+
+    uint8_t read_set_tmp[128];
+    uint8_t write_set_tmp[128];
+    int num_events = 0;
+    if (read_set)
+    {
+        set_foreach(read_set, 128)
+        {
+            if (fd_avaliable_for(IRP_READ, fd, &status))
+            {
+                // printf("fd %d is ready for reading\n", fd);
+                num_events++;
+                read_set_tmp[_i] |= BIT(_j);
+            }
+            if (obos_is_error(status))
+                goto out;
+        }
+    }
+    if (write_set)
+    {
+        set_foreach(write_set, 128)
+        {
+            if (fd_avaliable_for(IRP_WRITE, fd, &status))
+            {
+                // printf("fd %d is ready for writing\n", fd);
+                write_set_tmp[_i] |= BIT(_j);
+                num_events++;
+            }
+            if (obos_is_error(status))
+                goto out;
+        }
+    }
+
+    if (read_set)
+        memcpy(read_set, read_set_tmp, 128);
+    if (write_set)
+        memcpy(write_set, write_set_tmp, 128);
+    if (extra.num_events)
+        memcpy_k_to_usr(extra.num_events, &num_events, sizeof(num_events));
+    
+    out:
+    if (extra.sigmask)
+        OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
+    out2:
+    Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
+    Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+    return status;
+}
