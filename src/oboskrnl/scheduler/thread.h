@@ -98,6 +98,7 @@ typedef struct thread
 	thread_node lock_node;
 	size_t nWaiting; // the count of objects the thread is waiting on.
 	size_t nSignaled; // the count of objects that have signaled the thread.
+	struct waitable_header* hdrSignaled;
 	bool interrupted : 1;
 	bool signalInterrupted : 1; // if interrupted is true because of a signal.
 	bool inWaitProcess : 1;
