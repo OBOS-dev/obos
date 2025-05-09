@@ -4,7 +4,6 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "arch/x86_64/lapic.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -18,6 +17,7 @@
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/sse.h>
 #include <arch/x86_64/cmos.h>
+#include <arch/x86_64/lapic.h>
 
 #include <mm/context.h>
 
@@ -123,7 +123,7 @@ const char* syscall_to_string[] = {
     "Sys_ThreadSetOwner",
     "Sys_ThreadGetTid", // 16
     "Sys_WaitOnObject",
-    "Sys_WaitOnObjects",
+    "Invalid",
     "Sys_ProcessOpen",  // Unimplemented
     "Sys_ProcessStart",
     "Sys_KillProcess",  // signal-related
@@ -201,6 +201,8 @@ const char* syscall_to_string[] = {
     "Sys_IRPQueryState",
     "Sys_IRPGetBuffer",
     "Sys_IRPGetStatus",
+    "Sys_CreatePipe",
+    "Sys_PSelect",
 };
 const char* status_to_string[] = {
     "OBOS_STATUS_SUCCESS",

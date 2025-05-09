@@ -314,51 +314,6 @@ obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     return Core_WaitOnObject(hdr);
 }
-obos_status Sys_WaitOnObjects(handle *objects, size_t nObjects)
-{
-    if (!nObjects)
-        return OBOS_STATUS_SUCCESS;
-    if (!objects)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    struct waitable_header** objs = ZeroAllocate(OBOS_KernelAllocator, nObjects, sizeof(struct waitable_header*), nullptr);
-    for (size_t i = 0; i < nObjects; i++)
-    {
-        handle hnd = 0;
-        obos_status status = OBOS_STATUS_SUCCESS;
-        status = memcpy_usr_to_k(&hnd, &objects[i], sizeof(handle));
-        if (obos_is_error(status))
-        {
-            Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
-            return status;
-        }
-        handle_type type = HANDLE_TYPE(hnd);
-        switch (type) {
-            case HANDLE_TYPE_MUTEX:
-            case HANDLE_TYPE_PUSHLOCK:
-            case HANDLE_TYPE_EVENT:
-            case HANDLE_TYPE_SEMAPHORE:
-            case HANDLE_TYPE_PROCESS:
-                break;
-            default:
-                Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
-                return OBOS_STATUS_INVALID_ARGUMENT;
-        }
-        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), hnd, 0, true, &status);
-        if (obos_is_error(status))
-        {
-            Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
-            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return status;
-        }
-        objs[i] = desc->un.waitable;
-        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-    }
-    obos_status status = Core_WaitOnObjectsPtr(nObjects, objs);
-    Free(OBOS_KernelAllocator, objs, nObjects*sizeof(struct waitable_header*));
-    return status;
-}
-
 // scheduler/process.h
 
 process* Core_LookupProc(uint64_t pid)
