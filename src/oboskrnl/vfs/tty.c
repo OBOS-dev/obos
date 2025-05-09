@@ -319,7 +319,7 @@ void irp_on_event_set(irp* req)
         req->status = OBOS_STATUS_SUCCESS;
     req->nBlkRead += nToRead;
     // Only if we have satisfied all bytes.
-    if (tty->input_buffer.out_ptr <= tty->input_buffer.in_ptr)
+    if (tty->input_buffer.out_ptr <= tty->input_buffer.in_ptr && !req->dryOp)
         Core_EventClear(req->evnt);
 }
 
@@ -356,7 +356,8 @@ static obos_status tty_submit_irp(void* request)
     }
 
     req->drvData = req->buff;
-    req->evnt = &tty->data_ready_evnt;
+    if (!tty->data_ready_evnt.signaled)
+        req->evnt = &tty->data_ready_evnt;
     req->on_event_set = irp_on_event_set;
     return OBOS_STATUS_SUCCESS;
 }
@@ -432,7 +433,6 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
         if (!tty->quoted) 
         {
             insert_byte = false;
-            // when you come back, fix VLNEXT ("quoting" the control characters)
             if (buf8[i] == tty->termios.cc[VLNEXT] && (tty->termios.lflag & (ICANON|IEXTEN)))
                 insert_byte = !(tty->quoted = true);
             else
