@@ -289,26 +289,6 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
     return OBOS_STATUS_SUCCESS;
 }
 
-// I/O System might go through a rewrite soon...
-// Leave these unimplemented until then.
-
-obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt)
-{
-    OBOS_UNUSED(desc);
-    OBOS_UNUSED(buf);
-    OBOS_UNUSED(nBytes);
-    OBOS_UNUSED(evnt);
-    return OBOS_STATUS_UNIMPLEMENTED;
-}
-obos_status Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt)
-{
-    OBOS_UNUSED(desc);
-    OBOS_UNUSED(buf);
-    OBOS_UNUSED(nBytes);
-    OBOS_UNUSED(evnt);
-    return OBOS_STATUS_UNIMPLEMENTED;
-}
-
 obos_status Sys_FdSeek(handle desc, off_t off, whence_t whence)
 {
     // for (volatile bool b = (desc == 0x1); b;)

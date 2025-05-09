@@ -412,7 +412,9 @@ void erase_bytes(tty* tty, size_t nBytesToErase)
         nBytesToErase = tty->input_buffer.out_ptr % tty->input_buffer.size;
     for (size_t j = 0; j < nBytesToErase && tty->input_buffer.out_ptr > 0; j++)
     {
-        tty->input_buffer.buf[--tty->input_buffer.out_ptr % tty->input_buffer.size] = 0;
+        if (tty->input_buffer.out_ptr == tty->input_buffer.in_ptr)
+            tty->input_buffer.in_ptr--;
+        tty->input_buffer.buf[tty->input_buffer.out_ptr-- % tty->input_buffer.size] = 0;
         tty->interface.write(tty, "\b", 1);
     }
 }
@@ -444,6 +446,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 tty_kill(tty, SIGTSTP);
             else
                 insert_byte = true;
+            // TODO: Fix the backspace character not being read.
             if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && (tty->termios.lflag & (ICANON|ECHOE)))
             {
                 size_t nBytesToErase = buf8[i] == tty->termios.cc[VERASE] ? 1 : 0;
