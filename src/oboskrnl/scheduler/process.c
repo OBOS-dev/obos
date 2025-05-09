@@ -14,6 +14,9 @@
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
 
+#include <irq/irql.h>
+
+#include <scheduler/thread_context_info.h>
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
@@ -130,8 +133,9 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 	return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
+uintptr_t ExitCurrentProcess(uintptr_t code_)
 {
+	uint32_t code = code_;
 	process* proc = Core_GetCurrentThread()->proc;
 	if (proc->pid == 0)
 		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Attempt to exit current process in the kernel process\n");
@@ -273,4 +277,12 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	Core_GetCurrentThread()->userStack = nullptr;
 	Core_GetCurrentThread()->proc = nullptr;
 	Core_ExitCurrentThread();
+}
+
+OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
+{
+	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	while (1)
+		;
 }
