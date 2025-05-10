@@ -1,13 +1,9 @@
 /*
  * oboskrnl/vfs/mount.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
-#include "locks/wait.h"
-#include "scheduler/schedule.h"
-#include "vfs/fd.h"
-#include "vfs/pagecache.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -15,6 +11,8 @@
 
 #include <utils/list.h>
 
+#include <vfs/pagecache.h>
+#include <vfs/fd.h>
 #include <vfs/namecache.h>
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
@@ -24,6 +22,9 @@
 #include <driver_interface/header.h>
 
 #include <locks/mutex.h>
+#include <locks/wait.h>
+
+#include <scheduler/schedule.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
