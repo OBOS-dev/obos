@@ -9,6 +9,8 @@
 #include <int.h>
 #include <struct_packing.h>
 
+#include <driver_interface/header.h>
+
 typedef struct ustar_hdr
 {
     char filename[100];
@@ -27,6 +29,26 @@ typedef struct ustar_hdr
     char unused[16];
     char prefix[155];
 } OBOS_PACK ustar_hdr;
+
+typedef struct initrd_inode {
+    struct {
+        struct initrd_inode *head, *tail;
+        size_t nChildren;
+    } children;
+    struct initrd_inode *next, *prev, *parent;
+    char* name;
+    char* path;
+    char* data;
+    size_t filesize;
+    size_t path_len;
+    size_t path_size;
+    size_t name_len;
+    size_t name_size;
+    file_type type;
+    uint32_t ino;
+    bool persistent : 1;
+    driver_file_perm perm;
+} initrd_inode;
 
 enum {
     FILEMODE_EXEC = BIT(0),

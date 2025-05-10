@@ -702,9 +702,15 @@ void Arch_KernelMainBootstrap()
             Drv_LoadDriver((void*)Arch_InitRDDriver->address, Arch_InitRDDriver->size, &status);
         if (obos_is_error(status))
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load the InitRD driver passed in module %s.\nStatus: %d.\n", Arch_InitRDDriver->name, status);
-        status = Drv_StartDriver(drv, nullptr);
+        thread* main = nullptr;
+        status = Drv_StartDriver(drv, &main);
         if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not start the InitRD driver passed in module %s.\nStatus: %d.\nNote: This is a bug, please report it.\n", Arch_InitRDDriver->name, status);
+        if (status != OBOS_STATUS_NO_ENTRY_POINT)
+        {
+            while (drv->main_thread)
+                OBOSS_SpinlockHint();
+        }
         OBOS_Log("Loaded InitRD driver.\n");
     }
     else 
