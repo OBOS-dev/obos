@@ -77,3 +77,88 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
     }
     return nullptr;
 }
+
+
+// Adapated from vfs/dirent.c
+
+static size_t str_search(const char* str, char ch)
+{
+    size_t ret = strchr(str, ch);
+    for (; str[ret] == ch && str[ret] != 0; ret++)
+        ;
+    return ret;
+}
+static initrd_inode* on_match(initrd_inode** const curr_, initrd_inode** const root, const char** const tok, size_t* const tok_len, const char** const path, 
+                        size_t* const path_len)
+{
+    initrd_inode *curr = *curr_;
+    *root = curr;
+    const char *newtok = (*tok) + str_search(*tok, '/');
+    if (newtok >= (*path + *path_len))
+        return curr;
+    if (!curr->children.nChildren)
+        return nullptr; // could not find node.
+    *tok = newtok;
+    size_t currentPathLen = strlen(*tok)-1;
+    if ((*tok)[currentPathLen] != '/')
+        currentPathLen++;
+    while ((*tok)[currentPathLen] == '/')
+        currentPathLen--;
+    *tok_len = strchr(*tok, '/');
+    if (*tok_len != currentPathLen)
+        (*tok_len)--;
+    while ((*tok)[(*tok_len) - 1] == '/')
+        (*tok_len)--;
+    return nullptr;
+}
+initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
+{
+    if (!path)
+        return nullptr;
+    size_t path_len = strlen(path);
+    if (!path_len)
+        return nullptr;
+    for (; *path == '/'; path++, path_len--)
+        ;
+    const char* tok = path;
+    size_t tok_len = strchr(tok, '/');
+    if (tok_len != path_len)
+        tok_len--;
+    while (tok[tok_len - 1] == '/')
+        tok_len--;
+    if (!tok_len)
+        return nullptr;
+    while(root)
+    {
+        initrd_inode* curr = root;
+        if (strcmp(root->name, tok))
+        {
+            // Match!
+            root = curr->children.head ? curr->children.head : root;
+            initrd_inode* what = 
+                on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
+            if (what)
+                return what;
+            continue;
+        }
+        for (curr = root->children.head; curr;)
+        {
+            if (strcmp(curr->name, tok))
+            {
+                // Match!
+                initrd_inode* what = 
+                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
+                if (what)
+                    return what;
+                curr = curr->children.head ? curr->children.head : curr;
+                break;
+            }
+
+            // root = curr->children.head ? curr->children.head : root;
+            curr = curr->next;
+        }
+        if (!curr)
+            root = root->parent;
+    }
+    return nullptr;
+}

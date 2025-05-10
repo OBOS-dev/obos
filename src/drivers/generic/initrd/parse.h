@@ -11,9 +11,11 @@
 
 #include "ustar_hdr.h"
 
-// USTAR is strictly read only (on OBOS).
+extern initrd_inode* InitrdRoot;
+extern size_t CurrentInodeNumber;
 
 const ustar_hdr* GetFile(const char* path, obos_status* status);
+initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root);
 inline static uint64_t oct2bin(const char* str, size_t size)
 {
 	uint64_t n = 0;
