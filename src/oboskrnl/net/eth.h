@@ -32,18 +32,3 @@ typedef struct ethernet2_header {
 // Each ethernet driver should define this
 // argp points to a `mac_address`
 #define IOCTL_ETHERNET_INTERFACE_MAC_REQUEST 0x1
-// Each ethernet driver should define this
-// argp should be converted to bool
-// Return OBOS_STATUS_SUCCESS if the interface supports IP checksum offload, and it was set to argp.
-// Return any error code otherwise.
-#define IOCTL_ETHERNET_SET_IP_CHECKSUM_OFFLOAD 0x2
-// Each ethernet driver should define this
-// argp should be converted to bool
-// Return OBOS_STATUS_SUCCESS if the interface supports UDP checksum offload, and it was set to argp.
-// Return any error code otherwise.
-#define IOCTL_ETHERNET_SET_UDP_CHECKSUM_OFFLOAD 0x3
-// Each ethernet driver should define this
-// argp should be converted to bool
-// Return OBOS_STATUS_SUCCESS if the interface supports TCP checksum offload, and it was set to argp.
-// Return any error code otherwise.
-#define IOCTL_ETHERNET_SET_TCP_CHECKSUM_OFFLOAD 0x4
