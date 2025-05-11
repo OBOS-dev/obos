@@ -892,27 +892,6 @@ void Arch_KernelMainBootstrap()
         Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
     }
 
-    fd com1 = {};
-    Vfs_FdOpen(&com1, "/dev/COM1", FD_OFLAGS_READ);
-
-    struct {
-        OBOS_ALIGNAS(8) uint8_t id;
-        OBOS_ALIGNAS(8) uint32_t baudRate;
-        OBOS_ALIGNAS(8) uint32_t dataBits;
-        OBOS_ALIGNAS(8) uint32_t stopBits;
-        OBOS_ALIGNAS(8) uint32_t parityBit;
-        OBOS_ALIGNAS(8) dev_desc* connection;
-    } open_serial_connection_argp = {
-        .id=1,
-        .baudRate=115200,
-        .dataBits=3,
-        .stopBits=0,
-        .parityBit=0,
-        .connection=com1.vn ? &com1.vn->desc : 0,
-    };
-
-    Vfs_FdIoctl(&com1, 0, &open_serial_connection_argp);
-
     OBOS_LoadInit();
 
     OBOS_Log("%s: Done early boot.\n", __func__);

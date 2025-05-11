@@ -11,7 +11,7 @@ list (APPEND oboskrnl_sources
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
 	"locks/event.c" "locks/wait.c" "cmdline.c" "vfs/init.c" 
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
-	"vfs/fd.c" "vfs/dummy_devices.c" "vfs/async.c" "mm/pmm.c"
+	"vfs/fd.c" "vfs/dummy_devices.c" "vfs/tty.c" "mm/pmm.c"
 	"driver_interface/pci_irq.c" "mbr.c" "gpt.c" "partition.c"
 	"utils/uuid.c" "mm/disk_swap.c" "memmanip.c" "signal.c"
 	"mm/aging.c" "mm/initial_swap.c" "locks/pushlock.c" "vfs/pipe.c"
@@ -19,7 +19,7 @@ list (APPEND oboskrnl_sources
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
-	"init_proc.c" "vfs/create.c" "vfs/tty.c"
+	"init_proc.c" "vfs/create.c"
 )
 
 add_executable(oboskrnl)
