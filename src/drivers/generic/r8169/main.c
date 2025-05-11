@@ -29,6 +29,8 @@
 
 #include <locks/spinlock.h>
 
+#include <net/eth.h>
+
 #include "structs.h"
 
 r8169_device* Devices;
@@ -219,9 +221,35 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status ioctl_argp_size(uint32_t request, size_t *ret)
+{
+    switch (request) {
+        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+            *ret = sizeof(mac_address);
+            return OBOS_STATUS_SUCCESS;
+        default:
+            break;
+    }
+    return OBOS_STATUS_INVALID_IOCTL;
+}
 obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what,request,argp);
+    if (!what) return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device_handle* hnd = (void*)what;
+    r8169_device* dev = nullptr;
+    if (hnd->magic == R8169_DEVICE_MAGIC)
+        dev = (void*)what;
+    else if (hnd->magic == R8169_HANDLE_MAGIC)
+        dev = hnd->dev;
+    else
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (request) {
+        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+            memcpy(argp, dev->mac, sizeof(mac_address));
+            return OBOS_STATUS_SUCCESS;
+        default:
+            break;
+    }
     return OBOS_STATUS_INVALID_IOCTL;
 }
 
@@ -314,6 +342,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
+        .ioctl_argp_size = ioctl_argp_size,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
