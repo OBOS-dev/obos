@@ -106,6 +106,12 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
     if (status == OBOS_STATUS_NOT_FOUND && (oflags & FD_OFLAGS_CREATE))
     {
         size_t index = strrfind(path, '/');
+        bool index_bumped = false;
+        if (index == 0)
+        {
+            index_bumped = true;
+            index++;
+        }
         if (index == SIZE_MAX)
             index = 0;
         char ch = path[index];
@@ -120,14 +126,17 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
             return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
         }
         file_perm real_mode = unix_to_obos_mode(mode);
-        status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_REG, real_mode);
+        status = Vfs_CreateNode(parent, path+(index == 0 ? 0 : (index_bumped ? index : index+1)), VNODE_TYPE_REG, real_mode);
         if (obos_is_error(status))
             goto err;
-        dirent* ent = VfsH_DirentLookupFrom(path+(index == sz_path ? 0 : index+1), parent);
+        dirent* ent = VfsH_DirentLookupFrom(path+(index == 0 ? 0 : (index_bumped ? index : index+1)), parent);
+        if (index_bumped)
+            index--;
         OBOS_ENSURE(ent);
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
+    printf("opened %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
@@ -454,6 +463,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
             dirent* dent = VfsH_DirentLookup(path);
+            printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent)
                 to_stat = dent->vnode;
@@ -977,6 +987,7 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
     handle_desc *tmp_descs[2] = {nullptr,nullptr};
     tmp[0] = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &tmp_descs[0]);
     tmp[1] = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &tmp_descs[1]);
+    tmp_descs[0] = OBOS_CurrentHandleTable()->arr+tmp[0];
     tmp_descs[0]->un.fd = Vfs_Malloc(sizeof(fd));
     tmp_descs[1]->un.fd = Vfs_Malloc(sizeof(fd));
     memcpy(tmp_descs[0]->un.fd, &kfds[0], sizeof(fd));

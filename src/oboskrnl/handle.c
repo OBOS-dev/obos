@@ -117,6 +117,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     OBOS_ASSERT(table);
     OBOS_ASSERT(desc);
     handle hnd = 0;
+    bool through_freelist = table->head;
     if (table->head)
     {
         hnd = table->head - table->arr;
@@ -124,9 +125,9 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     }
     else
     {
-        hnd = table->last_handle++;
-        if (table->last_handle >= table->size)
+        if ((table->last_handle + 1) >= table->size)
             OBOS_ExpandHandleTable(table, OBOS_MAX(table->size + (table->size / 4), hnd));
+        hnd = table->last_handle++;
     }
     *desc = &table->arr[hnd];
     memzero(&table->arr[hnd], sizeof(table->arr[hnd]));

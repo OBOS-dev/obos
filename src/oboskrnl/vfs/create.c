@@ -98,7 +98,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         ftable = &parent_vn->un.mounted->fs_driver->driver->header.ftable;
         mount_vn = parent_vn->un.mounted->device;
     }
-    obos_status status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type);
+    obos_status status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
     if (obos_is_error(status))
     {
         Vfs_Free(vn);

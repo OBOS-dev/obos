@@ -215,12 +215,13 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 	}
 
 	// Close all handles.
-	for (uint32_t i = 0; i < (uint32_t)proc->handles.size; i++)
-	{
-		handle hnd = i;
-		hnd |= (proc->handles.arr[i].type << HANDLE_TYPE_SHIFT);
-		Sys_HandleClose(hnd);
-	}
+	// for (uint32_t i = 0; i < (uint32_t)proc->handles.size; i++)
+	// {
+	// 	handle hnd = i;
+	// 	hnd |= (proc->handles.arr[i].type << HANDLE_TYPE_SHIFT);
+	// 	if (proc->handles.arr[i].un.as_int)
+	// 		Sys_HandleClose(hnd);
+	// }
 
 	// Free all memory (TODO: Better strategy?)
 	page_range* rng = nullptr;

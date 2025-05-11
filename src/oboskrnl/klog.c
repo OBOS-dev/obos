@@ -4,6 +4,7 @@
 	Copyright (c) 2024 Omar Berrow
 */
 
+#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
@@ -137,6 +138,14 @@ OBOS_EXPORT void OBOS_LibCLog(const char* format, ...)
 		s_loggerLockInitialized = true;
 	}
 	if (s_logLevel > LOG_LEVEL_LOG)
+		return;
+	static bool enable_libc_log = false, has_cached_result = false;
+	if (!has_cached_result)
+	{
+		enable_libc_log = !OBOS_GetOPTF("disable-libc-log");
+		has_cached_result = true;
+	}
+	if (!enable_libc_log)
 		return;
 	irql oldIrql = Core_SpinlockAcquire(&s_loggerLock);
 

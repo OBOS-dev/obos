@@ -29,7 +29,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     OBOS_UNUSED(blkOffset);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!"untested");
+    // OBOS_ASSERT(!"untested");
     pipe_desc *pipe = (void*)desc;
     if (!pipe->offset)
         return OBOS_STATUS_EOF; // nothing to read...
@@ -48,7 +48,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     OBOS_UNUSED(blkOffset);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(!"untested");
+    // OBOS_ASSERT(!"untested");
     pipe_desc *pipe = (void*)desc;
     if (blkCount > pipe->pipe_size)
     {
@@ -70,10 +70,12 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         return OBOS_STATUS_SUCCESS;
     }
     bool atomic = blkCount <= PIPE_BUF;
-    Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
+    // Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
+    Core_PushlockAcquire(&pipe->lock, false);
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
     pipe->offset += blkCount;
-    Core_PushlockRelease(&pipe->lock, !atomic);
+    Core_PushlockRelease(&pipe->lock, false);
+    // Core_PushlockRelease(&pipe->lock, !atomic);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
     return OBOS_STATUS_SUCCESS;
@@ -140,6 +142,7 @@ obos_status Vfs_CreatePipe(fd* fds, size_t pipesize)
         pipesize = PIPE_BUF;
     pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
     desc->pipe_size = pipesize;
+    desc->lock = PUSHLOCK_INITIALIZE();
     desc->buf = Vfs_Calloc(desc->pipe_size, 1);
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
@@ -167,6 +170,7 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, co
     pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
     desc->pipe_size = pipesize;
     desc->buf = Vfs_Calloc(desc->pipe_size, 1);
+    desc->lock = PUSHLOCK_INITIALIZE();
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;

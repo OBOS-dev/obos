@@ -112,6 +112,8 @@ page* MmH_PgAllocatePhysical(bool phys32, bool huge)
 
 page* MmH_AllocatePage(uintptr_t phys, bool huge)
 {
+	if (!phys)
+		return nullptr;
 	page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
