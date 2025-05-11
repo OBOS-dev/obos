@@ -28,6 +28,7 @@
 #include <mm/context.h>
 
 #include <locks/spinlock.h>
+#include <locks/event.h>
 
 #include <net/eth.h>
 
@@ -259,11 +260,12 @@ void irp_on_rx_event_set(irp* req)
     r8169_device* dev = hnd->dev;
     if (!hnd->rx_curr)
         r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
-    req->nic_data = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(nic_irp_data), nullptr);
-    req->nic_data->packet_size = hnd->rx_curr->sz;
     req->status = OBOS_STATUS_SUCCESS;
     if (req->dryOp)
+    {
+        req->nBlkRead = hnd->rx_curr->sz;
         return;
+    }
 
     size_t szRead = OBOS_MIN(req->blkCount, hnd->rx_curr->sz - hnd->rx_off);
     memcpy(req->buff, hnd->rx_curr->buf + hnd->rx_off, szRead);
@@ -282,6 +284,13 @@ void irp_on_rx_event_set(irp* req)
     req->nBlkRead = szRead;
 }
 
+obos_status finalize_irp(void* req_)
+{
+    irp* req = req_;
+    if (req->evnt)
+        Core_EventClear(req->evnt);
+    return OBOS_STATUS_SUCCESS;
+}
 obos_status submit_irp(void* req_)
 {
     irp* req = req_;
@@ -296,6 +305,11 @@ obos_status submit_irp(void* req_)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+    if (!req->buff && !req->dryOp)
+    {
+        req->status = OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_SUCCESS;
+    }
     r8169_device_handle* hnd = (void*)req->desc;
     r8169_device* dev = hnd->dev;
     
@@ -308,8 +322,10 @@ obos_status submit_irp(void* req_)
             req->evnt = &dev->rx_buffer.envt;
             req->on_event_set = irp_on_rx_event_set;
         }
+        else
+            irp_on_rx_event_set(req);
     }
-    else 
+    else if (!req->dryOp)
     {
         r8169_frame frame = {};
         r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
@@ -353,6 +369,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .write_sync = write_sync,
         .on_wake = on_wake,
         .on_suspend = on_suspend,
+        .submit_irp = submit_irp,
+        .finalize_irp = finalize_irp,
     },
     .driverName = "RTL8169 Driver",
     .version = 1,
@@ -454,6 +472,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     for (size_t i = 0; i < nDevices; i++)
     {
         r8169_reset(Devices+i);
+        OBOS_ENSURE(this_driver);
         vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
         const char* dev_name = Devices[i].interface_name;
         OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);

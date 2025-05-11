@@ -4,7 +4,6 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "driver_interface/pci.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -20,6 +19,7 @@
 #include <driver_interface/loader.h>
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
+#include <driver_interface/pci.h>
 
 #include <elf/elf.h>
 
@@ -242,7 +242,7 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         {
             if (status)
                 *status = OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL;
-            OBOS_Debug("Could not resolve symbol '%s' (symbol is hidden) referenced within a driver.\n", OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*));
+            OBOS_Log("Could not resolve symbol '%s' (symbol is hidden) referenced within a driver.\n", OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*));
             Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
             return false;
         }
@@ -280,9 +280,9 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
         {
             if (status)
                 *status = OBOS_STATUS_DRIVER_REFERENCED_UNRESOLVED_SYMBOL;
-            OBOS_Debug("Could not resolve symbol '%s' referenced within a driver.\n", OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*));
+            OBOS_Log("Could not resolve symbol '%s' referenced within a driver.\n", OffsetPtr(base, stringTable + Unresolved_Symbol->st_name, const char*));
             Mm_VirtualMemoryFree(&Mm_KernelContext, base, szProgram);
-            return false;
+            return false; 
         }
         // If this is a uacpi symbol, then we want to check against the init level, if valid.
         if (!(*usesUacpiSymbol) && (Symbol && (uacpi_strncmp(Symbol->name, "uacpi_", 6) == 0)))

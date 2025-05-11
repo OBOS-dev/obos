@@ -91,6 +91,9 @@
 #include "gdbstub/bp.h"
 #endif
 
+#include <net/tables.h>
+
+#include <vfs/dirent.h>
 #include <vfs/init.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
@@ -893,6 +896,10 @@ void Arch_KernelMainBootstrap()
     }
 
     OBOS_LoadInit();
+
+    dirent* nic = VfsH_DirentLookup("/dev/r8169-eth0");
+    if (nic)
+        Net_Initialize(nic->vnode);
 
     OBOS_Log("%s: Done early boot.\n", __func__);
     OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 

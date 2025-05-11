@@ -495,6 +495,7 @@ obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
         driver = &vn->un.device->driver->header;
+    OBOS_ENSURE(driver);
     if (!vn->blkSize)
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
 
@@ -521,7 +522,9 @@ obos_status VfsH_IRPWait(irp* request)
     vnode* const vn = request->vn;
     while (request->evnt)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        if (obos_is_error(status))
+            return status;
         if (request->on_event_set)
             request->on_event_set(request);
         if (request->status != OBOS_STATUS_IRP_RETRY)
