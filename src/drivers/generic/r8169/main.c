@@ -16,9 +16,17 @@
 #include <allocators/base.h>
 
 #include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
 
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
+
+#include <locks/spinlock.h>
 
 #include "structs.h"
 
@@ -66,25 +74,18 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     OBOS_UNUSED(blkOffset);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    r8169_device* dev = (void*)desc;
-    if (dev->magic != R8169_DEVICE_MAGIC)
+    uint32_t* magic = (void*)desc;
+    if (*magic != R8169_HANDLE_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (blkCount > TX_PACKET_SIZE)
+    if (blkCount > (TX_PACKET_SIZE*128))
         return OBOS_STATUS_INVALID_ARGUMENT;
-
-    // TODO: Open a connection and increment the refcount there.
-    dev->refcount++;
-
-    Core_PushlockAcquire(&dev->tx_buffer_lock, true);
+    r8169_device_handle* hnd = (void*)desc;
+    r8169_device* dev = hnd->dev;
 
     r8169_frame frame = {};
     r8169_frame_generate(dev, &frame, buf, blkCount, FRAME_PURPOSE_TX);
     r8169_buffer_add_frame(&dev->tx_buffer, &frame);
     r8169_tx_queue_flush(dev, true);
-
-    Core_PushlockRelease(&dev->tx_buffer_lock, true);
-
-    dev->refcount--;
 
     if (nBlkWritten)
         *nBlkWritten = blkCount;
@@ -97,31 +98,59 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     OBOS_UNUSED(blkOffset);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    r8169_device* dev = (void*)desc;
-    if (dev->magic != R8169_DEVICE_MAGIC)
+    uint32_t* magic = (void*)desc;
+    OBOS_ENSURE(*magic == R8169_HANDLE_MAGIC);
+    if (*magic != R8169_HANDLE_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (blkCount > RX_PACKET_SIZE)
         return OBOS_STATUS_INVALID_ARGUMENT;
-
-    // TODO: Open a connection and increment the refcount there.
-    dev->refcount++;
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
+    r8169_device_handle* hnd = (void*)desc;
+    r8169_device* dev = hnd->dev;
 
     // Wait for the buffer to receive a frame.
     r8169_buffer_block(&dev->rx_buffer);
 
-    Core_PushlockAcquire(&dev->rx_buffer_lock, true);
+    irql oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
 
-    r8169_frame* frame = nullptr;
-    r8169_buffer_read_next_frame(&dev->rx_buffer, &frame);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
-    const size_t szRead = OBOS_MIN(blkCount, frame->sz);
-    memcpy(buf, frame->buf, szRead);
+    if (!hnd->rx_curr)
+        r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
 
-    r8169_buffer_remove_frame(&dev->rx_buffer, frame);
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
-    Core_PushlockRelease(&dev->rx_buffer_lock, true);
+    if (!hnd->rx_curr)
+    {
+        if (nBlkRead)
+            *nBlkRead = 0;
+        Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+        return OBOS_STATUS_SUCCESS;
+    }
 
-    dev->refcount--;
+    size_t szRead = OBOS_MIN(blkCount, hnd->rx_curr->sz - hnd->rx_off);
+    Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+
+    // Lower the IRQL temporarily.
+    // This is because there is a chance of a page fault here, which is invalid at IRQL > IRQL_DISPATCH
+    memcpy(buf, hnd->rx_curr->buf + hnd->rx_off, szRead);
+    hnd->rx_off += szRead;
+
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
+
+    if (hnd->rx_off >= hnd->rx_curr->sz)
+    {
+        // printf(__FILE__ ":%d\n", __LINE__);
+        oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
+        r8169_frame* next = LIST_GET_NEXT(r8169_frame_list, &dev->rx_buffer.frames, hnd->rx_curr);
+        r8169_buffer_remove_frame(&dev->rx_buffer, hnd->rx_curr);
+        hnd->rx_curr = next;
+        hnd->rx_off = 0;
+        Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+    }
+    
+    // printf("rx_curr: %p, rx_off: %d\n", hnd->rx_curr, hnd->rx_off);
 
     if (nBlkRead)
         *nBlkRead = szRead;
@@ -131,22 +160,67 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 
+obos_status reference_interface(dev_desc *desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device* dev = (void*)(*desc);
+    if (dev->magic != R8169_DEVICE_MAGIC && dev->magic != R8169_HANDLE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (dev->magic == R8169_HANDLE_MAGIC)
+        dev = ((r8169_device_handle*)(*desc))->dev;
+
+    r8169_device_handle* hnd = OBOS_KernelAllocator->ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(r8169_device_handle), nullptr);
+    *desc = (uintptr_t)hnd;
+    hnd->magic = R8169_HANDLE_MAGIC;
+    
+    dev->refcount++;
+    
+    hnd->dev = dev;
+    
+    irql oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
+    hnd->rx_curr = LIST_GET_TAIL(r8169_frame_list, &dev->rx_buffer.frames);
+    if (hnd->rx_curr)
+        hnd->rx_curr->refcount++;
+    Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+    hnd->rx_off = 0;
+    
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status unreference_interface(dev_desc desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    r8169_device_handle* hnd = (void*)desc;
+    if (hnd->magic != R8169_HANDLE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    irql oldIrql = Core_SpinlockAcquireExplicit(&hnd->dev->rx_buffer_lock, IRQL_R8169, false);
+    for (r8169_frame* frame = hnd->rx_curr; frame; )
+    {
+        r8169_frame* next = LIST_GET_NEXT(r8169_frame_list, &hnd->dev->rx_buffer.frames, frame);
+        r8169_buffer_remove_frame(&hnd->dev->rx_buffer, frame);
+        frame = next;
+    }
+    hnd->dev->refcount--;
+    Core_SpinlockRelease(&hnd->dev->rx_buffer_lock, oldIrql);
+    return OBOS_STATUS_SUCCESS;
+}
+
 obos_status query_user_readable_name(dev_desc what, const char** name)
 {
     if (!what)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    r8169_device* dev = (void*)what;
-    if (dev->magic != R8169_DEVICE_MAGIC)
+    r8169_device_handle* hnd = (void*)what;
+    if (hnd->magic != R8169_HANDLE_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    *name = dev->interface_name;
+    *name = hnd->dev->interface_name;
     return OBOS_STATUS_SUCCESS;
 }
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what);
-    OBOS_UNUSED(request);
-    OBOS_UNUSED(argp);
+    OBOS_UNUSED(what,request,argp);
     return OBOS_STATUS_INVALID_IOCTL;
 }
 
@@ -238,14 +312,29 @@ static void search_bus(pci_bus* bus)
             }
 
             nDevices++;
-            Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
+            Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(r8169_device), (nDevices-1)*sizeof(r8169_device), nullptr);
+            memzero(&Devices[nDevices-1], sizeof(Devices[nDevices-1]));
             Devices[nDevices-1].dev = dev;
             Devices[nDevices-1].bar = bar0;
             Devices[nDevices-1].irq_res = irq_res;
             Devices[nDevices-1].idx = nDevices-1;
-            memzero(Devices[nDevices-1].mac, sizeof(Devices[nDevices-1].mac));
-            // Zeroed in reset_dev.
-            // memzero(Devices[nDevices-1].mac_readable, sizeof(Devices[nDevices-1].mac_readable));
+
+            Devices[nDevices-1].tx_count = 0;
+            Devices[nDevices-1].tx_bytes = 0;
+            Devices[nDevices-1].tx_dropped = 0;
+            Devices[nDevices-1].tx_high_priority_awaiting_transfer = 0;
+            Devices[nDevices-1].tx_awaiting_transfer = 0;
+
+            Devices[nDevices-1].rx_bytes = 0;
+            Devices[nDevices-1].rx_count = 0;
+            Devices[nDevices-1].rx_crc_errors = 0;
+            Devices[nDevices-1].rx_errors= 0;
+            Devices[nDevices-1].rx_length_errors = 0;
+            Devices[nDevices-1].rx_dropped = 0;
+
+            Devices[nDevices-1].isr = 0;
+
+            Devices[nDevices-1].suspended = false;
         }
 
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
@@ -267,8 +356,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
     {
         r8169_reset(Devices+i);
         vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
-        const char* dev_name = nullptr;
-        query_user_readable_name(vn->desc, &dev_name);
+        const char* dev_name = Devices[i].interface_name;
         OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }

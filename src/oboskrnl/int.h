@@ -68,7 +68,7 @@ typedef _Bool bool;
 #endif
 
 #define OBOS_NORETURN [[noreturn]]
-#define OBOS_UNUSED(x) (void)(x)
+#define OBOS_UNUSED(...) (void)(__VA_ARGS__)
 #ifdef __GNUC__
 #	define OBOS_NO_KASAN __attribute__((no_sanitize("address")))
 #	define OBOS_NO_UBSAN __attribute__((no_sanitize("undefined")))
