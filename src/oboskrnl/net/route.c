@@ -18,7 +18,11 @@
 #include <net/eth.h>
 #include <net/tables.h>
 
+#include <locks/pushlock.h>
+
 #include <utils/shared_ptr.h>
+#include <utils/tree.h>
+#include <utils/list.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
@@ -100,5 +104,13 @@ obos_status Net_Initialize(vnode* nic)
     CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
     CoreH_ThreadReady(nic->net_tables->dispatch_thread);
 
+    nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->interface = nic;
+
     return OBOS_STATUS_SUCCESS;
 }
+
+LIST_GENERATE(gateway_list, gateway, node);
+LIST_GENERATE(ip_table, ip_table_entry, node);
+RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);

@@ -70,8 +70,8 @@ typedef struct net_tables {
     address_table arp_cache;
     pushlock arp_cache_lock;
 
+    gateway_list gateways;
     gateway* default_gateway;
-    gateway_list* gateways;
 
     vnode* interface;
     mac_address mac;
