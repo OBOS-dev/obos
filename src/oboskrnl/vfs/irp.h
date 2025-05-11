@@ -21,12 +21,21 @@ enum irp_op {
     IRP_WRITE,
 };
 
+typedef struct nic_irp_data
+{
+    size_t packet_size;
+} nic_irp_data;
+
 // Before using data from the IRP, make sure to call VfsH_IRPWait on the IRP.
 // Do not try to manually wait on the IRP, as there is tedious logic, and 
 // getting it wrong can cause weird bugs.
 // If you do, then good luck,
 // and godspeed.
 typedef struct irp {
+    // Only valid for NIC drivers
+    // Must be allocated with OBOS_KernelAllocator, the 
+    // IRP submitter is responsible for freeing the object.
+    nic_irp_data* nic_data;
     // Set when the operation is complete.
     // The lifetime of the pointed object is completely controlled
     // by the driver, but needs to be alive until the event is set.
