@@ -14,9 +14,8 @@
 #include <irq/irq.h>
 #include <irq/dpc.h>
 
-#include <locks/pushlock.h>
 #include <locks/event.h>
-#include <locks/mutex.h>
+#include <locks/spinlock.h>
 
 #include <utils/list.h>
 
@@ -67,8 +66,13 @@ typedef struct r8169_descriptor_node {
     LIST_NODE(r8169_descriptor_list, struct r8169_descriptor_node) node;
 } r8169_descriptor_node;
 
+#define R8169_DEVICE_MAGIC 0x7186941C
+#define R8169_HANDLE_MAGIC 0x7186941D
+
 typedef struct r8169_device
 {
+    uint32_t magic;
+
     pci_device *dev;
     pci_resource* bar; // BAR0
     pci_resource* irq_res;
@@ -78,14 +82,12 @@ typedef struct r8169_device
     uint8_t mac[6];
     char mac_readable[6*3+1]; // XX:XX:XX:XX:XX:XX\0
 
+    bool ip_checksum_offload : 1;
+    bool udp_checksum_offload : 1;
+    bool tcp_checksum_offload : 1;
+
     r8169_descriptor* sets[3];
     uintptr_t sets_phys[3];
-    // index 0: normal priority tx
-    // index 1: high priority tx
-    r8169_descriptor_list free_descriptors[2];
-    // EVENT_NOTIFICATION
-    event free_descriptors_events[2];
-    mutex free_descriptors_locks[2];
 
     bool suspended;
 
@@ -97,8 +99,6 @@ typedef struct r8169_device
 
     char* interface_name;
 
-#define R8169_DEVICE_MAGIC 0x7186941C
-    uint32_t magic;
 
     // Total number of received packets (both dropped, and undropped)
     size_t rx_count;
@@ -114,7 +114,10 @@ typedef struct r8169_device
     size_t rx_bytes;
     // received frames
     r8169_buffer rx_buffer;
-    pushlock rx_buffer_lock;
+    spinlock rx_buffer_lock;
+    
+    size_t tx_idx;
+    size_t tx_priority_idx;
 
     // Total number of transmitted packets.
     size_t tx_count;
@@ -128,10 +131,22 @@ typedef struct r8169_device
     size_t tx_high_priority_awaiting_transfer;
     // Frames to transmit.
     r8169_buffer tx_buffer;
-    pushlock tx_buffer_lock;
+    spinlock tx_buffer_lock;
 
     uint16_t saved_phy_state[0x20];
+
+    void(*data_ready)(void *userdata, void* vn, size_t bytes_ready);
+    void* data_ready_userdata;
+    thread* data_ready_thread;
 } r8169_device;
+
+typedef struct r8169_device_handle {
+    uint32_t magic; // R8169_HANDLE_MAGIC
+
+    r8169_device* dev;
+    r8169_frame* rx_curr;
+    size_t rx_off;
+} r8169_device_handle;
 
 enum {
     MAC0 = 0x0,
@@ -204,7 +219,7 @@ enum {
 
 // Multiply by 128 to get the real size.
 // NOTE: Do not do this when setting MaxTxPacketSize.
-#define TX_PACKET_SIZE 0x3f
+#define TX_PACKET_SIZE 0x3b
 
 #define RX_PACKET_SIZE 0x1fff
 
