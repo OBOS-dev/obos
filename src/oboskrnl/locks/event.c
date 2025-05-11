@@ -23,9 +23,9 @@ obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     event->signaled = true;
-    CoreH_SignalWaitingThreads(&event->hdr, !(event->type == EVENT_SYNC), boostWaitingThreadPriority);
+    CoreH_SignalWaitingThreads((struct waitable_header*)&event->hdr, !(event->type == EVENT_SYNC), boostWaitingThreadPriority);
     event->signaled = false;
-    CoreH_ClearSignaledState(&event->hdr);
+    CoreH_ClearSignaledState((struct waitable_header*)&event->hdr);
     Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
@@ -40,7 +40,7 @@ obos_status Core_EventReset(event* event)
     if (!event)
         return OBOS_STATUS_INVALID_ARGUMENT;
     event->signaled = false;
-    CoreH_ClearSignaledState(&event->hdr);
+    CoreH_ClearSignaledState((struct waitable_header*)&event->hdr);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
@@ -48,7 +48,7 @@ obos_status Core_EventSet(event* event, bool boostWaitingThreadPriority)
     if (!event)
         return OBOS_STATUS_INVALID_ARGUMENT;
     // irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
-    CoreH_SignalWaitingThreads(&event->hdr, !(event->type == EVENT_SYNC), boostWaitingThreadPriority);
+    CoreH_SignalWaitingThreads((struct waitable_header*)&event->hdr, !(event->type == EVENT_SYNC), boostWaitingThreadPriority);
     event->signaled = true;
     // Core_LowerIrql(oldIrql);
     return OBOS_STATUS_SUCCESS;
