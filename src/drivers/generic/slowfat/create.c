@@ -52,7 +52,7 @@ bool valid_filename(const char* filename, bool isPath)
 }
 static void ref_dirent(fat_dirent_cache* cache_entry);
 static void gen_short_name(const char* long_name, char* name, fat_dirent_cache* parent, fat_dirent_cache* dirent);
-obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const char* name, file_type type)
+obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const char* name, file_type type, driver_file_perm perm)
 {
     if (!parent_desc || !newDesc || !name)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -97,6 +97,8 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn_, const ch
     new->data.access_date = new->data.creation_date;
     new->data.filesize = 0;
     new->data.attribs |= (type == FILE_TYPE_DIRECTORY) ? DIRECTORY : 0;
+    if (!perm.owner_write)
+        new->data.attribs |= READ_ONLY;
     
     if (type == FILE_TYPE_DIRECTORY)
     {

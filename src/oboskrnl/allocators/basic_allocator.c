@@ -76,7 +76,17 @@ static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum bl
 			memzero(ret, size);
 			return ret;
 		}
-		void* ret = Mm_QuickVMAllocate(size, (void*)This == (void*)OBOS_NonPagedPoolAllocator);
+		
+		void* ret = nullptr;
+		// if (size < OBOS_HUGE_PAGE_SIZE)
+		ret = Mm_QuickVMAllocate(size, (void*)This == (void*)OBOS_NonPagedPoolAllocator);
+		// else
+		//  	ret = Mm_VirtualMemoryAlloc(&Mm_KernelContext,
+		// 								nullptr, size,
+		// 								0, 
+		// 								(((void*)This == (void*)OBOS_NonPagedPoolAllocator) ? VMA_FLAGS_NON_PAGED : 0) | VMA_FLAGS_HUGE_PAGE,
+		// 								nullptr,
+		// 								nullptr);
 		if (!ret)
 			return nullptr;
 		memzero(ret, size);

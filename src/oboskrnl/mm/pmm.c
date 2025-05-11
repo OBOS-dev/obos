@@ -206,7 +206,10 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		return 0;
 	}
 	// take a standby page large enough.
+	size_t tries = 0;
 	start_again:
+	if (tries++ == 1)
+		return 0;
 	(void)0;
 	irql oldIrql = Mm_TakeSwapLock();
 	page* node = LIST_GET_HEAD(phys_page_list, &Mm_StandbyPageList);
@@ -230,7 +233,6 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 			curr->data->phys = node->swap_id;
 			curr = curr->next;
 		}
-		OBOS_Debug("removing %p\n", node->phys);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, node);
         Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
 	}

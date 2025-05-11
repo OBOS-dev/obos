@@ -74,11 +74,11 @@ void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_
 		    continue;
         if (currentNodeAddr >= limit)
             break; // Because of the properties of an RB-Tree, we can break here.
-		if ((currentNodeAddr - lastAddress) >= (size + pgSize))
+		if ((currentNodeAddr - lastAddress) >= (size + pgSize + (((currentNodeAddr - lastAddress)) % pgSize)))
 		{
             if (!lastNode)
                 continue;
-            found = lastAddress;
+            found = lastAddress + (((currentNodeAddr - lastAddress)) % pgSize);
             break;
 		}
 		lastAddress = currentNodeAddr + currentNode->size;
@@ -216,6 +216,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             return nullptr;
         }
+        OBOS_ASSERT(!(base % pgSize));
     }
     // We shouldn't reallocate the page(s).
     // Check if they exist so we don't do that by accident.
@@ -984,6 +985,22 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
         else
         {
             page* pg = MmH_PgAllocatePhysical(false,false);
+            if (!pg)
+            {
+                RB_REMOVE(page_tree, &ctx->pages, rng);
+                for (uintptr_t jaddr = base; jaddr < addr; jaddr += OBOS_PAGE_SIZE)
+                {
+                    page_info info = {};
+                    MmS_QueryPageInfo(ctx->pt, jaddr, &info, nullptr);
+                    page key = {.phys=info.phys};
+                    page* curr_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+                    MmH_DerefPage(curr_pg);
+                    info.prot.present = false;
+                    MmS_SetPageMapping(ctx->pt, &info, 0, true);
+                }
+                Core_SpinlockRelease(&ctx->lock, oldIrql);
+                return nullptr;
+            }
             phys = pg->phys;
             pg->cow_type = COW_DISABLED;
             pg->pagedCount++;
