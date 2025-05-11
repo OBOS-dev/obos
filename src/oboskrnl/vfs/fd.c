@@ -34,6 +34,8 @@
 
 #include <locks/mutex.h>
 
+#include <irq/irql.h>
+
 #include <driver_interface/driverId.h>
 #include <driver_interface/header.h>
 
@@ -500,6 +502,7 @@ obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
 
 obos_status VfsH_IRPWait(irp* request)
 {
+    OBOS_ENSURE(Core_GetIrql() <= IRQL_DISPATCH);
     if (!request || !request->vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* const vn = request->vn;

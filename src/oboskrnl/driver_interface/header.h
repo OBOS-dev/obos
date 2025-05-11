@@ -133,6 +133,11 @@ typedef struct driver_ftable
     obos_status(*write_sync)(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
     obos_status(*submit_irp)(void* /* irp* */ request);
     obos_status(*finalize_irp)(void* /* irp* */ request); // optional, can be nullptr
+    // Optional, can be nullptr
+    // Note, *desc is subject to change by the driver
+    obos_status(*reference_device)(dev_desc* desc);
+    // Required, if reference_device exists. 
+    obos_status(*unreference_device)(dev_desc);
     obos_status(*foreach_device)(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);  // unrequired for fs drivers.
     obos_status(*query_user_readable_name)(dev_desc what, const char** name); // unrequired for fs drivers.
     // The driver dictates what the request means, and what its parameters are.

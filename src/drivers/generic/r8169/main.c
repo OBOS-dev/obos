@@ -22,6 +22,7 @@
 
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
+#include <vfs/irp.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -224,6 +225,73 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     return OBOS_STATUS_INVALID_IOCTL;
 }
 
+void irp_on_rx_event_set(irp* req)
+{
+    r8169_device_handle* hnd = (void*)req->desc;
+    r8169_device* dev = hnd->dev;
+    if (!hnd->rx_curr)
+        r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
+    req->nic_data = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(nic_irp_data), nullptr);
+    req->nic_data->packet_size = hnd->rx_curr->sz;
+    req->status = OBOS_STATUS_SUCCESS;
+    if (req->dryOp)
+        return;
+
+    size_t szRead = OBOS_MIN(req->blkCount, hnd->rx_curr->sz - hnd->rx_off);
+    memcpy(req->buff, hnd->rx_curr->buf + hnd->rx_off, szRead);
+    hnd->rx_off += szRead;
+    if (hnd->rx_off >= hnd->rx_curr->sz)
+    {
+        // printf(__FILE__ ":%d\n", __LINE__);
+        irql oldIrql = Core_SpinlockAcquireExplicit(&dev->rx_buffer_lock, IRQL_R8169, false);
+        r8169_frame* next = LIST_GET_NEXT(r8169_frame_list, &dev->rx_buffer.frames, hnd->rx_curr);
+        r8169_buffer_remove_frame(&dev->rx_buffer, hnd->rx_curr);
+        hnd->rx_curr = next;
+        hnd->rx_off = 0;
+        Core_SpinlockRelease(&dev->rx_buffer_lock, oldIrql);
+    }
+
+    req->nBlkRead = szRead;
+}
+
+obos_status submit_irp(void* req_)
+{
+    irp* req = req_;
+    if (!req)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    uint32_t* magic = (void*)req->desc;
+    OBOS_ENSURE(*magic == R8169_HANDLE_MAGIC);
+    if (*magic != R8169_HANDLE_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (req->blkCount > RX_PACKET_SIZE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        return OBOS_STATUS_INVALID_IRQL;
+    r8169_device_handle* hnd = (void*)req->desc;
+    r8169_device* dev = hnd->dev;
+    
+    if (req->op == IRP_READ)
+    {
+        if (!hnd->rx_curr)
+            r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
+        if (!hnd->rx_curr)
+        {
+            req->evnt = &dev->rx_buffer.envt;
+            req->on_event_set = irp_on_rx_event_set;
+        }
+    }
+    else 
+    {
+        r8169_frame frame = {};
+        r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
+        r8169_buffer_add_frame(&dev->tx_buffer, &frame);
+        r8169_tx_queue_flush(dev, true);
+        req->evnt = nullptr;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
 // TODO: driver cleanup
 void driver_cleanup_callback() {}
 
@@ -250,6 +318,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
         .foreach_device = foreach_device,
+        .reference_device = reference_interface,
+        .unreference_device = unreference_interface,
         .read_sync = read_sync,
         .write_sync = write_sync,
         .on_wake = on_wake,
