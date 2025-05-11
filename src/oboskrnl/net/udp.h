@@ -11,8 +11,10 @@
 #include <struct_packing.h>
 
 #include <net/ip.h>
+#include <net/macros.h>
 
 #include <utils/tree.h>
+#include <utils/shared_ptr.h>
 
 #include <locks/event.h>
 
@@ -24,3 +26,5 @@ typedef struct udp_header {
     uint16_t length;
     uint16_t chksum;
 } udp_header;
+
+PacketProcessSignature(UDP);

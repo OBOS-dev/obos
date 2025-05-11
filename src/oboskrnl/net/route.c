@@ -18,58 +18,12 @@
 #include <net/eth.h>
 #include <net/tables.h>
 
+#include <utils/shared_ptr.h>
+
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
 
 #include <allocators/base.h>
-
-// hexdump clone lol
-OBOS_NO_KASAN void hexdump(void* _buff, size_t nBytes, const size_t width)
-{
-	bool printCh = false;
-	uint8_t* buff = (uint8_t*)_buff;
-	printf("         Address: ");
-	for(uint8_t i = 0; i < ((uint8_t)width) + 1; i++)
-		printf("%02x ", i);
-	printf("\n%016lx: ", buff);
-	for (size_t i = 0, chI = 0; i < ((nBytes + 0xf) & ~0xf); i++, chI++)
-	{
-		if (printCh)
-		{
-			char ch = (i < nBytes) ? buff[i] : 0;
-			switch (ch)
-			{
-			case '\n':
-			case '\t':
-			case '\r':
-			case '\b':
-			case '\a':
-			case '\0':
-			{
-				ch = '.';
-				break;
-			}
-			default:
-				break;
-			}
-			printf("%c", ch);
-		}
-		else
-			printf("%02x ", (i < nBytes) ? buff[i] : 0);
-		if (chI == (size_t)(width + (!(i < (width + 1)) || printCh)))
-		{
-			chI = 0;
-			if (!printCh)
-				i -= (width + 1);
-			else
-				printf(" |\n%016lx: ", &buff[i + 1]);
-			printCh = !printCh;
-			if (printCh)
-				printf("\t| ");
-		}
-	}
-	printf("\n");
-}
 
 static void dispatcher(vnode* nic)
 {
@@ -106,8 +60,13 @@ static void dispatcher(vnode* nic)
         req->dryOp = false;
         VfsH_IRPSubmit(req, &tables->desc);
         VfsH_IRPWait(req);
-        hexdump(req->buff, req->nBlkRead, 16);
-        Free(OBOS_KernelAllocator, req->buff, req->blkCount);
+
+        shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
+        OBOS_SharedPtrConstructSz(buf, req->buff, req->blkCount);
+        buf->free = OBOS_SharedPtrDefaultFree;
+
+        
+        
         VfsH_IRPUnref(req);
     }
     Core_ExitCurrentThread();

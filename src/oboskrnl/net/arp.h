@@ -17,8 +17,10 @@
 
 #include <net/eth.h>
 #include <net/ip.h>
+#include <net/macros.h>
 
 #include <utils/tree.h>
+#include <utils/shared_ptr.h>
 
 enum {
     ARP_REQUEST = 1,
@@ -41,3 +43,5 @@ typedef struct OBOS_PACK arp_header {
     // char target_hw_address[len_hw_address]; // set to zero if unknown
     // char target_protocol_address[len_protocol_address];
 } arp_header;
+
+PacketProcessSignature(ARP);

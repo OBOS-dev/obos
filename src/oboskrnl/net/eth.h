@@ -14,6 +14,10 @@
 
 #include <vfs/vnode.h>
 
+#include <net/macros.h>
+
+#include <utils/shared_ptr.h>
+
 typedef uint8_t mac_address[6];
 #define BROADCAST_MAC_ADDRESS {0xff,0xff,0xff,0xff,0xff,0xff,}
 
@@ -32,3 +36,5 @@ typedef struct ethernet2_header {
 // Each ethernet driver should define this
 // argp points to a `mac_address`
 #define IOCTL_ETHERNET_INTERFACE_MAC_REQUEST 0x1
+
+PacketProcessSignature(Ethernet);

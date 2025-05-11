@@ -12,6 +12,10 @@
 
 #include <vfs/vnode.h>
 
+#include <net/macros.h>
+
+#include <utils/shared_ptr.h>
+
 typedef union ip_addr {
     struct {
         uint8_t comp1;
@@ -101,3 +105,5 @@ typedef struct ip_header {
     // After here, there can be options.
     // This is unimplemented.
 } OBOS_PACK ip_header;
+
+PacketProcessSignature(IPv4);
