@@ -17,6 +17,7 @@
 
 #include <net/eth.h>
 #include <net/tables.h>
+#include <net/macros.h>
 
 #include <locks/pushlock.h>
 
@@ -69,7 +70,8 @@ static void dispatcher(vnode* nic)
         OBOS_SharedPtrConstructSz(buf, req->buff, req->blkCount);
         buf->free = OBOS_SharedPtrDefaultFree;
 
-        
+        int depth = -1;
+        InvokePacketHandler(Ethernet, buf->obj, buf->szObj, nullptr);
         
         VfsH_IRPUnref(req);
     }

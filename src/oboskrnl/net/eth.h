@@ -19,7 +19,9 @@
 #include <utils/shared_ptr.h>
 
 typedef uint8_t mac_address[6];
-#define BROADCAST_MAC_ADDRESS {0xff,0xff,0xff,0xff,0xff,0xff,}
+#define MAC_ADDRESS_FORMAT "%02x:%02x:%02x:%02x:%02x:%02x"
+#define MAC_ADDRESS_ARGS(addr) addr[0],addr[1],addr[2],addr[3],addr[4],addr[5]
+#define MAC_BROADCAST (mac_address){0xff,0xff,0xff,0xff,0xff,0xff,}
 
 enum {
     ETHERNET2_TYPE_IPv4 = 0x0800,
@@ -37,4 +39,4 @@ typedef struct ethernet2_header {
 // argp points to a `mac_address`
 #define IOCTL_ETHERNET_INTERFACE_MAC_REQUEST 0x1
 
-PacketProcessSignature(Ethernet);
+PacketProcessSignature(Ethernet, void*);

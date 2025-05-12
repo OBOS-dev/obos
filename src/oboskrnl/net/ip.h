@@ -13,6 +13,7 @@
 #include <vfs/vnode.h>
 
 #include <net/macros.h>
+#include <net/eth.h>
 
 #include <utils/shared_ptr.h>
 
@@ -106,4 +107,4 @@ typedef struct ip_header {
     // This is unimplemented.
 } OBOS_PACK ip_header;
 
-PacketProcessSignature(IPv4);
+PacketProcessSignature(IPv4, ethernet2_header*);

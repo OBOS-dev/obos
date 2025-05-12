@@ -44,4 +44,4 @@ typedef struct OBOS_PACK arp_header {
     // char target_protocol_address[len_protocol_address];
 } arp_header;
 
-PacketProcessSignature(ARP);
+PacketProcessSignature(ARP, ethernet2_header*);

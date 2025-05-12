@@ -27,4 +27,4 @@ typedef struct udp_header {
     uint16_t chksum;
 } udp_header;
 
-PacketProcessSignature(UDP);
+PacketProcessSignature(UDP, ip_header*);
