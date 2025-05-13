@@ -18,3 +18,33 @@ if (!OBOS_GetOPTF("disable-network-error-logs"))\
 #define NetUnimplemented(what) \
 if (!OBOS_GetOPTF("disable-network-error-logs"))\
     OBOS_Warning("net: Unimplemented: " #what "\n");
+    
+#if defined(__x86_64__)
+#   define host_to_be16(val) __builtin_bswap16(val)
+#   define host_to_be32(val) __builtin_bswap32(val)
+#   define host_to_be64(val) __builtin_bswap64(val)
+#   define be16_to_host(val) __builtin_bswap16(val)
+#   define be32_to_host(val) __builtin_bswap32(val)
+#   define be64_to_host(val) __builtin_bswap64(val)
+#   define host_to_le16(val) (uint16_t)(val)
+#   define host_to_le32(val) (uint32_t)(val)
+#   define host_to_le64(val) (uint32_t)(val)
+#   define le16_to_host(val) (uint16_t)(val)
+#   define le32_to_host(val) (uint32_t)(val)
+#   define le64_to_host(val) (uint64_t)(val)
+#elif defined(__m68k__)
+#   define host_to_be16(val) (uint16_t)(val)
+#   define host_to_be32(val) (uint32_t)(val)
+#   define host_to_be64(val) (uint32_t)(val)
+#   define be16_to_host(val) (uint16_t)(val)
+#   define be32_to_host(val) (uint32_t)(val)
+#   define be64_to_host(val) (uint64_t)(val)
+#   define host_to_le16(val) __builtin_bswap16(val)
+#   define host_to_le32(val) __builtin_bswap32(val)
+#   define host_to_le64(val) __builtin_bswap64(val)
+#   define le16_to_host(val) __builtin_bswap16(val)
+#   define le32_to_host(val) __builtin_bswap32(val)
+#   define le64_to_host(val) __builtin_bswap64(val)
+#else
+#   error Define required macros.
+#endif
