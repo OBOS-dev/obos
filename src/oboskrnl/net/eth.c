@@ -4,6 +4,7 @@
  * Copyright (c) 2025 Omar Berrow
 */
 
+#include "utils/shared_ptr.h"
 #include <int.h>
 #include <error.h>
 #include <klog.h>
@@ -77,7 +78,7 @@ PacketProcessSignature(Ethernet, void*)
             our_checksum,
             remote_checksum
         );
-        return;
+        ExitPacketHandler();
     }
     
     // Verify CRC32
@@ -89,6 +90,7 @@ PacketProcessSignature(Ethernet, void*)
             InvokePacketHandler(ARP, hdr+1, size-sizeof(ethernet2_header)-4/*CRC32*/, hdr);
             break;
         case ETHERNET2_TYPE_IPv6:
+            NetUnimplemented(ETHERNET2_TYPE_IPv6);
             break;
         default:
             NetError("%s: Unrecognized ethernet header type 0x%04x from " MAC_ADDRESS_FORMAT "\n",
@@ -97,4 +99,6 @@ PacketProcessSignature(Ethernet, void*)
                 MAC_ADDRESS_ARGS(hdr));
             break;
     }
+
+    ExitPacketHandler();
 }
