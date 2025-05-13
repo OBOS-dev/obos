@@ -14,3 +14,6 @@
 #define NetError(...) \
 if (!OBOS_GetOPTF("disable-network-error-logs"))\
     OBOS_Error(__VA_ARGS__);
+#define NetUnimplemented(what) \
+if (!OBOS_GetOPTF("disable-network-error-logs"))\
+    OBOS_Warning("net: Unimplemented: " #what "\n");
