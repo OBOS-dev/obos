@@ -30,6 +30,8 @@
 
 #include <allocators/base.h>
 
+DefineNetFreeSharedPtr
+
 static void dispatcher(vnode* nic)
 {
     net_tables* tables = nic->net_tables;
@@ -69,6 +71,7 @@ static void dispatcher(vnode* nic)
         shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
         OBOS_SharedPtrConstructSz(buf, req->buff, req->blkCount);
         buf->free = OBOS_SharedPtrDefaultFree;
+        buf->onDeref = NetFreeSharedPtr;
 
         int depth = -1;
         InvokePacketHandler(Ethernet, buf->obj, buf->szObj, nullptr);
@@ -110,6 +113,26 @@ obos_status Net_Initialize(vnode* nic)
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->interface = nic;
 
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data)
+{
+    if (!nic || !data)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!nic->net_tables || !data->obj || !data->szObj)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (nic->net_tables->magic != IP_TABLES_MAGIC)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    irp* req = VfsH_IRPAllocate();
+    req->vn = nic;
+    VfsH_IRPBytesToBlockCount(nic, data->szObj, &req->blkCount);
+    req->cbuff = data->obj;
+    req->op = IRP_WRITE;
+    req->blkOffset = 0;
+    VfsH_IRPSubmit(req, &nic->net_tables->desc);
+    VfsH_IRPWait(req);
+    OBOS_SharedPtrUnref(data);
     return OBOS_STATUS_SUCCESS;
 }
 

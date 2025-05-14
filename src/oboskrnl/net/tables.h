@@ -50,6 +50,8 @@ LIST_PROTOTYPE(ip_table, ip_table_entry, node);
 typedef struct address_table_entry {
     ip_addr addr;
     mac_address phys;
+    // Wait on object before using this cache entry.
+    event sync; 
     RB_ENTRY(address_table_entry) node;
 } address_table_entry;
 inline static int cmp_address_table_entry(const address_table_entry* lhs, const address_table_entry* rhs)
@@ -86,3 +88,4 @@ typedef struct net_tables {
 } net_tables;
 
 obos_status Net_Initialize(vnode* nic);
+obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data);

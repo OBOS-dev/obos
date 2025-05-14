@@ -4,16 +4,20 @@
  * Copyright (c) 2025 Omar Berrow
 */
 
-#include "utils/shared_ptr.h"
 #include <int.h>
-#include <error.h>
 #include <klog.h>
+#include <error.h>
+#include <memmanip.h>
 
 #include <net/macros.h>
 #include <net/eth.h>
 #include <net/ip.h>
 #include <net/arp.h>
 #include <net/tables.h>
+
+#include <allocators/base.h>
+
+#include <utils/shared_ptr.h>
 
 static bool initialized_crc32 = false;
 static uint32_t crctab[256];
@@ -101,4 +105,27 @@ PacketProcessSignature(Ethernet, void*)
     }
 
     ExitPacketHandler();
+}
+
+DefineNetFreeSharedPtr
+
+shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type)
+{
+    if (!nic->net_tables)
+        return nullptr;
+    if (nic->net_tables->magic != IP_TABLES_MAGIC)
+        return nullptr;
+
+    shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
+    size_t real_size = size+4+sizeof(ethernet2_header);
+    struct ethernet2_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
+    OBOS_SharedPtrConstructSz(buf, hdr, real_size);
+    buf->onDeref = NetFreeSharedPtr;
+    memcpy(hdr->dest, dest, sizeof(mac_address));
+    memcpy(hdr->src, nic->net_tables->mac, sizeof(mac_address));
+    hdr->type = type;
+    memcpy(hdr+1, data, size);
+    uint32_t* checksum = (uint32_t*)((uintptr_t)hdr + real_size - 4);
+    *checksum = crc32_bytes(hdr, real_size-4);
+    return buf;
 }

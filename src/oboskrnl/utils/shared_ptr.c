@@ -1,7 +1,7 @@
 /*
  * oboskrnl/utils/shared_ptr.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -38,10 +38,10 @@ void OBOS_SharedPtrUnref(shared_ptr* ptr)
     if (!ptr)
         return;
     OBOS_ASSERT(ptr->refs);
-    if (ptr->onDeref)
-        ptr->onDeref(ptr);
     if (!(--ptr->refs))
         ptr->free(ptr->freeUdata, ptr);
+    if (ptr->onDeref)
+        ptr->onDeref(ptr);
 }
 
 void OBOS_SharedPtrAssertRefs(shared_ptr* ptr)

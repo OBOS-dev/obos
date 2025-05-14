@@ -40,3 +40,5 @@ typedef struct ethernet2_header {
 #define IOCTL_ETHERNET_INTERFACE_MAC_REQUEST 0x1
 
 PacketProcessSignature(Ethernet, void*);
+
+shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type);

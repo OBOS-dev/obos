@@ -2,6 +2,7 @@
 #include <klog.h>
 #include <cmdline.h>
 #define PacketProcessSignature(name, data) OBOS_WEAK void Net_## name ## Process(vnode* nic, int depth, struct shared_ptr* buf, void* ptr, size_t size, data userdata)
+#define PacketProcessSignature(name, data) OBOS_WEAK void Net_## name ## Process(vnode* nic, int depth, struct shared_ptr* buf, void* ptr, size_t size, data userdata)
 #define InvokePacketHandler(name, ptr, size, data) (Net_## name ## Process)(nic, depth + 1, OBOS_SharedPtrCopy(buf), ptr, size, data)
 #define ExitPacketHandler() do { OBOS_SharedPtrUnref(ptr); return; } while(0)
 #define VerifyChecksum(data, size, chksum_func, chksum_member) \
@@ -18,6 +19,13 @@ if (!OBOS_GetOPTF("disable-network-error-logs"))\
 #define NetUnimplemented(what) \
 if (!OBOS_GetOPTF("disable-network-error-logs"))\
     OBOS_Warning("net: Unimplemented: " #what "\n");
+
+#define DefineNetFreeSharedPtr \
+static inline void NetFreeSharedPtr(shared_ptr *ptr) \
+{\
+    memset(ptr, 0xcc, sizeof(*ptr));\
+    Free(OBOS_KernelAllocator, ptr, sizeof(*ptr));\
+}
     
 #if defined(__x86_64__)
 #   define host_to_be16(val) __builtin_bswap16(val)
