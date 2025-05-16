@@ -398,17 +398,20 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                         continue;
                     if (!hnd->un.fd->vn)
                         continue;
-                    if (!VfsH_LockMountpoint(hnd->un.fd->vn->mount_point))
-                        continue;
                     OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_FD;
                     new_hnd->un.fd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
-                    new_hnd->un.fd->flags = hnd->un.fd->flags;
-                    new_hnd->un.fd->offset = hnd->un.fd->offset;
-                    new_hnd->un.fd->vn = hnd->un.fd->vn;
-                    LIST_APPEND(fd_list, &new_hnd->un.fd->vn->opened, new_hnd->un.fd);
-                    VfsH_UnlockMountpoint(hnd->un.fd->vn->mount_point);
+                    uint32_t oflags = 0;
+                    if (hnd->un.fd->flags & FD_FLAGS_READ)
+                        oflags |= FD_OFLAGS_READ;
+                    if (hnd->un.fd->flags & FD_FLAGS_WRITE)
+                        oflags |= FD_OFLAGS_WRITE;
+                    if (hnd->un.fd->flags & FD_FLAGS_UNCACHED)
+                        oflags |= FD_OFLAGS_UNCACHED;
+                    if (hnd->un.fd->flags & FD_FLAGS_NOEXEC)
+                        oflags |= FD_OFLAGS_NOEXEC;
+                    Vfs_FdOpenVnode(new_hnd->un.fd, hnd->un.fd->vn, oflags);
                     break;
                 }
                 case HANDLE_TYPE_DIRENT:
