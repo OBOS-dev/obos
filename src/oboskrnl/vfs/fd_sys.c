@@ -136,7 +136,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
-    printf("opened %s on fd 0x%x\n", path, desc);
+//  printf("opened %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
@@ -463,7 +463,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
             dirent* dent = VfsH_DirentLookup(path);
-            printf("trying stat of %s\n", path);
+//          printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent)
                 to_stat = dent->vnode;
