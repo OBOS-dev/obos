@@ -258,9 +258,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }
+
 OBOS_NORETURN OBOS_PAGEABLE_FUNCTION void Core_ExitCurrentThread()
 {
-	irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : 0;
 	CoreS_CallFunctionOnStack(ExitCurrentThread, 0);
 	OBOS_UNREACHABLE;
 	OBOS_UNUSED(oldIrql);

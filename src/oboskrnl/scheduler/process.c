@@ -282,7 +282,7 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 {
-	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
+	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
 	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
 	while (1)
 		;
