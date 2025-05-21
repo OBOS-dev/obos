@@ -446,8 +446,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 tty_kill(tty, SIGTSTP);
             else
                 insert_byte = true;
-            // TODO: Fix the backspace character not being read.
-            if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && (tty->termios.lflag & (ICANON|ECHOE)))
+            if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && ((tty->termios.lflag & (ICANON|ECHOE)) == (ICANON|ECHOE)))
             {
                 size_t nBytesToErase = buf8[i] == tty->termios.cc[VERASE] ? 1 : 0;
                 if (nBytesToErase == 0)
@@ -464,7 +463,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 erase_bytes(tty, nBytesToErase);
                 insert_byte = false;
             }
-            if (buf8[i] == tty->termios.cc[VKILL] && (tty->termios.lflag & (ICANON|ECHOK)))
+            if (buf8[i] == tty->termios.cc[VKILL] && ((tty->termios.lflag & (ICANON|ECHOK)) == (ICANON|ECHOK)))
             {
                 size_t nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - strrfind(tty->input_buffer.buf, '\n') - 1;
                 erase_bytes(tty, nBytesToErase);
