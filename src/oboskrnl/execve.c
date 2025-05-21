@@ -248,7 +248,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     elf_info info = {};
     status = OBOS_LoadELF(ctx, kbuf, szBuf, &info, false, false);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
+    {
+        OBOS_Error("OBOS_LoadELF failed in %s after already having verified ELF file status. Status: %d\n", __func__, status);
+        Core_ExitCurrentProcess(9 | (9<<8));
+//      OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
+    }
 
     struct exec_aux_values aux = {.elf=info};
     const Elf_Ehdr* ehdr = kbuf;
