@@ -93,7 +93,7 @@ int main(int argc, char** argv)
     {
         while (tcgetpgrp(0) != getpgid(0))
             syscall0(Sys_Yield);
-        execvp(handoff_process, &argv[optind+1]);
+        execvp(handoff_process, &argv[optind]);
         perror("execlp");
         exit(EXIT_FAILURE);
     }
