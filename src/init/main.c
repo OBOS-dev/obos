@@ -36,7 +36,7 @@ void sigchld_handler(int num)
         return;
     else
         abort(); // bug
-    
+
     exit(0);
 }
 
@@ -93,7 +93,7 @@ int main(int argc, char** argv)
     {
         while (tcgetpgrp(0) != getpgid(0))
             syscall0(Sys_Yield);
-        execlp(handoff_process, "");
+        execvp(handoff_process, &argv[optind+1]);
         perror("execlp");
         exit(EXIT_FAILURE);
     }
