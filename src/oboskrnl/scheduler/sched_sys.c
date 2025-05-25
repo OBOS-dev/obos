@@ -387,6 +387,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         // Clone current file handles, as well as dirent handles.
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
 
+	OBOS_ExpandHandleTable(&new->handles, OBOS_CurrentHandleTable()->size);
         for (size_t i = 0; i < OBOS_CurrentHandleTable()->size; i++)
         {
             handle_desc* hnd = OBOS_CurrentHandleTable()->arr + i;
@@ -398,7 +399,6 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                         continue;
                     if (!hnd->un.fd->vn)
                         continue;
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_FD;
                     new_hnd->un.fd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
@@ -416,7 +416,6 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                 }
                 case HANDLE_TYPE_DIRENT:
                 {
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_DIRENT;
                     new_hnd->un.dirent = hnd->un.dirent;
@@ -424,14 +423,11 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                 }
                 default:
                 {
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_INVALID;
 
                     new_hnd->un.next = new->handles.head;
                     new->handles.head = new_hnd;
-
-                    new_hnd->un.as_int = 0;
                     break;
                 }
             }
