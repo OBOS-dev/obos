@@ -1,7 +1,7 @@
 /*
-	oboskrnl/int.h
-
-	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/int.h 
+ * 
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
