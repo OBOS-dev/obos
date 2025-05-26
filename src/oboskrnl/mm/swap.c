@@ -27,6 +27,7 @@
 #include <locks/mutex.h>
 
 #include <vfs/mount.h>
+#include <vfs/irp.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
@@ -199,20 +200,37 @@ static __attribute__((no_instrument_function)) void page_writer()
                 const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
                 if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
                     driver = &pg->backing_vn->un.device->driver->header;
-                size_t blkSize = 0;
-                driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
-                nBytes /= blkSize;
-                const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
-                const uintptr_t offset = pg->file_offset + base_offset;
-                // if (!VfsH_LockMountpoint(point))
-                //     goto abort;
-                Core_SpinlockRelease(&swap_lock, oldIrql);
-                // printf("writing back %p:%d (real offset: %d)\n", pg->backing_vn, pg->file_offset, offset);
-                obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
-                if (obos_is_error(status))
-                    OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
-                oldIrql = Core_SpinlockAcquire(&swap_lock);
-                // VfsH_UnlockMountpoint(point);
+
+                if (driver->ftable.submit_irp)
+                {
+                    irp* req = VfsH_IRPAllocate();
+                    req->vn = pg->backing_vn;
+                    VfsH_IRPBytesToBlockCount(req->vn, nBytes, &req->blkCount);
+                    VfsH_IRPBytesToBlockCount(req->vn, pg->file_offset, &req->blkOffset);
+                    req->dryOp = false;
+                    req->op = IRP_WRITE;
+                    req->cbuff =  MmS_MapVirtFromPhys(pg->phys);
+                    VfsH_IRPSubmit(req, nullptr);
+                    VfsH_IRPWait(req);
+                    VfsH_IRPUnref(req);
+                }
+                else 
+                {
+                    size_t blkSize = 0;
+                    driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
+                    nBytes /= blkSize;
+                    const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
+                    const uintptr_t offset = pg->file_offset + base_offset;
+                    // if (!VfsH_LockMountpoint(point))
+                    //     goto abort;
+                    Core_SpinlockRelease(&swap_lock, oldIrql);
+                    // printf("writing back %p:%d (real offset: %d)\n", pg->backing_vn, pg->file_offset, offset);
+                    obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
+                    if (obos_is_error(status))
+                        OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
+                    oldIrql = Core_SpinlockAcquire(&swap_lock);
+                    // VfsH_UnlockMountpoint(point);
+                }
             }
             else 
             {
