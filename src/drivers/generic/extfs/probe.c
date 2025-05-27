@@ -55,6 +55,8 @@ bool probe(void* vn_)
     cache->revision = le32_to_host(sb->revision);
     cache->block_group_count = le32_to_host(cache->superblock.block_count) / cache->blocks_per_group;
     cache->vn = vn;
+    cache->inodes_per_block = cache->block_size/cache->inode_size;
+    cache->inode_blocks_per_group = cache->inodes_per_group/cache->inodes_per_block;
     cache->bgdt = Allocate(EXT_Allocator, cache->block_group_count * sizeof(ext_bgd), nullptr);
 
     // Populate the in-memory BGDT
@@ -75,8 +77,18 @@ bool probe(void* vn_)
     OBOS_Debug("extfs: Block size: 0x%x\n", cache->block_size);
     OBOS_Debug("extfs: Blocks per group: 0x%x\n", cache->blocks_per_group);
     OBOS_Debug("extfs: Inodes per group: 0x%x\n", cache->inodes_per_group);
+    OBOS_Debug("extfs: Inodes per block: 0x%x\n", cache->inodes_per_block);
+    OBOS_Debug("extfs: Inode blocks per group: 0x%x\n", cache->inode_blocks_per_group);
     OBOS_Debug("extfs: Inode size: 0x%x\n", cache->inode_size);
     OBOS_Debug("extfs: Block group count: 0x%d\n", cache->block_group_count);
     OBOS_Debug("extfs: Revision: %d\n", cache->revision);
+
+    // for (volatile bool b = true; b;)
+    //     ;
+
+    ext_inode* root = ext_read_inode(cache, 2);
+
+    Free(EXT_Allocator, root, sizeof(*root));
+
     return true;
 }

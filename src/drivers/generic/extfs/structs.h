@@ -11,6 +11,7 @@
 
 #include <vfs/pagecache.h>
 
+#include <mm/page.h>
 
 #if defined(__x86_64__)
 #   define host_to_be16(val) __builtin_bswap16(val)
@@ -126,7 +127,7 @@ typedef struct ext_bgd {
 } OBOS_PACK ext_bgd, *ext_bgdt;
 
 enum {
-    EXT2_BAD_INO,
+    EXT2_BAD_INO = 1,
     EXT2_ROOT_INO,
     EXT2_ACL_IDX_INO,
     EXT2_ACL_DATA_INO,
@@ -186,7 +187,54 @@ typedef struct ext_inode {
     uint32_t dir_acl; // revision one, contains the top 32-bits of the file size for regular files
     uint32_t fragment;
     uint8_t os2[12];
-} ext_inode;
+} OBOS_PACK ext_inode;
+
+typedef struct ext_dirent {
+    uint32_t ino;
+    uint16_t rec_len;
+    uint8_t name_len;
+    uint8_t file_type; // ignore, use inode->mode. also invalid in revision 0
+    char name[]; // 255 bytes max
+} OBOS_PACK ext_dirent;
+
+typedef struct ext_dirent_cache {
+    uint32_t ino;
+    uint32_t block;
+    struct {
+        struct ext_dirent_cache *head, *tail;
+        size_t nChildren;
+    } children;
+    struct ext_dirent_cache *next, *prev;
+    ext_dirent ent;
+} ext_dirent_cache;
+
+#define ext_dirent_adopt(parent_, child_) \
+do {\
+    ext_dirent_cache* _parent = (parent_);\
+    ext_dirent_cache* _child = (child_);\
+    if(!_parent->children.head)\
+        _parent->children.head = child;\
+    if (_parent->children.tail)\
+        _parent->children.tail->next = child;\
+    child->prev = _parent->children.tail;\
+    _parent->children.tail = child;\
+    _parent->children.nChildren++;\
+} while(0)
+
+#define ext_dirent_disown(parent_, child_) \
+do {\
+    ext_dirent_cache* _parent = (parent_);\
+    ext_dirent_cache* _child = (child_);\
+    if (_parent->children.head == _child)\
+        _parent->children.head = _child->next;\
+    if (_parent->children.tail == _child)\
+        _parent->children.tail = _child->prev;\
+    if (_child->prev->next)\
+        _child->prev->next = _child->next;\
+    if (_child->next->prev)\
+        _child->next->prev = _child->prev;\
+    _parent->children.nChildren--;\
+} while(0)
 
 typedef struct ext_cache {
     ext_superblock superblock;
@@ -195,18 +243,25 @@ typedef struct ext_cache {
     uint32_t block_size;
     uint32_t revision;
     uint32_t block_group_count;
+    uint32_t inode_blocks_per_group;
+    uint32_t inodes_per_block;
     uint16_t inodes_per_group;
     uint16_t blocks_per_group;
     uint16_t inode_size;
 } ext_cache;
 
+// Gets an inode straight from the pagecache, returns it along the page* of the pagecache entry.
+ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page **pg);
+// Wrapper for ext_read_inode_pg that copies it into a separate buffer and returns it.
+ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino);
+
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)
 
 #define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size) | ((cache)->revision > 1 ? le32_to_host((inode)->dir_acl) : 0))
-#define ext_ino_max_block_index(cache, inode) (le32_to_host(inode->blocks) / cache->block_size)
-#define ext_ino_get_block_group(cache, inode_number) ((inode_number - 1) / (cache)->block_size)
-#define ext_ino_get_local_index(cahe, inode_number) ((inode_number - 1) % (cache)->block_size)
+#define ext_ino_max_block_index(cache, inode) (le32_to_host(inode->blocks) / ((cache->block_size) / 512))
+#define ext_ino_get_block_group(cache, inode_number) ((inode_number - 1) / (cache)->inodes_per_group)
+#define ext_ino_get_local_index(cahe, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
 
 #if OBOS_ARCHITECTURE_BITS == 64
 #define ext_sb_supports_64bit_filesize (true)
