@@ -255,13 +255,19 @@ ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page **pg);
 // Wrapper for ext_read_inode_pg that copies it into a separate buffer and returns it.
 ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino);
 
+void ext_ino_foreach_block(ext_cache* cache,
+                           ext_inode* inode,
+                           uint32_t inode_number,
+                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata),
+                           void* userdata);
+
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)
 
 #define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size) | ((cache)->revision > 1 ? le32_to_host((inode)->dir_acl) : 0))
 #define ext_ino_max_block_index(cache, inode) (le32_to_host(inode->blocks) / ((cache->block_size) / 512))
 #define ext_ino_get_block_group(cache, inode_number) ((inode_number - 1) / (cache)->inodes_per_group)
-#define ext_ino_get_local_index(cahe, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
+#define ext_ino_get_local_index(cache, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
 
 #if OBOS_ARCHITECTURE_BITS == 64
 #define ext_sb_supports_64bit_filesize (true)
