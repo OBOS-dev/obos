@@ -215,7 +215,15 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     if (mountpoint->device)
         mountpoint->device->refs++;
     mountpoint->device = on;
-    fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
+    if (fs_driver->driver->header.ftable.mount)
+    {
+        obos_status status = fs_driver->driver->header.ftable.mount(on, at);
+        if (obos_is_success(status))
+            LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
+        return status;
+    }
+    else
+        fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
     for (symbolic_link* lnk = LIST_GET_HEAD(symbolic_link_list, &symlinks); lnk; )
     {
         symbolic_link* next = LIST_GET_NEXT(symbolic_link_list, &symlinks, lnk);
@@ -312,9 +320,6 @@ static void stage_one(mount* unused, dirent* ent, void* userdata)
         close_fd(curr);
         curr = next;
     }
-    // TODO: Use a proper synchronization primitive to deal with this.
-    while (ent->vnode->nPendingAsyncIO)
-        Core_Yield();
 }
 static void stage_two(mount* unused, dirent* ent, void* userdata)
 {

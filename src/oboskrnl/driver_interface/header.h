@@ -187,6 +187,9 @@ typedef struct driver_ftable
     // Can only be nullptr for the InitRD driver.
     // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
     bool(*probe)(void* vn);
+    // vn: vnode*
+    // target: dirent*
+    obos_status(*mount)(void* vn, void* target);
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
