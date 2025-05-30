@@ -18,6 +18,8 @@
 #include <scheduler/thread.h>
 #include <scheduler/process.h>
 
+#include <irq/irql.h>
+
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/irq_vector.h>
@@ -117,7 +119,7 @@ void CoreS_ExitIRQHandler(interrupt_frame* frame)
 {
 	if (~frame->cs & 0x3 && CoreS_GetCPULocalPtr()->currentThread)
 		CoreS_GetCPULocalPtr()->currentContext = CoreS_GetCPULocalPtr()->currentThread->proc ? CoreS_GetCPULocalPtr()->currentThread->proc->ctx : &Mm_KernelContext;
-	else
+	else if (Core_GetIrql() <= IRQL_DISPATCH)
 		OBOS_SyncPendingSignal(frame);
 	cli();
 }
