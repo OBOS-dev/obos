@@ -190,6 +190,17 @@ typedef struct ext_inode {
     uint8_t os2[12];
 } OBOS_PACK ext_inode;
 
+enum {
+    EXT2_FT_UNKNOWN = 0,
+    EXT2_FT_REG_FILE = 1,
+    EXT2_FT_DIR = 2,
+    EXT2_FT_CHRDEV = 3,
+    EXT2_FT_BLKDEV = 4,
+    EXT2_FT_FIFO = 5,
+    EXT2_FT_SOCK = 6,
+    EXT2_FT_SYMLINK = 7,
+};
+
 typedef struct ext_dirent {
     uint32_t ino;
     uint16_t rec_len;
@@ -199,8 +210,6 @@ typedef struct ext_dirent {
 } OBOS_PACK ext_dirent;
 
 typedef struct ext_dirent_cache {
-    uint32_t ino;
-    uint32_t block;
     struct {
         struct ext_dirent_cache *head, *tail;
         size_t nChildren;
@@ -214,11 +223,11 @@ do {\
     ext_dirent_cache* _parent = (parent_);\
     ext_dirent_cache* _child = (child_);\
     if(!_parent->children.head)\
-        _parent->children.head = child;\
+        _parent->children.head = _child;\
     if (_parent->children.tail)\
-        _parent->children.tail->next = child;\
-    child->prev = _parent->children.tail;\
-    _parent->children.tail = child;\
+        _parent->children.tail->next = _child;\
+    _child->prev = _parent->children.tail;\
+    _parent->children.tail = _child;\
     _parent->children.nChildren++;\
 } while(0)
 
@@ -250,6 +259,7 @@ typedef struct ext_cache {
     uint16_t inodes_per_group;
     uint16_t blocks_per_group;
     uint16_t inode_size;
+    ext_dirent_cache* root;
 } ext_cache;
 
 // Gets an inode straight from the pagecache, returns it along the page* of the pagecache entry.
@@ -262,6 +272,14 @@ void ext_ino_foreach_block(ext_cache* cache,
                            iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                            void* userdata);
 obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead);
+
+// Creates and populates a dirent
+// If ino is not a directory, this fails.
+// cache: The ext cache to use
+// ino: The directory inode
+// parent_name: The directory's name
+// recurse_directories: Whether to recursively populate child directories.
+ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories);
 
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)

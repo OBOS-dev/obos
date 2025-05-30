@@ -106,8 +106,8 @@ bool probe(void* vn_)
     if (cache->read_only)
         OBOS_Warning("extfs: Probed partition is read-only at probe. Likely due to unsupported ext features\n");
 
-    // for (volatile bool b = true; b;)
-    //     ;
+//    for (volatile bool b = true; b;)
+//         ;
 
     ext_inode* root = ext_read_inode(cache, 2);
     if (!root)
@@ -116,8 +116,9 @@ bool probe(void* vn_)
         Free(EXT_Allocator, cache, sizeof(*cache));
         return false;
     }
-
+    // We don't need the root inode except to check for its existence
     Free(EXT_Allocator, root, sizeof(*root));
+    cache->root = ext_dirent_populate(cache, 2, "/", true);
 
     return true;
 }
