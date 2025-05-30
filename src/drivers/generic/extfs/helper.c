@@ -18,6 +18,8 @@
 
 #include <mm/page.h>
 
+#include <driver_interface/header.h>
+
 #include "structs.h"
 
 ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page** pg)
@@ -46,7 +48,7 @@ ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino)
     return ret;
 }
 
-static void ext_ino_foreach_indirect_block(ext_cache* cache,
+static iterate_decision ext_ino_foreach_indirect_block(ext_cache* cache,
                                            ext_inode* inode,
                                            iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                                            void* userdata,
@@ -57,14 +59,15 @@ static void ext_ino_foreach_indirect_block(ext_cache* cache,
     for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode) - 12, nEntriesPerBlock); i++)
     {
         if (cb(cache, inode, blocks[i], userdata) == ITERATE_DECISION_STOP)
-            break;
+            return ITERATE_DECISION_STOP;
         (*curr_index)++;
         if ((*curr_index) >= ext_ino_max_block_index(cache, inode))
             break;
     }
+    return ITERATE_DECISION_CONTINUE;
 }
 
-static void ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
+static iterate_decision ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
                                                   ext_inode* inode,
                                                   iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                                                   void* userdata,
@@ -79,11 +82,16 @@ static void ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
         page* pg = nullptr;
         uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
         MmH_RefPage(pg);
-        ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,curr_index);
+        if (ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,curr_index) == ITERATE_DECISION_STOP)
+        {
+            MmH_DerefPage(pg);
+            return ITERATE_DECISION_STOP;
+        }
         MmH_DerefPage(pg);
         if (*curr_index >= ext_ino_max_block_index(cache, inode))
-            return;
+            return ITERATE_DECISION_STOP;
     }
+    return ITERATE_DECISION_CONTINUE;
 }
 
 static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
@@ -101,7 +109,11 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
         page* pg = nullptr;
         uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
         MmH_RefPage(pg);
-        ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,curr_index);
+        if (ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,curr_index) == ITERATE_DECISION_STOP)
+        {
+            MmH_DerefPage(pg);
+            return;
+        }
         MmH_DerefPage(pg);
         if (*curr_index >= ext_ino_max_block_index(cache, inode))
             return;
@@ -146,4 +158,56 @@ void ext_ino_foreach_block(ext_cache* cache,
     MmH_RefPage(pg);
     ext_ino_foreach_triply_indirect_block(cache,inode,cb,userdata,triply_indirect_blocks,&i);
     MmH_DerefPage(pg);
+}
+
+struct read_block_packet {
+    void* buffer;
+    size_t buffer_offset;
+    size_t count;
+    size_t start_offset;
+    size_t current_offset;
+    obos_status status;
+};
+
+static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata)
+{
+    OBOS_UNUSED(inode);
+    struct read_block_packet *packet = userdata;
+    iterate_decision decision = ITERATE_DECISION_CONTINUE;
+    if (packet->current_offset < packet->start_offset)
+        goto out1;
+    if (packet->current_offset > (packet->start_offset + packet->count))
+    {
+        decision = ITERATE_DECISION_STOP;
+        goto out1;
+    }
+    void* const buff = (void*)((uintptr_t)packet->buffer + packet->buffer_offset);
+    if (!block)
+        memzero(buff, cache->block_size); // sparse block
+    else
+    {
+        page* pg = nullptr;
+        void* data = ext_read_block(cache, block, &pg);
+        MmH_RefPage(pg);
+        memcpy(buff, data, OBOS_MIN(packet->count - packet->buffer_offset, cache->block_size));
+        MmH_DerefPage(pg);
+    }
+    packet->buffer_offset += cache->block_size;
+
+    out1:
+    packet->current_offset += cache->block_size;
+    return decision;
+}
+
+obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead)
+{
+    if (!cache || !inode || !buffer)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if ((offset + count) > inode->blocks*512)
+        count = (offset + count) - inode->blocks*512;
+    struct read_block_packet userdata = {.buffer=buffer,.start_offset=offset,.count=count,.buffer_offset=0};
+    ext_ino_foreach_block(cache, inode, read_cb, &userdata);
+    if (nRead)
+        *nRead = userdata.buffer_offset;
+    return userdata.status;
 }

@@ -261,6 +261,7 @@ void ext_ino_foreach_block(ext_cache* cache,
                            ext_inode* inode,
                            iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                            void* userdata);
+obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead);
 
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)

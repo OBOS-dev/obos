@@ -20,11 +20,6 @@
 
 #include "structs.h"
 
-static iterate_decision cb(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata)
-{
-    printf("inode %d has block 0x%08x\n", (uintptr_t)userdata, block);
-}
-
 bool probe(void* vn_)
 {
     OBOS_ASSERT(vn_);
@@ -115,8 +110,7 @@ bool probe(void* vn_)
     //     ;
 
     ext_inode* root = ext_read_inode(cache, 2);
-    ext_ino_foreach_block(cache, root, cb, (void*)2);
-
+    
     Free(EXT_Allocator, root, sizeof(*root));
 
     return true;
