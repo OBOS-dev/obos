@@ -51,25 +51,18 @@ bool probe(void* vn_)
     cache->revision = le32_to_host(sb->revision);
     if (cache->revision)
     {
-        bool incompatible = false;
-        if (sb->dynamic_rev.incompat_features & EXT2_FEATURE_INCOMPAT_COMPRESSION)
-            incompatible = true;
-        if (sb->dynamic_rev.incompat_features & EXT3_FEATURE_INCOMPAT_RECOVER)
-            incompatible = true;
-        if (sb->dynamic_rev.incompat_features & EXT3_FEATURE_INCOMPAT_JOURNAL_DEV)
-            incompatible = true;
+        uint32_t mask = EXT2_FEATURE_INCOMPAT_FILETYPE|EXT2_FEATURE_INCOMPAT_META_BG;
+        bool incompatible = le32_to_host(sb->dynamic_rev.incompat_features) & ~mask;
         if (incompatible)
         {
             Free(EXT_Allocator, cache, sizeof(*cache));
             return false;
         }
-        if (sb->dynamic_rev.ro_only_features & EXT2_FEATURE_RO_COMPAT_LARGE_FILE && !ext_sb_supports_64bit_filesize)
-            cache->read_only = true;
-        if (sb->dynamic_rev.ro_only_features & EXT2_FEATURE_RO_COMPAT_BTREE_DIR)
-            cache->read_only = true;
+        mask = (ext_sb_supports_64bit_filesize ? EXT2_FEATURE_RO_COMPAT_LARGE_FILE : 0) | EXT2_FEATURE_RO_COMPAT_SPARSE_SUPER;
+        cache->read_only = sb->dynamic_rev.ro_only_features & ~mask;
     }
 
-    cache->block_size = ext_sb_block_size(sb);   
+    cache->block_size = ext_sb_block_size(sb);
     cache->blocks_per_group = ext_sb_blocks_per_group(sb);
     cache->inodes_per_group = ext_sb_inodes_per_group(sb);
     cache->inode_size = ext_sb_inode_size(sb);
