@@ -139,7 +139,7 @@ void ext_ino_foreach_block(ext_cache* cache,
     if (!cache || !inode || !cb)
         return;
     size_t i = 0;
-    for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode), 12); i++)
+    for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode), (size_t)12); i++)
         if (cb(cache, inode, inode->direct_blocks[i], userdata) == ITERATE_DECISION_STOP)
             break;
 
