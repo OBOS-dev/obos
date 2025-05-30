@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/alloc.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -10,7 +10,7 @@
 
 #include <allocators/base.h>
 
-extern allocator_info* Vfs_Allocator;
+OBOS_EXPORT extern allocator_info* Vfs_Allocator;
 
 void* Vfs_Malloc(size_t cnt);
 void* Vfs_Calloc(size_t nObjs, size_t szObj);

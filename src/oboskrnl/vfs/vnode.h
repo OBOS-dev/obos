@@ -17,7 +17,7 @@
 
 #include <locks/mutex.h>
 
-enum 
+enum
 {
     // This vnode has no type.
     VNODE_TYPE_NON,
@@ -66,7 +66,6 @@ typedef struct vnode
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;
-    atomic_size_t nPendingAsyncIO;
     file_perm perm;
     size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.

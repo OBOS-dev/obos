@@ -12,7 +12,9 @@
 #include <memmanip.h>
 
 #include <vfs/vnode.h>
+#include <vfs/dirent.h>
 #include <vfs/irp.h>
+#include <vfs/alloc.h>
 
 #include <allocators/base.h>
 
@@ -113,5 +115,90 @@ bool probe(void* vn_)
     Free(EXT_Allocator, root, sizeof(*root));
     cache->root = ext_dirent_populate(cache, 2, "/", true);
 
+    LIST_APPEND(ext_cache_list, &EXT_CacheList, cache);
+
     return true;
+}
+
+static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
+{
+    ext_inode* inode = ext_read_inode(cache, ino);
+    if (!(inode->mode & (EXT2_S_IFDIR|EXT2_S_IFLNK|EXT2_S_IFREG)))
+        return nullptr;
+    vnode* vn = ZeroAllocate(Vfs_Allocator, 1, sizeof(vnode), nullptr);
+    ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
+    handle->ino = ino;
+    handle->cache = cache;
+    vn->desc = (dev_desc)handle;
+    if (inode->mode & EXT2_S_IFDIR)
+        vn->vtype = VNODE_TYPE_DIR;
+    else if (inode->mode & EXT2_S_IFREG)
+        vn->vtype = VNODE_TYPE_REG;
+    else if (inode->mode & EXT2_S_IFLNK)
+        vn->vtype = VNODE_TYPE_LNK;
+    vn->blkSize = 1;
+    vn->owner_uid = inode->uid;
+    vn->group_uid = inode->gid;
+    vn->filesize = inode->size;
+
+    vn->perm.other_exec = inode->mode & EXT_OTHER_EXEC;
+    vn->perm.other_write = inode->mode & EXT_OTHER_WRITE;
+    vn->perm.other_read = inode->mode & EXT_OTHER_READ && !cache->read_only;
+    
+    vn->perm.owner_exec = inode->mode & EXT_OWNER_EXEC;
+    vn->perm.owner_write = inode->mode & EXT_OWNER_WRITE;
+    vn->perm.owner_read = inode->mode & EXT_OWNER_READ && !cache->read_only;
+
+    vn->perm.group_exec = inode->mode & EXT_GROUP_EXEC;
+    vn->perm.group_write = inode->mode & EXT_GROUP_WRITE;
+    vn->perm.group_read = inode->mode & EXT_GROUP_READ && !cache->read_only;
+
+    vn->mount_point = mnt;
+    
+    return vn;
+}
+
+static void mount_recursive(ext_cache* cache, ext_dirent_cache* parent, dirent* dparent, mount* mnt)
+{
+    OBOS_ENSURE(mnt);
+    for (ext_dirent_cache* ent = parent->children.head; ent; )
+    {
+        vnode* vn = make_vnode(cache, ent->ent.ino, mnt);
+        if (!vn)
+            goto down;
+
+        dirent* dent = ZeroAllocate(Vfs_Allocator, 1, sizeof(dirent), nullptr);
+        OBOS_InitStringLen(&dent->name, ent->ent.name, ent->ent.name_len);
+        dent->vnode = vn;
+        VfsH_DirentAppendChild(dparent, dent);
+
+        if (ent->ent.file_type == EXT2_FT_DIR)
+            mount_recursive(cache, ent, dent, mnt);
+
+        down:
+        ent = ent->next;
+    }
+}
+
+obos_status ext_mount(void* vn_, void* at_)
+{
+    if (!vn_ || !at_)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    vnode* vn = vn_;
+    dirent* at = at_;
+    ext_cache *cache = nullptr;
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+
+    if (!cache)
+        return OBOS_STATUS_NOT_FOUND;
+
+    mount_recursive(cache, cache->root, at, at->vnode->un.mounted);
+
+    return OBOS_STATUS_SUCCESS;
 }

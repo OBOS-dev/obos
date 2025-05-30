@@ -14,6 +14,8 @@
 
 #include <mm/page.h>
 
+#include <utils/list.h>
+
 #if defined(__x86_64__)
 #   define host_to_be16(val) __builtin_bswap16(val)
 #   define host_to_be32(val) __builtin_bswap32(val)
@@ -260,7 +262,19 @@ typedef struct ext_cache {
     uint16_t blocks_per_group;
     uint16_t inode_size;
     ext_dirent_cache* root;
+    LIST_NODE(ext_cache_list, struct ext_cache) node;
 } ext_cache;
+
+typedef LIST_HEAD(ext_cache_list, ext_cache) ext_cache_list;
+LIST_PROTOTYPE(ext_cache_list, ext_cache, node);
+
+extern ext_cache_list EXT_CacheList;
+
+typedef struct ext_inode_handle
+{
+    uint32_t ino;
+    ext_cache* cache;
+} ext_inode_handle;
 
 // Gets an inode straight from the pagecache, returns it along the page* of the pagecache entry.
 ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page **pg);
