@@ -31,7 +31,18 @@ ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page** pg)
     ext_bgd* bgd = &cache->bgdt[ext_ino_get_block_group(cache, ino)];
     uint32_t local_inode_index = ext_ino_get_local_index(cache, ino);
     uint32_t inode_table_block = le32_to_host(bgd->inode_table) + local_inode_index / cache->inodes_per_block;
+    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + local_inode_index / cache->inodes_per_block;
     uint32_t real_inode_index = (local_inode_index % cache->inodes_per_block);
+
+    bool free = false;
+    page* pg2 = nullptr;
+    uint8_t* inode_bitmap = ext_read_block(cache, inode_bitmap_block, &pg2);
+    if (~inode_bitmap[real_inode_index / 8] & BIT(real_inode_index % 8))
+        free = true;
+    MmH_DerefPage(pg2);
+    if (free)
+        return nullptr;
+
     ext_inode* inodes = ext_read_block(cache, inode_table_block, pg);
     return (ext_inode*)((uintptr_t)inodes + real_inode_index * cache->inode_size);
 }

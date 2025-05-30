@@ -110,7 +110,13 @@ bool probe(void* vn_)
     //     ;
 
     ext_inode* root = ext_read_inode(cache, 2);
-    
+    if (!root)
+    {
+        OBOS_Error("extfs: No root inode in filesystem. Aborting probe\n");
+        Free(EXT_Allocator, cache, sizeof(*cache));
+        return false;
+    }
+
     Free(EXT_Allocator, root, sizeof(*root));
 
     return true;
