@@ -84,5 +84,5 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .stat_fs_info = stat_fs_info,
         .probe = probe,
     },
-    .driverName = "EXT filesystem Driver",
+    .driverName = "EXT Driver",
 };
