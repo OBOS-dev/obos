@@ -48,8 +48,7 @@ ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino)
 
 static void ext_ino_foreach_indirect_block(ext_cache* cache,
                                            ext_inode* inode,
-                                           uint32_t inode_number,
-                                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata),
+                                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                                            void* userdata,
                                            uint32_t *blocks, size_t *curr_index)
 {
@@ -57,7 +56,7 @@ static void ext_ino_foreach_indirect_block(ext_cache* cache,
     size_t i = 0;
     for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode) - 12, nEntriesPerBlock); i++)
     {
-        if (cb(cache, inode, inode_number, blocks[i], userdata) == ITERATE_DECISION_STOP)
+        if (cb(cache, inode, blocks[i], userdata) == ITERATE_DECISION_STOP)
             break;
         (*curr_index)++;
         if ((*curr_index) >= ext_ino_max_block_index(cache, inode))
@@ -67,8 +66,7 @@ static void ext_ino_foreach_indirect_block(ext_cache* cache,
 
 static void ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
                                                   ext_inode* inode,
-                                                  uint32_t inode_number,
-                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata),
+                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
@@ -81,7 +79,7 @@ static void ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
         page* pg = nullptr;
         uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
         MmH_RefPage(pg);
-        ext_ino_foreach_indirect_block(cache,inode,inode_number,cb,userdata,indirect_blocks,curr_index);
+        ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,curr_index);
         MmH_DerefPage(pg);
         if (*curr_index >= ext_ino_max_block_index(cache, inode))
             return;
@@ -90,8 +88,7 @@ static void ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
 
 static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
                                                   ext_inode* inode,
-                                                  uint32_t inode_number,
-                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata),
+                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
@@ -104,7 +101,7 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
         page* pg = nullptr;
         uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
         MmH_RefPage(pg);
-        ext_ino_foreach_doubly_indirect_block(cache,inode,inode_number,cb,userdata,doubly_indirect_blocks,curr_index);
+        ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,curr_index);
         MmH_DerefPage(pg);
         if (*curr_index >= ext_ino_max_block_index(cache, inode))
             return;
@@ -113,15 +110,14 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
 
 void ext_ino_foreach_block(ext_cache* cache,
                            ext_inode* inode,
-                           uint32_t inode_number,
-                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata), 
+                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata), 
                            void* userdata)
 {
-    if (!cache || !inode || !inode_number || !cb)
+    if (!cache || !inode || !cb)
         return;
     size_t i = 0;
     for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode), 12); i++)
-        if (cb(cache, inode, inode_number, inode->direct_blocks[i], userdata) == ITERATE_DECISION_STOP)
+        if (cb(cache, inode, inode->direct_blocks[i], userdata) == ITERATE_DECISION_STOP)
             break;
 
     if (i >= ext_ino_max_block_index(cache, inode))
@@ -130,7 +126,7 @@ void ext_ino_foreach_block(ext_cache* cache,
     page* pg = nullptr;
     uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(inode->indirect_block), &pg);
     MmH_RefPage(pg);
-    ext_ino_foreach_indirect_block(cache,inode,inode_number,cb,userdata,indirect_blocks,&i);
+    ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,&i);
     MmH_DerefPage(pg);
 
     if (i >= ext_ino_max_block_index(cache, inode))
@@ -139,7 +135,7 @@ void ext_ino_foreach_block(ext_cache* cache,
     pg = nullptr;
     uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(inode->doubly_indirect_block), &pg);
     MmH_RefPage(pg);
-    ext_ino_foreach_doubly_indirect_block(cache,inode,inode_number,cb,userdata,doubly_indirect_blocks,&i);
+    ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,&i);
     MmH_DerefPage(pg);
 
     if (i >= ext_ino_max_block_index(cache, inode))
@@ -148,6 +144,6 @@ void ext_ino_foreach_block(ext_cache* cache,
     pg = nullptr;
     uint32_t* triply_indirect_blocks = ext_read_block(cache, le32_to_host(inode->triply_indirect_block), &pg);
     MmH_RefPage(pg);
-    ext_ino_foreach_triply_indirect_block(cache,inode,inode_number,cb,userdata,triply_indirect_blocks,&i);
+    ext_ino_foreach_triply_indirect_block(cache,inode,cb,userdata,triply_indirect_blocks,&i);
     MmH_DerefPage(pg);
 }

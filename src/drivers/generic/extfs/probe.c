@@ -20,9 +20,9 @@
 
 #include "structs.h"
 
-static iterate_decision cb(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata)
+static iterate_decision cb(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata)
 {
-    printf("inode %d has block 0x%08x\n", inode_number, block);
+    printf("inode %d has block 0x%08x\n", (uintptr_t)userdata, block);
 }
 
 bool probe(void* vn_)
@@ -53,11 +53,31 @@ bool probe(void* vn_)
     MmH_DerefPage(pg);
     sb = &cache->superblock;
     pg = nullptr;
+    cache->revision = le32_to_host(sb->revision);
+    if (cache->revision)
+    {
+        bool incompatible = false;
+        if (sb->dynamic_rev.incompat_features & EXT2_FEATURE_INCOMPAT_COMPRESSION)
+            incompatible = true;
+        if (sb->dynamic_rev.incompat_features & EXT3_FEATURE_INCOMPAT_RECOVER)
+            incompatible = true;
+        if (sb->dynamic_rev.incompat_features & EXT3_FEATURE_INCOMPAT_JOURNAL_DEV)
+            incompatible = true;
+        if (incompatible)
+        {
+            Free(EXT_Allocator, cache, sizeof(*cache));
+            return false;
+        }
+        if (sb->dynamic_rev.ro_only_features & EXT2_FEATURE_RO_COMPAT_LARGE_FILE && !ext_sb_supports_64bit_filesize)
+            cache->read_only = true;
+        if (sb->dynamic_rev.ro_only_features & EXT2_FEATURE_RO_COMPAT_BTREE_DIR)
+            cache->read_only = true;
+    }
+
     cache->block_size = ext_sb_block_size(sb);   
     cache->blocks_per_group = ext_sb_blocks_per_group(sb);
     cache->inodes_per_group = ext_sb_inodes_per_group(sb);
     cache->inode_size = ext_sb_inode_size(sb);
-    cache->revision = le32_to_host(sb->revision);
     cache->block_group_count = le32_to_host(cache->superblock.block_count) / cache->blocks_per_group;
     cache->vn = vn;
     cache->inodes_per_block = cache->block_size/cache->inode_size;
@@ -88,11 +108,14 @@ bool probe(void* vn_)
     OBOS_Debug("extfs: Block group count: 0x%d\n", cache->block_group_count);
     OBOS_Debug("extfs: Revision: %d\n", cache->revision);
 
-    for (volatile bool b = true; b;)
-        ;
+    if (cache->read_only)
+        OBOS_Warning("extfs: Probed partition is read-only at probe. Likely due to unsupported ext features\n");
 
-    ext_inode* root = ext_read_inode(cache, 12);
-    ext_ino_foreach_block(cache, root, 12, cb, nullptr);
+    // for (volatile bool b = true; b;)
+    //     ;
+
+    ext_inode* root = ext_read_inode(cache, 2);
+    ext_ino_foreach_block(cache, root, cb, (void*)2);
 
     Free(EXT_Allocator, root, sizeof(*root));
 

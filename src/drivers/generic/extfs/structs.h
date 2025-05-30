@@ -7,6 +7,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 #include <struct_packing.h>
 
 #include <vfs/pagecache.h>
@@ -239,6 +240,7 @@ do {\
 typedef struct ext_cache {
     ext_superblock superblock;
     vnode* vn;
+    bool read_only;
     ext_bgdt bgdt;
     uint32_t block_size;
     uint32_t revision;
@@ -257,8 +259,7 @@ ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino);
 
 void ext_ino_foreach_block(ext_cache* cache,
                            ext_inode* inode,
-                           uint32_t inode_number,
-                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t inode_number, uint32_t block, void* userdata),
+                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
                            void* userdata);
 
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
