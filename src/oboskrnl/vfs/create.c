@@ -53,6 +53,9 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!has_write_perm(parent_vn))
         return OBOS_STATUS_ACCESS_DENIED;
+    driver_ftable* ftable = &parent_vn->mount_point->fs_driver->driver->header.ftable;
+    if (!ftable->mk_file)
+        return OBOS_STATUS_UNIMPLEMENTED;
 
     do {
         dirent* found = VfsH_DirentLookupFrom(name, parent);
@@ -90,7 +93,6 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
-    driver_ftable* ftable = &parent_vn->mount_point->fs_driver->driver->header.ftable;
     vnode* mount_vn = nullptr;
     if (parent_vn->flags & VFLAGS_MOUNTPOINT)
     {
