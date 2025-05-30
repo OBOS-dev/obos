@@ -538,11 +538,11 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
         to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info(to_stat->mount_point->device, &fs_info);
         st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
+        st.st_blksize = fs_info.fsBlockSize;
     }
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
-    // TODO: Inode numbers.
-    st.st_ino = 0;
+    st.st_ino = to_stat->inode;
     memcpy_k_to_usr(target, &st, sizeof(struct stat));
     return OBOS_STATUS_SUCCESS;
 }

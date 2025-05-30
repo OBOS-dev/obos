@@ -74,6 +74,7 @@ typedef struct vnode
     fd_list opened;
     struct partition* partitions;
     size_t nPartitions;
+    uint32_t inode;
 
     size_t blkSize;
 } vnode;

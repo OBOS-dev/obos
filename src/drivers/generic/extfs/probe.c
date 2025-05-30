@@ -155,6 +155,8 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 
     vn->mount_point = mnt;
     
+    vn->inode = ino;
+
     return vn;
 }
 
