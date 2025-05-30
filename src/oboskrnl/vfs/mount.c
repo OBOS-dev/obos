@@ -376,7 +376,7 @@ obos_status Vfs_UnmountP(const char* at)
     dirent* resolved = VfsH_DirentLookup(at);
     if (!resolved)
         return OBOS_STATUS_NOT_FOUND;
-    if (resolved->vnode->flags & VFLAGS_MOUNTPOINT)
+    if (~resolved->vnode->flags & VFLAGS_MOUNTPOINT)
         return OBOS_STATUS_INVALID_ARGUMENT;
     return Vfs_Unmount(resolved->vnode->un.mounted);
 }
