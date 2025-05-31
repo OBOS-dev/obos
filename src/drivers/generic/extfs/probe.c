@@ -84,7 +84,7 @@ bool probe(void* vn_)
             void* bgdt_section = ext_read_block(cache, (cache->block_size == 1024 ? 2 : 1) + i, &pg);
             MmH_RefPage(pg);
             size_t copy_count = i == (bgdt_blocks - 1) ? (cache->block_group_count % (cache->block_size / sizeof(ext_bgd))) : (cache->block_size / sizeof(ext_bgd));
-            memcpy(cache->bgdt, bgdt_section, copy_count*sizeof(ext_bgd));
+            memcpy(cache->bgdt + (i*4096/sizeof(ext_bgd)), bgdt_section, copy_count*sizeof(ext_bgd));
             MmH_DerefPage(pg);
         }
     } while(0);
