@@ -2,7 +2,8 @@
 # 
 # Copyright (c) 2025 Omar Berrow
 
-add_executable(extfs "main.c" "probe.c" "helper.c" "dirent.c")
+add_executable(extfs "main.c" "probe.c" "helper.c" "dirent.c"
+					 "interface.c")
 
 target_compile_options(extfs
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
