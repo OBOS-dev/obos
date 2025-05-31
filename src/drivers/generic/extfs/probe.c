@@ -139,7 +139,7 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     vn->blkSize = 1;
     vn->owner_uid = inode->uid;
     vn->group_uid = inode->gid;
-    vn->filesize = inode->size;
+    vn->filesize = inode->size | ext_sb_supports_64bit_filesize ? (uint64_t)inode->dir_acl << 32 : 0;
 
     vn->perm.other_exec = inode->mode & EXT_OTHER_EXEC;
     vn->perm.other_write = inode->mode & EXT_OTHER_WRITE;
