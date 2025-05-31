@@ -14,6 +14,8 @@
 #include <mm/page.h>
 #include <mm/swap.h>
 
+#include <allocators/base.h>
+
 #include "structs.h"
 
 #define get_handle(desc) ({\
@@ -29,7 +31,7 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     MmH_RefPage(pg);
     
     uint32_t new_mode = ino->mode & ~0777;
-    
+
     if (newperm.other_exec)
         new_mode |= EXT_OTHER_EXEC;
     if (newperm.owner_exec)
@@ -54,6 +56,51 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     ino->mode = new_mode;
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
+{
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd || !count)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    *count = node->size;
+    Free(EXT_Allocator, node, sizeof(*node));
+    return OBOS_STATUS_SUCCESS;    
+}
+
+obos_status stat_fs_info(void *vn, drv_fs_info *info)
+{
+    if (!info)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    ext_cache *cache = nullptr;
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+
+    if (!cache)
+        return OBOS_STATUS_NOT_FOUND;
+
+    info->fsBlockSize = cache->block_size;
+    info->freeBlocks = le32_to_host(cache->superblock.block_count) - le32_to_host(cache->superblock.free_block_count);
+
+    info->availableFiles = le32_to_host(cache->superblock.free_inode_count);
+    info->fileCount = le32_to_host(cache->superblock.inode_count) - le32_to_host(cache->superblock.free_inode_count);
+
+    info->nameMax = 255;
+
+    if (cache->read_only)
+        info->flags |= FS_FLAGS_RDONLY;
+
+    info->partBlockSize = cache->vn->blkSize;
+    info->szFs = cache->vn->filesize / info->partBlockSize;
 
     return OBOS_STATUS_SUCCESS;
 }

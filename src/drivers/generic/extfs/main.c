@@ -28,16 +28,7 @@ OBOS_PAGEABLE_FUNCTION obos_status get_blk_size(dev_desc desc, size_t* blkSize)
     *blkSize = 1;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
-{
-    ext_inode_handle* hnd = (void*)desc;
-    if (!hnd || !count)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
-    *count = node->size;
-    Free(EXT_Allocator, node, sizeof(*node));
-    return OBOS_STATUS_SUCCESS;    
-}
+OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
 
 OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
 OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
@@ -68,40 +59,7 @@ OBOS_WEAK bool probe(void* vn);
 OBOS_WEAK obos_status submit_irp(void* request);
 OBOS_WEAK obos_status finalize_irp(void* request);
 OBOS_WEAK obos_status ext_mount(void* vn, void* at);
-
-obos_status stat_fs_info(void *vn, drv_fs_info *info)
-{
-    if (!info)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-
-    ext_cache *cache = nullptr;
-    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
-    {
-        if (curr->vn == vn)
-            cache = curr;
-
-        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
-    }
-
-    if (!cache)
-        return OBOS_STATUS_NOT_FOUND;
-
-    info->fsBlockSize = cache->block_size;
-    info->freeBlocks = le32_to_host(cache->superblock.block_count) - le32_to_host(cache->superblock.free_block_count);
-
-    info->availableFiles = le32_to_host(cache->superblock.free_inode_count);
-    info->fileCount = le32_to_host(cache->superblock.inode_count) - le32_to_host(cache->superblock.free_inode_count);
-
-    info->nameMax = 255;
-
-    if (cache->read_only)
-        info->flags |= FS_FLAGS_RDONLY;
-
-    info->partBlockSize = cache->vn->blkSize;
-    info->szFs = cache->vn->filesize / info->partBlockSize;
-
-    return OBOS_STATUS_SUCCESS;
-}
+OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
