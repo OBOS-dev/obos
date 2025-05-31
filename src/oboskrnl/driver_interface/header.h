@@ -68,6 +68,10 @@ typedef enum driver_header_flags
     /// Set if PnP should ignore the Prog IF in the the pciId field of the header.
     /// </summary>
     DRIVER_HEADER_PCI_IGNORE_PROG_IF = 0x400,
+    /// <summary>
+    /// Set if the filesystem driver wants paths for mk_file, move_desc_to, and remove_file
+    /// </summary>
+    DRIVER_HEADER_DIRENT_CB_PATHS = 0x800,
 } driver_header_flags;
 typedef enum iterate_decision
 {
@@ -168,12 +172,21 @@ typedef struct driver_ftable
     obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
-    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
+    union {
+        obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
+        obos_status(*pmk_file)(dev_desc* newDesc, const char* parent_path, void* vn, const char* name, file_type type, driver_file_perm perm);
+    };
     // If !new_parent && name, then we need to rename the file.
     // If new_parent && !name, then we need to move the file to the new parent, and keep the filename.
     // If new_parent && name, then we need to move the file to new parent and rename the file.
-    obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
-    obos_status(*remove_file)(dev_desc desc);
+    union {
+        obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
+        obos_status(*pmove_desc_to)(const char* path, const char* newpath, const char* name);
+    };
+    union {
+        obos_status(*remove_file)(dev_desc desc);
+        obos_status(*premove_file)(const char* path);
+    };
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
