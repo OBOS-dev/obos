@@ -287,6 +287,10 @@ void ext_ino_foreach_block(ext_cache* cache,
                            void* userdata);
 obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead);
 
+// block_group can be nullptr
+uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group);
+void ext_ino_free(ext_cache* cache, uint32_t ino);
+
 // Creates and populates a dirent
 // If ino is not a directory, this fails.
 // cache: The ext cache to use

@@ -17,6 +17,7 @@
 #include <allocators/base.h>
 
 #include <mm/page.h>
+#include <mm/swap.h>
 
 #include <driver_interface/header.h>
 
@@ -221,4 +222,99 @@ obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offse
     if (nRead)
         *nRead = userdata.buffer_offset;
     return userdata.status;
+}
+
+uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
+{
+    if (!cache)
+        return 0;
+    uint32_t block_group = block_group_ptr ? *block_group_ptr : 0;
+    bool checked_bg_zero = block_group == 0;
+    if (block_group > cache->block_group_count)
+        return 0;
+    uint32_t res = 0;
+    while (!res)
+    {
+        if (!cache->bgdt[block_group].free_inodes)
+            goto down;
+
+        uint32_t local_inode_index = 0;
+        size_t bitmap_size = cache->inodes_per_block / 8;
+        uint8_t* buffer = nullptr;
+        uint32_t block = 0;
+        page* pg = nullptr;
+        bool found = false;
+        for (size_t i = 0; i < bitmap_size; i++)
+        {
+            if ((i % cache->block_size) == 0)
+            {
+                if (pg)
+                    MmH_DerefPage(pg);
+                block = cache->bgdt[block_group].inode_bitmap + (i / cache->block_size);
+                buffer = ext_read_block(cache, block, &pg);
+                MmH_RefPage(pg);
+            }
+            if (buffer[i] != 0xff)
+            {
+                uint8_t bit = __builtin_ctz(~buffer[i]);
+                local_inode_index = bit + i*8;
+                found = true;
+                buffer[i] |= BIT(bit);
+                Mm_MarkAsDirtyPhys(pg);
+                MmH_DerefPage(pg);
+                break;
+            }
+        }
+        if (found)
+        {
+            res = local_inode_index + cache->inodes_per_group*block_group + 1;
+            continue;
+        }
+
+        down:
+        if (++block_group >= cache->block_group_count)
+        {
+            if (checked_bg_zero)
+                break;
+            else
+            {
+                block_group = 0;
+                checked_bg_zero = true;
+            }
+        }
+    }
+
+    return res;
+}
+
+void ext_ino_free(ext_cache* cache, uint32_t ino)
+{
+    if (!cache || !ino)
+        return;
+
+    ext_bgd* bgd = &cache->bgdt[ext_ino_get_block_group(cache, ino)];
+    uint32_t local_inode_index = ext_ino_get_local_index(cache, ino);
+    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + local_inode_index / cache->inodes_per_block;
+    uint32_t real_inode_index = (local_inode_index % cache->inodes_per_block);
+
+    bool free = false;
+    page* pg = nullptr;
+    uint8_t* inode_bitmap = ext_read_block(cache, inode_bitmap_block, &pg);
+    if (~inode_bitmap[real_inode_index / 8] & BIT(real_inode_index % 8))
+        free = true;
+    else
+    {
+        inode_bitmap[real_inode_index / 8] &= ~BIT(real_inode_index % 8);
+        Mm_MarkAsDirtyPhys(pg);
+    }
+    MmH_DerefPage(pg);
+    if (free)
+        return;
+
+    pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
+    memzero(inode, sizeof(*inode));
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
 }
