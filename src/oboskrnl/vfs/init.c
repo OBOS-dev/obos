@@ -60,13 +60,13 @@ void Vfs_Initialize()
     OBOS_InitString(&Vfs_Root->name, "/");
     Vfs_Root->vnode = Vfs_Calloc(1, sizeof(vnode));
     Vfs_Root->vnode->vtype = VNODE_TYPE_DIR;
-    Vfs_Root->vnode->perm.group_exec = false;
+    Vfs_Root->vnode->perm.group_exec = true;
     Vfs_Root->vnode->perm.group_write = true;
     Vfs_Root->vnode->perm.group_read = true;
-    Vfs_Root->vnode->perm.owner_exec = false;
+    Vfs_Root->vnode->perm.owner_exec = true;
     Vfs_Root->vnode->perm.owner_write = true;
     Vfs_Root->vnode->perm.owner_read = true;
-    Vfs_Root->vnode->perm.other_exec = false;
+    Vfs_Root->vnode->perm.other_exec = true;
     Vfs_Root->vnode->perm.other_write = false;
     Vfs_Root->vnode->perm.other_read = true;
     vdev initrd_dev = { };

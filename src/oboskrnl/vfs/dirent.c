@@ -427,6 +427,19 @@ static char* realpath(dirent* ent)
     return path;
 }
 
+static bool check_chdir_perms(dirent* ent)
+{
+    uid uid = Core_GetCurrentThread()->proc->currentUID;
+    gid gid = Core_GetCurrentThread()->proc->currentGID;
+
+    if (uid == ent->vnode->owner_uid)
+        return ent->vnode->perm.owner_exec;
+    else if (gid == ent->vnode->group_uid)
+        return ent->vnode->perm.group_exec;
+    else
+        return ent->vnode->perm.other_exec;
+}
+
 obos_status VfsH_Chdir(void* target_, const char *path)
 {
     if (!target_)
@@ -436,6 +449,9 @@ obos_status VfsH_Chdir(void* target_, const char *path)
     dirent* ent = VfsH_DirentLookup(path);
     if (!ent)
         return OBOS_STATUS_NOT_FOUND;
+    
+    if (!check_chdir_perms(ent))
+        return OBOS_STATUS_ACCESS_DENIED;
     
     Vfs_Free((char*)target->cwd_str);
     
@@ -449,7 +465,10 @@ obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
     process* target = target_;
     if (!ent || !target)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    
+   
+    if (!check_chdir_perms(ent))
+        return OBOS_STATUS_ACCESS_DENIED;
+
     Vfs_Free((char*)target->cwd_str);
 
     target->cwd = ent;
