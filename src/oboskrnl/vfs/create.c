@@ -53,7 +53,10 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!has_write_perm(parent_vn))
         return OBOS_STATUS_ACCESS_DENIED;
-    driver_ftable* ftable = &parent_vn->mount_point->fs_driver->driver->header.ftable;
+    mount *parent_mnt = parent_vn->flags & VFLAGS_MOUNTPOINT ? 
+        parent_vn->un.mounted:
+        parent_vn->mount_point;
+    driver_ftable* ftable = &parent_mnt->fs_driver->driver->header.ftable;
     if (!ftable->mk_file)
         return OBOS_STATUS_UNIMPLEMENTED;
 
@@ -89,17 +92,11 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     vn->flags = 0;
     vn->vtype = vtype;
     vn->refs++;
-    vn->mount_point = parent_vn->mount_point;
+    vn->mount_point = parent_mnt;
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
-    vnode* mount_vn = nullptr;
-    if (parent_vn->flags & VFLAGS_MOUNTPOINT)
-    {
-        vn->mount_point = parent_vn->un.mounted;
-        ftable = &parent_vn->un.mounted->fs_driver->driver->header.ftable;
-        mount_vn = parent_vn->un.mounted->device;
-    }
+    vnode* mount_vn = parent_mnt->device;
     obos_status status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
     if (obos_is_error(status))
     {
