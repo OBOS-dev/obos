@@ -451,7 +451,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const cha
     new->path[parent->path_len] = '/';
     memcpy(&new->path[parent->path_len+1], new->name, new->name_len);
     new->path[new->path_len] = 0;
-    printf("created new node: parent.path: %s, new.path: %s, new.name: %s\n", parent->path, new->path, new->name);
+    // printf("created new node: parent.path: %s, new.path: %s, new.name: %s\n", parent->path, new->path, new->name);
 
     new->parent = parent;
     if (!parent->children.head)
