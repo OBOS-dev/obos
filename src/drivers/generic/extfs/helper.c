@@ -62,16 +62,23 @@ ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino)
 
 static iterate_decision ext_ino_foreach_indirect_block(ext_cache* cache,
                                            ext_inode* inode,
-                                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
+                                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata),
                                            void* userdata,
-                                           uint32_t *blocks, size_t *curr_index)
+                                           uint32_t *blocks, size_t *curr_index, bool *dirty)
 {
     size_t nEntriesPerBlock = cache->block_size / 4;
     size_t i = 0;
     for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode) - 12, nEntriesPerBlock); i++)
     {
-        if (cb(cache, inode, blocks[i], userdata) == ITERATE_DECISION_STOP)
-            return ITERATE_DECISION_STOP;
+        uint32_t blk = blocks ? blocks[i] : 0;
+        if (cb(cache, inode, blocks ? &blocks[i] : 0, userdata) == ITERATE_DECISION_STOP)
+        {
+            if (!(*dirty))
+                *dirty = blocks ? blocks[i] != blk : 0;
+            break;
+        }
+        if (!(*dirty))
+            *dirty = blocks ? blocks[i] != blk : 0;
         (*curr_index)++;
         if ((*curr_index) >= ext_ino_max_block_index(cache, inode))
             break;
@@ -81,7 +88,7 @@ static iterate_decision ext_ino_foreach_indirect_block(ext_cache* cache,
 
 static iterate_decision ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
                                                   ext_inode* inode,
-                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
+                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata),
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
@@ -92,13 +99,20 @@ static iterate_decision ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
     for (; i < OBOS_MIN(maxBlockIndexDouble, nEntriesPerBlock); i++)
     {
         page* pg = nullptr;
-        uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
+        uint32_t* indirect_blocks = nullptr;
+        if (blocks)
+            indirect_blocks = blocks[i] ? ext_read_block(cache, le32_to_host(blocks[i]), &pg) : nullptr;
+        else
+            indirect_blocks = nullptr;
         MmH_RefPage(pg);
-        if (ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,curr_index) == ITERATE_DECISION_STOP)
+        bool dirty = false;
+        if (ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,curr_index, &dirty) == ITERATE_DECISION_STOP)
         {
             MmH_DerefPage(pg);
             return ITERATE_DECISION_STOP;
         }
+        if (dirty)
+            Mm_MarkAsDirtyPhys(pg);
         MmH_DerefPage(pg);
         if (*curr_index >= ext_ino_max_block_index(cache, inode))
             return ITERATE_DECISION_STOP;
@@ -108,7 +122,7 @@ static iterate_decision ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
 
 static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
                                                   ext_inode* inode,
-                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
+                                                  iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata),
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
@@ -119,7 +133,7 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
     for (; i < OBOS_MIN(maxBlockIndexTriple, nEntriesPerBlock); i++)
     {
         page* pg = nullptr;
-        uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(blocks[i]), &pg);
+        uint32_t* doubly_indirect_blocks =  blocks[i] ? ext_read_block(cache, le32_to_host(blocks[i]), &pg) : nullptr;
         MmH_RefPage(pg);
         if (ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,curr_index) == ITERATE_DECISION_STOP)
         {
@@ -133,43 +147,68 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
 }
 
 void ext_ino_foreach_block(ext_cache* cache,
-                           ext_inode* inode,
-                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata), 
+                           uint32_t ino,
+                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata), 
                            void* userdata)
 {
-    if (!cache || !inode || !cb)
+    if (!cache || !ino || !cb)
         return;
-    size_t i = 0;
-    for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode), (size_t)12); i++)
-        if (cb(cache, inode, inode->direct_blocks[i], userdata) == ITERATE_DECISION_STOP)
-            break;
-
-    if (i >= ext_ino_max_block_index(cache, inode))
-        return; // We done here
 
     page* pg = nullptr;
-    uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(inode->indirect_block), &pg);
+
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
     MmH_RefPage(pg);
-    ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,&i);
-    MmH_DerefPage(pg);
+
+    size_t i = 0;
+    for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode), (size_t)12); i++)
+    {
+        uint32_t blk = inode->direct_blocks[i];
+        if (cb(cache, inode, &inode->direct_blocks[i], userdata) == ITERATE_DECISION_STOP)
+        {
+            if (blk != inode->direct_blocks[i])
+                Mm_MarkAsDirtyPhys(pg);
+            break;
+        }
+    }
 
     if (i >= ext_ino_max_block_index(cache, inode))
+    {
+        MmH_DerefPage(pg);
         return; // We done here
+    }
 
-    pg = nullptr;
-    uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(inode->doubly_indirect_block), &pg);
-    MmH_RefPage(pg);
+    page* pg2 = nullptr;
+    uint32_t* indirect_blocks = ext_read_block(cache, le32_to_host(inode->indirect_block), &pg2);
+    MmH_RefPage(pg2);
+    bool dirty = false;
+    ext_ino_foreach_indirect_block(cache,inode,cb,userdata,indirect_blocks,&i,&dirty);
+    if (dirty)
+        Mm_MarkAsDirtyPhys(pg2);
+    MmH_DerefPage(pg2);
+
+    if (i >= ext_ino_max_block_index(cache, inode))
+    {
+        MmH_DerefPage(pg);
+        return; // We done here
+    }
+
+    pg2 = nullptr;
+    uint32_t* doubly_indirect_blocks = ext_read_block(cache, le32_to_host(inode->doubly_indirect_block), &pg2);
+    MmH_RefPage(pg2);
     ext_ino_foreach_doubly_indirect_block(cache,inode,cb,userdata,doubly_indirect_blocks,&i);
-    MmH_DerefPage(pg);
+    MmH_DerefPage(pg2);
 
     if (i >= ext_ino_max_block_index(cache, inode))
+    {
+        MmH_DerefPage(pg);
         return; // We done here
+    }
 
-    pg = nullptr;
-    uint32_t* triply_indirect_blocks = ext_read_block(cache, le32_to_host(inode->triply_indirect_block), &pg);
-    MmH_RefPage(pg);
+    pg2 = nullptr;
+    uint32_t* triply_indirect_blocks = ext_read_block(cache, le32_to_host(inode->triply_indirect_block), &pg2);
+    MmH_RefPage(pg2);
     ext_ino_foreach_triply_indirect_block(cache,inode,cb,userdata,triply_indirect_blocks,&i);
-    MmH_DerefPage(pg);
+    MmH_DerefPage(pg2);
 }
 
 struct read_block_packet {
@@ -181,7 +220,7 @@ struct read_block_packet {
     obos_status status;
 };
 
-static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata)
+static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata)
 {
     OBOS_UNUSED(inode);
     struct read_block_packet *packet = userdata;
@@ -199,7 +238,7 @@ static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t blo
     else
     {
         page* pg = nullptr;
-        void* data = ext_read_block(cache, block, &pg);
+        void* data = ext_read_block(cache, *block, &pg);
         MmH_RefPage(pg);
         memcpy(buff, data, OBOS_MIN(packet->count - packet->buffer_offset, cache->block_size));
         MmH_DerefPage(pg);
@@ -211,20 +250,71 @@ static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t blo
     return decision;
 }
 
-obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead)
+obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, void* buffer, size_t *nRead)
 {
-    if (!cache || !inode || !buffer)
+    if (!cache || !ino || !buffer)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* inode = ext_read_inode(cache, ino);
+    if (!inode)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if ((offset + count) > inode->blocks*512)
         count = (offset + count) - inode->blocks*512;
     struct read_block_packet userdata = {.buffer=buffer,.start_offset=offset,.count=count,.buffer_offset=0};
-    ext_ino_foreach_block(cache, inode, read_cb, &userdata);
+    ext_ino_foreach_block(cache, ino, read_cb, &userdata);
+    Free(EXT_Allocator, inode, sizeof(*inode));
     if (nRead)
         *nRead = userdata.buffer_offset;
     return userdata.status;
 }
 
-uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
+// obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten)
+// {
+//     if (!cache || !ino || !buffer)
+//         return OBOS_STATUS_INVALID_ARGUMENT;
+    
+// }
+
+// obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size)
+// {
+
+// }
+
+// obos_status ext_ino_expand(ext_cache* cache, uint32_t ino, size_t new_size)
+// {
+
+// }
+
+struct inode_offset_location ext_get_blk_index_from_offset(ext_cache* cache, size_t offset)
+{
+    struct inode_offset_location loc = {.offset=offset,.idx={}};
+    memset(loc.idx, 0xff, sizeof(loc.idx));
+    if (offset < (cache->block_size*12))
+    {
+        loc.idx[0] = offset / cache->block_size;
+        return loc;
+    }
+    offset -= (cache->block_size*12);
+    const size_t nBlocksPerIndirectBlock = cache->block_size / 4;
+    loc.idx[1] = (offset % cache->block_size*nBlocksPerIndirectBlock) / cache->block_size;
+    if (offset < (cache->block_size*nBlocksPerIndirectBlock))
+        return loc;
+    offset -= (cache->block_size*nBlocksPerIndirectBlock);
+    const size_t nBlocksPerDoublyIndirectBlock = nBlocksPerIndirectBlock*nBlocksPerIndirectBlock;
+    loc.idx[2] = (offset % cache->block_size*nBlocksPerDoublyIndirectBlock) / cache->block_size;
+    if (offset < (cache->block_size*nBlocksPerDoublyIndirectBlock))
+        return loc;
+    offset -= (cache->block_size*nBlocksPerDoublyIndirectBlock);
+    const size_t nBlocksPerTriplyIndirectBlock = nBlocksPerDoublyIndirectBlock*nBlocksPerIndirectBlock;
+    loc.idx[3] = (offset % cache->block_size*nBlocksPerTriplyIndirectBlock) / cache->block_size;
+    return loc;
+}
+
+enum {
+    ALLOC_INODE = false,
+    ALLOC_BLOCK = true,
+};
+
+uint32_t allocate_bmp(ext_cache* cache, const uint32_t* block_group_ptr, int what)
 {
     if (!cache)
         return 0;
@@ -235,11 +325,11 @@ uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
     uint32_t res = 0;
     while (!res)
     {
-        if (!cache->bgdt[block_group].free_inodes)
+        if (!(what == ALLOC_INODE ? cache->bgdt[block_group].free_inodes : cache->bgdt[block_group].free_blocks))
             goto down;
 
-        uint32_t local_inode_index = 0;
-        size_t bitmap_size = cache->inodes_per_block / 8;
+        uint32_t local_index = 0;
+        size_t bitmap_size = what == ALLOC_INODE ? cache->inodes_per_block / 8 : cache->blocks_per_group / 8;
         uint8_t* buffer = nullptr;
         uint32_t block = 0;
         page* pg = nullptr;
@@ -250,14 +340,15 @@ uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
             {
                 if (pg)
                     MmH_DerefPage(pg);
-                block = cache->bgdt[block_group].inode_bitmap + (i / cache->block_size);
+                uint32_t bmp = what == ALLOC_INODE ? cache->bgdt[block_group].inode_bitmap : cache->bgdt[block_group].block_bitmap;
+                block = bmp + (i / cache->block_size);
                 buffer = ext_read_block(cache, block, &pg);
                 MmH_RefPage(pg);
             }
             if (buffer[i] != 0xff)
             {
                 uint8_t bit = __builtin_ctz(~buffer[i]);
-                local_inode_index = bit + i*8;
+                local_index = bit + i*8;
                 found = true;
                 buffer[i] |= BIT(bit);
                 Mm_MarkAsDirtyPhys(pg);
@@ -267,7 +358,7 @@ uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
         }
         if (found)
         {
-            res = local_inode_index + cache->inodes_per_group*block_group + 1;
+            res = local_index + (what==ALLOC_INODE ? cache->inodes_per_group : cache->blocks_per_group) * block_group + 1;
             continue;
         }
 
@@ -287,6 +378,11 @@ uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
     return res;
 }
 
+uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
+{
+    return allocate_bmp(cache, block_group_ptr, ALLOC_INODE);
+}
+
 void ext_ino_free(ext_cache* cache, uint32_t ino)
 {
     if (!cache || !ino)
@@ -300,12 +396,13 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
     bool free = false;
     page* pg = nullptr;
     uint8_t* inode_bitmap = ext_read_block(cache, inode_bitmap_block, &pg);
+    MmH_RefPage(pg);
     if (~inode_bitmap[real_inode_index / 8] & BIT(real_inode_index % 8))
         free = true;
     else
     {
-        inode_bitmap[real_inode_index / 8] &= ~BIT(real_inode_index % 8);
         Mm_MarkAsDirtyPhys(pg);
+        inode_bitmap[real_inode_index / 8] &= ~BIT(real_inode_index % 8);
     }
     MmH_DerefPage(pg);
     if (free)
@@ -315,6 +412,46 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
     ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
     MmH_RefPage(pg);
     memzero(inode, sizeof(*inode));
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+
+    bgd->free_inodes++;
+    ext_writeback_bgd(cache, ext_ino_get_block_group(cache, ino));
+}
+
+uint32_t ext_blk_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
+{
+    return allocate_bmp(cache, block_group_ptr, ALLOC_BLOCK);
+}
+
+void ext_blk_free(ext_cache* cache, uint32_t blk)
+{
+    ext_bgd* bgd = &cache->bgdt[blk/cache->blocks_per_group];
+    uint32_t local_index = blk%cache->blocks_per_group;
+    uint32_t bmp_block = le32_to_host(bgd->block_bitmap) + local_index / (cache->block_size * 8);
+    uint32_t bit = (local_index % (cache->block_size * 8)) % 8;
+    uint32_t idx = (local_index % (cache->block_size * 8)) / 8;
+    
+    page* pg = nullptr;
+    uint8_t* bmp = ext_read_block(cache, bmp_block, &pg);
+    MmH_RefPage(pg);
+    if (bmp[idx] & BIT(bit))
+    {
+        bmp[idx] &= ~BIT(bit);
+        Mm_MarkAsDirtyPhys(pg);
+    }
+    MmH_DerefPage(pg);
+
+    bgd->free_blocks++;
+    ext_writeback_bgd(cache, blk/cache->blocks_per_group);
+}
+
+void ext_writeback_bgd(ext_cache* cache, uint32_t bgd_idx)
+{
+    page* pg = nullptr;
+    ext_bgdt bgdt_section = ext_read_block(cache, (cache->block_size == 1024 ? 2 : 1) + (bgd_idx / (cache->block_size / sizeof(ext_bgd))), &pg);
+    MmH_RefPage(pg);
+    bgdt_section[bgd_idx % (cache->block_size / sizeof(ext_bgd))] = cache->bgdt[bgd_idx];
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
 }

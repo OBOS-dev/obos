@@ -63,7 +63,7 @@ OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_NO_ENTRY,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_NO_ENTRY|DRIVER_HEADER_DIRENT_CB_PATHS,
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,

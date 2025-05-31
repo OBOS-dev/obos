@@ -282,14 +282,51 @@ ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page **pg);
 ext_inode* ext_read_inode(ext_cache* cache, uint32_t ino);
 
 void ext_ino_foreach_block(ext_cache* cache,
-                           ext_inode* inode,
-                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t block, void* userdata),
+                           uint32_t ino,
+                           iterate_decision(*cb)(ext_cache* cache, ext_inode* inode, uint32_t *block, void* userdata),
                            void* userdata);
-obos_status ext_ino_read_blocks(ext_cache* cache, ext_inode* inode, size_t offset, size_t count, void* buffer, size_t *nRead);
+obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, void* buffer, size_t *nRead);
+obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten);
+obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size);
+obos_status ext_ino_expand(ext_cache* cache, uint32_t ino, size_t new_size);
+
+struct inode_offset_location {
+    size_t offset;
+    /*  [0]: Direct block index (valid if idx[1-3] are all zero)
+        [1]: Indirect block index
+        [2]: Doubly indirect block index
+        [3]: Triply indirect block index
+        The search should start at:
+        - if idx[3] != UINT32_MAX
+            - triply indirect blocks
+        - else
+            - if idx[2] != UINT32_MAX
+                - doubly indirect blocks
+            - else
+                - if idx[1] != UINT32_MAX
+                    - indirect blocks
+                - else
+                    - direct blocks
+        (idx[3] != UINT32_MAX ? 
+            (idx[2] == UINT32_MAX ? 
+                (idx[1] != UINT32_MAX ? 
+                    indirect_block 
+                        : blocks)  // idx[1] != UINT32_MAX
+            : doubly_indirect_block) // idx[2] != UINT32_MAX 
+         : triply_indirect_block) // idx[3] != UINT32_MAX
+    */
+    uint32_t idx[4];
+};
+struct inode_offset_location ext_get_blk_index_from_offset(ext_cache* cache, size_t offset);
 
 // block_group can be nullptr
 uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group);
 void ext_ino_free(ext_cache* cache, uint32_t ino);
+
+uint32_t ext_blk_allocate(ext_cache* cache, const uint32_t* block_group);
+void ext_blk_free(ext_cache* cache, uint32_t blk);
+
+void ext_writeback_bgd(ext_cache* cache, uint32_t bgd_idx);
 
 // Creates and populates a dirent
 // If ino is not a directory, this fails.
@@ -307,11 +344,12 @@ ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
 #define ext_ino_get_block_group(cache, inode_number) ((inode_number - 1) / (cache)->inodes_per_group)
 #define ext_ino_get_local_index(cache, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
 
-#if OBOS_ARCHITECTURE_BITS == 64
-#define ext_sb_supports_64bit_filesize (true)
+#ifdef __UINT64_TYPE__
+#   define ext_sb_supports_64bit_filesize (true)
 #else
-#define ext_sb_supports_64bit_filesize (false)
+#   define ext_sb_supports_64bit_filesize (false)
 #endif
+
 #define ext_sb_block_size(superblock) (1024<<le32_to_host((superblock)->log_block_size))
 #define ext_sb_blocks_per_group(superblock) (le16_to_host((superblock)->blocks_per_group))
 #define ext_sb_inodes_per_group(superblock) (le16_to_host((superblock)->inodes_per_group))

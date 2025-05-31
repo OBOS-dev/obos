@@ -35,7 +35,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
 
     size_t nToRead = le32_to_host(inode->blocks) * 512;
     uint8_t* buffer = Allocate(EXT_Allocator, nToRead, nullptr);
-    ext_ino_read_blocks(cache, inode, 0, nToRead, buffer, nullptr);
+    ext_ino_read_blocks(cache, ino, 0, nToRead, buffer, nullptr);
     ext_dirent* ent = nullptr;
     for (size_t offset = 0; offset < nToRead; )
     {
