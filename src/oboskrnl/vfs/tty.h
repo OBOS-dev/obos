@@ -113,8 +113,8 @@ typedef struct tty {
         size_t size;
     } input_buffer;
     struct process* fg_job;
+    atomic_bool paused;
     bool quoted : 1;
-    bool paused : 1;
 } tty;
 
 #define TTY_IOCTL_SETATTR 0x01

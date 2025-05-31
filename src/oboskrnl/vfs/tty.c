@@ -265,10 +265,10 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
                 case TCOOFF:
-                    tty->paused = false;
+                    tty->paused = true;
                     break;
                 case TCOON:
-                    tty->paused = true;
+                    tty->paused = false;
                     break;
                 case TCIOFF:
                 {
@@ -425,7 +425,8 @@ static void tty_kill(tty* tty, int sigval)
         OBOS_KillProcess(tty->fg_job, sigval);
 }
 
-static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
+static void data_ready(void *tty_, const void *buf, size_t nBytesReady) 
+{
     tty *tty = (struct tty *)tty_;
     const uint8_t *buf8 = buf;
     for (size_t i = 0; i < nBytesReady; i++) 
@@ -553,6 +554,7 @@ struct screen_tty {
     void(*data_ready)(void* tty, const void* buf, size_t nBytesReady);
     thread* data_ready_thread;
     tty* tty;
+    atomic_bool input_paused;
 };
 
 static char number_to_secondary(enum scancode code)
@@ -600,6 +602,8 @@ static void poll_keyboard(struct screen_tty* data)
     keycode* keycode_buffer = &tmp_code;
     while (1)
     {
+        while (data->input_paused)
+            OBOSS_SpinlockHint();
         size_t nReady = 1;
         irp* req = VfsH_IRPAllocate();
         req->vn = data->keyboard.vn;
@@ -753,7 +757,17 @@ static obos_status screen_write(void* tty_, const char* buf, size_t szBuf)
     struct screen_tty *data = tty->interface.userdata;
     // for (size_t i = 0; i < szBuf; i++)
     //     OBOS_WriteCharacter(data->out, buf[i]);
-    printf("%.*s", szBuf, buf);
+    for (size_t i = 0; i < szBuf; i++)
+    {
+        char vstart = tty->termios.iflag & IXON ? tty->termios.cc[VSTART] : '\021' /* assume it is this */;
+        char vstop = tty->termios.iflag & IXON ? tty->termios.cc[VSTOP] : '\023' /* assume it is this */;
+        if (buf[i] == vstart)
+            data->input_paused = false;
+        else if (buf[i] == vstop)
+            data->input_paused = true;
+        printf("%c", buf[i]);
+    }    
+
     data->out->paused = tty->paused;
     if (!data->out->paused)
         OBOS_FlushBuffers(data->out);
