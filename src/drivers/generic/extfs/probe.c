@@ -125,7 +125,7 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     ext_inode* inode = ext_read_inode(cache, ino);
     if (!(inode->mode & (EXT2_S_IFDIR|EXT2_S_IFLNK|EXT2_S_IFREG)))
         return nullptr;
-    vnode* vn = ZeroAllocate(Vfs_Allocator, 1, sizeof(vnode), nullptr);
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
@@ -139,7 +139,7 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     vn->blkSize = 1;
     vn->owner_uid = inode->uid;
     vn->group_uid = inode->gid;
-    vn->filesize = inode->size | ext_sb_supports_64bit_filesize ? (uint64_t)inode->dir_acl << 32 : 0;
+    vn->filesize = (uint64_t)inode->size | (ext_sb_supports_64bit_filesize ? (uint64_t)inode->dir_acl << 32 : 0);
 
     vn->perm.other_exec = inode->mode & EXT_OTHER_EXEC;
     vn->perm.other_write = inode->mode & EXT_OTHER_WRITE;
@@ -169,7 +169,7 @@ static void mount_recursive(ext_cache* cache, ext_dirent_cache* parent, dirent* 
         if (!vn)
             goto down;
 
-        dirent* dent = ZeroAllocate(Vfs_Allocator, 1, sizeof(dirent), nullptr);
+        dirent* dent = Vfs_Calloc(1, sizeof(dirent));
         OBOS_InitStringLen(&dent->name, ent->ent.name, ent->ent.name_len);
         dent->vnode = vn;
         VfsH_DirentAppendChild(dparent, dent);

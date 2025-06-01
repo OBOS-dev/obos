@@ -42,6 +42,8 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         ent = (void*)(buffer+offset);
         if (!ent->ino)
             goto down;
+        if (strcmp(ent->name, ".") || strcmp(ent->name, ".."))
+            goto down;
 
         if (!recurse_directories)
         {
@@ -64,7 +66,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
 
             ext_dirent_cache* ent_cache = nullptr;
 
-            if (is_directory && !(strcmp(ent->name, ".") || strcmp(ent->name, "..")))
+            if (is_directory)
                 ent_cache = ext_dirent_populate(cache, ent->ino, ent->name, true);
             else
             {
@@ -72,6 +74,10 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
                 ent_cache->ent = *ent;
                 memcpy(ent_cache->ent.name, ent->name, ent->name_len);
             }
+
+            ent_cache->ent.file_type = ent->file_type;
+            ent_cache->ent.name_len = ent->name_len;
+            ent_cache->ent.rec_len = ent->rec_len;
 
             ext_dirent_adopt(parent, ent_cache);
         }

@@ -32,13 +32,14 @@ ext_inode* ext_read_inode_pg(ext_cache* cache, uint32_t ino, page** pg)
     ext_bgd* bgd = &cache->bgdt[ext_ino_get_block_group(cache, ino)];
     uint32_t local_inode_index = ext_ino_get_local_index(cache, ino);
     uint32_t inode_table_block = le32_to_host(bgd->inode_table) + local_inode_index / cache->inodes_per_block;
-    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + local_inode_index / cache->inodes_per_block;
     uint32_t real_inode_index = (local_inode_index % cache->inodes_per_block);
+    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + (local_inode_index / 8) / (cache->inodes_per_group/8);
+    uint32_t bmp_idx = (local_inode_index / 8) % (cache->inodes_per_group/8);
 
     bool free = false;
     page* pg2 = nullptr;
     uint8_t* inode_bitmap = ext_read_block(cache, inode_bitmap_block, &pg2);
-    if (~inode_bitmap[real_inode_index / 8] & BIT(real_inode_index % 8))
+    if (~inode_bitmap[bmp_idx] & BIT(local_inode_index % 8))
         free = true;
     MmH_DerefPage(pg2);
     if (free)
@@ -254,14 +255,16 @@ obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, s
 {
     if (!cache || !ino || !buffer)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ext_inode* inode = ext_read_inode(cache, ino);
+    page* pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
     if (!inode)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if ((offset + count) > inode->blocks*512)
         count = (offset + count) - inode->blocks*512;
     struct read_block_packet userdata = {.buffer=buffer,.start_offset=offset,.count=count,.buffer_offset=0};
     ext_ino_foreach_block(cache, ino, read_cb, &userdata);
-    Free(EXT_Allocator, inode, sizeof(*inode));
+    MmH_DerefPage(pg);
     if (nRead)
         *nRead = userdata.buffer_offset;
     return userdata.status;
@@ -390,19 +393,19 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
 
     ext_bgd* bgd = &cache->bgdt[ext_ino_get_block_group(cache, ino)];
     uint32_t local_inode_index = ext_ino_get_local_index(cache, ino);
-    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + local_inode_index / cache->inodes_per_block;
-    uint32_t real_inode_index = (local_inode_index % cache->inodes_per_block);
-
+    uint32_t inode_bitmap_block = le32_to_host(bgd->inode_bitmap) + (local_inode_index / 8) / (cache->inodes_per_group/8);
+    uint32_t idx = (local_inode_index / 8) % (cache->inodes_per_group/8);
+    
     bool free = false;
     page* pg = nullptr;
     uint8_t* inode_bitmap = ext_read_block(cache, inode_bitmap_block, &pg);
     MmH_RefPage(pg);
-    if (~inode_bitmap[real_inode_index / 8] & BIT(real_inode_index % 8))
+    if (~inode_bitmap[idx] & BIT(local_inode_index % 8))
         free = true;
     else
     {
         Mm_MarkAsDirtyPhys(pg);
-        inode_bitmap[real_inode_index / 8] &= ~BIT(real_inode_index % 8);
+        inode_bitmap[idx] &= ~BIT(local_inode_index % 8);
     }
     MmH_DerefPage(pg);
     if (free)
