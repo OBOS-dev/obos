@@ -33,8 +33,7 @@ void OBOS_PartProbeAllDrives(bool check_checksum)
 {
     // for (volatile bool b = true; b; )
     //     ;
-    dirent* directory = VfsH_DirentLookup(OBOS_DEV_PREFIX);
-    OBOS_ASSERT(directory);
+    dirent* directory = Vfs_DevRoot;
     for (dirent* ent = directory->d_children.head; ent; )
     {
         if (ent->vnode->vtype == VNODE_TYPE_BLK && !(ent->vnode->flags & VFLAGS_PARTITION))

@@ -231,7 +231,8 @@ void VfsH_DirentAppendChild(dirent* parent, dirent* child)
     parent->d_children.nChildren++;
     child->d_parent = parent;
     mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
-    LIST_APPEND(dirent_list, &point->dirent_list, child);
+    if (point)
+        LIST_APPEND(dirent_list, &point->dirent_list, child);
     if (child->vnode)
         child->vnode->refs++;
 }

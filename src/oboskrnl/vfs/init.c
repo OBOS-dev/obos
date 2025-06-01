@@ -18,6 +18,7 @@
 #include <vfs/vnode.h>
 #include <vfs/fd.h>
 #include <vfs/pipe.h>
+#include <vfs/create.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -84,7 +85,26 @@ void Vfs_Initialize()
         cur = cur->next;
     }
     if (!initrd_dev.driver)
+    {
+        // We need to create OBOS_DEV_PREFIX
+        file_perm perm = {};
+        perm.owner_exec = true;
+        perm.owner_read = true;
+        perm.owner_write = true;
+        perm.group_exec = true;
+        perm.group_read = true;
+        perm.group_write = false;
+        perm.other_exec = true;
+        perm.other_read = true;
+        perm.other_write = false;
+        Vfs_DevRoot = Vfs_Calloc(1, sizeof(dirent));
+        OBOS_InitString(&Vfs_DevRoot->name, "dev");
+        Vfs_DevRoot->vnode = Vfs_Calloc(1, sizeof(vnode));
+        Vfs_DevRoot->vnode->blkSize = 1;
+        Vfs_DevRoot->vnode->vtype = VNODE_TYPE_DIR;
+        Vfs_DevRoot->vnode->perm = perm;
         return;
+    }
     Vfs_Mount("/", nullptr, &initrd_dev, &Vfs_Root->vnode->mount_point);
     Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!Vfs_DevRoot)
