@@ -127,11 +127,15 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 
 void MmH_RefPage(page* buf)
 {
+	if (!buf)
+		return;
 	buf->refcount++;
 	// printf("refed page %p (now at %d)\n", buf->phys, buf->refcount);
 }
 void MmH_DerefPage(page* buf)
 {
+	if (!buf)
+		return;
 	// printf("derefed page %p (now at %d)\n", buf->phys, buf->refcount - 1);
 	if (!(--buf->refcount))
 	{
