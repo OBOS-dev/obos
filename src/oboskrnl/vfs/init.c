@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <partition.h>
 #include <cmdline.h>
 
 #include <vfs/init.h>
@@ -22,6 +23,7 @@
 #include <mm/context.h>
 
 #include <utils/string.h>
+#include <utils/uuid.h>
 
 #include <allocators/base.h>
 
@@ -38,6 +40,8 @@
 
 #include <locks/event.h>
 #include <locks/wait.h>
+
+#include <utils/list.h>
 
 /*
     "--mount-initrd=pathspec: Mounts the InitRD at pathspec if specified, otherwise the initrd is left unmounted."
@@ -81,9 +85,10 @@ void Vfs_Initialize()
     }
     if (!initrd_dev.driver)
         return;
-    mount* root = nullptr;
-    Vfs_Mount("/", nullptr, &initrd_dev, &root);
-    Vfs_Root->vnode->mount_point = root;
+    Vfs_Mount("/", nullptr, &initrd_dev, &Vfs_Root->vnode->mount_point);
+    Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
+    if (!Vfs_DevRoot)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)
@@ -92,15 +97,58 @@ void Vfs_Initialize()
 }
 OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 {
-    char* root_uuid = OBOS_GetOPTS("root-fs-uuid");
+    char* root_uuid_str = OBOS_GetOPTS("root-fs-uuid");
     char* root_partid = OBOS_GetOPTS("root-fs-partid");
-    if (strcmp(root_partid ? root_partid : root_uuid, "initrd"))
+    if (strcmp(root_partid ? root_partid : root_uuid_str, "initrd"))
         goto end; // We needn't do anything.
-    OBOS_Debug("%s: Unimplemented.\n", __func__);
+    uuid root_uuid = {};
+    if (root_uuid_str)
+    {
+        string str = {};
+        OBOS_InitString(&str, root_uuid_str);
+        OBOS_UUIDToString(&root_uuid, &str);
+    }
+    partition* to_mount = nullptr;
+    for (partition* part = LIST_GET_HEAD(partition_list, &OBOS_Partitions); part && !to_mount; )
+    {
+        if (root_uuid_str)
+        {
+            if (part->format != PARTITION_FORMAT_GPT)
+                goto down;
+            if (memcmp(root_uuid, part->part_uuid, sizeof(uuid)))
+                to_mount = part;
+        }   
+        else
+        {
+            if (OBOS_CompareStringC(&part->partid, root_partid))
+                to_mount = part;
+        }
+
+        down:
+        part = LIST_GET_NEXT(partition_list, &OBOS_Partitions, part);
+    }
+    if (!to_mount)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find partition %s\n", root_uuid_str ? root_uuid_str : root_partid);
+    if (!to_mount->fs_driver) 
+       OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No filesystem driver exists for partition %s\n", root_uuid_str ? root_uuid_str : root_partid);
+    Vfs_UnmountP("/");
+    memzero(&Vfs_Root->tree_info, sizeof(Vfs_Root->tree_info));
+    Vfs_DevRoot->tree_info.next_child = nullptr;
+    Vfs_DevRoot->tree_info.prev_child = nullptr;
+    vdev fs_vdev = {.driver=to_mount->fs_driver};
+    Vfs_Mount("/", to_mount->vn, &fs_vdev, &Vfs_Root->vnode->mount_point);
+    dirent* dev = VfsH_DirentLookup(OBOS_DEV_PREFIX);
+    if (!dev)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    dirent* parent = dev ? dev->d_parent : nullptr;
+    if (dev)
+        VfsH_DirentRemoveChild(parent, dev);
+    Vfs_DevRoot->vnode = dev->vnode;
+    VfsH_DirentAppendChild(parent, Vfs_DevRoot);
     end:
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
-    if (root_uuid)
-        Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+    if (root_uuid_str)
+        Free(OBOS_KernelAllocator, root_uuid_str, strlen(root_uuid_str));
     Vfs_InitDummyDevices();
 }

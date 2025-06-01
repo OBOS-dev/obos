@@ -291,9 +291,7 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
 {
     if (!vn || !dev_name)
         return nullptr;
-    dirent* parent = VfsH_DirentLookup(OBOS_DEV_PREFIX);
-    if (!parent)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    dirent* parent = Vfs_DevRoot;
     dirent* ent = VfsH_DirentLookupFrom(dev_name, parent);
     if (ent && ent->vnode == vn)
         return ent;

@@ -18,6 +18,7 @@
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
+#include <vfs/mount.h>
 
 enum {
     // /dev/null
@@ -210,9 +211,7 @@ static void init_desc(dev_desc desc)
         }
     }
 
-    dirent* parent = VfsH_DirentLookup(OBOS_DEV_PREFIX);
-    if (!parent)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    dirent* parent = Vfs_DevRoot;
     vn->mount_point = parent->vnode->mount_point;
     VfsH_DirentAppendChild(parent, ent);
 }

@@ -31,6 +31,7 @@
 #include <utils/string.h>
 
 struct dirent* Vfs_Root;
+struct dirent* Vfs_DevRoot;
 mount_list Vfs_Mounted;
 
 typedef LIST_HEAD(symbolic_link_list, struct symbolic_link) symbolic_link_list;
@@ -283,7 +284,7 @@ bool VfsH_UnlockMountpoint(mount* point)
         return true;
     return obos_is_success(Core_MutexRelease(&point->lock));
 }
-static void deref_vnode(vnode* vn)
+static bool deref_vnode(vnode* vn)
 {
     if (!(--vn->refs))
     {
@@ -291,7 +292,9 @@ static void deref_vnode(vnode* vn)
             if (!(vn->un.device->refs--))
                 Vfs_Free(vn->un.device);
         Vfs_Free(vn);
+        return true;
     }
+    return false;
 }
 static void close_fd(fd* desc)
 {
@@ -325,7 +328,19 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
 {
     OBOS_UNUSED(unused);
     OBOS_UNUSED(userdata);
-    deref_vnode(ent->vnode);
+    if (ent == Vfs_DevRoot || ent->d_parent == Vfs_DevRoot || ent == Vfs_Root)
+        return; // Don't free this.
+    bool vnode_freed = deref_vnode(ent->vnode);
+    if (ent->d_parent)
+    {
+        if (deref_vnode(ent->d_parent->vnode))
+        {
+            OBOS_FreeString(&ent->name);
+            Vfs_Free(ent);    
+        }
+    }
+    if (!vnode_freed)
+        return;
     OBOS_FreeString(&ent->name);
     Vfs_Free(ent);
 }

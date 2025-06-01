@@ -10,9 +10,9 @@
 
 #include <allocators/base.h>
 
-OBOS_EXPORT extern allocator_info* Vfs_Allocator;
+extern allocator_info* Vfs_Allocator;
 
-void* Vfs_Malloc(size_t cnt);
-void* Vfs_Calloc(size_t nObjs, size_t szObj);
-void* Vfs_Realloc(void* what, size_t cnt);
-void  Vfs_Free(void* what);
+OBOS_EXPORT void* Vfs_Malloc(size_t cnt);
+OBOS_EXPORT void* Vfs_Calloc(size_t nObjs, size_t szObj);
+OBOS_EXPORT void* Vfs_Realloc(void* what, size_t cnt);
+OBOS_EXPORT void  Vfs_Free(void* what);
