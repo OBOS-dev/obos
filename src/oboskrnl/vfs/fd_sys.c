@@ -477,7 +477,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         return status;
     st.st_size = to_stat->filesize;
     mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR) ? &point->fs_driver->driver->header : nullptr;
+    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
     if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
         driver = &to_stat->un.device->driver->header;
     size_t blkSize = 0;
@@ -544,6 +544,63 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_uid = to_stat->owner_uid;
     st.st_ino = to_stat->inode;
     memcpy_k_to_usr(target, &st, sizeof(struct stat));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    vnode* vn = nullptr;
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+    if (parent == AT_FDCWD || path[0] == '/')
+    {
+        dirent* dent = VfsH_DirentLookup(path);
+        Free(OBOS_KernelAllocator, path, sz_path);
+        if (!dent)
+            return OBOS_STATUS_NOT_FOUND;
+
+        vn = dent->vnode;
+    }
+    else if (!strlen(path))
+    {
+        Free(OBOS_KernelAllocator, path, sz_path);
+        if (HANDLE_TYPE(parent) != HANDLE_TYPE_FD && HANDLE_TYPE(parent) != HANDLE_TYPE_DIRENT)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), parent, HANDLE_TYPE_FD, true, &status);
+        if (!fd)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        switch (HANDLE_TYPE(parent)) {
+            case HANDLE_TYPE_FD:
+                vn = fd->un.fd->vn;
+                break;
+            case HANDLE_TYPE_DIRENT:
+                vn = fd->un.dirent->vnode;
+                break;
+            default:
+                OBOS_UNREACHABLE;
+        }   
+    }
+
+    if (!vn)
+        return OBOS_STATUS_NOT_FOUND;
+
+    size_t len = OBOS_MIN(max_size, strlen(vn->un.linked));
+    void* buff = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, ubuff, nullptr, max_size, 0, true, nullptr);
+    memcpy(buff, vn->un.linked, OBOS_MIN(max_size, len));
+    if (length)
+        memcpy_k_to_usr(length, &len, sizeof(size_t));
+
     return OBOS_STATUS_SUCCESS;
 }
 

@@ -276,14 +276,14 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
     if (ent == Vfs_DevRoot || ent->d_parent == Vfs_DevRoot || ent == Vfs_Root)
         return; // Don't free this.
     bool vnode_freed = deref_vnode(ent->vnode);
-    if (ent->d_parent)
-    {
-        if (deref_vnode(ent->d_parent->vnode))
-        {
-            OBOS_FreeString(&ent->name);
-            Vfs_Free(ent);    
-        }
-    }
+    // if (ent->d_parent)
+    // {
+    //     if (deref_vnode(ent->d_parent->vnode))
+    //     {
+    //         OBOS_FreeString(&ent->name);
+    //         Vfs_Free(ent);    
+    //     }
+    // }
     if (!vnode_freed)
         return;
     OBOS_FreeString(&ent->name);
