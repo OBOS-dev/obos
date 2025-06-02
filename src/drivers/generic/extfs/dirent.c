@@ -25,7 +25,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
     ext_inode* inode = ext_read_inode(cache, ino);
     if (!inode)
         return nullptr;
-    if (~inode->mode & EXT2_S_IFDIR)
+    if (!ext_ino_test_type(inode, EXT2_S_IFDIR))
         return nullptr;
 
     ext_dirent_cache* parent = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + strlen(parent_name), nullptr);
@@ -60,7 +60,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
             else
             {
                 ext_inode* child_inode = ext_read_inode(cache, ent->ino);
-                is_directory = child_inode->mode & EXT2_S_IFDIR;
+                is_directory = ext_ino_test_type(inode, EXT2_S_IFDIR);
                 Free(EXT_Allocator, child_inode, sizeof(ext_inode));
             }
 

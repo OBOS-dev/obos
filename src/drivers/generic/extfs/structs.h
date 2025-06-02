@@ -164,6 +164,9 @@ enum {
     EXT2_S_IFSOCK = 0xC000,
 };
 
+#define ext_ino_get_type(inode) (le32_to_host((inode)->mode) >> 12)
+#define ext_ino_test_type(inode, type) ((le32_to_host((inode)->mode) >> 12) == ((type) >> 12))
+
 #undef EXEC
 #undef WRITE
 #undef READ

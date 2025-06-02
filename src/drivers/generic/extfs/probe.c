@@ -123,19 +123,26 @@ bool probe(void* vn_)
 static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 {
     ext_inode* inode = ext_read_inode(cache, ino);
-    if (!(inode->mode & (EXT2_S_IFDIR|EXT2_S_IFLNK|EXT2_S_IFREG)))
+    
+    uint32_t vtype = 0;
+    if (ext_ino_test_type(inode, EXT2_S_IFDIR))
+        vtype = VNODE_TYPE_DIR;
+    else if (ext_ino_test_type(inode, EXT2_S_IFREG))
+        vtype = VNODE_TYPE_REG;
+    else if (ext_ino_test_type(inode, EXT2_S_IFLNK))
+        vtype = VNODE_TYPE_LNK;
+    else
+    {
+        Free(EXT_Allocator, inode, sizeof(*inode));
         return nullptr;
+    }
+
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
     vn->desc = (dev_desc)handle;
-    if (inode->mode & EXT2_S_IFDIR)
-        vn->vtype = VNODE_TYPE_DIR;
-    else if (inode->mode & EXT2_S_IFREG)
-        vn->vtype = VNODE_TYPE_REG;
-    else if (inode->mode & EXT2_S_IFLNK)
-        vn->vtype = VNODE_TYPE_LNK;
+    vn->vtype = vtype;
     vn->blkSize = 1;
     vn->owner_uid = inode->uid;
     vn->group_uid = inode->gid;
@@ -159,6 +166,8 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 
     if (vn->vtype == VNODE_TYPE_LNK)
         vn->un.linked = ext_ino_get_linked(cache, inode, ino);
+
+    Free(EXT_Allocator, inode, sizeof(*inode));
 
     return vn;
 }
