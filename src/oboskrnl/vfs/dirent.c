@@ -145,6 +145,15 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
     while(root)
     {
         dirent* curr = root;
+        if (curr->vnode->vtype == VNODE_TYPE_LNK)
+        {
+            // If the linked vnode is a directory, set curr to the linked directory
+            dirent* ent = VfsH_FollowLink(curr);
+            if (!ent)
+                return nullptr; // broken link :(
+            if (ent->vnode->vtype == VNODE_TYPE_DIR)
+                curr = ent;
+        }
         if (tok[0] == '.')
         {
             if (tok[1] == '.')
@@ -180,6 +189,7 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
                 return what;
             continue;
         }
+
         for (curr = root->d_children.head; curr;)
         {
             if (OBOS_CompareStringNC(&curr->name, tok, tok_len))
@@ -198,6 +208,7 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
             // root = curr->d_children.head ? curr->d_children.head : root;
             curr = curr->d_next_child;
         }
+
         if (!curr)
         {
             root = root->d_parent;
@@ -207,6 +218,7 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
     }
     return nullptr;
 }
+
 dirent* VfsH_DirentLookup(const char* path)
 {
     dirent* begin = Core_GetCurrentThread()->proc->cwd;
@@ -220,6 +232,16 @@ dirent* VfsH_DirentLookup(const char* path)
         begin = Vfs_Root;
     return VfsH_DirentLookupFrom(path, begin);
 }
+
+dirent* VfsH_FollowLink(dirent* ent)
+{
+    if (!ent)
+        return nullptr;
+    while (ent && ent->vnode->vtype == VNODE_TYPE_LNK)
+        ent = VfsH_DirentLookupFrom(ent->vnode->un.linked, ent->d_parent ? ent->d_parent : Vfs_Root);
+    return ent;
+}
+
 void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 {
     if(!parent->d_children.head)
@@ -316,6 +338,7 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
     VfsH_UnlockMountpoint(point);
     return ent;
 }
+
 LIST_GENERATE(dirent_list, dirent, node);
 
 struct mlibc_dirent {

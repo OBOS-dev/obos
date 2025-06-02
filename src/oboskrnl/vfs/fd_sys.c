@@ -425,6 +425,8 @@ obos_status Sys_FdFlush(handle desc)
 // FIFO
 #define S_IFIFO    0010000
 
+#define AT_SYMLINK_NOFOLLOW 0x100
+
 obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struct stat* target)
 {
     OBOS_UNUSED(flags && "Unimplemented");
@@ -451,8 +453,6 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             break;
         }
         case FSFDT_PATH:
-            // path is relative to the CWD (TODO)
-            // just fallthrough until that gets implemented
         case FSFDT_FD_PATH:
         {
             char* path = nullptr;
@@ -465,6 +465,8 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             dirent* dent = VfsH_DirentLookup(path);
 //          printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
+            if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
+                dent = VfsH_FollowLink(dent);
             if (dent)
                 to_stat = dent->vnode;
             else
@@ -655,6 +657,8 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
             memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
         return HANDLE_INVALID;
     }
+
+    dent = VfsH_FollowLink(dent);
 
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
