@@ -23,7 +23,6 @@ cp settings-x86_64.json settings.json
 ./obos-strap setup-env
 ./obos-strap install bootstrap-binutils
 export PATH=$PATH:$PWD/host_pkgs/bin
-./obos-strap install bootstrap-gcc
 ./obos-strap install all
 ```
 4. Use qemu or any other emulator to run your ISO.
