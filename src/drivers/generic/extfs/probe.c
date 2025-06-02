@@ -157,6 +157,9 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     
     vn->inode = ino;
 
+    if (vn->vtype == VNODE_TYPE_LNK)
+        vn->un.linked = ext_ino_get_linked(cache, inode, ino);
+
     return vn;
 }
 

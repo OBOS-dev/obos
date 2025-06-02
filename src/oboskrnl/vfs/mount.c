@@ -34,15 +34,6 @@ struct dirent* Vfs_Root;
 struct dirent* Vfs_DevRoot;
 mount_list Vfs_Mounted;
 
-typedef LIST_HEAD(symbolic_link_list, struct symbolic_link) symbolic_link_list;
-typedef struct symbolic_link
-{
-    dirent* ent;
-    dev_desc desc;
-    LIST_NODE(symbolic_link_list, struct symbolic_link) node;
-} symbolic_link;
-LIST_GENERATE_STATIC(symbolic_link_list, struct symbolic_link, node);
-
 static size_t str_search(const char* str, char ch)
 {
     size_t ret = strchr(str, ch);
@@ -69,9 +60,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
             break;
         case FILE_TYPE_SYMBOLIC_LINK:
         {
-            // Defer the initialization of the vnode.
-            Vfs_Free(vn);
-            vn = nullptr;
+            vn->vtype = VNODE_TYPE_LNK;        
             break;
         }
         default:
@@ -90,7 +79,6 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
     mount* mountpoint = (mount*)udata[0];
     vdev* fs_driver = (vdev*)udata[1];
     vdev* device = (vdev*)udata[2];
-    symbolic_link_list* symlinks = (symbolic_link_list*)udata[3];
     OBOS_UNUSED(blkSize);
     OBOS_UNUSED(device);
     file_type type = 0;
@@ -145,19 +133,11 @@ static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount,
             else
                 fs_driver->driver->header.ftable.path_search(&curdesc, (void*)udata[2], currentPath);
             mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+            new->vnode = new_vn;
+            new->vnode->refs++;
             if (curtype == FILE_TYPE_SYMBOLIC_LINK)
-            {
-                symbolic_link* lnk = Vfs_Calloc(1, sizeof(symbolic_link));
-                lnk->ent = new;
-                lnk->desc = desc;
-                LIST_APPEND(symbolic_link_list, symlinks, lnk);   
-            }
-            else 
-            {
-                vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
-                new->vnode = new_vn;
-                new->vnode->refs++;
-            }
+                mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
@@ -205,12 +185,10 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     // at->vnode->mount_point = mountpoint;
     at->vnode->flags |= VFLAGS_MOUNTPOINT;
     mountpoint->root = at;
-    symbolic_link_list symlinks = {};
-    uintptr_t udata[4] = {
+    uintptr_t udata[3] = {
         (uintptr_t)mountpoint,
         (uintptr_t)fs_driver,
         (uintptr_t)on,
-        (uintptr_t)&symlinks,
     };
     mountpoint->fs_driver = memcpy(Vfs_Calloc(1, sizeof(vdev)), fs_driver, sizeof(*fs_driver));
     if (mountpoint->device)
@@ -225,39 +203,6 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     }
     else
         fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
-    for (symbolic_link* lnk = LIST_GET_HEAD(symbolic_link_list, &symlinks); lnk; )
-    {
-        symbolic_link* next = LIST_GET_NEXT(symbolic_link_list, &symlinks, lnk);
-        if (lnk->ent->vnode)
-        {
-            // We have already been resolved.
-            lnk = next;
-            continue;
-        }
-        const char *points_at = nullptr;
-        dev_desc desc_points_at = 0;
-        fs_driver->driver->header.ftable.get_linked_desc(lnk->desc, &desc_points_at);
-        fs_driver->driver->header.ftable.query_path(desc_points_at, &points_at);
-        dirent* resolved = VfsH_DirentLookupFrom(points_at, mountpoint->root);
-        OBOS_ASSERT(resolved); // TODO: Proper error handling.
-        dev_desc desc = 0;
-        while (!resolved->vnode)
-        {
-            desc = desc_points_at;
-            // *resolved is probably also an unresolved symlink.
-            // resolve it.
-            points_at = nullptr;
-            desc_points_at = 0;
-            fs_driver->driver->header.ftable.get_linked_desc(desc, &desc_points_at);
-            fs_driver->driver->header.ftable.query_path(desc_points_at, &points_at);
-            resolved = VfsH_DirentLookupFrom(points_at, mountpoint->root);
-            OBOS_ASSERT(resolved); // TODO: Proper error handling.
-        }
-        lnk->ent->vnode = resolved->vnode;
-        lnk->ent->vnode->refs++;
-        Vfs_Free(lnk); // free the temporary structure.
-        lnk = next;
-    }
     LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
     return OBOS_STATUS_SUCCESS;
 }

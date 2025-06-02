@@ -57,6 +57,12 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
 {
     if (!desc || !ent)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (ent->vnode->vtype == VNODE_TYPE_LNK)
+    {
+        ent = VfsH_DirentLookupFrom(ent->vnode->un.linked, ent->d_parent);
+        if (!ent)
+            return OBOS_STATUS_NOT_FOUND;
+    }
     return Vfs_FdOpenVnode(desc, ent->vnode, oflags);
 }
 OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags)
@@ -69,7 +75,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* vnode = vn;
     OBOS_ASSERT(vnode);
-    if (vnode->vtype == VNODE_TYPE_DIR)
+    if (vnode->vtype == VNODE_TYPE_DIR || vnode->vtype == VNODE_TYPE_LNK)
         return OBOS_STATUS_NOT_A_FILE;
     desc->vn = vnode;
     desc->flags |= FD_FLAGS_OPEN;

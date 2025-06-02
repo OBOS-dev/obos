@@ -289,6 +289,7 @@ obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, s
 obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten);
 obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size);
 obos_status ext_ino_expand(ext_cache* cache, uint32_t ino, size_t new_size);
+char* ext_ino_get_linked(ext_cache* cache, ext_inode* inode, uint32_t ino_num);
 
 struct inode_offset_location {
     size_t offset;

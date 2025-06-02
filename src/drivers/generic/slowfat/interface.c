@@ -50,7 +50,7 @@ obos_status path_search(dev_desc* found, void* vn_, const char* what)
         return OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_NOT_FOUND;
 }
-obos_status get_linked_desc(dev_desc desc, dev_desc* found)
+obos_status get_linked_path(dev_desc desc, const char** found)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(found);

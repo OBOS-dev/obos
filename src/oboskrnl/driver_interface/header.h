@@ -169,7 +169,7 @@ typedef struct driver_ftable
     // lifetime of *path is dictated by the driver.
     obos_status(*query_path)(dev_desc desc, const char** path);
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
-    obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
+    obos_status(*get_linked_path)(dev_desc desc, const char** linked);
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
     union {

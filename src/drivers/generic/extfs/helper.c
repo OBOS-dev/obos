@@ -287,6 +287,32 @@ obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, s
 
 // }
 
+char* ext_ino_get_linked(ext_cache* cache, ext_inode* inode, uint32_t ino_num)
+{
+    if (!cache || !inode || !ino_num)
+        return nullptr;
+    int ea_blocks = le32_to_host(inode->file_acl) ? (cache->block_size>>9) : 0;
+    bool fast_symlink = !(le32_to_host(inode->blocks) - ea_blocks);
+    char* ret = nullptr;
+    if (fast_symlink)
+    {
+        size_t str_len = strnlen((char*)&inode->direct_blocks, 60);
+        ret = Allocate(EXT_Allocator, str_len+1, nullptr);
+        memcpy(ret, (char*)&inode->direct_blocks, str_len);
+        ret[str_len] = 0;
+    }
+    else
+    {
+        // Read blocks
+        void* buff = Allocate(EXT_Allocator, le32_to_host(inode->blocks) * 512, nullptr);
+        ext_ino_read_blocks(cache, ino_num, 0, le32_to_host(inode->blocks) * 512, buff, nullptr);
+        size_t str_len = strnlen((char*)&inode->direct_blocks, le32_to_host(inode->blocks) * 512);
+        ret = Reallocate(EXT_Allocator, buff, str_len+1, le32_to_host(inode->blocks) * 512, nullptr);
+        ret[str_len] = 0;
+    }
+    return ret;
+}
+
 struct inode_offset_location ext_get_blk_index_from_offset(ext_cache* cache, size_t offset)
 {
     struct inode_offset_location loc = {.offset=offset,.idx={}};

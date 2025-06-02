@@ -62,7 +62,8 @@ typedef struct vnode
     struct mount* mount_point;
     union {
         struct mount* mounted;
-        vdev*         device;
+                vdev* device;
+          const char* linked;
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;
