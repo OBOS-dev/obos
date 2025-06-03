@@ -200,6 +200,8 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.group_exec = filemode & FILEMODE_GROUP_EXEC;
     ino->perm.owner_exec = filemode & FILEMODE_OWNER_EXEC;
     ino->perm.other_exec = filemode & FILEMODE_OTHER_EXEC;
+    ino->perm.set_uid = filemode & 04000;
+    ino->perm.set_gid = filemode & 02000;
     return ino;
 }
 driver_init_status OBOS_DriverEntry(driver_id* this)

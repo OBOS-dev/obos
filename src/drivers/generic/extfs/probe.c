@@ -160,6 +160,9 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     vn->perm.group_write = inode->mode & EXT_GROUP_WRITE;
     vn->perm.group_read = inode->mode & EXT_GROUP_READ && !cache->read_only;
 
+    vn->perm.set_uid = inode->mode & EXT_SETUID;
+    vn->perm.set_gid = inode->mode & EXT_SETGID;
+
     vn->mount_point = mnt;
     
     vn->inode = ino;

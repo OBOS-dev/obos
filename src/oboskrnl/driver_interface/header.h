@@ -89,6 +89,8 @@ typedef struct driver_file_perm
     bool owner_exec : 1;
     bool owner_write : 1;
     bool owner_read : 1;
+    bool set_uid : 1;
+    bool set_gid : 1;
 } OBOS_PACK driver_file_perm;
 typedef enum file_type
 {
