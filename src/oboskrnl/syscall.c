@@ -376,6 +376,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_CreatePipe,
     (uintptr_t)Sys_PSelect,
     (uintptr_t)Sys_ReadLinkAt,
+    (uintptr_t)Sys_SetUid,
+    (uintptr_t)Sys_SetGid,
+    (uintptr_t)Sys_GetUid,
+    (uintptr_t)Sys_GetGid,
 };
 
 // Arch syscall table is defined per-arch
