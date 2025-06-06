@@ -269,6 +269,8 @@ typedef struct ext_cache {
     uint16_t inode_size;
     ext_dirent_cache* root;
     LIST_NODE(ext_cache_list, struct ext_cache) node;
+    vnode** inode_vnode_table;
+    size_t inode_vnode_table_size;
 } ext_cache;
 
 typedef LIST_HEAD(ext_cache_list, ext_cache) ext_cache_list;

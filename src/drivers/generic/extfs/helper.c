@@ -352,6 +352,8 @@ obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, 
 
     if (nWritten)
         *nWritten = packet.buff_offset;
+
+    return OBOS_STATUS_SUCCESS;
 }
 
 iterate_decision commit_blks_cb(ext_cache* cache, ext_inode* inode, uint32_t* block, void* userdata)

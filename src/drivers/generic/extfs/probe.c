@@ -20,7 +20,11 @@
 
 #include <mm/page.h>
 
-#include "locks/spinlock.h"
+#include <mm/alloc.h>
+#include <mm/context.h>
+
+#include <locks/spinlock.h>
+
 #include "structs.h"
 
 bool probe(void* vn_)
@@ -116,6 +120,12 @@ bool probe(void* vn_)
     Free(EXT_Allocator, root, sizeof(*root));
     cache->root = ext_dirent_populate(cache, 2, "/", true);
 
+    cache->inode_vnode_table_size = cache->inodes_per_group*cache->block_group_count*sizeof(vnode*);
+    cache->inode_vnode_table = Mm_VirtualMemoryAlloc(&Mm_KernelContext, 
+                                                    nullptr, cache->inode_vnode_table_size, 
+                                                    0, VMA_FLAGS_HUGE_PAGE,
+                                                    nullptr, nullptr);
+
     LIST_APPEND(ext_cache_list, &EXT_CacheList, cache);
 
     return true;
@@ -123,6 +133,12 @@ bool probe(void* vn_)
 
 static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 {
+    if (cache->inode_vnode_table[ino-1])
+    {
+        cache->inode_vnode_table[ino-1]->refs++;
+        return cache->inode_vnode_table[ino-1];
+    }
+
     ext_inode* inode = ext_read_inode(cache, ino);
     
     uint32_t vtype = 0;
@@ -139,6 +155,8 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     }
 
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
+    cache->inode_vnode_table[ino-1] = vn;
+    vn->refs++; // Referenced by inode_vnode_table
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
@@ -173,6 +191,8 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
         vn->un.linked = ext_ino_get_linked(cache, inode, ino);
 
     Free(EXT_Allocator, inode, sizeof(*inode));
+    
+    vn->refs++; // Referenced by inode_vnode_table
 
     return vn;
 }
