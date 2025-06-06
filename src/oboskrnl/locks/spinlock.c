@@ -28,13 +28,6 @@ static uint64_t nanoseconds_since_boot()
 #endif
 }
 
-spinlock Core_SpinlockCreate()
-{
-	spinlock tmp = {};
-	tmp.val = (atomic_flag)ATOMIC_FLAG_INIT;
-	return tmp;
-}
-
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant)
 {
 	// IRQL_INVALID is used to specify not to raise the irql at all
