@@ -190,11 +190,49 @@ static __attribute__((no_instrument_function)) void page_writer()
                 pg = next;
                 continue;
             }
+            if (!pg->backing_vn)
+            {
+                if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
+                {
+                    pg = next;
+                    continue;
+                }
+                swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
+                alloc->refs = pg->virt_pages.nNodes;
+                if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
+                {
+                    alloc->refs = 1;
+                    MmH_DerefSwapAllocation(alloc);
+                    pg = next;
+                    continue;
+                }
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+        
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
+            }
+            
+            // abort:
+            pg = next;
+        }
+        
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+        {
+            page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
+            if (~pg->flags & PHYS_PAGE_DIRTY)
+            {
+                // Funny business
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+                pg = next;
+                continue;
+            }
             if (pg->backing_vn)
             {
                 // This is a file page, so writing it back is different than writing back an
                 // anonymous page.
-                size_t nBytes = OBOS_PAGE_SIZE;
+                size_t nBytes = OBOS_MIN((size_t)OBOS_PAGE_SIZE, pg->backing_vn->filesize-pg->file_offset);
                 mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
                 const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
                 if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
@@ -213,33 +251,17 @@ static __attribute__((no_instrument_function)) void page_writer()
                     OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
                 oldIrql = Core_SpinlockAcquire(&swap_lock);
                 // VfsH_UnlockMountpoint(point);
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+        
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
             }
-            else 
-            {
-                if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
-                {
-                    pg = next;
-                    continue;
-                }
-                swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
-                alloc->refs = pg->virt_pages.nNodes;
-                if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
-                {
-                    alloc->refs = 1;
-                    MmH_DerefSwapAllocation(alloc);
-                    pg = next;
-                    continue;
-                }
-            }
-            pg->flags &= ~PHYS_PAGE_DIRTY;
-            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
-    
-            LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
-            pg->flags |= PHYS_PAGE_STANDBY;
             
             // abort:
             pg = next;
         }
+
         Mm_DirtyPagesBytes = 0;
         Core_SpinlockRelease(&swap_lock, oldIrql);
         Core_EventSet(&page_writer_done, false);
