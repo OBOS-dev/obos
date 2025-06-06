@@ -15,6 +15,8 @@
 
 #include <driver_interface/header.h>
 
+#include <locks/spinlock.h>
+
 #include "structs.h"
 
 LIST_GENERATE(ext_cache_list, ext_cache, node);
@@ -35,10 +37,48 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     ext_inode_handle *hnd = (void*)desc;
     if (!hnd || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    return ext_ino_read_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkRead);
+    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
+    irql oldIrql = Core_SpinlockAcquire(&hnd->lock);
+    obos_status status = ext_ino_read_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkRead);
+    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
+    Core_SpinlockRelease(&hnd->lock, oldIrql);
+    return status;
 }
 
-OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
+obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
+{
+    ext_inode_handle *hnd = (void*)desc;
+    if (!hnd || !buf)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
+    irql oldIrql = Core_SpinlockAcquire(&hnd->lock);
+    
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    size_t new_size = blkOffset+blkCount;
+    status = ext_ino_resize(hnd->cache, hnd->ino, new_size, true);
+    if (obos_is_error(status))
+    {
+        // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
+        Core_SpinlockRelease(&hnd->lock, oldIrql);
+        return status;
+    }
+
+    status = ext_ino_commit_blocks(hnd->cache, hnd->ino, blkOffset, blkCount);
+    if (obos_is_error(status))
+    {
+        // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
+        Core_SpinlockRelease(&hnd->lock, oldIrql);
+        return status;
+    }
+
+    status = ext_ino_write_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkWritten);
+    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
+    Core_SpinlockRelease(&hnd->lock, oldIrql);
+    return status;
+}
+
 OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
 OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name); // unrequired for fs drivers.
 OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)

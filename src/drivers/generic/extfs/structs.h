@@ -6,6 +6,7 @@
  * Abandon all hope ye who enter here
 */
 
+#include "locks/spinlock.h"
 #include <int.h>
 #include <error.h>
 #include <struct_packing.h>
@@ -220,6 +221,8 @@ typedef struct ext_dirent_cache {
         size_t nChildren;
     } children;
     struct ext_dirent_cache *next, *prev;
+    ext_inode* inode;
+    page* pg;
     ext_dirent ent;
 } ext_dirent_cache;
 
@@ -277,6 +280,7 @@ typedef struct ext_inode_handle
 {
     uint32_t ino;
     ext_cache* cache;
+    spinlock lock;
 } ext_inode_handle;
 
 // Gets an inode straight from the pagecache, returns it along the page* of the pagecache entry.
@@ -291,7 +295,7 @@ void ext_ino_foreach_block(ext_cache* cache,
 obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, void* buffer, size_t *nRead);
 obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten);
 obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size);
-obos_status ext_ino_expand(ext_cache* cache, uint32_t ino, size_t new_size);
+obos_status ext_ino_resize(ext_cache* cache, uint32_t ino, size_t new_size, bool expand_only);
 char* ext_ino_get_linked(ext_cache* cache, ext_inode* inode, uint32_t ino_num);
 
 struct inode_offset_location {
@@ -349,7 +353,11 @@ ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
 #define ext_ino_get_local_index(cache, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
 
 #ifdef __UINT64_TYPE__
-#   define ext_sb_supports_64bit_filesize (true)
+#   if SIZE_MAX==UINT64_MAX
+#       define ext_sb_supports_64bit_filesize (true)
+#   else
+#       define ext_sb_supports_64bit_filesize (false)
+#   endif
 #else
 #   define ext_sb_supports_64bit_filesize (false)
 #endif

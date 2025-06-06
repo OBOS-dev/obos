@@ -12,6 +12,8 @@
 
 #include <allocators/base.h>
 
+#include <mm/page.h>
+
 #include "structs.h"
 
 ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories)
@@ -22,14 +24,22 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
     if (strlen(parent_name) > 255)
         return nullptr;
 
-    ext_inode* inode = ext_read_inode(cache, ino);
+    page* pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
     if (!inode)
         return nullptr;
     if (!ext_ino_test_type(inode, EXT2_S_IFDIR))
+    {
+        MmH_DerefPage(pg);
         return nullptr;
+    }
 
     ext_dirent_cache* parent = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + strlen(parent_name), nullptr);
     parent->ent.ino = ino;
+    parent->inode = inode;
+    MmH_RefPage(pg);
+    parent->pg = pg;
     parent->ent.name_len = strlen(parent_name);
     memcpy(parent->ent.name, parent_name, parent->ent.name_len);
 
@@ -49,6 +59,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         {
             ext_dirent_cache* ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + ent->name_len, nullptr);
             ent_cache->ent = *ent;
+            ent_cache->inode = ext_read_inode_pg(cache, ent->ino, &ent_cache->pg);
             memcpy(ent_cache->ent.name, ent->name, ent->name_len);
             ext_dirent_adopt(parent, ent_cache);
         }
@@ -65,13 +76,14 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
             }
 
             ext_dirent_cache* ent_cache = nullptr;
-
+        
             if (is_directory)
                 ent_cache = ext_dirent_populate(cache, ent->ino, ent->name, true);
             else
             {
                 ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + ent->name_len, nullptr);
                 ent_cache->ent = *ent;
+                ent_cache->inode = ext_read_inode_pg(cache, ent->ino, &ent_cache->pg);
                 memcpy(ent_cache->ent.name, ent->name, ent->name_len);
             }
 
@@ -86,6 +98,6 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         offset += ent->rec_len;
     }
 
-    Free(EXT_Allocator, inode, sizeof(*inode));
+    MmH_DerefPage(pg);
     return parent;
 }

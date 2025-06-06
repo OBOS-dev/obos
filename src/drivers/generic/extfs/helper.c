@@ -270,22 +270,274 @@ obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, s
     return userdata.status;
 }
 
-// obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten)
-// {
-//     if (!cache || !ino || !buffer)
-//         return OBOS_STATUS_INVALID_ARGUMENT;
+struct commit_blks_packet
+{
+    // in blocks
+    uint32_t minimum_offset;
+    uint32_t maximum_offset;
+    uint32_t current_offset;
+    struct {
+        uint32_t* arr;
+        size_t cnt;
+    } offsets_to_commit;
+};
+
+
+struct write_blks_packet
+{
+    // in blocks
+    uint32_t minimum_offset;
+    uint32_t maximum_offset;
+    uint32_t current_offset;
+    uint32_t block_group;
+    const void* buff;
+    size_t buff_sz;
+    size_t buff_offset;
+    uint32_t initial_offset;
+};
+
+iterate_decision write_blks_cb(ext_cache* cache, ext_inode* inode, uint32_t* block, void* userdata)
+{
+    OBOS_UNUSED(cache && inode);
+    struct write_blks_packet* packet = userdata;
+    uint32_t current_offset = packet->current_offset++;
+    if (current_offset < packet->minimum_offset)
+        return ITERATE_DECISION_CONTINUE;
+    if (current_offset >= packet->maximum_offset)
+        return ITERATE_DECISION_CONTINUE;
+    if (!block)
+        return ITERATE_DECISION_CONTINUE;
     
-// }
+    page* pg = nullptr;
+    char* data = ext_read_block(cache, *block, &pg);
+    MmH_RefPage(pg);
+    size_t copy_count = OBOS_MIN(packet->buff_sz-packet->buff_offset, cache->block_size); 
+    memcpy(data+(current_offset == packet->minimum_offset ? packet->initial_offset : 0), 
+    (char*)packet->buff+packet->buff_offset, 
+    copy_count);
+    packet->buff_offset += copy_count;
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+    
+    return ITERATE_DECISION_CONTINUE;
+}
 
-// obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size)
-// {
+obos_status ext_ino_write_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t count, const void* buffer, size_t *nWritten)
+{
+    if (!cache || !ino || !buffer)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (cache->read_only)
+        return OBOS_STATUS_READ_ONLY;
+    
+    page* pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
+    size_t inode_size = inode->size;
+#if ext_sb_supports_64bit_filesize
+    inode_size |= ((uint64_t)inode->dir_acl << 32);
+#endif
+    MmH_DerefPage(pg);
+    if ((offset+count) > inode_size)
+        return OBOS_STATUS_NO_SPACE;
 
-// }
+    struct write_blks_packet packet = {
+        .block_group = ext_ino_get_block_group(cache, ino),
+        .minimum_offset=offset/cache->block_size,
+        .maximum_offset=offset/cache->block_size+(count/cache->block_size + (count%cache->block_size ? 1 : 0)),
+        .buff = buffer,
+        .buff_sz = count,
+        .initial_offset = offset % cache->block_size
+    };
+    ext_ino_foreach_block(cache, ino, write_blks_cb, &packet);
 
-// obos_status ext_ino_expand(ext_cache* cache, uint32_t ino, size_t new_size)
-// {
+    if (nWritten)
+        *nWritten = packet.buff_offset;
+}
 
-// }
+iterate_decision commit_blks_cb(ext_cache* cache, ext_inode* inode, uint32_t* block, void* userdata)
+{
+    OBOS_UNUSED(cache && inode);
+    struct commit_blks_packet* packet = userdata;
+    uint32_t current_offset = packet->current_offset++;
+    if (current_offset < packet->minimum_offset)
+        return ITERATE_DECISION_CONTINUE;
+    if (current_offset >= packet->maximum_offset)
+        return ITERATE_DECISION_CONTINUE;
+    if (block)
+        return ITERATE_DECISION_CONTINUE;
+    size_t old_size = packet->offsets_to_commit.cnt++ * sizeof(uint32_t);
+    size_t new_size = packet->offsets_to_commit.cnt * sizeof(uint32_t);
+    packet->offsets_to_commit.arr = Reallocate(EXT_Allocator, packet->offsets_to_commit.arr, new_size, old_size, nullptr);
+    packet->offsets_to_commit.arr[packet->offsets_to_commit.cnt] = current_offset;
+    return ITERATE_DECISION_CONTINUE;
+}
+
+obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset, size_t size)
+{
+    if (!cache || !ino)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!size)
+        return OBOS_STATUS_SUCCESS;
+    if (cache->read_only)
+        return OBOS_STATUS_READ_ONLY;
+    
+    page* pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
+    bool inode_dirty = false;
+    
+    uint32_t block_group = ext_ino_get_block_group(cache, ino);
+    struct commit_blks_packet packet = {
+        .minimum_offset=offset/cache->block_size,
+        .maximum_offset=offset/cache->block_size+(size/cache->block_size + (size%cache->block_size ? 1 : 0))
+    };
+    ext_ino_foreach_block(cache, ino, commit_blks_cb, &packet);
+    for (size_t i = 0; i < packet.offsets_to_commit.cnt; i++)
+    {
+        struct inode_offset_location loc = ext_get_blk_index_from_offset(cache, packet.offsets_to_commit.arr[i]);
+        uint32_t block = ext_blk_allocate(cache, &block_group);
+#define idx_blocks 0
+#define idx_indirect_block 1
+#define idx_doubly_indirect_block 2
+#define idx_triply_indirect_block 3
+        uint8_t what =
+            (loc.idx[3] != UINT32_MAX ? 
+                (loc.idx[2] == UINT32_MAX ? 
+                    (loc.idx[1] != UINT32_MAX ? 
+                        idx_indirect_block 
+                            : idx_blocks)  // loc.idx[1] != UINT32_MAX
+                : idx_doubly_indirect_block) // loc.idx[2] != UINT32_MAX 
+            : idx_triply_indirect_block); // loc.idx[3] != UINT32_MAX
+        switch (what) {
+            case idx_blocks:
+                inode->direct_blocks[loc.idx[0]] = block;
+                inode_dirty = true;
+                break;
+            case idx_indirect_block:
+            {
+                if (!inode->indirect_block)
+                {
+                    inode->indirect_block = ext_blk_allocate(cache, &block_group);
+                    inode_dirty = true;
+                }
+                page* pg2 = nullptr;
+                uint32_t* indirect_block = ext_read_block(cache, inode->indirect_block, &pg2);
+                MmH_RefPage(pg2);
+                indirect_block[loc.idx[1]] = block;
+                MmH_DerefPage(pg2);
+                break;
+            }
+            case idx_doubly_indirect_block:
+            {
+                if (!inode->doubly_indirect_block)
+                {
+                    inode->doubly_indirect_block = ext_blk_allocate(cache, &block_group);
+                    inode_dirty = true;
+                }
+                page* pg2 = nullptr;
+                uint32_t* doubly_indirect_block = ext_read_block(cache, inode->doubly_indirect_block, &pg2);
+                MmH_RefPage(pg2);
+                if (!doubly_indirect_block[loc.idx[2]])
+                {
+                    doubly_indirect_block[loc.idx[2]] = ext_blk_allocate(cache, &block_group);
+                    Mm_MarkAsDirtyPhys(pg2);
+                }
+                uint32_t indirect_block_number = doubly_indirect_block[loc.idx[2]];
+                MmH_DerefPage(pg2);
+                uint32_t* indirect_block = ext_read_block(cache, indirect_block_number, &pg2);
+                MmH_RefPage(pg2);
+                indirect_block[loc.idx[1]] = block;
+                MmH_DerefPage(pg2);
+                break;
+            }
+            case idx_triply_indirect_block:
+            {
+                if (!inode->triply_indirect_block)
+                {
+                    inode->triply_indirect_block = ext_blk_allocate(cache, &block_group);
+                    inode_dirty = true;
+                }
+                page* pg2 = nullptr;
+                uint32_t* triply_indirect_block = ext_read_block(cache, inode->triply_indirect_block, &pg2);
+                MmH_RefPage(pg2);
+                if (!triply_indirect_block[loc.idx[3]])
+                {
+                    triply_indirect_block[loc.idx[3]] = ext_blk_allocate(cache, &block_group);
+                    Mm_MarkAsDirtyPhys(pg2);
+                }
+                uint32_t doubly_indirect_block_number = triply_indirect_block[loc.idx[2]];
+                MmH_DerefPage(pg2);
+                uint32_t* doubly_indirect_block = ext_read_block(cache, doubly_indirect_block_number, &pg2);
+                MmH_RefPage(pg2);
+                if (!doubly_indirect_block[loc.idx[2]])
+                {
+                    doubly_indirect_block[loc.idx[2]] = ext_blk_allocate(cache, &block_group);
+                    Mm_MarkAsDirtyPhys(pg2);
+                }
+                uint32_t indirect_block_number = doubly_indirect_block[loc.idx[2]];
+                MmH_DerefPage(pg2);
+                uint32_t* indirect_block = ext_read_block(cache, indirect_block_number, &pg2);
+                MmH_RefPage(pg2);
+                indirect_block[loc.idx[1]] = block;
+                MmH_DerefPage(pg2);
+                break;
+            }
+        }
+    }
+
+    if (inode_dirty)
+        Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+    
+    return OBOS_STATUS_SUCCESS;
+}
+
+#undef idx_blocks
+#undef idx_indirect_block
+#undef idx_doubly_indirect_block
+#undef idx_triply_indirect_block
+
+obos_status ext_ino_resize(ext_cache* cache, uint32_t ino, size_t new_size, bool expand_only)
+{
+    if (!cache || !ino)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (cache->read_only)
+        return OBOS_STATUS_READ_ONLY;
+    
+    page* pg = nullptr;
+    ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
+    MmH_RefPage(pg);
+    uint32_t blocks = new_size/512;
+    if (new_size % 512)
+        blocks++;
+    if (blocks % (cache->block_size / 512))
+        blocks += (cache->block_size / 512) - (blocks % (cache->block_size / 512));
+    size_t inode_size = inode->size;
+#if ext_sb_supports_64bit_filesize
+    inode_size |= ((uint64_t)inode->dir_acl << 32);
+#endif
+    if (blocks == inode->blocks && new_size == inode_size) 
+    {
+        MmH_DerefPage(pg);
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (expand_only && new_size < inode_size)
+    {
+        MmH_DerefPage(pg);
+        return OBOS_STATUS_SUCCESS;
+    }
+    
+    inode->blocks = blocks;
+    inode->size = new_size & 0xffffffff;
+#if ext_sb_supports_64bit_filesize
+    inode->dir_acl = new_size >> 32;
+#endif
+
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+    
+    return OBOS_STATUS_SUCCESS;
+}
 
 char* ext_ino_get_linked(ext_cache* cache, ext_inode* inode, uint32_t ino_num)
 {

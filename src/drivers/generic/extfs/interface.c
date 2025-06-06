@@ -16,6 +16,8 @@
 
 #include <allocators/base.h>
 
+#include <locks/spinlock.h>
+
 #include "structs.h"
 
 #define get_handle(desc) ({\
@@ -26,6 +28,8 @@
 obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
 {
     ext_inode_handle* hnd = get_handle(desc);
+    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
+    irql oldIrql = Core_SpinlockAcquire(&hnd->lock);
     page* pg = nullptr;
     ext_inode* ino = ext_read_inode_pg(hnd->cache, hnd->ino, &pg);
     MmH_RefPage(pg);
@@ -56,7 +60,8 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     ino->mode = new_mode;
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
-
+    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
+    Core_SpinlockRelease(&hnd->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }
 

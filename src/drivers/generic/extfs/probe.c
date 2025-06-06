@@ -20,6 +20,7 @@
 
 #include <mm/page.h>
 
+#include "locks/spinlock.h"
 #include "structs.h"
 
 bool probe(void* vn_)
@@ -141,6 +142,7 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
+    handle->lock = Core_SpinlockCreate();
     vn->desc = (dev_desc)handle;
     vn->vtype = vtype;
     vn->blkSize = 1;
