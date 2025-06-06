@@ -17,8 +17,9 @@
 #include <locks/event.h>
 #include <locks/semaphore.h>
 
+#include <allocators/base.h>
+
 #include "ahci_irq.h"
-#include "allocators/base.h"
 #include "structs.h"
 #include "command.h"
 
@@ -37,6 +38,8 @@ static void ahci_dpc_handler(dpc* d, void* userdata)
             Core_SemaphoreRelease(&curr->lock);
             Core_EventSet(&curr->PendingCommands[slot]->completionEvent, false);
             curr->PendingCommands[slot]->awaitingSignal = false;
+            curr->CommandBitmask &= ~BIT(slot);
+            curr->PendingCommands[slot] = nullptr;
         }
     }
 }
