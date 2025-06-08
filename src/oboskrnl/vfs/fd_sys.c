@@ -39,6 +39,8 @@
 #include <locks/event.h>
 #include <locks/wait.h>
 
+#include <irq/timer.h>
+
 #include <driver_interface/driverId.h>
 
 handle Sys_FdAlloc()
@@ -596,6 +598,9 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
 
     if (!vn)
         return OBOS_STATUS_NOT_FOUND;
+    
+    if (vn->vtype != VNODE_TYPE_LNK)
+        return OBOS_STATUS_INVALID_ARGUMENT;
 
     size_t len = OBOS_MIN(max_size, strlen(vn->un.linked));
     void* buff = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, ubuff, nullptr, max_size, 0, true, nullptr);
@@ -1104,6 +1109,12 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     return res;
 }
 
+void pselect_tm_handler(void* udata)
+{
+    event* evnt = udata;
+    Core_EventSet(evnt, true);
+}
+
 obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, uint8_t *uexcept_set, const struct pselect_extra_args* uextra)
 {
     struct pselect_extra_args extra = {};
@@ -1190,17 +1201,51 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     }
     
     out:
+    (void)0;
+    uintptr_t timeout = UINTPTR_MAX;
+    if (extra.timeout)
+        memcpy_usr_to_k(&timeout, extra.timeout, sizeof(uintptr_t));
     if (!num_events)
     {
-        struct waitable_header** waitable_list = ZeroAllocate(OBOS_NonPagedPoolAllocator, unsignaledIRPIndex, sizeof(struct waitable_header*), nullptr);
+        if (!timeout)
+        {
+            status = OBOS_STATUS_TIMED_OUT;
+            goto timeout;
+        }
+
+        size_t nWaitableObjects = unsignaledIRPIndex;
+        
+        if (timeout != UINTPTR_MAX)
+            nWaitableObjects++;
+        
+        struct waitable_header** waitable_list = ZeroAllocate(OBOS_NonPagedPoolAllocator, nWaitableObjects, sizeof(struct waitable_header*), nullptr);
         for (size_t i = 0; i < unsignaledIRPIndex; i++)
             waitable_list[i] = WAITABLE_OBJECT(*unsignaledIRPs[i]->evnt);
+        timer tm = {};
+        event tm_evnt = {};
+        if (timeout != UINTPTR_MAX)
+        {
+            tm.handler = pselect_tm_handler;
+            tm.userdata = (void*)&tm_evnt;
+            Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, timeout);
+            waitable_list[unsignaledIRPIndex] = WAITABLE_OBJECT(tm_evnt);
+        }
+
         struct waitable_header* signaled = nullptr;
-        Core_WaitOnObjects(unsignaledIRPIndex, waitable_list, &signaled);
+        Core_WaitOnObjects(nWaitableObjects, waitable_list, &signaled);
+        if (tm.mode == TIMER_EXPIRED)
+        {
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            status = OBOS_STATUS_TIMED_OUT;
+            goto timeout;
+        }
+        Core_CancelTimer(&tm);
+        CoreH_FreeDPC(&tm.handler_dpc, false);
         unsignaledIRPIndex = 0;
-        Free(OBOS_NonPagedPoolAllocator, waitable_list, unsignaledIRPIndex*sizeof(struct waitable_header*));
+        Free(OBOS_NonPagedPoolAllocator, waitable_list, nWaitableObjects*sizeof(struct waitable_header*));
         goto again;
     }
+    timeout:
     Free(OBOS_NonPagedPoolAllocator, unsignaledIRPs, nPossibleEvents*sizeof(irp*));
     if (extra.sigmask)
         OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
