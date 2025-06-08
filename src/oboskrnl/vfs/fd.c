@@ -223,8 +223,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
             {
                 uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
                 size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
-                if (curr == end_rounded && end_rounded != (start & ~(OBOS_PAGE_SIZE-1)))
-                    nToRead = nBytes;
+                nToRead = OBOS_MIN(nToRead, nBytes-i);
                 memcpy(ent, (const void*)((uintptr_t)buf+i), nToRead);
                 curr += nToRead;
                 i += nToRead;
@@ -340,8 +339,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
             {
                 uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, nullptr);
                 size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
-                if (curr == end_rounded && end_rounded != (start & ~(OBOS_PAGE_SIZE-1)))
-                    nToRead = nBytes;
+                nToRead = OBOS_MIN(nToRead, nBytes-i);
                 memcpy((void*)((uintptr_t)buf+i), ent, nToRead);
                 curr += nToRead;
                 i += nToRead;
