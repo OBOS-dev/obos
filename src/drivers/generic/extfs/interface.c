@@ -71,6 +71,8 @@ OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
     if (!hnd || !count)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT; // uh oh :D
     *count = node->size;
     Free(EXT_Allocator, node, sizeof(*node));
     return OBOS_STATUS_SUCCESS;    
