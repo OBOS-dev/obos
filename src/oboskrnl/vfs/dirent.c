@@ -339,7 +339,7 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
     return ent;
 }
 
-LIST_GENERATE(dirent_list, dirent, node);
+LIST_GENERATE_INTERNAL(dirent_list, dirent, node, OBOS_EXPORT);
 
 struct mlibc_dirent {
     uint32_t d_ino;
