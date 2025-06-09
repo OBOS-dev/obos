@@ -81,27 +81,33 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         // We have owner perms.
         struct vnode* const vn = desc->vn;
         if (!vn->perm.owner_read)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_READ;
         if (!vn->perm.owner_write)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_WRITE;
+        if (oflags & FD_OFLAGS_EXECUTE && !vn->perm.owner_exec)
+            return OBOS_STATUS_ACCESS_DENIED;
     }
     else if (desc->vn->group_uid == Core_GetCurrentThread()->proc->currentGID)
     {
         // We have group perms.
         struct vnode* const vn = desc->vn;
         if (!vn->perm.group_read)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_READ;
         if (!vn->perm.group_write)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_WRITE;
+        if (oflags & FD_OFLAGS_EXECUTE && !vn->perm.group_exec)
+            return OBOS_STATUS_ACCESS_DENIED;
     }
     else
     {
         // We have other perms.
         struct vnode* const vn = desc->vn;
         if (!vn->perm.other_read)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_READ;
         if (!vn->perm.other_write)
-            desc->flags &= FD_FLAGS_READ;
+            desc->flags &= ~FD_FLAGS_WRITE;
+        if (oflags & FD_OFLAGS_EXECUTE && !vn->perm.other_exec)
+            return OBOS_STATUS_ACCESS_DENIED;
     }
     if (~oflags & FD_OFLAGS_READ)
         desc->flags &= ~FD_FLAGS_READ;
