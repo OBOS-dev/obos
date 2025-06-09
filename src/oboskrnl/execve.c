@@ -132,7 +132,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     fd file = {};
-    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
+    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     Free(OBOS_KernelAllocator, path, sz_path+1);
     if (obos_is_error(status))
         return status;
