@@ -182,6 +182,8 @@ static __attribute__((no_instrument_function)) void page_writer()
         for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
             // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
@@ -220,6 +222,8 @@ static __attribute__((no_instrument_function)) void page_writer()
         for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
             // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {

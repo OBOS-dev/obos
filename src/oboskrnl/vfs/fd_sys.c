@@ -551,6 +551,54 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     return OBOS_STATUS_SUCCESS;
 }
 
+#define AT_REMOVEDIR 0x200
+
+obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    dirent* node = nullptr;
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+    if (parent == AT_FDCWD || path[0] == '/')
+    {
+        dirent* dent = VfsH_DirentLookup(path);
+        Free(OBOS_KernelAllocator, path, sz_path);
+        if (!dent)
+            return OBOS_STATUS_NOT_FOUND;
+
+        node = dent;
+    }
+    else if (parent != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        obos_status status = OBOS_STATUS_SUCCESS;
+        handle_desc* parent_dirent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), parent, HANDLE_TYPE_DIRENT, false, &status);
+        if (!parent_dirent)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());        
+
+        dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent);
+        Free(OBOS_KernelAllocator, path, sz_path);
+        if (!dent)
+            return OBOS_STATUS_NOT_FOUND;
+
+        node = dent;
+    }
+
+    if (node->vnode->vtype == VNODE_TYPE_DIR && ~flags & AT_REMOVEDIR)
+        return OBOS_STATUS_NOT_A_FILE;
+
+    return Vfs_UnlinkNode(node);
+}
+
 obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length)
 {
     obos_status status = OBOS_STATUS_SUCCESS;

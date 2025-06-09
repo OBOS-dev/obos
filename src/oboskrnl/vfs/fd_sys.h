@@ -85,6 +85,7 @@ obos_status Sys_Stat(int fsfdt, handle fd, const char* path, int flags, struct s
 obos_status Sys_StatFSInfo(handle dent, drv_fs_info* info);
 
 obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length);
+obos_status Sys_UnlinkAt(handle parent, const char* path, int flags);
 
 handle Sys_OpenDir(const char* path, obos_status *status);
 obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);

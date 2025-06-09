@@ -204,6 +204,11 @@ const char* syscall_to_string[] = {
     "Sys_CreatePipe",
     "Sys_PSelect",
     "Sys_ReadLinkAt",
+    "Sys_SetUid",
+    "Sys_SetGid",
+    "Sys_GetUid",
+    "Sys_GetGid",
+    "Sys_UnlinkAt",
 };
 const char* status_to_string[] = {
     "OBOS_STATUS_SUCCESS",

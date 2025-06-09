@@ -493,4 +493,25 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_WEAK obos_status remove_file(dev_desc desc);
+obos_status remove_file(dev_desc desc)
+{
+    initrd_inode* inode = (void*)desc;
+    if (!inode)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (inode->parent)
+    {
+        if (inode->next)
+            inode->next->prev = inode->prev;
+        if (inode->prev)
+            inode->prev->next = inode->next;
+        if (!inode->prev)
+            inode->parent->children.head = inode->next;
+        if (!inode->next)
+            inode->parent->children.tail = inode->prev;
+        inode->parent->children.nChildren--;
+    }
+    if (!inode->persistent)
+        Free(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize);
+    Free(OBOS_KernelAllocator, inode, sizeof(*inode));
+    return OBOS_STATUS_SUCCESS;
+}

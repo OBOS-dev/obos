@@ -186,6 +186,7 @@ typedef struct driver_ftable
         obos_status(*pmove_desc_to)(const char* path, const char* newpath, const char* name);
     };
     union {
+        // Really just unlinks the file.
         obos_status(*remove_file)(dev_desc desc);
         obos_status(*premove_file)(const char* path);
     };

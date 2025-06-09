@@ -233,9 +233,7 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 			curr->data->phys = node->swap_id;
 			curr = curr->next;
 		}
-		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, node);
-        Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
-	}
+    }
 	else
 	{
 		// OOM!
