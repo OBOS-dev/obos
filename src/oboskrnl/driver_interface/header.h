@@ -183,12 +183,12 @@ typedef struct driver_ftable
     // If new_parent && name, then we need to move the file to new parent and rename the file.
     union {
         obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
-        obos_status(*pmove_desc_to)(const char* path, const char* newpath, const char* name);
+        obos_status(*pmove_desc_to)(void* vn, const char* path, const char* newpath, const char* name);
     };
     union {
         // Really just unlinks the file.
         obos_status(*remove_file)(dev_desc desc);
-        obos_status(*premove_file)(const char* path);
+        obos_status(*premove_file)(void* vn, const char* path);
     };
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 
