@@ -156,7 +156,6 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     cache->inode_vnode_table[ino-1] = vn;
-    vn->refs++; // Referenced by inode_vnode_table
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
@@ -191,8 +190,6 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
         vn->un.linked = ext_ino_get_linked(cache, inode, ino);
 
     Free(EXT_Allocator, inode, sizeof(*inode));
-    
-    vn->refs++; // Referenced by inode_vnode_table
 
     return vn;
 }
@@ -210,6 +207,8 @@ static void mount_recursive(ext_cache* cache, ext_dirent_cache* parent, dirent* 
         OBOS_InitStringLen(&dent->name, ent->ent.name, ent->ent.name_len);
         dent->vnode = vn;
         VfsH_DirentAppendChild(dparent, dent);
+        LIST_APPEND(dirent_list, &mnt->dirent_list, dent);
+        dent->vnode->refs++;
 
         if (ent->ent.file_type == EXT2_FT_DIR)
             mount_recursive(cache, ent, dent, mnt);
