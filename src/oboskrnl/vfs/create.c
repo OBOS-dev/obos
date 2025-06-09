@@ -98,7 +98,15 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
     vnode* mount_vn = parent_mnt->device;
-    obos_status status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+    {
+        char* parent_path = VfsH_DirentPath(parent, parent_mnt->root);
+        status = ftable->pmk_file(&vn->desc, parent_path, mount_vn, name, type, mode);
+        Vfs_Free(parent_path);
+    }
+    else
+        status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
     if (obos_is_error(status))
     {
         Vfs_Free(vn);
@@ -106,6 +114,8 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return status;
     }
     VfsH_DirentAppendChild(parent, ent);
+    LIST_APPEND(dirent_list, &parent_mnt->dirent_list, ent);
+    ent->vnode->refs++;
     return status;
 }
 
