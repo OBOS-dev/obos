@@ -419,7 +419,7 @@ obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** l
     return nReadableDirents ? OBOS_STATUS_SUCCESS : OBOS_STATUS_EOF;
 }
 
-char* OBOS_DirentPath(dirent* ent, dirent* relative_to)
+char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 {
     if (!relative_to)
         relative_to = Vfs_Root;
@@ -481,7 +481,7 @@ obos_status VfsH_Chdir(void* target_, const char *path)
     Vfs_Free((char*)target->cwd_str);
     
     target->cwd = ent;
-    target->cwd_str = OBOS_DirentPath(ent, nullptr);
+    target->cwd_str = VfsH_DirentPath(ent, nullptr);
     
     return OBOS_STATUS_SUCCESS;
 }
@@ -497,7 +497,7 @@ obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
     Vfs_Free((char*)target->cwd_str);
 
     target->cwd = ent;
-    target->cwd_str = OBOS_DirentPath(ent, nullptr);
+    target->cwd_str = VfsH_DirentPath(ent, nullptr);
     
     return OBOS_STATUS_SUCCESS;
 }

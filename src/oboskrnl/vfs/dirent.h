@@ -46,7 +46,7 @@ OBOS_EXPORT dirent* VfsH_DirentLookup(const char* path);
 OBOS_EXPORT dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);
 dirent* VfsH_FollowLink(dirent* ent);
 
-char* OBOS_DirentPath(dirent* ent, dirent* relative_to);
+char* VfsH_DirentPath(dirent* ent, dirent* relative_to);
 
 obos_status VfsH_Chdir(void* /* struct process */ target, const char *path);
 obos_status VfsH_ChdirEnt(void* /* struct process */ target, dirent* ent);

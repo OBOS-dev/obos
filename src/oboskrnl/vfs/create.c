@@ -131,7 +131,7 @@ obos_status Vfs_UnlinkNode(dirent* node)
 
     if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
     {
-        char* path = OBOS_DirentPath(node, parent_mnt->root);
+        char* path = VfsH_DirentPath(node, parent_mnt->root);
         status = ftable->premove_file(path);
         Vfs_Free(path);   
     }
