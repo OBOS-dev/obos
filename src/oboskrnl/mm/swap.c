@@ -164,8 +164,9 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
 
 obos_status Mm_ChangeSwapProvider(swap_dev* to)
 {
-    OBOS_UNUSED(to);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    Mm_SwapProvider->awaiting_deinit = true;
+    Mm_SwapProvider = to;
+    return OBOS_STATUS_SUCCESS;
 }
 
 static __attribute__((no_instrument_function)) void page_writer()
@@ -194,6 +195,7 @@ static __attribute__((no_instrument_function)) void page_writer()
             }
             if (!pg->backing_vn)
             {
+                Core_SpinlockRelease(&swap_lock, oldIrql);
                 if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
                 {
                     pg = next;
@@ -208,6 +210,8 @@ static __attribute__((no_instrument_function)) void page_writer()
                     pg = next;
                     continue;
                 }
+                Mm_GlobalMemoryUsage.paged += pg->flags & PHYS_PAGE_HUGE_PAGE ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+                oldIrql = Core_SpinlockAcquire(&swap_lock);
                 pg->flags &= ~PHYS_PAGE_DIRTY;
                 LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
         

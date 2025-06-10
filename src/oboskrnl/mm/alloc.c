@@ -584,6 +584,10 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             ctx->stat.nonPaged -= size;
             Mm_GlobalMemoryUsage.nonPaged -= size;
         }
+        OBOS_ASSERT(Mm_GlobalMemoryUsage.committedMemory >= 0);
+        OBOS_ASSERT(Mm_GlobalMemoryUsage.nonPaged >= 0);
+        OBOS_ASSERT(Mm_GlobalMemoryUsage.pageable >= 0);
+        OBOS_ASSERT(Mm_GlobalMemoryUsage.reserved >= 0);
     }
 
     if (full)
@@ -911,6 +915,11 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     Core_SpinlockRelease(&user_context->lock, oldIrql2);
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
 
+    Mm_KernelContext.stat.committedMemory += size;
+    Mm_KernelContext.stat.nonPaged += size;
+    Mm_GlobalMemoryUsage.committedMemory += size;
+    Mm_GlobalMemoryUsage.nonPaged += size;
+
     set_statusp(status, OBOS_STATUS_SUCCESS);
     return (void*)(kbase + ((uintptr_t)ubase_ % OBOS_PAGE_SIZE));
 }
@@ -1008,6 +1017,19 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
         info.phys = phys;
 
         MmS_SetPageMapping(ctx->pt, &info, phys, false);
+    }
+
+    ctx->stat.committedMemory += sz;
+    Mm_GlobalMemoryUsage.committedMemory += sz;
+    if (!non_pageable)
+    {
+        ctx->stat.pageable += sz;
+        Mm_GlobalMemoryUsage.pageable += sz;
+    }
+    else 
+    {
+        ctx->stat.nonPaged += sz;
+        Mm_GlobalMemoryUsage.nonPaged += sz;
     }
 
     Core_SpinlockRelease(&ctx->lock, oldIrql);

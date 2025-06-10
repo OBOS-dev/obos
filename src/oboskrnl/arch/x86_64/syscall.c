@@ -209,7 +209,10 @@ const char* syscall_to_string[] = {
     "Sys_GetUid",
     "Sys_GetGid",
     "Sys_UnlinkAt",
+    "Sys_MakeDiskSwap",
+    "Sys_SwitchSwap",
 };
+
 const char* status_to_string[] = {
     "OBOS_STATUS_SUCCESS",
     "OBOS_STATUS_INVALID_IRQL",

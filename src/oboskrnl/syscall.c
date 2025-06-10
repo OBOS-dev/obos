@@ -381,6 +381,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_GetUid,
     (uintptr_t)Sys_GetGid,
     (uintptr_t)Sys_UnlinkAt,
+    (uintptr_t)Sys_MakeDiskSwap,
+    (uintptr_t)Sys_SwitchSwap,
 };
 
 // Arch syscall table is defined per-arch

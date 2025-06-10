@@ -278,6 +278,9 @@ obos_status Sys_ThreadSetOwner(handle thr_hnd, handle proc_hnd)
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
 
+    thr->stackFreeUserdata = proc->ctx;
+    thr->stackFree = CoreH_VMAStackFree;
+
     return Core_ProcessAppendThread(proc, thr);
 }
 uint64_t Sys_ThreadGetTid(handle thread_hnd)

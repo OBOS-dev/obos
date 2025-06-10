@@ -18,11 +18,16 @@ typedef struct swap_device
 {
     // *id needs to be aligned to OBOS_PAGE_SIZE if !huge_page, otherwise it needs to be aligned to OBOS_HUGE_PAGE_SIZE
     obos_status(* swap_resv)(struct swap_device* dev, uintptr_t* id, bool huge_page);
-    obos_status(* swap_free)(struct swap_device* dev, uintptr_t id);
+    obos_status(* swap_free)(struct swap_device* dev, uintptr_t id, bool huge_page);
     obos_status(*swap_write)(struct swap_device* dev, uintptr_t id, page* pg);
     obos_status(* swap_read)(struct swap_device* dev, uintptr_t id, page* pg);
     obos_status(*deinit_dev)(struct swap_device* dev);
     void* metadata;
+    size_t refs;
+    bool awaiting_deinit;
+    // Not to be initialized by the swap provider.
+    // This simply frees the swap_dev object.
+    void(*free_obj)(struct swap_device* dev);
 } swap_dev;
 extern swap_dev* Mm_SwapProvider;
 
