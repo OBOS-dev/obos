@@ -238,6 +238,7 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 	{
 		// OOM!
 		Mm_ReleaseSwapLock(oldIrql);
+        Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
 		Mm_WakePageWriter(true);
 		goto start_again;
 	} 

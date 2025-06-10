@@ -34,6 +34,14 @@ extern swap_dev* Mm_SwapProvider;
 obos_status Mm_SwapOut(uintptr_t virt, page_range* rng);
 obos_status Mm_SwapIn(page_info* page, fault_type* type);
 
+enum {
+    PAGE_WRITER_SYNC_FILE = BIT(0),
+    PAGE_WRITER_SYNC_ANON = BIT(1),
+    PAGE_WRITER_SYNC_ALL = PAGE_WRITER_SYNC_FILE|PAGE_WRITER_SYNC_ANON,
+};
+
+extern uint32_t Mm_PageWriterOperation;
+
 extern phys_page_list Mm_DirtyPageList;
 extern phys_page_list Mm_StandbyPageList;
 extern size_t Mm_DirtyPagesBytes;

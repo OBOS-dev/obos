@@ -233,3 +233,9 @@ obos_status Sys_SwitchSwap(const char* upath)
 
     return OBOS_STATUS_SUCCESS;
 }
+
+void Sys_SyncAnonPages()
+{
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
+    Mm_WakePageWriter(true);
+}

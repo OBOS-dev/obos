@@ -169,6 +169,8 @@ obos_status Mm_ChangeSwapProvider(swap_dev* to)
     return OBOS_STATUS_SUCCESS;
 }
 
+uint32_t Mm_PageWriterOperation = 0;
+
 static __attribute__((no_instrument_function)) void page_writer()
 {
     // const char* const This = "Page Writer";
@@ -176,11 +178,13 @@ static __attribute__((no_instrument_function)) void page_writer()
     {
         Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
         Core_EventClear(&page_writer_done);
+        if (!Mm_PageWriterOperation)
+            Mm_PageWriterOperation = PAGE_WRITER_SYNC_ALL;
         // FOR EACH dirty page.
         // Write them back :)
         // also while we're at it, we'll make them standby
         irql oldIrql = Core_SpinlockAcquire(&swap_lock);
-        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_ANON); )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
             if (next == pg)
@@ -214,16 +218,16 @@ static __attribute__((no_instrument_function)) void page_writer()
                 oldIrql = Core_SpinlockAcquire(&swap_lock);
                 pg->flags &= ~PHYS_PAGE_DIRTY;
                 LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
-        
+
                 LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
                 pg->flags |= PHYS_PAGE_STANDBY;
             }
-            
+
             // abort:
             pg = next;
         }
-        
-        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_FILE); )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
             if (next == pg)
@@ -314,6 +318,7 @@ void Mm_MarkAsDirtyPhys(page* node)
     //     printf("%p:%d\n", node->backing_vn, node->file_offset);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Core_SpinlockRelease(&swap_lock, oldIrql);
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
     if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold && !node->backing_vn)
         Mm_WakePageWriter(false);
 }

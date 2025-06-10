@@ -211,6 +211,7 @@ const char* syscall_to_string[] = {
     "Sys_UnlinkAt",
     "Sys_MakeDiskSwap",
     "Sys_SwitchSwap",
+    "Sys_SyncAnonPages",
 };
 
 const char* status_to_string[] = {

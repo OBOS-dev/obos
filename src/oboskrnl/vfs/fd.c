@@ -458,6 +458,7 @@ obos_status Vfs_FdFlush(fd* desc)
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(false);
     VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;

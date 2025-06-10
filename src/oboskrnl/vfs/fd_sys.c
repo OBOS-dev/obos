@@ -862,6 +862,7 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
 // makes new dirty pages.
 void Sys_Sync()
 {
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(true);
     Mm_WakePageWriter(true);
 }

@@ -295,6 +295,7 @@ obos_status Vfs_Unmount(mount* what)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     // Sync pages.
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(true);
     Mm_WakePageWriter(true);
 
