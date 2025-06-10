@@ -11,12 +11,33 @@
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
+#include <errno.h>
 
 #include <sys/wait.h>
 
 #include <obos/syscall.h>
+#include <obos/error.h>
 
 int print_motd();
+
+static int parse_file_status(obos_status status)
+{
+    switch (status)
+    {
+        case OBOS_STATUS_SUCCESS: return 0;
+        case OBOS_STATUS_NOT_FOUND: return ENOENT;
+        case OBOS_STATUS_INVALID_ARGUMENT: return EINVAL;
+        case OBOS_STATUS_PAGE_FAULT: return EFAULT;
+        case OBOS_STATUS_NOT_A_FILE: return EISDIR;
+        case OBOS_STATUS_UNINITIALIZED: return EBADF;
+        case OBOS_STATUS_EOF: return EIO;
+        case OBOS_STATUS_ACCESS_DENIED: return EACCES;
+        case OBOS_STATUS_NO_SYSCALL: return ENOSYS;
+        case OBOS_STATUS_NOT_ENOUGH_MEMORY: return ENOSPC;
+        case OBOS_STATUS_PIPE_CLOSED: return EPIPE;
+        default: abort();
+    }
+}
 
 const char* sigchld_action = "shutdown";
 
@@ -44,12 +65,10 @@ int main(int argc, char** argv)
 {
     if (getpid() != 1)
         return -1;
-    int ret = print_motd();
-    if (ret != 0)
-        return ret;
+    const char* swap_file = NULL;
     char* handoff_process = NULL;
     int opt = 0;
-    while ((opt = getopt(argc, argv, "c:h")) != -1)
+    while ((opt = getopt(argc, argv, "s:c:h")) != -1)
     {
         switch (opt)
         {
@@ -72,9 +91,14 @@ int main(int argc, char** argv)
                 }
                 break;
             }
+            case 's':
+            {
+                swap_file = optarg;
+                break;
+            }
             case 'h':
             default:
-                fprintf(stderr, "Usage: %s [-c sigchld_action] handoff_path", argv[0]);
+                fprintf(stderr, "Usage: %s [-c sigchld_action -s swap_dev] handoff_path", argv[0]);
                 return opt != 'h';
         }
     }
@@ -86,7 +110,22 @@ int main(int argc, char** argv)
     // if (strcasecmp(sigchld_action, "ignore") != 0)
     if (0)
         signal(SIGCHLD, sigchld_handler);
+    if (swap_file)
+    {
+        printf("init: Switching swap to %s\n", swap_file);
+        obos_status st = (obos_status)syscall1(Sys_SwitchSwap, swap_file);
+        if (obos_is_error(st))
+        {
+            errno = parse_file_status(st);
+            perror("Could not switch swap");
+        }
+    }
     handoff_process = argv[optind];
+
+    int ret = print_motd();
+    if (ret != 0)
+        return ret;
+
     // Start a shell, I guess.
     pid_t pid = fork();
     if (pid == 0)
