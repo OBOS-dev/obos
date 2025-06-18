@@ -60,7 +60,7 @@ OBOS_WEAK obos_status remove_file(dev_desc desc);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 dev_desc irp_process_dryop(irp* req)
@@ -259,21 +259,28 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 
         if (!ino->parent)
         {
+            ino->parent = InitrdRoot;
             // Create all parent directories
             char* iter = ino->path;
-            char* end = ino->path;
+            char* end = ino->path + ino->path_len;
             while (iter < end)
             {
                 size_t off = strchr(iter, '/');
                 presv = iter[off];
                 iter[off] = 0;
-                if (DirentLookupFrom(ino->path, InitrdRoot))
+                initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
+                if (found)
+                {
+                    ino->parent = found;
                     goto down;
+                }
 
                 const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
                 OBOS_ASSERT(sub_hdr);
                 
                 initrd_inode* sub_ino = create_inode_boot(sub_hdr);
+                sub_ino->parent = ino->parent;
+                // printf("%s %s\n", iter, sub_ino->parent->name);
                 if (!sub_ino->parent->children.head)
                     sub_ino->parent->children.head = sub_ino;
                 if (sub_ino->parent->children.tail)
@@ -281,7 +288,6 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
                 sub_ino->prev = sub_ino->parent->children.tail;
                 sub_ino->parent->children.tail = sub_ino;
                 sub_ino->parent->children.nChildren++;
-                sub_ino->parent = sub_ino->parent;
                 
                 ino->parent = sub_ino;
 
@@ -316,6 +322,8 @@ OBOS_PAGEABLE_FUNCTION obos_status get_max_blk_count(dev_desc desc, size_t* coun
     initrd_inode* inode = (void*)desc;
     if (!inode || !count)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_NOT_A_FILE;
     if (inode->type != FILE_TYPE_REGULAR_FILE)
         return OBOS_STATUS_NOT_A_FILE;
     *count = inode->filesize;
@@ -380,7 +388,7 @@ OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
     *type = inode->type;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
     OBOS_UNUSED(unused);
     if (!dir_)
@@ -388,17 +396,18 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     initrd_inode* dir = dir_ == UINTPTR_MAX ? InitrdRoot : (void*)dir_;
     for (initrd_inode* ino = dir->children.head; ino; )
     {
-        if (cb((dev_desc)ino, 1, ino->filesize, userdata) == ITERATE_DECISION_STOP)
+        if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
             break;
         ino = ino->next;
     }
     return OBOS_STATUS_SUCCESS;
 }
 
-static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata)
+static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
 {
     OBOS_UNUSED(blkSize);
     OBOS_UNUSED(blkCount);
+    OBOS_UNUSED(name);
 
     size_t* const fileCount = userdata;
     (*fileCount)++;

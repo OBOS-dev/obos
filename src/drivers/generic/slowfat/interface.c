@@ -101,7 +101,7 @@ obos_status get_file_type(dev_desc desc, file_type *type)
         *type = FILE_TYPE_REGULAR_FILE;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
     if (!dir || !vn || !cb)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -125,7 +125,7 @@ obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc
             continue;
         }
         OBOS_ASSERT(cache_entry->data.attribs != LFN);
-        if (cb((dev_desc)cache_entry, 1, cache_entry->data.filesize, userdata) == ITERATE_DECISION_STOP)
+        if (cb((dev_desc)cache_entry, 1, cache_entry->data.filesize, userdata, OBOS_GetStringCPtr(&cache_entry->name)) == ITERATE_DECISION_STOP)
             break;
         cache_entry = cache_entry->fdc_next_child;
     }

@@ -65,14 +65,10 @@ fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root)
         fat_dirent_cache* curr = root;
         if (OBOS_CompareStringNC(&root->name, tok, tok_len))
         {
-            // Match!
-            root = curr->fdc_children.head ? curr->fdc_children.head : root;
-            fat_dirent_cache* what = 
-                on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
-            if (what)
-                return what;
+            root = curr->fdc_children.head;
             continue;
         }
+
         for (curr = root->fdc_children.head; curr;)
         {
             if (OBOS_CompareStringNC(&curr->name, tok, tok_len))
@@ -82,6 +78,8 @@ fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root)
                     on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
                 if (what)
                     return what;
+                else if ((tok+tok_len) >= (path+path_len) && !curr->fdc_next_child)
+                    return nullptr;
                 curr = curr->fdc_children.head ? curr->fdc_children.head : curr;
                 break;
             }
@@ -90,7 +88,11 @@ fat_dirent_cache* DirentLookupFrom(const char* path, fat_dirent_cache* root)
             curr = curr->fdc_next_child;
         }
         if (!curr)
+        {
+            if ((tok+tok_len) >= (path+path_len))
+                break;
             root = root->fdc_parent;
+        }
     }
     return nullptr;
 }

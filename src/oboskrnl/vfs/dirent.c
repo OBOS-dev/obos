@@ -26,7 +26,7 @@
 #include <utils/list.h>
 #include <utils/tree.h>
 
-// TODO: Make namecache a tree of cached directory hierarchy, instead of storing paths in the cache
+#include <driver_interface/header.h>
 
 static size_t str_search(const char* str, char ch)
 {
@@ -35,39 +35,43 @@ static size_t str_search(const char* str, char ch)
         ;
     return ret;
 }
-static namecache_ent* namecache_lookup_internal(namecache* nc, const char* path)
+static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
 {
-    namecache_ent what = { };
-    OBOS_StringSetAllocator(&what.path, Vfs_Allocator);
-    OBOS_InitString(&what.path, path);
-    namecache_ent* hit = RB_FIND(namecache, nc, &what);
-    OBOS_FreeString(&what.path);
-    return hit;
-}
-static dirent* namecache_lookup(namecache* nc, const char* path)
-{
-    return nullptr;
-    namecache_ent* nc_ent = namecache_lookup_internal(nc, path);
-    if (!nc_ent)
-        return nullptr;
-    return nc_ent->ent;
-}
-static void namecache_insert(namecache* nc, dirent* what, const char* path, size_t pathlen)
-{
-    return;
-    namecache_ent* ent = Vfs_Calloc(1, sizeof(namecache_ent));
-    ent->ent = what;
-    ent->ref = what->vnode;
-    ent->ref->refs++;
-    OBOS_StringSetAllocator(&ent->path, Vfs_Allocator);
-    OBOS_InitStringLen(&ent->path, path, pathlen);
-    if (!namecache_lookup_internal(nc, OBOS_GetStringCPtr(&ent->path)))
-        RB_INSERT(namecache, nc, ent);
-    else
+    if (mountpoint->fs_driver->driver->header.ftable.vnode_search)
     {
-        OBOS_FreeString(&ent->path);
-        Vfs_Free(ent);
+        vnode* vn = nullptr;
+        obos_status status = mountpoint->fs_driver->driver->header.ftable.vnode_search((void**)&vn, desc);
+        if (obos_is_success(status))
+            return vn;
     }
+    file_type type = 0;
+    driver_file_perm perm = {};
+    mountpoint->fs_driver->driver->header.ftable.get_file_perms(desc, &perm);
+    mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
+    switch (type)
+    {
+        case FILE_TYPE_REGULAR_FILE:
+            vn->vtype = VNODE_TYPE_REG;
+            mountpoint->fs_driver->driver->header.ftable.get_max_blk_count(desc, &vn->filesize);
+            break;
+        case FILE_TYPE_DIRECTORY:
+            vn->vtype = VNODE_TYPE_DIR;
+            break;
+        case FILE_TYPE_SYMBOLIC_LINK:
+        {
+            vn->vtype = VNODE_TYPE_LNK;        
+            break;
+        }
+        default:
+            OBOS_ASSERT(type);
+    }
+    vn->mount_point = mountpoint;
+    vn->desc = desc;
+    memcpy(&vn->perm, &perm, sizeof(file_perm));
+    if (t)
+        *t = type;
+    return vn;
 }
 static dirent* on_match(dirent** const curr_, dirent** const root, const char** const tok, size_t* const tok_len, const char** const path, 
                         size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount)
@@ -84,12 +88,12 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
                 currentPathLen++;
             while ((*path+(*lastMountPoint))[currentPathLen] == '/')
                 currentPathLen--;
-            namecache_insert(&(*lastMount)->nc, curr, *path+(*lastMountPoint), currentPathLen);
         }
         return curr;
     }
     if (!curr->d_children.nChildren)
         return nullptr; // could not find node.
+
     *tok = newtok;
     size_t currentPathLen = strlen(*tok)-1;
     if ((*tok)[currentPathLen] != '/')
@@ -105,15 +109,14 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
     {
         (*lastMountPoint) = ((*tok)-(*path));
         (*lastMount) = curr->vnode->un.mounted;
-        dirent* hit = namecache_lookup(&curr->vnode->un.mounted->nc, *tok);
-        if (!hit)
-            *root = curr->vnode->un.mounted->root;
-        return hit;
     }
     return nullptr;
 }
-dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
+
+static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
 {
+    // for (volatile bool b = true; b;)
+    //     ;
     if (!path)
         return nullptr;
     if (path[0] == 0)
@@ -135,13 +138,6 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
     // Offset of the last mount point in the path.
     size_t lastMountPoint = 0;
     mount* lastMount = root->vnode->flags & VFLAGS_MOUNTPOINT ? root->vnode->un.mounted : root->vnode->mount_point;
-    if (root->vnode && root->vnode->flags & VFLAGS_MOUNTPOINT)
-    {
-        // If 'root' is at the root of it's mount point, consult the name cache.
-        dirent* hit = namecache_lookup(&root->vnode->un.mounted->nc, path);
-        if (hit)
-            return hit;
-    }
     while(root)
     {
         dirent* curr = root;
@@ -216,7 +212,106 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
                 break;
         }
     }
-    return nullptr;
+
+    if (only_cache)
+        return nullptr;
+
+    // Not in the dirent tree cache
+    // Start looking for each path component 
+    // until we get to the end of the string
+    // using path_search
+    dev_desc desc = 0;
+    size_t path_mnt_len = (path_len-lastMountPoint);
+    char* path_mnt = memcpy(Vfs_Malloc((path_len-lastMountPoint)+1), path+lastMountPoint, (path_len-lastMountPoint)+1);
+    bool is_base = false;
+    tok = path_mnt;
+    tok_len = 0;
+    {
+        size_t currentPathLen = strlen(tok)-1;
+        if (tok[currentPathLen] != '/')
+            currentPathLen++;
+        while (tok[currentPathLen] == '/')
+            currentPathLen--;
+        tok_len = strchr(tok, '/');
+        if (tok_len != currentPathLen)
+            tok_len--;
+        else
+            is_base = true;
+    }
+    char* currentPath = Vfs_Calloc(path_mnt_len + 1, sizeof(char));
+    size_t currentPathLen = 0;
+    vdev* fs_driver = lastMount->fs_driver;
+    mount* const mountpoint = lastMount;
+    dirent* last = mountpoint->root;
+    file_type type = 0;
+    while (tok < (path_mnt+path_mnt_len))
+    {
+        char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
+        memcpy(token, tok, tok_len);
+        token[tok_len] = 0;
+        memcpy(currentPath + currentPathLen, token, tok_len);
+        currentPathLen += tok_len;
+        if (!is_base)
+            currentPath[currentPathLen++] = '/';
+        // printf("%.*s\n", currentPathLen, currentPath);
+        dirent* new = VfsH_DirentLookupFromCacheOnly(token, last ? last : mountpoint->root);
+        if (new && new->d_parent == mountpoint->root->d_parent)
+            new = nullptr;
+        if (!new)
+        {
+            dev_desc curdesc = 0;
+            file_type curtype = 0;
+            obos_status status = fs_driver->driver->header.ftable.path_search(&curdesc, mountpoint->device, currentPath);
+            if (obos_is_error(status))
+            {
+                Vfs_Free(token);
+                Vfs_Free(path_mnt);
+                Vfs_Free(currentPath);
+                return nullptr;
+            }
+            // Allocate a new dirent.
+            new = Vfs_Calloc(1, sizeof(dirent));
+            OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
+            OBOS_InitStringLen(&new->name, token, tok_len);
+            mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+            new->vnode = new_vn;
+            new->vnode->refs++;
+            if (curtype == FILE_TYPE_SYMBOLIC_LINK)
+                mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
+        }
+        if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
+            VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
+        last = new;
+        Vfs_Free(token);
+
+        tok += str_search(tok, '/');
+        size_t currentPathLen = strlen(tok)-1;
+        if (currentPathLen == (size_t)-1)
+            currentPathLen = 0;
+        if (tok[currentPathLen] != '/')
+            currentPathLen++;
+        while (tok[currentPathLen] == '/')
+            currentPathLen--;
+        tok_len = strchr(tok, '/');
+        if (tok_len != currentPathLen)
+            tok_len--;
+        else
+            is_base = true;
+    }
+
+    Vfs_Free(path_mnt);
+    Vfs_Free(currentPath);
+    return last;
+}
+
+dirent* VfsH_DirentLookupFromCacheOnly(const char* path, dirent* root_par)
+{
+    return lookup(path, root_par, true);
+}
+dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
+{
+    return lookup(path, root_par, false);
 }
 
 dirent* VfsH_DirentLookup(const char* path)
@@ -340,6 +435,40 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
 }
 
 LIST_GENERATE_INTERNAL(dirent_list, dirent, node, OBOS_EXPORT);
+
+static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
+{
+    OBOS_UNUSED(blkSize && blkCount);
+    dirent* const dent = userdata;
+    for (dirent* child = dent->d_children.head; child; )
+    {
+        if (OBOS_CompareStringC(&child->name, name))
+            return ITERATE_DECISION_CONTINUE;
+
+        child = child->d_next_child;
+    }
+    mount* point = dent->vnode->mount_point ? dent->vnode->mount_point : dent->vnode->un.mounted;
+    vnode* vn = create_vnode(point, desc, nullptr);
+    dirent* new = Vfs_Calloc(1, sizeof(dirent));
+    OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
+    OBOS_InitString(&new->name, name);
+    new->vnode = vn;
+    VfsH_DirentAppendChild(dent, new);
+    LIST_APPEND(dirent_list, &point->dirent_list, new);
+    return ITERATE_DECISION_CONTINUE;
+}
+
+void Vfs_PopulateDirectory(dirent* dent)
+{
+    mount* point = dent->vnode->mount_point ? dent->vnode->mount_point : dent->vnode->un.mounted;
+    const driver_header* driver = &point->fs_driver->driver->header;
+    if (dent->vnode->vtype == VNODE_TYPE_CHR || 
+        dent->vnode->vtype == VNODE_TYPE_BLK || 
+        dent->vnode->vtype == VNODE_TYPE_REG || 
+        dent->vnode->vtype == VNODE_TYPE_FIFO)
+        return;
+    driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent);
+}
 
 struct mlibc_dirent {
     uint32_t d_ino;

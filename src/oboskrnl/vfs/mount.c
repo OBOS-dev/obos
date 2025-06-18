@@ -42,126 +42,126 @@ static size_t str_search(const char* str, char ch)
     return ret;
 }
 OBOS_STATIC_ASSERT(sizeof(driver_file_perm) == sizeof(file_perm), "Invalid sizes!");
-static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
-{
-    file_type type = 0;
-    driver_file_perm perm = {};
-    mountpoint->fs_driver->driver->header.ftable.get_file_perms(desc, &perm);
-    mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
-    switch (type)
-    {
-        case FILE_TYPE_REGULAR_FILE:
-            vn->vtype = VNODE_TYPE_REG;
-            mountpoint->fs_driver->driver->header.ftable.get_max_blk_count(desc, &vn->filesize);
-            break;
-        case FILE_TYPE_DIRECTORY:
-            vn->vtype = VNODE_TYPE_DIR;
-            break;
-        case FILE_TYPE_SYMBOLIC_LINK:
-        {
-            vn->vtype = VNODE_TYPE_LNK;        
-            break;
-        }
-        default:
-            OBOS_ASSERT(type);
-    }
-    vn->mount_point = mountpoint;
-    vn->desc = desc;
-    memcpy(&vn->perm, &perm, sizeof(file_perm));
-    if (t)
-        *t = type;
-    return vn;
-}
-static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata)
-{
-    uintptr_t *udata = (uintptr_t*)userdata;
-    mount* mountpoint = (mount*)udata[0];
-    vdev* fs_driver = (vdev*)udata[1];
-    vdev* device = (vdev*)udata[2];
-    OBOS_UNUSED(blkSize);
-    OBOS_UNUSED(device);
-    file_type type = 0;
-    const char* path = nullptr;
-    OBOS_UNUSED(mountpoint);
-    OBOS_UNUSED(desc);
-    OBOS_UNUSED(blkCount);
-    OBOS_UNUSED(device);
-    fs_driver->driver->header.ftable.query_path(desc, &path);
-    fs_driver->driver->header.ftable.get_file_type(desc, &type);
-    size_t pathlen = strlen(path);
-    const char* tok = path;
-    bool is_base = false;
-    size_t tok_len = 0;
-    {
-        size_t currentPathLen = strlen(tok)-1;
-        if (tok[currentPathLen] != '/')
-            currentPathLen++;
-        while (tok[currentPathLen] == '/')
-            currentPathLen--;
-        tok_len = strchr(tok, '/');
-        if (tok_len != currentPathLen)
-            tok_len--;
-        else
-            is_base = true;
-    }
-    dirent* last = mountpoint->root;
-    char* currentPath = Vfs_Calloc(pathlen + 1, sizeof(char));
-    size_t currentPathLen = 0;
-    while (tok < (path+pathlen))
-    {
-        char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
-        memcpy(token, tok, tok_len);
-        token[tok_len] = 0;
-        memcpy(currentPath + currentPathLen, token, tok_len);
-        currentPathLen += tok_len;
-        if (!is_base)
-            currentPath[currentPathLen++] = '/';
-        dirent* new = VfsH_DirentLookupFrom(token, last ? last : mountpoint->root);
-        if (new && new->d_parent == mountpoint->root->d_parent)
-            new = nullptr;
-        if (!new)
-        {
-            // Allocate a new dirent.
-            new = Vfs_Calloc(1, sizeof(dirent));
-            OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
-            OBOS_InitStringLen(&new->name, token, tok_len);
-            dev_desc curdesc = 0;
-            file_type curtype = 0;
-            if (is_base)
-                curdesc = desc;
-            else
-                fs_driver->driver->header.ftable.path_search(&curdesc, (void*)udata[2], currentPath);
-            mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
-            new->vnode = new_vn;
-            new->vnode->refs++;
-            if (curtype == FILE_TYPE_SYMBOLIC_LINK)
-                mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
-        }
-        if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
-            VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
-        last = new;
-        Vfs_Free(token);
+// static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
+// {
+//     file_type type = 0;
+//     driver_file_perm perm = {};
+//     mountpoint->fs_driver->driver->header.ftable.get_file_perms(desc, &perm);
+//     mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+//     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
+//     switch (type)
+//     {
+//         case FILE_TYPE_REGULAR_FILE:
+//             vn->vtype = VNODE_TYPE_REG;
+//             mountpoint->fs_driver->driver->header.ftable.get_max_blk_count(desc, &vn->filesize);
+//             break;
+//         case FILE_TYPE_DIRECTORY:
+//             vn->vtype = VNODE_TYPE_DIR;
+//             break;
+//         case FILE_TYPE_SYMBOLIC_LINK:
+//         {
+//             vn->vtype = VNODE_TYPE_LNK;        
+//             break;
+//         }
+//         default:
+//             OBOS_ASSERT(type);
+//     }
+//     vn->mount_point = mountpoint;
+//     vn->desc = desc;
+//     memcpy(&vn->perm, &perm, sizeof(file_perm));
+//     if (t)
+//         *t = type;
+//     return vn;
+// }
+// static iterate_decision callback(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata)
+// {
+//     uintptr_t *udata = (uintptr_t*)userdata;
+//     mount* mountpoint = (mount*)udata[0];
+//     vdev* fs_driver = (vdev*)udata[1];
+//     vdev* device = (vdev*)udata[2];
+//     OBOS_UNUSED(blkSize);
+//     OBOS_UNUSED(device);
+//     file_type type = 0;
+//     const char* path = nullptr;
+//     OBOS_UNUSED(mountpoint);
+//     OBOS_UNUSED(desc);
+//     OBOS_UNUSED(blkCount);
+//     OBOS_UNUSED(device);
+//     fs_driver->driver->header.ftable.query_path(desc, &path);
+//     fs_driver->driver->header.ftable.get_file_type(desc, &type);
+//     size_t pathlen = strlen(path);
+//     const char* tok = path;
+//     bool is_base = false;
+//     size_t tok_len = 0;
+//     {
+//         size_t currentPathLen = strlen(tok)-1;
+//         if (tok[currentPathLen] != '/')
+//             currentPathLen++;
+//         while (tok[currentPathLen] == '/')
+//             currentPathLen--;
+//         tok_len = strchr(tok, '/');
+//         if (tok_len != currentPathLen)
+//             tok_len--;
+//         else
+//             is_base = true;
+//     }
+//     dirent* last = mountpoint->root;
+//     char* currentPath = Vfs_Calloc(pathlen + 1, sizeof(char));
+//     size_t currentPathLen = 0;
+//     while (tok < (path+pathlen))
+//     {
+//         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
+//         memcpy(token, tok, tok_len);
+//         token[tok_len] = 0;
+//         memcpy(currentPath + currentPathLen, token, tok_len);
+//         currentPathLen += tok_len;
+//         if (!is_base)
+//             currentPath[currentPathLen++] = '/';
+//         dirent* new = VfsH_DirentLookupFromCacheOnly(token, last ? last : mountpoint->root);
+//         if (new && new->d_parent == mountpoint->root->d_parent)
+//             new = nullptr;
+//         if (!new)
+//         {
+//             // Allocate a new dirent.
+//             new = Vfs_Calloc(1, sizeof(dirent));
+//             OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
+//             OBOS_InitStringLen(&new->name, token, tok_len);
+//             dev_desc curdesc = 0;
+//             file_type curtype = 0;
+//             if (is_base)
+//                 curdesc = desc;
+//             else
+//                 fs_driver->driver->header.ftable.path_search(&curdesc, (void*)udata[2], currentPath);
+//             mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+//             vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+//             new->vnode = new_vn;
+//             new->vnode->refs++;
+//             if (curtype == FILE_TYPE_SYMBOLIC_LINK)
+//                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
+//         }
+//         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
+//             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
+//         last = new;
+//         Vfs_Free(token);
 
-        tok += str_search(tok, '/');
-        size_t currentPathLen = strlen(tok)-1;
-        if (currentPathLen == (size_t)-1)
-            currentPathLen = 0;
-        if (tok[currentPathLen] != '/')
-            currentPathLen++;
-        while (tok[currentPathLen] == '/')
-            currentPathLen--;
-        tok_len = strchr(tok, '/');
-        if (tok_len != currentPathLen)
-            tok_len--;
-        else
-            is_base = true;
-    }
-    if (type == FILE_TYPE_DIRECTORY)
-        fs_driver->driver->header.ftable.list_dir(desc, (void*)udata[2], callback, udata);
-    return ITERATE_DECISION_CONTINUE;
-}
+//         tok += str_search(tok, '/');
+//         size_t currentPathLen = strlen(tok)-1;
+//         if (currentPathLen == (size_t)-1)
+//             currentPathLen = 0;
+//         if (tok[currentPathLen] != '/')
+//             currentPathLen++;
+//         while (tok[currentPathLen] == '/')
+//             currentPathLen--;
+//         tok_len = strchr(tok, '/');
+//         if (tok_len != currentPathLen)
+//             tok_len--;
+//         else
+//             is_base = true;
+//     }
+//     if (type == FILE_TYPE_DIRECTORY)
+//         fs_driver->driver->header.ftable.list_dir(desc, (void*)udata[2], callback, udata);
+//     return ITERATE_DECISION_CONTINUE;
+// }
 obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMountpoint)
 {
     if (!Vfs_Root)
@@ -185,11 +185,11 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     // at->vnode->mount_point = mountpoint;
     at->vnode->flags |= VFLAGS_MOUNTPOINT;
     mountpoint->root = at;
-    uintptr_t udata[3] = {
-        (uintptr_t)mountpoint,
-        (uintptr_t)fs_driver,
-        (uintptr_t)on,
-    };
+    // uintptr_t udata[3] = {
+    //     (uintptr_t)mountpoint,
+    //     (uintptr_t)fs_driver,
+    //     (uintptr_t)on,
+    // };
     mountpoint->fs_driver = memcpy(Vfs_Calloc(1, sizeof(vdev)), fs_driver, sizeof(*fs_driver));
     if (mountpoint->device)
         mountpoint->device->refs++;
@@ -201,8 +201,8 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
             LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
         return status;
     }
-    else
-        fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
+    // else
+    //     fs_driver->driver->header.ftable.list_dir(UINTPTR_MAX, on, callback, udata);
     LIST_APPEND(mount_list, &Vfs_Mounted, mountpoint);
     return OBOS_STATUS_SUCCESS;
 }

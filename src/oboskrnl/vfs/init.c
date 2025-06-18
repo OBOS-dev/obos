@@ -74,6 +74,7 @@ void Vfs_Initialize()
     Vfs_Root->vnode->perm.other_exec = true;
     Vfs_Root->vnode->perm.other_write = false;
     Vfs_Root->vnode->perm.other_read = true;
+    Vfs_Root->vnode->desc = UINTPTR_MAX;
     vdev initrd_dev = { };
     for (driver_node* cur = Drv_LoadedDrivers.head; cur; )
     {

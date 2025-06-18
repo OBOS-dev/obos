@@ -713,6 +713,8 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
 
     dent = VfsH_FollowLink(dent);
 
+    Vfs_PopulateDirectory(dent);
+    
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_DIRENT, &desc);

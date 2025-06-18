@@ -49,7 +49,7 @@ OBOS_WEAK obos_status trunc_file(dev_desc desc, size_t newsize);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK bool probe(void* vn);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 OBOS_WEAK obos_status submit_irp(void* request);

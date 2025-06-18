@@ -44,6 +44,7 @@ OBOS_EXPORT void VfsH_DirentRemoveChild(dirent* parent, dirent* what);
 // the lookup
 OBOS_EXPORT dirent* VfsH_DirentLookup(const char* path);
 OBOS_EXPORT dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);
+OBOS_EXPORT dirent* VfsH_DirentLookupFromCacheOnly(const char* path, dirent* root);
 dirent* VfsH_FollowLink(dirent* ent);
 
 char* VfsH_DirentPath(dirent* ent, dirent* relative_to);
@@ -55,3 +56,4 @@ OBOS_EXPORT dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_na
 
 // solely for mlibc support
 obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** last, size_t* nRead);
+void Vfs_PopulateDirectory(dirent* dent);

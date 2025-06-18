@@ -172,6 +172,7 @@ typedef struct driver_ftable
     obos_status(*query_path)(dev_desc desc, const char** path);
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
     obos_status(*get_linked_path)(dev_desc desc, const char** linked);
+    obos_status(*vnode_search)(void** vn_found, dev_desc desc); // Not required to exist
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
     union {
@@ -197,7 +198,7 @@ typedef struct driver_ftable
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
 
     // If dir is UINTPTR_MAX, it refers to the root directory.
-    obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+    obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
     obos_status(*stat_fs_info)(void *vn, drv_fs_info *info);
 
     // Can only be nullptr for the InitRD driver.
