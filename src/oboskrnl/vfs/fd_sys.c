@@ -300,6 +300,72 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten, size_t offset)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    status = OBOS_STATUS_SUCCESS;
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, OBOS_PROTECTION_READ_ONLY, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    size_t nWritten_ = 0;
+    status = Vfs_FdPWrite(fd->un.fd, kbuf, offset, nBytes, &nWritten_);
+    if (nWritten)
+        memcpy_k_to_usr(nWritten, &nWritten_, sizeof(size_t));
+
+    // if (desc == 1 || desc == 2)
+    //     printf("%.*s", nBytes, kbuf);
+
+    if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+        return status;
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, size_t offset)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    status = OBOS_STATUS_SUCCESS;
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    size_t nRead_ = 0;
+    status = Vfs_FdPRead(fd->un.fd, kbuf, offset, nBytes, &nRead_);
+
+    if (nRead)
+        memcpy_k_to_usr(nRead, &nRead_, sizeof(size_t));
+
+    if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+        return status;
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 obos_status Sys_FdSeek(handle desc, off_t off, whence_t whence)
 {
     // for (volatile bool b = (desc == 0x1); b;)

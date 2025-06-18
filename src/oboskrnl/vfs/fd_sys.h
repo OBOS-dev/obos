@@ -30,6 +30,9 @@ obos_status      Sys_MkdirAt(handle dirent, const char* name, uint32_t mode);
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status  Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead);
 
+obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten, size_t offset);
+obos_status  Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, size_t offset);
+
 // obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
 // obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
 handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* status);

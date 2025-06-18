@@ -212,6 +212,8 @@ const char* syscall_to_string[] = {
     "Sys_MakeDiskSwap",
     "Sys_SwitchSwap",
     "Sys_SyncAnonPages",
+    "Sys_FdPWrite",
+    "Sys_FdPRead",
 };
 
 const char* status_to_string[] = {

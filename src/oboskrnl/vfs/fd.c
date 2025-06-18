@@ -134,12 +134,12 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_)
+static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, size_t* nWritten_, size_t uoffset)
 {
     // First, try making an IRP.
     irp* req = VfsH_IRPAllocate();
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
-    VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
+    VfsH_IRPBytesToBlockCount(desc->vn, uoffset, &req->blkOffset);
     req->cbuff = from;
     VfsH_IRPRef(req);
     req->op = IRP_WRITE;
@@ -172,7 +172,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
     const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
-    const uintptr_t offset = (desc->offset + base_offset) / blkSize;
+    const uintptr_t offset = (uoffset + base_offset) / blkSize;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     status = driver->ftable.write_sync(desc->desc, from, nBytes, offset, nWritten_);
@@ -185,62 +185,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
 }
 obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritten)
 {
-    if (!desc || !buf)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!(desc->flags & FD_FLAGS_OPEN))
-        return OBOS_STATUS_UNINITIALIZED;
-    if (!nBytes)
-        return OBOS_STATUS_SUCCESS;
-    if (is_eof(desc->vn, desc->offset))
-        return OBOS_STATUS_EOF;
-    if (!(desc->flags & FD_FLAGS_WRITE))
-        return OBOS_STATUS_ACCESS_DENIED;
-    obos_status status = OBOS_STATUS_SUCCESS;
-    if (desc->flags & FD_FLAGS_UNCACHED)
-    {
-        // Keep it nice and simple, and just do an uncached write on the file.
-
-        status = do_uncached_write(desc, buf, nBytes, nWritten);
-    }
-    else 
-    {
-        mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
-        if (!VfsH_LockMountpoint(point))
-            return OBOS_STATUS_ABORTED;
-
-        size_t start = desc->offset;
-        size_t end = desc->offset + nBytes;
-        page* pg = nullptr;
-        if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
-        {
-            // The start and end are on the same page, and therefore, 
-            // use the same pagecache entry.
-        
-            memcpy(VfsH_PageCacheGetEntry(desc->vn, start, &pg), buf, nBytes);
-            Mm_MarkAsDirtyPhys(pg);
-        }
-        else
-        {
-            size_t i = 0;
-            size_t end_rounded = end;
-            if (end_rounded % OBOS_PAGE_SIZE)
-                end_rounded = (end_rounded + (OBOS_PAGE_SIZE-(end_rounded%OBOS_PAGE_SIZE)));
-            for (size_t curr = start; curr < end_rounded && i < nBytes; )
-            {
-                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
-                size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
-                nToRead = OBOS_MIN(nToRead, nBytes-i);
-                memcpy(ent, (const void*)((uintptr_t)buf+i), nToRead);
-                curr += nToRead;
-                i += nToRead;
-                Mm_MarkAsDirtyPhys(pg);
-            }
-        }
-        VfsH_UnlockMountpoint(point);
-
-        if (nWritten)
-            *nWritten = nBytes;
-    }
+    obos_status status = Vfs_FdPWrite(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nWritten);
     if (obos_expect(obos_is_success(status), 1))
     {
         if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
@@ -249,12 +194,12 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
     }
     return status;
 }
-static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_)
+static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_, size_t uoffset)
 {
     // First, try making an IRP.
     irp* req = VfsH_IRPAllocate();
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
-    VfsH_IRPBytesToBlockCount(desc->vn, desc->offset, &req->blkOffset);
+    VfsH_IRPBytesToBlockCount(desc->vn, uoffset, &req->blkOffset);
     req->buff = into;
     req->op = IRP_READ;
     req->dryOp = false;
@@ -286,7 +231,7 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
         return OBOS_STATUS_INVALID_ARGUMENT;
     nBytes /= blkSize;
     const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
-    const uintptr_t offset = (desc->offset+base_offset) / blkSize;
+    const uintptr_t offset = (uoffset+base_offset) / blkSize;
     if (desc->vn->vtype == VNODE_TYPE_REG && !VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     status = driver->ftable.read_sync(desc->desc, into, nBytes, offset, nRead_);
@@ -300,6 +245,13 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
 }
 obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
 {
+    obos_status status = Vfs_FdPRead(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nRead);
+    if (obos_expect(obos_is_success(status), 1))
+        Vfs_FdSeek(desc, nBytes, SEEK_CUR);
+    return status;
+}
+obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes, size_t* nWritten)
+{
     if (!desc || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!(desc->flags & FD_FLAGS_OPEN))
@@ -308,16 +260,76 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         return OBOS_STATUS_SUCCESS;
     if (is_eof(desc->vn, desc->offset))
         return OBOS_STATUS_EOF;
+    if (!(desc->flags & FD_FLAGS_WRITE))
+        return OBOS_STATUS_ACCESS_DENIED;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (desc->flags & FD_FLAGS_UNCACHED)
+    {
+        // Keep it nice and simple, and just do an uncached write on the file.
+
+        status = do_uncached_write(desc, buf, nBytes, nWritten, offset);
+    }
+    else 
+    {
+        mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        if (!VfsH_LockMountpoint(point))
+            return OBOS_STATUS_ABORTED;
+
+        size_t start = offset;
+        size_t end = offset + nBytes;
+        page* pg = nullptr;
+        if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
+        {
+            // The start and end are on the same page, and therefore, 
+            // use the same pagecache entry.
+        
+            memcpy(VfsH_PageCacheGetEntry(desc->vn, start, &pg), buf, nBytes);
+            Mm_MarkAsDirtyPhys(pg);
+        }
+        else
+        {
+            size_t i = 0;
+            size_t end_rounded = end;
+            if (end_rounded % OBOS_PAGE_SIZE)
+                end_rounded = (end_rounded + (OBOS_PAGE_SIZE-(end_rounded%OBOS_PAGE_SIZE)));
+            for (size_t curr = start; curr < end_rounded && i < nBytes; )
+            {
+                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
+                size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
+                nToRead = OBOS_MIN(nToRead, nBytes-i);
+                memcpy(ent, (const void*)((uintptr_t)buf+i), nToRead);
+                curr += nToRead;
+                i += nToRead;
+                Mm_MarkAsDirtyPhys(pg);
+            }
+        }
+        VfsH_UnlockMountpoint(point);
+
+        if (nWritten)
+            *nWritten = nBytes;
+    }
+    return status;
+}
+obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_t* nRead)
+{
+    if (!desc || !buf)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!(desc->flags & FD_FLAGS_OPEN))
+        return OBOS_STATUS_UNINITIALIZED;
+    if (!nBytes)
+        return OBOS_STATUS_SUCCESS;
+    if (is_eof(desc->vn, offset))
+        return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype != VNODE_TYPE_CHR)
-        nBytes = desc->vn->filesize - desc->offset; // truncate size to the space we have left in the file.
+    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR)
+        nBytes = desc->vn->filesize - offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
         // Keep it nice and simple, and just do an uncached read on the file.
-
-        status = do_uncached_read(desc, buf, nBytes, nRead);
+    
+        status = do_uncached_read(desc, buf, nBytes, nRead, offset);
     }
     else 
     {
@@ -325,9 +337,9 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
         // const size_t base_offset = desc->vn->flags & VFLAGS_PARTITION ? desc->vn->partitions[0].off : 0;
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
-
-        size_t start = desc->offset;
-        size_t end = desc->offset + nBytes;
+    
+        size_t start = offset;
+        size_t end = offset + nBytes;
         if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
         {
             // The start and end are on the same page, and therefore, 
@@ -351,14 +363,12 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
                 i += nToRead;
             }
         }
-
+    
         VfsH_UnlockMountpoint(point);
-
+    
         if (nRead)
             *nRead = nBytes;
     }
-    if (obos_expect(obos_is_success(status), 1))
-        Vfs_FdSeek(desc, nBytes, SEEK_CUR);
     return status;
 }
 obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
