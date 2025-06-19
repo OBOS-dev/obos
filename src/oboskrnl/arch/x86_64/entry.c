@@ -712,21 +712,26 @@ void Arch_KernelMainBootstrap()
                 OBOSS_SpinlockHint();
         }
         OBOS_Log("Loaded InitRD driver.\n");
+        OBOS_Debug("%s: Initializing VFS.\n", __func__);
+        Vfs_Initialize();
     }
     else 
     {
+        OBOS_Debug("%s: Initializing VFS.\n", __func__);
+        Vfs_Initialize();
         OBOS_Debug("No InitRD driver!\n");
         OBOS_Debug("Scanning command line...\n");
         char* modules_to_load = OBOS_GetOPTS("load-modules");
         if (!modules_to_load)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initrd, and no drivers passed via the command line. Further boot is impossible.\n");
         size_t len = strlen(modules_to_load);
+        size_t left = len;
         char* iter = modules_to_load;
         while(iter < (modules_to_load + len))
         {
             status = OBOS_STATUS_SUCCESS;
-            size_t namelen = strchr(modules_to_load, ',');
-            if (namelen != len)
+            size_t namelen = strchr(iter, ',');
+            if (namelen != left)
                 namelen--;
             OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
             if (uacpi_strncmp(iter, "__KERNEL__", namelen) == 0)
@@ -768,13 +773,16 @@ void Arch_KernelMainBootstrap()
                 iter += namelen;
                 continue;
             }
+            if (status != OBOS_STATUS_NO_ENTRY_POINT)
+            {
+                while (drv->main_thread)
+                    OBOSS_SpinlockHint();
+            }
             if (namelen != len)
                 namelen++;
             iter += namelen;
         }
     }
-    OBOS_Debug("%s: Initializing VFS.\n", __func__);
-    Vfs_Initialize();
     // fd file1 = {}, file2 = {};
     // Vfs_FdOpen(&file1, "/test.txt", 0);
     // Vfs_FdOpen(&file2, "/test2.txt", 0);

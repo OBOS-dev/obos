@@ -28,6 +28,7 @@
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
 #include <vfs/fd.h>
+#include <vfs/vnode.h>
 
 #include <uacpi/uacpi.h>
 #include <uacpi/namespace.h>
@@ -464,6 +465,9 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
 {
     if (!directory)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (directory->vnode->vtype != VNODE_TYPE_DIR)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    Vfs_PopulateDirectory(directory);
     struct hashmap* drivers = 
         hashmap_new_with_allocator(
             malloc,

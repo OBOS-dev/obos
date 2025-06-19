@@ -33,6 +33,7 @@ typedef struct mount
     bool awaitingFree;
 } mount;
 extern struct dirent* Vfs_Root;
+extern struct dirent* Vfs_DevRoot;
 extern mount_list Vfs_Mounted;
 
 // returns true if the operation succeeded.

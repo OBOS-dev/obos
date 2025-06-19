@@ -17,7 +17,7 @@ typedef struct {
 	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) bool locked;
 } spinlock;
 
-OBOS_EXPORT spinlock Core_SpinlockCreate();
+#define Core_SpinlockCreate() (spinlock){}
 OBOS_EXPORT irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant);
 OBOS_EXPORT irql Core_SpinlockAcquire(spinlock* const lock);
 OBOS_EXPORT obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);

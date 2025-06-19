@@ -79,6 +79,7 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
             phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
             OBOS_ENSURE(phys != Mm_AnonPage);
         }
+        usrphys = phys->phys;
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);
         usroffset = 0;

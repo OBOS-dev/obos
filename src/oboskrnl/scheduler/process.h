@@ -33,6 +33,10 @@ typedef struct process
 
 	uid currentUID;
 	gid currentGID;
+
+    bool set_uid : 1;
+    bool set_gid : 1;
+
 	uint32_t exitCode;
 	bool dead;
 

@@ -204,7 +204,8 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 			break;
 		cur = cur->next;
 	}
-	OBOS_ASSERT(cur);
+	if (!cur)
+		return OBOS_STATUS_INVALID_ARGUMENT;
 #endif
 	if (node->next)
 		node->next->prev = node->prev;

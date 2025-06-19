@@ -56,7 +56,7 @@ void OBOS_LoadInit()
     new_ctx->workingSet.capacity = 64*1024*1024;
     Core_ProcessStart(new, nullptr);
 
-    obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ);
+    obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not open %s. Status: %d\n", init_path, status);
 
@@ -93,7 +93,8 @@ void OBOS_LoadInit()
 
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 
-    new->controlling_tty->fg_job = new;
+    if (new->controlling_tty)
+        new->controlling_tty->fg_job = new;
 
     // CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 

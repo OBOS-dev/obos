@@ -35,4 +35,6 @@ size_t Sys_GetUsedPhysicalMemoryCount();
 
 obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info);
 
-void Sys_VMMContextClone(handle_desc *hnd, handle_desc *new);
+obos_status Sys_MakeDiskSwap(const char* path);
+obos_status Sys_SwitchSwap(const char* path);
+void Sys_SyncAnonPages();

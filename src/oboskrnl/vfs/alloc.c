@@ -43,20 +43,21 @@ void* Vfs_Calloc(size_t nObjs, size_t szObj)
 
 void* Vfs_Realloc(void* what, size_t cnt)
 {
-    if (!Vfs_Allocator)
+    if (!Vfs_Allocator || !what)
         return nullptr;
     struct allocation_hdr* hdr = what;
     hdr--;
-    hdr->sz += cnt;
-    hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt, hdr->sz-cnt, nullptr);
+    size_t old_size = hdr->sz+sizeof(*hdr);
+    hdr->sz = cnt;
+    hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt+sizeof(*hdr), old_size, nullptr);
     return hdr+1;
 }
 
 void Vfs_Free(void* what)
 {
-    if (!Vfs_Allocator)
+    if (!Vfs_Allocator || !what)
         return;
     struct allocation_hdr* hdr = what;
     hdr--;
-    Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz);
+    Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz + sizeof(*hdr));
 }

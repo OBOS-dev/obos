@@ -53,14 +53,14 @@ void driver_cleanup_callback()
 
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
-OBOS_WEAK obos_status get_linked_desc(dev_desc desc, dev_desc* found);
+OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
 OBOS_WEAK obos_status remove_file(dev_desc desc);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
 dev_desc irp_process_dryop(irp* req)
@@ -117,7 +117,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
         .query_path = query_path,
         .path_search = path_search,
-        .get_linked_desc = get_linked_desc,
+        .get_linked_path = get_linked_path,
         .move_desc_to = move_desc_to,
         .mk_file = mk_file,
         .remove_file = remove_file,
@@ -200,6 +200,8 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.group_exec = filemode & FILEMODE_GROUP_EXEC;
     ino->perm.owner_exec = filemode & FILEMODE_OWNER_EXEC;
     ino->perm.other_exec = filemode & FILEMODE_OTHER_EXEC;
+    ino->perm.set_uid = filemode & 04000;
+    ino->perm.set_gid = filemode & 02000;
     return ino;
 }
 driver_init_status OBOS_DriverEntry(driver_id* this)
@@ -257,21 +259,28 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 
         if (!ino->parent)
         {
+            ino->parent = InitrdRoot;
             // Create all parent directories
             char* iter = ino->path;
-            char* end = ino->path;
+            char* end = ino->path + ino->path_len;
             while (iter < end)
             {
                 size_t off = strchr(iter, '/');
                 presv = iter[off];
                 iter[off] = 0;
-                if (DirentLookupFrom(ino->path, InitrdRoot))
+                initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
+                if (found)
+                {
+                    ino->parent = found;
                     goto down;
+                }
 
                 const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
                 OBOS_ASSERT(sub_hdr);
                 
                 initrd_inode* sub_ino = create_inode_boot(sub_hdr);
+                sub_ino->parent = ino->parent;
+                // printf("%s %s\n", iter, sub_ino->parent->name);
                 if (!sub_ino->parent->children.head)
                     sub_ino->parent->children.head = sub_ino;
                 if (sub_ino->parent->children.tail)
@@ -279,7 +288,6 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
                 sub_ino->prev = sub_ino->parent->children.tail;
                 sub_ino->parent->children.tail = sub_ino;
                 sub_ino->parent->children.nChildren++;
-                sub_ino->parent = sub_ino->parent;
                 
                 ino->parent = sub_ino;
 
@@ -314,6 +322,8 @@ OBOS_PAGEABLE_FUNCTION obos_status get_max_blk_count(dev_desc desc, size_t* coun
     initrd_inode* inode = (void*)desc;
     if (!inode || !count)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_NOT_A_FILE;
     if (inode->type != FILE_TYPE_REGULAR_FILE)
         return OBOS_STATUS_NOT_A_FILE;
     *count = inode->filesize;
@@ -349,7 +359,7 @@ OBOS_PAGEABLE_FUNCTION obos_status query_path(dev_desc desc, const char** path)
     *path = inode->path;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status get_linked_desc(dev_desc desc, dev_desc* found)
+OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** found)
 {    
     OBOS_UNUSED(desc && found);
     return OBOS_STATUS_UNIMPLEMENTED;
@@ -378,7 +388,7 @@ OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
     *type = inode->type;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
     OBOS_UNUSED(unused);
     if (!dir_)
@@ -386,17 +396,18 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     initrd_inode* dir = dir_ == UINTPTR_MAX ? InitrdRoot : (void*)dir_;
     for (initrd_inode* ino = dir->children.head; ino; )
     {
-        if (cb((dev_desc)ino, 1, ino->filesize, userdata) == ITERATE_DECISION_STOP)
+        if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
             break;
         ino = ino->next;
     }
     return OBOS_STATUS_SUCCESS;
 }
 
-static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata)
+static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
 {
     OBOS_UNUSED(blkSize);
     OBOS_UNUSED(blkCount);
+    OBOS_UNUSED(name);
 
     size_t* const fileCount = userdata;
     (*fileCount)++;
@@ -451,7 +462,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const cha
     new->path[parent->path_len] = '/';
     memcpy(&new->path[parent->path_len+1], new->name, new->name_len);
     new->path[new->path_len] = 0;
-    printf("created new node: parent.path: %s, new.path: %s, new.name: %s\n", parent->path, new->path, new->name);
+    // printf("created new node: parent.path: %s, new.path: %s, new.name: %s\n", parent->path, new->path, new->name);
 
     new->parent = parent;
     if (!parent->children.head)
@@ -491,4 +502,25 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_WEAK obos_status remove_file(dev_desc desc);
+obos_status remove_file(dev_desc desc)
+{
+    initrd_inode* inode = (void*)desc;
+    if (!inode)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (inode->parent)
+    {
+        if (inode->next)
+            inode->next->prev = inode->prev;
+        if (inode->prev)
+            inode->prev->next = inode->next;
+        if (!inode->prev)
+            inode->parent->children.head = inode->next;
+        if (!inode->next)
+            inode->parent->children.tail = inode->prev;
+        inode->parent->children.nChildren--;
+    }
+    if (!inode->persistent)
+        Free(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize);
+    Free(OBOS_KernelAllocator, inode, sizeof(*inode));
+    return OBOS_STATUS_SUCCESS;
+}

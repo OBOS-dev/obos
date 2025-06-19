@@ -127,8 +127,9 @@ static void swap_free_impl(void* item)
     pg->key = 0;
     swap_libc_free(item);
 }
-static obos_status swap_free(struct swap_device* dev, uintptr_t id)
+static obos_status swap_free(struct swap_device* dev, uintptr_t id, bool huge_page)
 {
+    OBOS_UNUSED(huge_page);
     swap_header* hdr = dev->metadata;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
     swap_page what = {.key=id};

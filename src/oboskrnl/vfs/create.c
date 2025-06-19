@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <partition.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
@@ -18,6 +19,7 @@
 #include <vfs/mount.h>
 
 #include <utils/string.h>
+#include <utils/list.h>
 
 static bool has_write_perm(vnode* parent)
 {
@@ -53,6 +55,12 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!has_write_perm(parent_vn))
         return OBOS_STATUS_ACCESS_DENIED;
+    mount *parent_mnt = parent_vn->flags & VFLAGS_MOUNTPOINT ? 
+        parent_vn->un.mounted:
+        parent_vn->mount_point;
+    driver_ftable* ftable = &parent_mnt->fs_driver->driver->header.ftable;
+    if (!ftable->mk_file)
+        return OBOS_STATUS_UNIMPLEMENTED;
 
     do {
         dirent* found = VfsH_DirentLookupFrom(name, parent);
@@ -85,20 +93,20 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     vn->perm = mode;
     vn->flags = 0;
     vn->vtype = vtype;
-    vn->refs++;
-    vn->mount_point = parent_vn->mount_point;
+    vn->mount_point = parent_mnt;
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
-    driver_ftable* ftable = &parent_vn->mount_point->fs_driver->driver->header.ftable;
-    vnode* mount_vn = nullptr;
-    if (parent_vn->flags & VFLAGS_MOUNTPOINT)
+    vnode* mount_vn = parent_mnt->device;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
     {
-        vn->mount_point = parent_vn->un.mounted;
-        ftable = &parent_vn->un.mounted->fs_driver->driver->header.ftable;
-        mount_vn = parent_vn->un.mounted->device;
+        char* parent_path = VfsH_DirentPath(parent, parent_mnt->root);
+        status = ftable->pmk_file(&vn->desc, parent_path, mount_vn, name, type, mode);
+        Vfs_Free(parent_path);
     }
-    obos_status status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
+    else
+        status = ftable->mk_file(&vn->desc, parent_vn->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : parent_vn->desc, mount_vn, name, type, mode);
     if (obos_is_error(status))
     {
         Vfs_Free(vn);
@@ -106,5 +114,58 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return status;
     }
     VfsH_DirentAppendChild(parent, ent);
+    LIST_APPEND(dirent_list, &parent_mnt->dirent_list, ent);
+    ent->vnode->refs++;
     return status;
+}
+
+obos_status Vfs_UnlinkNode(dirent* node)
+{
+    if (!node)
+        return OBOS_STATUS_SUCCESS;
+    if (node->d_children.nChildren)
+        return OBOS_STATUS_IN_USE; // cannot remove a directory with children
+    if (!has_write_perm(node->d_parent->vnode))
+        return OBOS_STATUS_ACCESS_DENIED;
+
+    mount *parent_mnt = node->vnode->flags & VFLAGS_MOUNTPOINT ? 
+        node->vnode->un.mounted:
+        node->vnode->mount_point;
+    driver_ftable* ftable = &parent_mnt->fs_driver->driver->header.ftable;
+    if (!ftable->remove_file)
+        return OBOS_STATUS_UNIMPLEMENTED;
+    if (LIST_GET_NODE_COUNT(fd_list, &node->vnode->opened))
+        return OBOS_STATUS_IN_USE; // TODO: Handle correctly (when the last FD is closed, then free+delete the vnode)
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+    {
+        char* path = VfsH_DirentPath(node, parent_mnt->root);
+        status = ftable->premove_file(parent_mnt->device, path);
+        Vfs_Free(path);   
+    }
+    else 
+        status = ftable->remove_file(node->vnode->desc);
+
+    if (obos_is_error(status))
+        return status;
+
+    // Remove it in the VFS structures
+
+    VfsH_DirentRemoveChild(node->d_parent, node);
+    OBOS_FreeString(&node->name);
+    LIST_REMOVE(dirent_list, &parent_mnt->dirent_list, node);
+    --node->vnode->refs; // Removed from dirent list.
+    if (!(--node->vnode->refs))
+    {
+        for (size_t i = 0; i < node->vnode->nPartitions; i++)
+            LIST_REMOVE(partition_list, &OBOS_Partitions, &node->vnode->partitions[i]);
+        Vfs_Free(node->vnode->partitions);
+
+        Vfs_Free(node->vnode);
+    }
+    Vfs_Free(node);
+
+    return OBOS_STATUS_SUCCESS;
 }

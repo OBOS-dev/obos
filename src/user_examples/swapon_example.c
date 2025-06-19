@@ -1,11 +1,8 @@
-#include <stdint.h>
-#include <stdlib.h>
-#include <stddef.h>
+#include <obos/syscall.h>
+#include <obos/error.h>
 #include <stdio.h>
 #include <errno.h>
-
-#include <obos/error.h>
-#include <obos/syscall.h>
+#include <stdlib.h>
 
 static int parse_file_status(obos_status status)
 {
@@ -28,18 +25,18 @@ static int parse_file_status(obos_status status)
 
 int main(int argc, char** argv)
 {
-    if (argc < 2)
+    if (argc != 2)
     {
-        printf("Usage: %s target\n", argv[0]);
+        printf("Usage: %s device\n", argv[0]);
         return -1;
     }
-    char* target = argv[1];
-    obos_status st = syscall1(Sys_Unmount, target);
+
+    obos_status st = syscall1(Sys_SwitchSwap, argv[1]);
     if (obos_is_error(st))
     {
         errno = parse_file_status(st);
-        perror("Sys_Unmount");
-        return -1;
+        perror("Sys_SwitchSwap");
+        return 1;
     }
 
     return 0;

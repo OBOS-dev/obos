@@ -360,7 +360,10 @@ obos_status submit_irp(void* request_)
     request->drvData = data;
     status = populate_physical_regions((uintptr_t)request->buff, request->blkCount*port->sectorSize, data);
     if (obos_is_error(status))
+    {
+        Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
         return status;
+    }
     SendCommand(port, data, request->blkOffset, 0x40, request->blkCount == 0x10000 ? 0 : request->blkCount);
     HBA->ghc |= BIT(1) /* GhcIE */;
     return OBOS_STATUS_SUCCESS;

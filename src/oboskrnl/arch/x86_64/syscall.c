@@ -203,7 +203,19 @@ const char* syscall_to_string[] = {
     "Sys_IRPGetStatus",
     "Sys_CreatePipe",
     "Sys_PSelect",
+    "Sys_ReadLinkAt",
+    "Sys_SetUid",
+    "Sys_SetGid",
+    "Sys_GetUid",
+    "Sys_GetGid",
+    "Sys_UnlinkAt",
+    "Sys_MakeDiskSwap",
+    "Sys_SwitchSwap",
+    "Sys_SyncAnonPages",
+    "Sys_FdPWrite",
+    "Sys_FdPRead",
 };
+
 const char* status_to_string[] = {
     "OBOS_STATUS_SUCCESS",
     "OBOS_STATUS_INVALID_IRQL",
@@ -256,7 +268,7 @@ void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, 
     OBOS_UNUSED(r8);
     OBOS_UNUSED(r9);
     OBOS_UNUSED(eax);
-    if (eax > sizeof(syscall_to_string)/sizeof(const char*))
+    if (eax >= sizeof(syscall_to_string)/sizeof(const char*))
         return;
     OBOS_Debug("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
@@ -264,7 +276,7 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
 {
     OBOS_UNUSED(ret);
     OBOS_UNUSED(eax);
-    if (eax > sizeof(syscall_to_string)/sizeof(const char*))
+    if (eax >= sizeof(syscall_to_string)/sizeof(const char*))
         return;
     if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19 || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY))
         OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");

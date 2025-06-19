@@ -132,12 +132,13 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     fd file = {};
-    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
+    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     Free(OBOS_KernelAllocator, path, sz_path+1);
     if (obos_is_error(status))
         return status;
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE, &file, nullptr);
+    bool set_uid = file.vn->perm.set_uid, set_gid = file.vn->perm.set_gid;
     Vfs_FdClose(&file);
 
     char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
@@ -271,6 +272,9 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     aux.envp = knvp;
     aux.envpc = envpc;
+
+    Core_GetCurrentThread()->proc->set_uid = set_uid;
+    Core_GetCurrentThread()->proc->set_gid = set_gid;
 
     OBOSS_HandControlTo(ctx, &aux);
 }

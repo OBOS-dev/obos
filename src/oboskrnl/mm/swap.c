@@ -165,9 +165,12 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
 
 obos_status Mm_ChangeSwapProvider(swap_dev* to)
 {
-    OBOS_UNUSED(to);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    Mm_SwapProvider->awaiting_deinit = true;
+    Mm_SwapProvider = to;
+    return OBOS_STATUS_SUCCESS;
 }
+
+uint32_t Mm_PageWriterOperation = 0;
 
 static __attribute__((no_instrument_function)) void page_writer()
 {
@@ -176,13 +179,17 @@ static __attribute__((no_instrument_function)) void page_writer()
     {
         Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
         Core_EventClear(&page_writer_done);
+        if (!Mm_PageWriterOperation)
+            Mm_PageWriterOperation = PAGE_WRITER_SYNC_ALL;
         // FOR EACH dirty page.
         // Write them back :)
         // also while we're at it, we'll make them standby
         irql oldIrql = Core_SpinlockAcquire(&swap_lock);
-        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_ANON); )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
             // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
@@ -191,49 +198,9 @@ static __attribute__((no_instrument_function)) void page_writer()
                 pg = next;
                 continue;
             }
-            if (pg->backing_vn)
+            if (!pg->backing_vn)
             {
-                // This is a file page, so writing it back is different than writing back an
-                // anonymous page.
-                size_t nBytes = OBOS_PAGE_SIZE;
-                mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
-                const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-                if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
-                    driver = &pg->backing_vn->un.device->driver->header;
-
-                if (driver->ftable.submit_irp)
-                {
-                    irp* req = VfsH_IRPAllocate();
-                    req->vn = pg->backing_vn;
-                    VfsH_IRPBytesToBlockCount(req->vn, nBytes, &req->blkCount);
-                    VfsH_IRPBytesToBlockCount(req->vn, pg->file_offset, &req->blkOffset);
-                    req->dryOp = false;
-                    req->op = IRP_WRITE;
-                    req->cbuff =  MmS_MapVirtFromPhys(pg->phys);
-                    VfsH_IRPSubmit(req, nullptr);
-                    VfsH_IRPWait(req);
-                    VfsH_IRPUnref(req);
-                }
-                else 
-                {
-                    size_t blkSize = 0;
-                    driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
-                    nBytes /= blkSize;
-                    const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
-                    const uintptr_t offset = pg->file_offset + base_offset;
-                    // if (!VfsH_LockMountpoint(point))
-                    //     goto abort;
-                    Core_SpinlockRelease(&swap_lock, oldIrql);
-                    // printf("writing back %p:%d (real offset: %d)\n", pg->backing_vn, pg->file_offset, offset);
-                    obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
-                    if (obos_is_error(status))
-                        OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
-                    oldIrql = Core_SpinlockAcquire(&swap_lock);
-                    // VfsH_UnlockMountpoint(point);
-                }
-            }
-            else 
-            {
+                Core_SpinlockRelease(&swap_lock, oldIrql);
                 if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
                 {
                     pg = next;
@@ -248,16 +215,66 @@ static __attribute__((no_instrument_function)) void page_writer()
                     pg = next;
                     continue;
                 }
+                Mm_GlobalMemoryUsage.paged += pg->flags & PHYS_PAGE_HUGE_PAGE ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+                oldIrql = Core_SpinlockAcquire(&swap_lock);
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
             }
-            pg->flags &= ~PHYS_PAGE_DIRTY;
-            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
-    
-            LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
-            pg->flags |= PHYS_PAGE_STANDBY;
+
+            // abort:
+            pg = next;
+        }
+
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_FILE); )
+        {
+            page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
+            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
+            if (~pg->flags & PHYS_PAGE_DIRTY)
+            {
+                // Funny business
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+                pg = next;
+                continue;
+            }
+            if (pg->backing_vn)
+            {
+                // This is a file page, so writing it back is different than writing back an
+                // anonymous page.
+                size_t nBytes = OBOS_MIN((size_t)OBOS_PAGE_SIZE, pg->backing_vn->filesize-pg->file_offset);
+                mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
+                const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+                if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
+                    driver = &pg->backing_vn->un.device->driver->header;
+                size_t blkSize = 0;
+                driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
+                nBytes /= blkSize;
+                const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
+                const uintptr_t offset = pg->file_offset + base_offset;
+                // if (!VfsH_LockMountpoint(point))
+                //     goto abort;
+                Core_SpinlockRelease(&swap_lock, oldIrql);
+                // printf("writing back %p:%d (real offset: %d)\n", pg->backing_vn, pg->file_offset, offset);
+                obos_status status = driver->ftable.write_sync(pg->backing_vn->desc, MmS_MapVirtFromPhys(pg->phys), nBytes, offset, nullptr);
+                if (obos_is_error(status))
+                    OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
+                oldIrql = Core_SpinlockAcquire(&swap_lock);
+                // VfsH_UnlockMountpoint(point);
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+        
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
+            }
             
             // abort:
             pg = next;
         }
+
         Mm_DirtyPagesBytes = 0;
         Core_SpinlockRelease(&swap_lock, oldIrql);
         Core_EventSet(&page_writer_done, false);
@@ -302,6 +319,7 @@ void Mm_MarkAsDirtyPhys(page* node)
     //     printf("%p:%d\n", node->backing_vn, node->file_offset);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Core_SpinlockRelease(&swap_lock, oldIrql);
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
     if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold && !node->backing_vn)
         Mm_WakePageWriter(false);
 }

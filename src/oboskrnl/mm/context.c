@@ -127,11 +127,15 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 
 void MmH_RefPage(page* buf)
 {
+	if (!buf)
+		return;
 	buf->refcount++;
 	// printf("refed page %p (now at %d)\n", buf->phys, buf->refcount);
 }
 void MmH_DerefPage(page* buf)
 {
+	if (!buf)
+		return;
 	// printf("derefed page %p (now at %d)\n", buf->phys, buf->refcount - 1);
 	if (!(--buf->refcount))
 	{
@@ -179,13 +183,20 @@ swap_allocation* MmH_AddSwapAllocation(uintptr_t id)
 void MmH_RefSwapAllocation(swap_allocation* alloc)
 {
 	alloc->refs++;
+	alloc->provider->refs++;
 }
 void MmH_DerefSwapAllocation(swap_allocation* alloc)
 {
-	if (-(!alloc->refs))
+	if (!(--alloc->refs))
 	{
 		LIST_REMOVE(swap_allocation_list, &Mm_SwapAllocations, alloc);
-		alloc->provider->swap_free(alloc->provider, alloc->id);
+		alloc->provider->swap_free(alloc->provider, alloc->id, alloc->phys->flags & PHYS_PAGE_DIRTY);
+		if (alloc->provider->awaiting_deinit && !(--alloc->provider->refs))
+		{
+			alloc->provider->deinit_dev(alloc->provider);
+			if (alloc->provider->free_obj)
+				alloc->provider->free_obj(alloc->provider);
+		}
 		Mm_Allocator->Free(Mm_Allocator, alloc, sizeof(*alloc));
 	}
 }
