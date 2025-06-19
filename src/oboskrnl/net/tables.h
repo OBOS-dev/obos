@@ -34,7 +34,7 @@ LIST_PROTOTYPE(gateway_list, gateway, node);
 enum {
     IP_ENTRY_ENABLE_ICMP_ECHO_REPLY = BIT(0),
     IP_ENTRY_ENABLE_ARP_REPLY = BIT(1),
-    IP_ENTRY_IPv4_FORWARDING = BIT(1),
+    IP_ENTRY_IPv4_FORWARDING = BIT(2),
 };
 
 typedef struct ip_table_entry {
@@ -74,6 +74,9 @@ typedef struct net_tables {
 
     gateway_list gateways;
     gateway* default_gateway;
+
+    unassembled_ip_packets fragmented_packets;
+    pushlock fragmented_packets_lock;
 
     vnode* interface;
     mac_address mac;

@@ -72,6 +72,7 @@ static void dispatcher(vnode* nic)
         OBOS_SharedPtrConstructSz(buf, req->buff, req->blkCount);
         buf->free = OBOS_SharedPtrDefaultFree;
         buf->onDeref = NetFreeSharedPtr;
+        buf->freeUdata = OBOS_KernelAllocator;
 
         int depth = -1;
         InvokePacketHandler(Ethernet, buf->obj, buf->szObj, nullptr);
@@ -111,7 +112,9 @@ obos_status Net_Initialize(vnode* nic)
 
     nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->interface = nic;
+    nic->net_tables->magic = IP_TABLES_MAGIC;
 
     return OBOS_STATUS_SUCCESS;
 }

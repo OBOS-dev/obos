@@ -56,7 +56,7 @@ PacketProcessSignature(ARPReply, arp_header*)
 
 PacketProcessSignature(ARPRequest, arp_header*)
 {
-    OBOS_UNUSED(depth && buf && size);
+    OBOS_UNUSED(depth && ptr && size);
     struct arp_header_payload* data = (void*)(userdata+1);
     ip_addr* target = &data->target_ip;
     Core_PushlockAcquire(&nic->net_tables->table_lock, true);
@@ -76,14 +76,16 @@ PacketProcessSignature(ARPRequest, arp_header*)
     memcpy(payload->sender_mac, nic->net_tables->mac, sizeof(mac_address));
     payload->target_ip = data->sender_ip;
     memcpy(payload->target_mac, data->sender_mac, sizeof(mac_address));
-    hdr->hw_address_space = ARP_HW_ADDRESS_SPACE_ETHERNET;
+    hdr->hw_address_space = host_to_be16(ARP_HW_ADDRESS_SPACE_ETHERNET);
+    hdr->protocol_address_space = host_to_be16(ETHERNET2_TYPE_IPv4);
     hdr->len_hw_address = sizeof(mac_address);
     hdr->len_protocol_address = sizeof(ip_addr);
-    hdr->opcode = ARP_REPLY;
+    hdr->opcode = host_to_be16(ARP_REPLY);
     shared_ptr* packet = NetH_FormatEthernetPacket(nic, payload->target_mac, hdr, real_size, ETHERNET2_TYPE_ARP);
     Free(OBOS_KernelAllocator, hdr, real_size);
     NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(packet));
-    OBOS_SharedPtrUnref(packet);
+    // We don't have ownership of 'packet'
+    // OBOS_SharedPtrUnref(packet);
     ExitPacketHandler();
 }
 
@@ -91,7 +93,7 @@ PacketProcessSignature(ARP, ethernet2_header*)
 {
     arp_header* hdr = ptr;
     if (hdr->len_hw_address != 6)
-        return;
+        ExitPacketHandler();
     
     if (hdr->len_protocol_address != 4)
     {
@@ -100,7 +102,7 @@ PacketProcessSignature(ARP, ethernet2_header*)
         ExitPacketHandler();
     }
 
-    switch (hdr->opcode)
+    switch (be16_to_host(hdr->opcode))
     {
         case ARP_REPLY:
             InvokePacketHandler(ARPReply, ptr, size, hdr);

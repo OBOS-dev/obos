@@ -27,6 +27,7 @@ void OBOS_SharedPtrRef(shared_ptr* ptr)
     OBOS_ASSERT(ptr);
     if (!ptr)
         return;
+    // printf("%p refed shared ptr %p (%d->%d)\n",  __builtin_return_address(0), ptr, ptr->refs, ptr->refs+1);
     ptr->refs++;
     if (ptr->onRef)
         ptr->onRef(ptr);
@@ -38,7 +39,9 @@ void OBOS_SharedPtrUnref(shared_ptr* ptr)
     if (!ptr)
         return;
     OBOS_ASSERT(ptr->refs);
-    if (!(--ptr->refs))
+    --ptr->refs;
+    // printf("%p unrefed shared ptr %p (%d->%d)\n",  __builtin_return_address(0), ptr, ptr->refs+1, ptr->refs);
+    if (!ptr->refs && ptr->free)
         ptr->free(ptr->freeUdata, ptr);
     if (ptr->onDeref)
         ptr->onDeref(ptr);

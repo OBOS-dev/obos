@@ -65,28 +65,26 @@ static OBOS_NO_UBSAN uint32_t crc32_bytes(void *data, size_t sz)
     return crc((char *)data, sz, ~0U);
 }
 
+OBOS_NO_UBSAN 
 PacketProcessSignature(Ethernet, void*)
 {
     OBOS_UNUSED(userdata);
+    OBOS_UNUSED(depth);
     ethernet2_header* hdr = ptr;
-    // In case of wacky NICs, check if the MAC address destination is:
-    // nic->mac
-    // or MAC_BROADCAST
     uint32_t remote_checksum = *(uint32_t*)((uintptr_t)ptr + size - 4);
     uint32_t our_checksum = crc32_bytes(ptr, size-4);
     if (remote_checksum != our_checksum)
     {
-        NetError("%s: Wrong checksum in packet from " MAC_ADDRESS_FORMAT "Expected checksum is 0x%08x, remote checksum is 0x%08x\n",
+        NetError("%s: Wrong checksum in packet from " MAC_ADDRESS_FORMAT ". Expected checksum is 0x%08x, remote checksum is 0x%08x\n",
             __func__,
-            MAC_ADDRESS_ARGS(hdr),
+            MAC_ADDRESS_ARGS(hdr->src),
             our_checksum,
             remote_checksum
         );
         ExitPacketHandler();
     }
     
-    // Verify CRC32
-    switch (hdr->type) {
+    switch (be16_to_host(hdr->type)) {
         case ETHERNET2_TYPE_IPv4:
             InvokePacketHandler(IPv4, hdr+1, size-sizeof(ethernet2_header)-4/*CRC32*/, hdr);
             break;
@@ -99,8 +97,8 @@ PacketProcessSignature(Ethernet, void*)
         default:
             NetError("%s: Unrecognized ethernet header type 0x%04x from " MAC_ADDRESS_FORMAT "\n",
                 __func__,
-                hdr->type,
-                MAC_ADDRESS_ARGS(hdr));
+                be16_to_host(hdr->type),
+                MAC_ADDRESS_ARGS(hdr->src));
             break;
     }
 
@@ -109,7 +107,7 @@ PacketProcessSignature(Ethernet, void*)
 
 DefineNetFreeSharedPtr
 
-shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type)
+OBOS_NO_UBSAN shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type)
 {
     if (!nic->net_tables)
         return nullptr;
@@ -121,11 +119,13 @@ shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* 
     struct ethernet2_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
     OBOS_SharedPtrConstructSz(buf, hdr, real_size);
     buf->onDeref = NetFreeSharedPtr;
+    buf->free = OBOS_SharedPtrDefaultFree;
+    buf->freeUdata = OBOS_KernelAllocator;
     memcpy(hdr->dest, dest, sizeof(mac_address));
     memcpy(hdr->src, nic->net_tables->mac, sizeof(mac_address));
-    hdr->type = type;
+    hdr->type = host_to_be16(type);
     memcpy(hdr+1, data, size);
     uint32_t* checksum = (uint32_t*)((uintptr_t)hdr + real_size - 4);
-    *checksum = crc32_bytes(hdr, real_size-4);
+    *checksum = host_to_be32(crc32_bytes(hdr, real_size-4));
     return buf;
 }

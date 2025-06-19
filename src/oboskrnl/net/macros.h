@@ -2,27 +2,21 @@
 #include <klog.h>
 #include <cmdline.h>
 #define PacketProcessSignature(name, data) OBOS_WEAK void Net_## name ## Process(vnode* nic, int depth, struct shared_ptr* buf, void* ptr, size_t size, data userdata)
-#define PacketProcessSignature(name, data) OBOS_WEAK void Net_## name ## Process(vnode* nic, int depth, struct shared_ptr* buf, void* ptr, size_t size, data userdata)
-#define InvokePacketHandler(name, ptr, size, data) (Net_## name ## Process)(nic, depth + 1, OBOS_SharedPtrCopy(buf), ptr, size, data)
-#define ExitPacketHandler() do { OBOS_SharedPtrUnref(ptr); return; } while(0)
-#define VerifyChecksum(data, size, chksum_func, chksum_member) \
-({\
-    typeof((data)->chksum_member) _remote_checksum = (data)->chksum_member;\
-    (data)->chksum_member = 0;\
-    typeof((data)->chksum_member) _our_checksum = chksum_func(data, size);\
-    (data)->chksum_member = _remote_checksum;\
-    (_remote_checksum == _our_checksum);\
-})
-#define NetError(...) \
+#define InvokePacketHandler(name, ptr, size, data) !(Net_## name ## Process) ? (void)0 : (Net_## name ## Process)(nic, depth + 1, OBOS_SharedPtrCopy(buf), ptr, size, data)
+#define ExitPacketHandler() do { OBOS_SharedPtrUnref(buf); return; } while(0)
+#define NetError(...) do {\
 if (!OBOS_GetOPTF("disable-network-error-logs"))\
-    OBOS_Error(__VA_ARGS__);
-#define NetUnimplemented(what) \
-if (!OBOS_GetOPTF("disable-network-error-logs"))\
-    OBOS_Warning("net: Unimplemented: " #what "\n");
+    OBOS_Error(__VA_ARGS__);\
+} while(0)
+#define NetUnimplemented(what) do {\
+    if (!OBOS_GetOPTF("disable-network-error-logs"))\
+        OBOS_Warning("net: Unimplemented: " #what "\n");\
+} while(0)
 
 #define DefineNetFreeSharedPtr \
 static inline void NetFreeSharedPtr(shared_ptr *ptr) \
 {\
+    if (ptr->refs) return;\
     memset(ptr, 0xcc, sizeof(*ptr));\
     Free(OBOS_KernelAllocator, ptr, sizeof(*ptr));\
 }

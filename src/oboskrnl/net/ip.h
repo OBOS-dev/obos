@@ -17,6 +17,9 @@
 
 #include <utils/shared_ptr.h>
 
+#include <utils/tree.h>
+#include <utils/list.h>
+
 typedef union ip_addr {
     struct {
         uint8_t comp1;
@@ -26,12 +29,15 @@ typedef union ip_addr {
     };
     uint32_t addr;
 } OBOS_PACK ip_addr;
+#define IP_ADDRESS_FORMAT "%d.%d.%d.%d"
+#define IP_ADDRESS_ARGS(addr) addr.comp1,addr.comp2,addr.comp3,addr.comp4
 
 #define IPv4_GET_HEADER_LENGTH(hdr) (((hdr)->version_hdrlen & 0x0f) * 4)
 #define IPv4_GET_HEADER_VERSION(hdr) (((hdr)->version_hdrlen & 0xf0) >> 4)
 
-#define IPv4_GET_FLAGS(hdr) (be32_to_host((hdr)->flags_fragment) & 0x8)
-#define IPv4_GET_FRAGMENT(hdr) (be32_to_host((hdr)->flags_fragment) & 0xfff8)
+#define IPv4_GET_FLAGS(hdr) ((be32_to_host((hdr)->id_flags_fragment) & 0xe000) >> 13)
+#define IPv4_GET_FRAGMENT(hdr) (be32_to_host((hdr)->id_flags_fragment) & 0x1FFF)
+#define IPv4_GET_ID(hdr) (be32_to_host((hdr)->id_flags_fragment) >> 16)
 
 enum {
     IPv4_PRECEDENCE_ROUTINE,
@@ -52,12 +58,11 @@ enum {
 enum {
     // including the header
     IPv4_MAX_PACKET_LENGTH = 0xffff,
-    IPv4_PREFERRED_PACKET_LENGTH = IPv4_MAX_PACKET_LENGTH,
 };
 
 enum {
-    IPv4_MAY_FRAGMENT = BIT(12),
-    IPv4_MORE_FRAGMENTS = BIT(13),
+    IPv4_DONT_FRAGMENT = BIT(14),
+    IPv4_MORE_FRAGMENTS = BIT(15),
 };
 
 // TODO: Are these valid?
@@ -106,5 +111,43 @@ typedef struct ip_header {
     // After here, there can be options.
     // This is unimplemented.
 } OBOS_PACK ip_header;
+
+typedef struct ip_fragment {
+    ip_header* hdr;
+    shared_ptr* hdr_ptr;
+    size_t offset;
+    LIST_NODE(ip_fragments, struct ip_fragment) node;
+} ip_fragment;
+typedef LIST_HEAD(ip_fragments, struct ip_fragment) ip_fragments;
+LIST_PROTOTYPE(ip_fragments, ip_fragment, node);
+
+typedef struct unassembled_ip_packet
+{
+    struct net_tables *owner;
+    shared_ptr This;
+    ip_fragments fragments;
+    union {
+        uint64_t real_id;
+        struct {
+            ip_addr src;
+            uint16_t id;
+            uint16_t resv;
+        };
+    };
+    size_t highest_offset;
+    size_t size;
+    RB_ENTRY(unassembled_ip_packet) node;
+} unassembled_ip_packet;
+inline static int ip_packet_cmp(unassembled_ip_packet* lhs, unassembled_ip_packet* rhs)
+{
+    if (lhs->real_id < rhs->real_id)
+        return -1;
+    if (lhs->real_id > rhs->real_id)
+        return 1;
+    return 0;
+}
+typedef RB_HEAD(unassembled_ip_packets, unassembled_ip_packet) unassembled_ip_packets;
+RB_PROTOTYPE(unassembled_ip_packets, unassembled_ip_packet, node, ip_packet_cmp);
+shared_ptr NetH_IPv4ReassemblePacket(vnode* nic, unassembled_ip_packet* packet);
 
 PacketProcessSignature(IPv4, ethernet2_header*);

@@ -64,7 +64,7 @@ void r8169_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
     OBOS_UNUSED(oldIrql);
-
+    
     r8169_device* dev = userdata;
     uint32_t isr = 0;
     DrvS_ReadIOSpaceBar(dev->bar->bar, IntrStatus, &isr, 2);
@@ -180,7 +180,7 @@ void r8169_tx(r8169_device* dev)
 static void dpc_handler(dpc* obj, void* userdata)
 {
     OBOS_UNUSED(obj);
-
+    
     r8169_device* dev = userdata;
     r8169_rx(dev);
     r8169_tx(dev);

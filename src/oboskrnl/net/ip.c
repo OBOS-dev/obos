@@ -1,0 +1,172 @@
+/*
+ * oboskrnl/net/ip.c
+ *
+ * Copyright (c) 2025 Omar Berrow
+*/
+
+#include <int.h>
+#include <error.h>
+#include <memmanip.h>
+#include <klog.h>
+
+#include <net/macros.h>
+#include <net/eth.h>
+#include <net/ip.h>
+#include <net/udp.h>
+#include <net/tables.h>
+
+#include <locks/pushlock.h>
+
+#include <allocators/base.h>
+
+#include <utils/shared_ptr.h>
+#include <utils/list.h>
+
+uint16_t NetH_OnesComplementSum(const void *buffer, size_t size)
+{
+    const uint16_t *p = buffer;
+    int sum = 0;
+    int i;
+    for (i = 0; i < ((int)size & ~(1)); i += 2) {
+        sum += be16_to_host(p[i >> 1]);
+    }
+
+    if (size & 1) {
+        sum += ((uint8_t *)p)[i];
+    }
+
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += sum >> 16;
+
+    uint16_t ret = ~sum;
+    return ret;
+}
+
+static void fragmented_packet_onDeref(shared_ptr* This)
+{
+    unassembled_ip_packet *packet = This->obj;
+    Core_PushlockAcquire(&packet->owner->fragmented_packets_lock, false);
+    RB_REMOVE(unassembled_ip_packets, &packet->owner->fragmented_packets, packet);
+    Core_PushlockRelease(&packet->owner->fragmented_packets_lock, false);
+}
+
+PacketProcessSignature(IPv4, ethernet2_header*)
+{
+    ethernet2_header* eth = userdata;
+    OBOS_UNUSED(eth);
+    OBOS_UNUSED(depth);
+
+    ip_header* hdr = ptr;
+    uint16_t remote_checksum = hdr->chksum;
+    uint16_t our_checksum = 0;
+    hdr->chksum = 0;
+    our_checksum = NetH_OnesComplementSum(ptr, IPv4_GET_HEADER_LENGTH(hdr));
+    hdr->chksum = remote_checksum;
+    remote_checksum = be16_to_host(remote_checksum);
+    if (our_checksum != remote_checksum)
+    {
+        NetError("%s: Wrong IP checksum in packet from " MAC_ADDRESS_FORMAT ". Expected checksum is 0x%04x, remote checksum is 0x%04x\n",
+            __func__,
+            MAC_ADDRESS_ARGS(eth->src),
+            our_checksum,
+            remote_checksum
+        );
+        ExitPacketHandler();
+    }
+    if (be16_to_host(hdr->packet_length) > size)
+    {
+        NetError("%s: Invalid packet size in packet from " MAC_ADDRESS_FORMAT ". \"packet_length > real_size\".\n",
+            __func__,
+            MAC_ADDRESS_ARGS(eth->src));
+        ExitPacketHandler();
+    }
+    if (be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS || 
+        IPv4_GET_FRAGMENT(hdr)
+        )
+    {
+        // TODO: How to know we actually received all fragments?
+        NetUnimplemented(IPv4_FRAGMENTATION);
+        ExitPacketHandler();
+
+        uint16_t id = IPv4_GET_ID(hdr);
+        unassembled_ip_packet what = {.id=id,.src=hdr->src_address};
+        Core_PushlockAcquire(&nic->net_tables->fragmented_packets_lock, true);
+        unassembled_ip_packet* packet = RB_FIND(unassembled_ip_packets, &nic->net_tables->fragmented_packets, &what);
+        Core_PushlockRelease(&nic->net_tables->fragmented_packets_lock, true);
+        if (!packet)
+        {
+            packet = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(unassembled_ip_packet), nullptr);
+            packet->real_id = what.real_id;
+            packet->owner = nic->net_tables;
+            OBOS_SharedPtrConstruct(&packet->This, packet);
+            packet->This.onDeref = fragmented_packet_onDeref;
+            Core_PushlockAcquire(&nic->net_tables->fragmented_packets_lock, false);
+            RB_INSERT(unassembled_ip_packets, &nic->net_tables->fragmented_packets, &what);
+            Core_PushlockRelease(&nic->net_tables->fragmented_packets_lock, false);
+            OBOS_SharedPtrRef(&packet->This);
+        }
+        OBOS_SharedPtrRef(&packet->This);
+        ip_fragment *new_fragment = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_fragment), nullptr);
+        OBOS_SharedPtrRef(buf);
+        new_fragment->hdr = hdr;
+        new_fragment->hdr_ptr = buf;
+        new_fragment->offset = IPv4_GET_FRAGMENT(hdr) * 8;
+        if (packet->highest_offset < new_fragment->offset)
+        {
+            packet->highest_offset = new_fragment->offset;
+            packet->size = new_fragment->offset + new_fragment->hdr->packet_length - sizeof(ip_header);
+        }
+        LIST_APPEND(ip_fragments, &packet->fragments, new_fragment);
+        if (~be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS)
+        {
+            shared_ptr assembled_packet = NetH_IPv4ReassemblePacket(nic, packet);
+            Net_IPv4Process(nic, depth + 1, OBOS_SharedPtrCopy(&assembled_packet), assembled_packet.obj, assembled_packet.szObj, userdata);
+            OBOS_SharedPtrUnref(&assembled_packet);
+            // At this point, all fragments have been freed.
+            // See fragmented_packet_onDeref for why we don't
+            // remove the packet from the RB-tree.
+            OBOS_SharedPtrUnref(&packet->This);
+        }
+        ExitPacketHandler();
+    }
+
+    void *data = (void*)((uintptr_t)hdr + IPv4_GET_HEADER_LENGTH(hdr));
+    size_t data_size = size - IPv4_GET_HEADER_LENGTH(hdr);
+    switch (hdr->protocol) {
+        case 0x11:
+            InvokePacketHandler(UDP, data, data_size, hdr);
+            break;
+        default:
+            NetError("%s: Unrecognized IP protocol type 0x%02x from " IP_ADDRESS_FORMAT "\n",
+                __func__,
+                hdr->protocol,
+                IP_ADDRESS_ARGS(hdr->src_address));
+            break;
+    }
+
+    ExitPacketHandler();
+}
+
+shared_ptr NetH_IPv4ReassemblePacket(vnode* nic, unassembled_ip_packet* packet)
+{
+    OBOS_UNUSED(nic);
+    ip_fragment* fragment = LIST_GET_HEAD(ip_fragments, &packet->fragments);
+    shared_ptr ptr = {};
+    OBOS_SharedPtrConstructSz(&ptr, Allocate(OBOS_KernelAllocator, packet->size, nullptr), packet->size);
+    OBOS_SharedPtrRef(&ptr);
+    while (fragment)
+    {
+        ip_fragment* next = LIST_GET_NEXT(ip_fragments, &packet->fragments, fragment);
+        memcpy((char*)ptr.obj+fragment->offset, 
+               (void*)((uintptr_t)fragment->hdr + IPv4_GET_HEADER_LENGTH(fragment->hdr)), 
+               be16_to_host(fragment->hdr->packet_length));
+        LIST_REMOVE(ip_fragments, &packet->fragments, fragment);
+        OBOS_SharedPtrUnref(fragment->hdr_ptr);
+        Free(OBOS_KernelAllocator, fragment, sizeof(*fragment));
+        fragment = next;
+    }
+    return ptr;
+}
+
+RB_GENERATE(unassembled_ip_packets, unassembled_ip_packet, node, ip_packet_cmp);
+LIST_GENERATE(ip_fragments, ip_fragment, node);
