@@ -125,7 +125,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .finalize_irp = finalize_irp,
 
         .query_path = query_path,
-        .path_search = path_search, // TODO: Implement
+        .path_search = path_search,
         .get_linked_path = get_linked_path,
         .pmove_desc_to = pmove_desc_to, // TODO: Implement
         .pmk_file = pmk_file, // TODO: Implement
