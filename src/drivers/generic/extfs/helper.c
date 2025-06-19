@@ -403,13 +403,13 @@ obos_status ext_ino_commit_blocks(ext_cache* cache, uint32_t ino, size_t offset,
 #define idx_doubly_indirect_block 2
 #define idx_triply_indirect_block 3
         uint8_t what =
-            (loc.idx[3] != UINT32_MAX ? 
+            (loc.idx[3] == UINT32_MAX ? 
                 (loc.idx[2] == UINT32_MAX ? 
                     (loc.idx[1] != UINT32_MAX ? 
                         idx_indirect_block 
                             : idx_blocks)  // loc.idx[1] != UINT32_MAX
-                : idx_doubly_indirect_block) // loc.idx[2] != UINT32_MAX 
-            : idx_triply_indirect_block); // loc.idx[3] != UINT32_MAX
+                : idx_doubly_indirect_block) // loc.idx[2] == UINT32_MAX 
+            : idx_triply_indirect_block); // loc.idx[3] == UINT32_MAX
         switch (what) {
             case idx_blocks:
                 inode->direct_blocks[loc.idx[0]] = block;
@@ -699,6 +699,8 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
     MmH_DerefPage(pg);
 
     bgd->free_inodes++;
+    cache->superblock.free_inode_count++;
+    ext_writeback_sb(cache);
     ext_writeback_bgd(cache, ext_ino_get_block_group(cache, ino));
 }
 
@@ -726,6 +728,8 @@ void ext_blk_free(ext_cache* cache, uint32_t blk)
     MmH_DerefPage(pg);
 
     bgd->free_blocks++;
+    cache->superblock.free_block_count++;
+    ext_writeback_sb(cache);
     ext_writeback_bgd(cache, blk/cache->blocks_per_group);
 }
 
@@ -735,6 +739,15 @@ void ext_writeback_bgd(ext_cache* cache, uint32_t bgd_idx)
     ext_bgdt bgdt_section = ext_read_block(cache, (cache->block_size == 1024 ? 2 : 1) + (bgd_idx / (cache->block_size / sizeof(ext_bgd))), &pg);
     MmH_RefPage(pg);
     bgdt_section[bgd_idx % (cache->block_size / sizeof(ext_bgd))] = cache->bgdt[bgd_idx];
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+}
+void ext_writeback_sb(ext_cache* cache)
+{
+    page* pg = nullptr;
+    void* sb = ext_read_block(cache, (cache->block_size == 1024 ? 1 : 0), &pg);
+    MmH_RefPage(pg);
+    memcpy(sb+(cache->block_size == 1024 ? 0 : 1024), &cache->superblock, sizeof(cache->superblock));
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
 }

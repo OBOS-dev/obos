@@ -148,7 +148,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             if (!ent)
                 return nullptr; // broken link :(
             if (ent->vnode->vtype == VNODE_TYPE_DIR)
-                curr = ent;
+                root = curr = ent;
         }
         if (tok[0] == '.')
         {

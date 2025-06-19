@@ -113,3 +113,44 @@ obos_status stat_fs_info(void *vn, drv_fs_info *info)
 
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status premove_file(void* vn, const char* path)
+{
+    ext_cache *cache = nullptr;
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+
+    if (!cache)
+        return OBOS_STATUS_NOT_FOUND;
+    
+    ext_dirent_cache* dent = ext_dirent_lookup_from(path, cache->root);
+    if (!dent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    ext_dirent_cache* prev = dent->prev;
+    ext_dirent_cache* next = dent->next;
+    if (prev)
+    {
+        prev->ent.rec_len = (next ? next->rel_offset : dent->parent->inode->blocks*512) - prev->rel_offset;
+        ext_dirent_flush(cache, prev);
+    }
+    
+    dent->ent.rec_len = 0;
+    dent->ent.ino = 0;
+    dent->ent.file_type = 0;
+    ext_dirent_flush(cache, dent);
+
+    ext_dirent_disown(dent->parent, dent);
+    if (!(--dent->inode->link_count))
+        ext_ino_free(cache, dent->ent.ino);
+    MmH_DerefPage(dent->pg);
+
+    Free(EXT_Allocator, dent, sizeof(*dent));
+    
+    return OBOS_STATUS_SUCCESS;    
+}

@@ -221,8 +221,10 @@ typedef struct ext_dirent_cache {
         size_t nChildren;
     } children;
     struct ext_dirent_cache *next, *prev;
+    struct ext_dirent_cache* parent;
     ext_inode* inode;
     page* pg;
+    uint32_t ent_block, ent_offset, rel_offset;
     ext_dirent ent;
 } ext_dirent_cache;
 
@@ -237,6 +239,7 @@ do {\
     _child->prev = _parent->children.tail;\
     _parent->children.tail = _child;\
     _parent->children.nChildren++;\
+    _child->parent = _parent;\
 } while(0)
 
 #define ext_dirent_disown(parent_, child_) \
@@ -317,13 +320,13 @@ struct inode_offset_location {
                     - indirect blocks
                 - else
                     - direct blocks
-        (idx[3] != UINT32_MAX ? 
+        (idx[3] == UINT32_MAX ? 
             (idx[2] == UINT32_MAX ? 
                 (idx[1] != UINT32_MAX ? 
                     indirect_block 
                         : blocks)  // idx[1] != UINT32_MAX
-            : doubly_indirect_block) // idx[2] != UINT32_MAX 
-         : triply_indirect_block) // idx[3] != UINT32_MAX
+            : doubly_indirect_block) // idx[2] == UINT32_MAX 
+         : triply_indirect_block) // idx[3] == UINT32_MAX
     */
     uint32_t idx[4];
 };
@@ -337,6 +340,7 @@ uint32_t ext_blk_allocate(ext_cache* cache, const uint32_t* block_group);
 void ext_blk_free(ext_cache* cache, uint32_t blk);
 
 void ext_writeback_bgd(ext_cache* cache, uint32_t bgd_idx);
+void ext_writeback_sb(ext_cache* cache);
 
 // Creates and populates a dirent
 // If ino is not a directory, this fails.
@@ -345,6 +349,8 @@ void ext_writeback_bgd(ext_cache* cache, uint32_t bgd_idx);
 // parent_name: The directory's name
 // recurse_directories: Whether to recursively populate child directories.
 ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories);
+ext_dirent_cache *ext_dirent_lookup_from(const char* path, ext_dirent_cache* root);
+void ext_dirent_flush(ext_cache* cache, ext_dirent_cache* ent);
 
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)
