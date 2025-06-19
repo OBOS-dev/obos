@@ -482,7 +482,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         if (!insert_byte)
             continue;
         if (tty->termios.lflag & ECHO)
-            tty->interface.write(tty, (char*)&buf8[i], 1);
+            tty_write_sync((dev_desc)tty, buf8, 1, 0, nullptr);
         if (tty->termios.lflag & ICANON)
         {
             if (tty->termios.lflag & ECHONL && buf8[i] == '\n')
@@ -493,6 +493,11 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         if (tty->termios.iflag & INLCR && buf8[i] == '\n')
         {
             tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\r';
+            continue;
+        }
+        if (tty->termios.iflag & ICRNL && buf8[i] == '\r')
+        {
+            tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\n';
             continue;
         }
         uint8_t mask = tty->termios.iflag & ISTRIP ? 0x7f : 0xff;
