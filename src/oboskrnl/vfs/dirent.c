@@ -40,9 +40,27 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     if (mountpoint->fs_driver->driver->header.ftable.vnode_search)
     {
         vnode* vn = nullptr;
-        obos_status status = mountpoint->fs_driver->driver->header.ftable.vnode_search((void**)&vn, desc);
+        obos_status status = mountpoint->fs_driver->driver->header.ftable.vnode_search((void**)&vn, desc, mountpoint->fs_driver);
         if (obos_is_success(status))
+        {
+            vn->mount_point = mountpoint;
+            if (t)
+            {
+                switch (vn->vtype) {
+                    case VNODE_TYPE_LNK:
+                        *t = FILE_TYPE_SYMBOLIC_LINK;
+                        break;
+                    case VNODE_TYPE_REG:
+                        *t = FILE_TYPE_REGULAR_FILE;
+                        break;
+                    case VNODE_TYPE_DIR:
+                        *t = FILE_TYPE_DIRECTORY;
+                        break;
+                    default: OBOS_UNREACHABLE;
+                }
+            }
             return vn;
+        }
     }
     file_type type = 0;
     driver_file_perm perm = {};
@@ -59,10 +77,8 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
             vn->vtype = VNODE_TYPE_DIR;
             break;
         case FILE_TYPE_SYMBOLIC_LINK:
-        {
             vn->vtype = VNODE_TYPE_LNK;        
             break;
-        }
         default:
             OBOS_ASSERT(type);
     }
@@ -220,7 +236,6 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     // Start looking for each path component 
     // until we get to the end of the string
     // using path_search
-    dev_desc desc = 0;
     size_t path_mnt_len = (path_len-lastMountPoint);
     char* path_mnt = memcpy(Vfs_Malloc((path_len-lastMountPoint)+1), path+lastMountPoint, (path_len-lastMountPoint)+1);
     bool is_base = false;
@@ -241,9 +256,8 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     char* currentPath = Vfs_Calloc(path_mnt_len + 1, sizeof(char));
     size_t currentPathLen = 0;
     vdev* fs_driver = lastMount->fs_driver;
-    mount* const mountpoint = lastMount;
+    mount* mountpoint = lastMount;
     dirent* last = mountpoint->root;
-    file_type type = 0;
     while (tok < (path_mnt+path_mnt_len))
     {
         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
@@ -273,28 +287,43 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             new = Vfs_Calloc(1, sizeof(dirent));
             OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
             OBOS_InitStringLen(&new->name, token, tok_len);
-            mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
+            // mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
             vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
             new->vnode = new_vn;
             new->vnode->refs++;
-            if (curtype == FILE_TYPE_SYMBOLIC_LINK)
+            if (curtype == FILE_TYPE_SYMBOLIC_LINK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
         last = new;
         Vfs_Free(token);
+        if (last->vnode->vtype == VNODE_TYPE_LNK)
+        {
+            last = VfsH_FollowLink(last);
+            if (!last)
+                break;
+            mountpoint = last->vnode->flags & VFLAGS_MOUNTPOINT ? last->vnode->un.mounted : last->vnode->mount_point;
+            currentPath = VfsH_DirentPath(last, mountpoint->root);
+            currentPathLen = strlen(currentPath);
+            if (currentPath[currentPathLen-1] != '/')
+            {
+                currentPath = Vfs_Realloc(currentPath, currentPathLen+1+1/*nul terminator*/);
+                currentPath[currentPathLen] = '/';
+                currentPath[++currentPathLen] = 0;
+            }
+        }
 
         tok += str_search(tok, '/');
-        size_t currentPathLen = strlen(tok)-1;
-        if (currentPathLen == (size_t)-1)
-            currentPathLen = 0;
-        if (tok[currentPathLen] != '/')
-            currentPathLen++;
-        while (tok[currentPathLen] == '/')
-            currentPathLen--;
+        size_t currentPathLen2 = strlen(tok)-1;
+        if (currentPathLen2 == (size_t)-1)
+            currentPathLen2 = 0;
+        if (tok[currentPathLen2] != '/')
+            currentPathLen2++;
+        while (tok[currentPathLen2] == '/')
+            currentPathLen2--;
         tok_len = strchr(tok, '/');
-        if (tok_len != currentPathLen)
+        if (tok_len != currentPathLen2)
             tok_len--;
         else
             is_base = true;

@@ -15,7 +15,7 @@
 
 #include <driver_interface/header.h>
 
-#include <locks/spinlock.h>
+#include <locks/mutex.h>
 
 #include "structs.h"
 
@@ -38,10 +38,10 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     if (!hnd || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
     // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
-    irql oldIrql = Core_SpinlockAcquire(&hnd->lock);
+    Core_MutexAcquire(&hnd->lock);
     obos_status status = ext_ino_read_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkRead);
     // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
-    Core_SpinlockRelease(&hnd->lock, oldIrql);
+    Core_MutexRelease(&hnd->lock);
     return status;
 }
 
@@ -52,7 +52,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_INVALID_ARGUMENT;
     
     // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
-    irql oldIrql = Core_SpinlockAcquire(&hnd->lock);
+    Core_MutexAcquire(&hnd->lock);
     
     obos_status status = OBOS_STATUS_SUCCESS;
 
@@ -61,7 +61,7 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     if (obos_is_error(status))
     {
         // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
-        Core_SpinlockRelease(&hnd->lock, oldIrql);
+        Core_MutexRelease(&hnd->lock);
         return status;
     }
 
@@ -69,13 +69,13 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     if (obos_is_error(status))
     {
         // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
-        Core_SpinlockRelease(&hnd->lock, oldIrql);
+        Core_MutexRelease(&hnd->lock);
         return status;
     }
 
     status = ext_ino_write_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkWritten);
     // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
-    Core_SpinlockRelease(&hnd->lock, oldIrql);
+    Core_MutexRelease(&hnd->lock);
     return status;
 }
 
@@ -107,6 +107,7 @@ OBOS_WEAK obos_status submit_irp(void* request);
 OBOS_WEAK obos_status finalize_irp(void* request);
 OBOS_WEAK obos_status ext_mount(void* vn, void* at);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
+OBOS_WEAK obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -133,10 +134,11 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
         .get_file_type = get_file_type,
-        .list_dir = list_dir, // TODO: Implement
+        .list_dir = list_dir,
+        .vnode_search = vnode_search,
         .stat_fs_info = stat_fs_info,
         .probe = probe,
-        .mount = ext_mount,
+        .mount = nullptr,
     },
     .driverName = "EXT Driver",
 };

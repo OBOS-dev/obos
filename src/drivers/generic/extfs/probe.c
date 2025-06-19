@@ -23,7 +23,7 @@
 #include <mm/alloc.h>
 #include <mm/context.h>
 
-#include <locks/spinlock.h>
+#include <locks/mutex.h>
 
 #include "structs.h"
 
@@ -118,7 +118,7 @@ bool probe(void* vn_)
     }
     // We don't need the root inode except to check for its existence
     Free(EXT_Allocator, root, sizeof(*root));
-    cache->root = ext_dirent_populate(cache, 2, "/", true);
+    // cache->root = ext_dirent_populate(cache, 2, "/", true);
 
     cache->inode_vnode_table_size = cache->inodes_per_group*cache->block_group_count*sizeof(vnode*);
     cache->inode_vnode_table = Mm_VirtualMemoryAlloc(&Mm_KernelContext, 
@@ -131,7 +131,7 @@ bool probe(void* vn_)
     return true;
 }
 
-static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
+vnode* ext_make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
 {
     if (cache->inode_vnode_table[ino-1])
     {
@@ -159,7 +159,7 @@ static vnode* make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     ext_inode_handle* handle = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_inode_handle), nullptr);
     handle->ino = ino;
     handle->cache = cache;
-    handle->lock = Core_SpinlockCreate();
+    handle->lock = MUTEX_INITIALIZE();
     vn->desc = (dev_desc)handle;
     vn->vtype = vtype;
     vn->blkSize = 1;
@@ -199,7 +199,7 @@ static void mount_recursive(ext_cache* cache, ext_dirent_cache* parent, dirent* 
     OBOS_ENSURE(mnt);
     for (ext_dirent_cache* ent = parent->children.head; ent; )
     {
-        vnode* vn = make_vnode(cache, ent->ent.ino, mnt);
+        vnode* vn = ext_make_vnode(cache, ent->ent.ino, mnt);
         if (!vn)
             goto down;
 

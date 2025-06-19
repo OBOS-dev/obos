@@ -172,7 +172,7 @@ typedef struct driver_ftable
     obos_status(*query_path)(dev_desc desc, const char** path);
     obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
     obos_status(*get_linked_path)(dev_desc desc, const char** linked);
-    obos_status(*vnode_search)(void** vn_found, dev_desc desc); // Not required to exist
+    obos_status(*vnode_search)(void** vn_found, dev_desc desc, void* dev_vn); // Not required to exist
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
     union {

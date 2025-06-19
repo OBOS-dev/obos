@@ -6,12 +6,13 @@
  * Abandon all hope ye who enter here
 */
 
-#include "locks/spinlock.h"
 #include <int.h>
 #include <error.h>
 #include <struct_packing.h>
 
 #include <vfs/pagecache.h>
+
+#include <locks/mutex.h>
 
 #include <mm/page.h>
 
@@ -285,7 +286,7 @@ typedef struct ext_inode_handle
 {
     uint32_t ino;
     ext_cache* cache;
-    spinlock lock;
+    mutex lock;
 } ext_inode_handle;
 
 // Gets an inode straight from the pagecache, returns it along the page* of the pagecache entry.
@@ -355,19 +356,23 @@ void ext_dirent_flush(ext_cache* cache, ext_dirent_cache* ent);
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)
 
-#define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size) | ((cache)->revision > 1 ? le32_to_host((inode)->dir_acl) : 0))
 #define ext_ino_max_block_index(cache, inode) (le32_to_host(inode->blocks) / ((cache->block_size) / 512))
 #define ext_ino_get_block_group(cache, inode_number) ((inode_number - 1) / (cache)->inodes_per_group)
 #define ext_ino_get_local_index(cache, inode_number) ((inode_number - 1) % (cache)->inodes_per_group)
 
+vnode* ext_make_vnode(ext_cache* cache, uint32_t ino, mount* mnt);
+
 #ifdef __UINT64_TYPE__
 #   if SIZE_MAX==UINT64_MAX
 #       define ext_sb_supports_64bit_filesize (true)
+#       define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size) | ((cache)->revision > 1 ? le32_to_host((inode)->dir_acl) : 0))
 #   else
 #       define ext_sb_supports_64bit_filesize (false)
+#       define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size))
 #   endif
 #else
 #   define ext_sb_supports_64bit_filesize (false)
+#   define ext_ino_filesize(cache, inode) (le32_to_host((inode)->size))
 #endif
 
 #define ext_sb_block_size(superblock) (1024<<le32_to_host((superblock)->log_block_size))

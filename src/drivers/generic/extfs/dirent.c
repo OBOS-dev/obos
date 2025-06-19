@@ -131,9 +131,9 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
 
     page* pg = nullptr;
     ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
-    MmH_RefPage(pg);
     if (!inode)
         return nullptr;
+    MmH_RefPage(pg);
     if (!ext_ino_test_type(inode, EXT2_S_IFDIR))
     {
         MmH_DerefPage(pg);
