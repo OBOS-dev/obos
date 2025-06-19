@@ -37,10 +37,8 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     ext_inode_handle *hnd = (void*)desc;
     if (!hnd || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
     Core_MutexAcquire(&hnd->lock);
     obos_status status = ext_ino_read_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkRead);
-    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
     Core_MutexRelease(&hnd->lock);
     return status;
 }
@@ -51,7 +49,6 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     if (!hnd || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
-    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
     Core_MutexAcquire(&hnd->lock);
     
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -60,7 +57,6 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     status = ext_ino_resize(hnd->cache, hnd->ino, new_size, true);
     if (obos_is_error(status))
     {
-        // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
         Core_MutexRelease(&hnd->lock);
         return status;
     }
@@ -68,13 +64,11 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     status = ext_ino_commit_blocks(hnd->cache, hnd->ino, blkOffset, blkCount);
     if (obos_is_error(status))
     {
-        // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
         Core_MutexRelease(&hnd->lock);
         return status;
     }
 
     status = ext_ino_write_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkWritten);
-    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
     Core_MutexRelease(&hnd->lock);
     return status;
 }

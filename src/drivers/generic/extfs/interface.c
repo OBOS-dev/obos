@@ -30,7 +30,6 @@
 obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
 {
     ext_inode_handle* hnd = get_handle(desc);
-    // printf("%s: acquiring inode %d lock\n", __func__, hnd->ino);
     Core_MutexAcquire(&hnd->lock);
     page* pg = nullptr;
     ext_inode* ino = ext_read_inode_pg(hnd->cache, hnd->ino, &pg);
@@ -62,7 +61,6 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     ino->mode = new_mode;
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
-    // printf("%s: releasing inode %d lock\n", __func__, hnd->ino);
     Core_MutexRelease(&hnd->lock);
     return OBOS_STATUS_SUCCESS;
 }
