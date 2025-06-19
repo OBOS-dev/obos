@@ -91,6 +91,9 @@
 #include "gdbstub/bp.h"
 #endif
 
+#include <net/tables.h>
+
+#include <vfs/dirent.h>
 #include <vfs/init.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
@@ -109,6 +112,8 @@
 #include <elf/load.h>
 
 #include <asan.h>
+
+#include <utils/list.h>
 
 extern void Arch_InitBootGDT();
 
@@ -901,6 +906,22 @@ void Arch_KernelMainBootstrap()
     }
 
     OBOS_LoadInit();
+
+    dirent* nic = VfsH_DirentLookup("/dev/r8169-eth0");
+    if (nic)
+    {
+        Net_Initialize(nic->vnode);
+        ip_table_entry *ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
+        ent->ip_entry_flags = IP_ENTRY_ENABLE_ARP_REPLY|IP_ENTRY_ENABLE_ICMP_ECHO_REPLY;
+        ent->broadcast = (ip_addr){{192,168,100,255}};
+        ent->address = (ip_addr){{192,168,100,2}};
+        ent->subnet = 0xffffff00; // 255.255.255.0
+        nic->vnode->net_tables->default_gateway = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
+        nic->vnode->net_tables->default_gateway->src = (ip_addr){{0,0,0,0}};
+        nic->vnode->net_tables->default_gateway->dest = (ip_addr){{192,168,100,1}};
+        LIST_APPEND(ip_table, &nic->vnode->net_tables->table, ent);
+        LIST_APPEND(gateway_list, &nic->vnode->net_tables->gateways, nic->vnode->net_tables->default_gateway);
+    }
 
     OBOS_Log("%s: Done early boot.\n", __func__);
     OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 

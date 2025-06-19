@@ -8,5 +8,5 @@
 
 #include <int.h>
 
-OBOS_NORETURN void OBOS_Shutdown();
-OBOS_NORETURN void OBOS_Reboot();
+OBOS_NORETURN OBOS_EXPORT void OBOS_Shutdown();
+OBOS_NORETURN OBOS_EXPORT void OBOS_Reboot();
