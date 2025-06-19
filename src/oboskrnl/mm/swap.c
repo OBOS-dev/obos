@@ -27,6 +27,7 @@
 #include <locks/mutex.h>
 
 #include <vfs/mount.h>
+#include <vfs/irp.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
