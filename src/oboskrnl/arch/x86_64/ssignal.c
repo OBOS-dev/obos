@@ -73,7 +73,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         frame->rsp = Core_GetCurrentThread()->signal_info->sp;
     if (is_kernel_stack)
         frame->rsp = (uintptr_t)Core_GetCurrentThread()->userStack + 0x10000;
-    ctx.irql = Core_GetIrql();
+    ctx.irql = 0;
     
     frame->rsp -= sizeof(ctx);
     uint8_t *rsp = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, (void*)frame->rsp, nullptr, sizeof(ucontext_t), 0, true, nullptr);
