@@ -559,11 +559,11 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_blksize = blkSize;
     st.st_mode = 0;
     if (to_stat->perm.owner_read)
-        st.st_mode |= 400;
+        st.st_mode |= 0400;
     if (to_stat->perm.owner_write)
-        st.st_mode |= 200;
+        st.st_mode |= 0200;
     if (to_stat->perm.owner_exec)
-        st.st_mode |= 100;
+        st.st_mode |= 0100;
     if (to_stat->perm.group_read)
         st.st_mode |= 040;
     if (to_stat->perm.group_write)
