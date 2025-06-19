@@ -213,7 +213,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         }
     }
 
-    if (only_cache)
+    if (only_cache || !lastMount->fs_driver->driver->header.ftable.path_search)
         return nullptr;
 
     // Not in the dirent tree cache
@@ -467,7 +467,8 @@ void Vfs_PopulateDirectory(dirent* dent)
         dent->vnode->vtype == VNODE_TYPE_REG || 
         dent->vnode->vtype == VNODE_TYPE_FIFO)
         return;
-    driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent);
+    if (driver->ftable.list_dir)
+        driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent);
 }
 
 struct mlibc_dirent {
