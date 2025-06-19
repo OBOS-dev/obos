@@ -31,10 +31,12 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_INVALID_ARGUMENT;
     // OBOS_ASSERT(!"untested");
     pipe_desc *pipe = (void*)desc;
-    if (!pipe->offset)
-        return OBOS_STATUS_EOF; // nothing to read...
-    if (blkCount > pipe->pipe_size)
-        blkCount = pipe->pipe_size - pipe->offset;
+    while (!pipe->offset && pipe->vn->opened.nNodes > 1)
+        OBOSS_SpinlockHint();
+    if (pipe->vn->opened.nNodes == 1 && !pipe->offset)
+        return OBOS_STATUS_EOF;
+    if (blkCount > pipe->offset)
+        blkCount = pipe->offset;
     Core_PushlockAcquire(&pipe->lock, true);
     memcpy(buf, (char*)pipe->buf, blkCount);
     pipe->offset -= blkCount;

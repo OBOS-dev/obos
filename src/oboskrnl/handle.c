@@ -228,6 +228,7 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
     handle_desc* new_desc = nullptr;
     handle new = 0;
     memcpy_usr_to_k(&new, unew, sizeof(handle));
+    OBOS_Debug("%s: *unew=%d\n", __func__, new);
     if (new == HANDLE_ANY)
     {
         new = OBOS_HandleAllocate(current_table, type, &new_desc);

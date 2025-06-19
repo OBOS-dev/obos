@@ -246,6 +246,8 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
 obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
 {
     obos_status status = Vfs_FdPRead(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nRead);
+    if (nBytes > (desc->vn->filesize - (desc ? desc->offset : SIZE_MAX)) && desc->vn->vtype != VNODE_TYPE_CHR)
+        nBytes = desc->vn->filesize - (desc ? desc->offset : SIZE_MAX);
     if (obos_expect(obos_is_success(status), 1))
         Vfs_FdSeek(desc, nBytes, SEEK_CUR);
     return status;
@@ -378,7 +380,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
     if (desc->vn->vtype == VNODE_TYPE_FIFO)
-        return OBOS_STATUS_INVALID_OPERATION;
+        return OBOS_STATUS_SUCCESS; // act like it worked
     size_t finalOff = 0;
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
@@ -416,7 +418,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
 }
 uoff_t Vfs_FdTellOff(const fd* desc)
 {
-    if (desc && desc->vn && desc->vn->vtype != VNODE_TYPE_FIFO)
+    if (desc && desc->vn)
         return desc->offset;
     return (uoff_t)(-1);
 }
