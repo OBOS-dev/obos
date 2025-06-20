@@ -170,7 +170,7 @@ typedef struct driver_ftable
 
     // lifetime of *path is dictated by the driver.
     obos_status(*query_path)(dev_desc desc, const char** path);
-    obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
+    obos_status(*path_search)(dev_desc* found, void* vn, const char* what, dev_desc parent);
     obos_status(*get_linked_path)(dev_desc desc, const char** linked);
     obos_status(*vnode_search)(void** vn_found, dev_desc desc, void* dev_vn); // Not required to exist
 

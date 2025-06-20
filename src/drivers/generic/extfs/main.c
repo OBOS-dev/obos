@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2025 Omar Berrow
  *
- * Abandon all hope ye who enter here
+ * Abandon all hope, ye who enter here
 */
 
 #include <int.h>
@@ -86,7 +86,7 @@ void driver_cleanup_callback()
 {
 }
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
-OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
+OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status pmove_desc_to(void* vn, const char* path, const char* newpath, const char* name);
 OBOS_WEAK obos_status pmk_file(dev_desc* newDesc, const char* parent_path, void* vn, const char* name, file_type type, driver_file_perm perm);

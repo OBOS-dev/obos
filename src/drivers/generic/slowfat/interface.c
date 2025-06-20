@@ -31,7 +31,7 @@ obos_status query_path(dev_desc desc, const char** path)
     *path = OBOS_GetStringCPtr(&cache_entry->path);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status path_search(dev_desc* found, void* vn_, const char* what)
+obos_status path_search(dev_desc* found, void* vn_, const char* what, dev_desc parent)
 {
     if (!found || !vn_ || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -43,9 +43,9 @@ obos_status path_search(dev_desc* found, void* vn_, const char* what)
 
         cache = LIST_GET_NEXT(fat_cache_list, &FATVolumes, cache);
     }
-    if (!cache)
+    if (!cache && parent != UINTPTR_MAX)
         return OBOS_STATUS_INVALID_OPERATION; // not a fat volume we have probed
-    *found = (dev_desc)DirentLookupFrom(what, cache->root);
+    *found = (dev_desc)DirentLookupFrom(what, parent != UINTPTR_MAX ? (fat_dirent_cache*)parent : cache->root);
     if (*found)
         return OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_NOT_FOUND;

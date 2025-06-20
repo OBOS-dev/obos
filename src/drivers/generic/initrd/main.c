@@ -52,7 +52,7 @@ void driver_cleanup_callback()
 {}
 
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
-OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
+OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
@@ -364,12 +364,12 @@ OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** f
     OBOS_UNUSED(desc && found);
     return OBOS_STATUS_UNIMPLEMENTED;
 }
-OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, const char* what)
+OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, const char* what, dev_desc parent)
 {
     OBOS_UNUSED(unused);
     if (!found || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    *found = (dev_desc)DirentLookupFrom(what, InitrdRoot);
+    *found = (dev_desc)DirentLookupFrom(what, parent == UINTPTR_MAX ? InitrdRoot : (initrd_inode*)parent);
     return *found ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
 }
 OBOS_PAGEABLE_FUNCTION obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)

@@ -257,7 +257,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     size_t currentPathLen = 0;
     vdev* fs_driver = lastMount->fs_driver;
     mount* mountpoint = lastMount;
-    dirent* last = mountpoint->root;
+    dirent* last = root_par;
     while (tok < (path_mnt+path_mnt_len))
     {
         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
@@ -275,7 +275,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         {
             dev_desc curdesc = 0;
             file_type curtype = 0;
-            obos_status status = fs_driver->driver->header.ftable.path_search(&curdesc, mountpoint->device, currentPath);
+            obos_status status = fs_driver->driver->header.ftable.path_search(&curdesc, mountpoint->device, token, last->vnode->desc);
             if (obos_is_error(status))
             {
                 Vfs_Free(token);

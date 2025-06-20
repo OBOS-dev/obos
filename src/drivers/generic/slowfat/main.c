@@ -40,7 +40,7 @@ void driver_cleanup_callback()
 {
 }
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
-OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
+OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);

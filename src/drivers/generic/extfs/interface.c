@@ -313,21 +313,35 @@ static void on_match(ext_inode** const inode,
     MmH_RefPage(*pg);
 }
 
-obos_status path_search(dev_desc* found, void* vn, const char* path)
+obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc parent)
 {
     if (!found || !vn || !path)
         return OBOS_STATUS_INVALID_ARGUMENT;
-
+    
+    uint32_t parent_ino  = 0;
     ext_cache* cache = nullptr;
-    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    if (parent == UINTPTR_MAX)
     {
-        if (curr->vn == vn)
-            cache = curr;
+        for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+        {
+            if (curr->vn == vn)
+                cache = curr;
 
-        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+            curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+        }
+        if (!cache)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        
+        parent_ino = 2;
     }
-    if (!cache)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    else
+    {
+        ext_inode_handle* hnd = (void*)parent;
+        if (!parent)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        cache = hnd->cache;
+        parent_ino = hnd->ino;
+    }
 
     *found = 0;
 
@@ -346,7 +360,7 @@ obos_status path_search(dev_desc* found, void* vn, const char* path)
         return OBOS_STATUS_NOT_FOUND;
 
     page* pg = nullptr;
-    ext_inode* inode = ext_read_inode_pg(cache, 2, &pg);
+    ext_inode* inode = ext_read_inode_pg(cache, parent_ino, &pg);
     if (!inode)
         return OBOS_STATUS_INVALID_ARGUMENT;
     MmH_RefPage(pg);
@@ -358,7 +372,7 @@ obos_status path_search(dev_desc* found, void* vn, const char* path)
 
     size_t nToRead = le32_to_host(inode->blocks) * 512;
     uint8_t* buffer = Allocate(EXT_Allocator, nToRead, nullptr);
-    ext_ino_read_blocks(cache, 2, 0, nToRead, buffer, nullptr);
+    ext_ino_read_blocks(cache, parent_ino, 0, nToRead, buffer, nullptr);
     
     ext_dirent* ent = nullptr;
     for (size_t offset = 0; offset < nToRead; )
