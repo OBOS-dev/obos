@@ -465,12 +465,17 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
                 insert_byte = !(tty->quoted = true);
             else
                 tty->quoted = false;
-            if (buf8[i] == tty->termios.cc[VINTR])
-                tty_kill(tty, SIGINT);
-            else if (buf8[i] == tty->termios.cc[VQUIT])
-                tty_kill(tty, SIGQUIT);
-            else if (buf8[i] == tty->termios.cc[VSUSP])
-                tty_kill(tty, SIGTSTP);
+            if (tty->termios.lflag & ISIG)
+            {
+                if (buf8[i] == tty->termios.cc[VINTR])
+                    tty_kill(tty, SIGINT);
+                else if (buf8[i] == tty->termios.cc[VQUIT])
+                    tty_kill(tty, SIGQUIT);
+                else if (buf8[i] == tty->termios.cc[VSUSP])
+                    tty_kill(tty, SIGTSTP);
+                else
+                    insert_byte = true;
+            }
             else
                 insert_byte = true;
             if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && ((tty->termios.lflag & (ICANON|ECHOE)) == (ICANON|ECHOE)))
@@ -723,6 +728,13 @@ static void poll_keyboard(struct screen_tty* data)
                         break;
                     case SCANCODE_BACKSPACE:
                         buffer[i] = '\177';
+                        break;
+                    case SCANCODE_DELETE:
+                        nReady += 3;
+                        i += 3;
+                        char buf[4] = {"\x1b[3~"};
+                        buffer = Vfs_Realloc(buffer, nReady);
+                        memcpy(buffer, buf, nReady);
                         break;
                     {
                     char ch = '\0';
