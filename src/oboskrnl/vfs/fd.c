@@ -58,6 +58,8 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
     if (!desc || !ent)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ent = VfsH_FollowLink(ent);
+    if (!ent)
+        return OBOS_STATUS_NOT_FOUND;
     return Vfs_FdOpenVnode(desc, ent->vnode, oflags);
 }
 OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags)
