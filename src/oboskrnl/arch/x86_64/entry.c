@@ -185,7 +185,7 @@ static const char* color_to_ansi[] = {
     "\x1b[38;5;52m",
     "\x1b[38;5;7m",
     "\x1b[38;5;8m",
-    "\x1b[38;5;75m",
+    "\x1b[38;5;12m",
     "\x1b[38;5;10m",
     "\x1b[38;5;14m",
     "\x1b[38;5;9m",
@@ -336,11 +336,13 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         uint8_t red_mask_size = 8, red_mask_shift = 0;
         uint8_t green_mask_size = 8, green_mask_shift = 0;
         uint8_t blue_mask_size = 8, blue_mask_shift = 0;
+        uint32_t bg = OBOS_TEXT_BACKGROUND;
         switch (Arch_Framebuffer->format) {
             case ULTRA_FB_FORMAT_BGR888:
                 red_mask_shift = 16;
                 green_mask_shift = 8;
                 blue_mask_shift = 0;
+                bg = __builtin_bswap32(bg) >> 8;
                 break;
             case ULTRA_FB_FORMAT_RGB888:
                 red_mask_shift = 0;
@@ -356,17 +358,39 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
                 red_mask_shift = 0;
                 green_mask_shift = 8;
                 blue_mask_shift = 16;
+                bg = bg >> 8;
                 break;
         
         }
+        static uint32_t ansi_colors[8] = {
+            __builtin_bswap32(0x000000) >> 8,
+            __builtin_bswap32(0xbb0000) >> 8,
+            __builtin_bswap32(0x00bb00) >> 8,
+            __builtin_bswap32(0xbbbb00) >> 8,
+            __builtin_bswap32(0x0000bb) >> 8,
+            __builtin_bswap32(0xbb00bb) >> 8,
+            __builtin_bswap32(0x00bbbb) >> 8,
+            __builtin_bswap32(0xbbbbbb) >> 8,
+        };
+        static uint32_t ansi_bright_colors[8] = {
+            __builtin_bswap32(0x555555) >> 8,
+            __builtin_bswap32(0xff5555) >> 8,
+            __builtin_bswap32(0x55ff55) >> 8,
+            __builtin_bswap32(0xffff55) >> 8,
+            __builtin_bswap32(0x5555aa) >> 8,
+            __builtin_bswap32(0xff55ff) >> 8,
+            __builtin_bswap32(0x55ffff) >> 8,
+            __builtin_bswap32(0xffffff) >> 8,
+
+        };
         OBOS_FlantermContext = flanterm_fb_init(
             nullptr, nullptr, 
             Arch_MapToHHDM(Arch_Framebuffer->physical_address), Arch_Framebuffer->width, Arch_Framebuffer->height, Arch_Framebuffer->pitch, 
             red_mask_size, red_mask_shift, 
             green_mask_size, green_mask_shift, 
             blue_mask_size, blue_mask_shift, 
-            nullptr, nullptr, 
-            nullptr, nullptr, 
+            nullptr, ansi_colors, 
+            ansi_bright_colors, nullptr, 
             nullptr, nullptr,
             nullptr, 
             (void*)font_bin, 8, 16, 0, 
