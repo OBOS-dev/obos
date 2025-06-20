@@ -193,6 +193,14 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
 
 #define TIOCGPGRP 0x540F
 #define TIOCSPGRP 0x5410
+#define TIOCGWINSZ 0x5413
+struct winsize
+{
+    unsigned short row;
+    unsigned short col;
+    unsigned short xpixel;
+    unsigned short ypixel;
+};
 static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret) 
 {
     if (!ret)
@@ -206,6 +214,9 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
             break;
         case TTY_IOCTL_DRAIN:
             *ret = 0;
+            break;
+        case TIOCGWINSZ:
+            *ret = sizeof(struct winsize);
             break;
         case TTY_IOCTL_FLOW:
             *ret = sizeof(uint32_t);
@@ -260,6 +271,15 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         {
             uint32_t /* pid_t */ *pid = argp;
             *pid = tty->fg_job->pid;
+            break;
+        }
+        case TIOCGWINSZ:
+        {
+            struct winsize* sz = argp;
+            sz->col = tty->interface.size.col;
+            sz->row = tty->interface.size.row;
+            sz->xpixel = tty->interface.size.width;
+            sz->ypixel = tty->interface.size.height;
             break;
         }
         case TTY_IOCTL_FLOW:
@@ -560,7 +580,8 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
 
 struct screen_tty {
     fd keyboard;
-    text_renderer_state* out;
+    text_renderer_state* tout;
+    struct flanterm_context* fout;
     void(*data_ready)(void* tty, const void* buf, size_t nBytesReady);
     thread* data_ready_thread;
     tty* tty;
@@ -773,24 +794,51 @@ static obos_status screen_write(void* tty_, const char* buf, size_t szBuf)
             data->input_paused = false;
         else if (buf[i] == vstop)
             data->input_paused = true;
-        printf("%c", buf[i]);
+        // printf("%c", buf[i]);
+        if (data->tout)
+            OBOS_WriteCharacter(data->tout, buf[i]);
+        else
+            flanterm_write(data->fout, &buf[i], 1);
     }    
 
-    data->out->paused = tty->paused;
-    if (!data->out->paused)
-        OBOS_FlushBuffers(data->out);
+    if (data->tout)
+    {
+        data->tout->paused = tty->paused;
+        if (!data->tout->paused)
+            OBOS_FlushBuffers(data->tout);
+    }
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout)
+obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout)
 {
+    if (!conout && !fconout)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     struct screen_tty* screen = Vfs_Calloc(1, sizeof(*screen));
     obos_status status = Vfs_FdOpenVnode(&screen->keyboard, keyboard, FD_OFLAGS_READ|FD_OFLAGS_UNCACHED);
     if (obos_is_error(status))
         return status;
-    screen->out = conout;
+    if (conout)
+    {
+        screen->tout = conout;
+        i->size.width = conout->fb.width;
+        i->size.height = conout->fb.height;
+        i->size.col = conout->fb.width/8;
+        i->size.row = conout->fb.height/16;
+    }
+    else
+    {
+        screen->fout = fconout;
+        size_t col,row;
+        flanterm_get_dimensions(fconout, &col, &row);
+        i->size.row = row;
+        i->size.col = col;
+        i->size.width = col*8;
+        i->size.height = row*16;
+    }
     i->write = screen_write;
     i->set_data_ready_cb = screen_set_data_ready_cb;
     i->userdata = screen;
+    
     return status;
 }

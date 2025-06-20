@@ -25,6 +25,7 @@
 
 static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
 {
+    vn->refs++;
     page* phys = MmH_PgAllocatePhysical(false, false);
     phys->backing_vn = vn;
     phys->file_offset = offset;

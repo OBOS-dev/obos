@@ -18,6 +18,10 @@
 #include <font.h>
 #include <partition.h>
 
+#define FLANTERM_IN_FLANTERM
+#include <flanterm.h>
+#include <flanterm_backends/fb.h>
+
 #include <UltraProtocol/ultra_protocol.h>
 
 #include <arch/x86_64/idt.h>
@@ -245,6 +249,28 @@ static void init_serial_log_backend()
 const uintptr_t Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
 const uintptr_t Arch_cpu_local_currentIrql_offset = offsetof(cpu_local, currentIrql);
 
+struct flanterm_context* OBOS_FlantermContext = nullptr;
+static void flanterm_cb_set_color(color c, void*)
+{
+    flanterm_write(OBOS_FlantermContext, color_to_ansi[c], strlen(color_to_ansi[c]));
+}
+static void flanterm_cb_reset_color(void*)
+{
+    flanterm_write(OBOS_FlantermContext, "\x1b[0m", 4);
+}
+static void flanterm_cb_out(const char* str, size_t sz, void*)
+{
+    flanterm_write(OBOS_FlantermContext, str, sz);
+}
+static void init_flanterm_backend()
+{
+    log_backend backend = {};
+    backend.reset_color = flanterm_cb_reset_color;
+    backend.set_color = flanterm_cb_set_color;
+    backend.write = flanterm_cb_out;
+    OBOS_AddLogSource(&backend);
+}
+
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
     bsp_cpu.id = 0;
@@ -292,21 +318,61 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
     else
     {
-        OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
-        OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
-        OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
-        OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
-        OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
-        OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
-        for (size_t y = 0; y < Arch_Framebuffer->height; y++)
-            for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-                OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
-        OBOS_TextRendererState.column = 0;
-        OBOS_TextRendererState.row = 0;
-        OBOS_TextRendererState.font = font_bin;
-        OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
-        if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
-            return;
+        // OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
+        // OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
+        // OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
+        // OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
+        // OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
+        // OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+        // for (size_t y = 0; y < Arch_Framebuffer->height; y++)
+        //     for (size_t x = 0; x < Arch_Framebuffer->width; x++)
+        //         OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
+        // OBOS_TextRendererState.column = 0;
+        // OBOS_TextRendererState.row = 0;
+        // OBOS_TextRendererState.font = font_bin;
+        // OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+        // if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
+        //     return;
+        uint8_t red_mask_size = 8, red_mask_shift = 0;
+        uint8_t green_mask_size = 8, green_mask_shift = 0;
+        uint8_t blue_mask_size = 8, blue_mask_shift = 0;
+        switch (Arch_Framebuffer->format) {
+            case ULTRA_FB_FORMAT_BGR888:
+                red_mask_shift = 16;
+                green_mask_shift = 8;
+                blue_mask_shift = 0;
+                break;
+            case ULTRA_FB_FORMAT_RGB888:
+                red_mask_shift = 0;
+                green_mask_shift = 8;
+                blue_mask_shift = 16;
+                break;
+            case ULTRA_FB_FORMAT_RGBX8888:
+                red_mask_shift = 8;
+                green_mask_shift = 16;
+                blue_mask_shift = 24;
+                break;
+            case ULTRA_FB_FORMAT_XRGB8888:
+                red_mask_shift = 0;
+                green_mask_shift = 8;
+                blue_mask_shift = 16;
+                break;
+        
+        }
+        OBOS_FlantermContext = flanterm_fb_init(
+            nullptr, nullptr, 
+            Arch_MapToHHDM(Arch_Framebuffer->physical_address), Arch_Framebuffer->width, Arch_Framebuffer->height, Arch_Framebuffer->pitch, 
+            red_mask_size, red_mask_shift, 
+            green_mask_size, green_mask_shift, 
+            blue_mask_size, blue_mask_shift, 
+            nullptr, nullptr, 
+            nullptr, nullptr, 
+            nullptr, nullptr,
+            nullptr, 
+            (void*)font_bin, 8, 16, 0, 
+            0,0,
+            0);
+        init_flanterm_backend();
     }
 
     OBOS_TextRendererState.fg_color = 0xffffffff;
@@ -578,26 +644,7 @@ void Arch_KernelMainBootstrap()
                 MmH_DerefPage(pg);
             }
         }
-        OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(
-            &Mm_KernelContext, 
-            (void*)(0xffffa00000000000+size), size, 
-            0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
-            nullptr, nullptr);
-        memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
-        /*for (size_t y = 0; y < Arch_Framebuffer->height; y++)
-            for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-                // OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);*/
-        OBOS_TextRendererState.fb.base = base_;
-        OBOS_TextRendererState.fb.modified_line_bitmap = ZeroAllocate(
-            OBOS_KernelAllocator,
-            get_line_bitmap_size(OBOS_TextRendererState.fb.height),
-            sizeof(uint32_t),
-            nullptr
-        );
-        Mm_KernelContext.stat.committedMemory -= size*2;
-        Mm_KernelContext.stat.nonPaged -= size*2;
-        Mm_GlobalMemoryUsage.committedMemory -= size*2;
-        Mm_GlobalMemoryUsage.nonPaged -= size*2;
+        ((struct flanterm_fb_context*)OBOS_FlantermContext)->framebuffer = base_;
     }
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
     Core_InitializeTimerInterface();
@@ -893,7 +940,7 @@ void Arch_KernelMainBootstrap()
     if (ps2k1)
     {
         tty_interface i = {};
-        VfsH_MakeScreenTTY(&i, ps2k1->vnode, &OBOS_TextRendererState);
+        VfsH_MakeScreenTTY(&i, ps2k1->vnode, nullptr, OBOS_FlantermContext);
         dirent* tty = nullptr;
         Vfs_RegisterTTY(&i, &tty, false);
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;

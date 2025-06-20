@@ -553,7 +553,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         {
             page what = {.phys=info.phys};
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-            // printf("derefing physical page %p representing %p\n", info.phys, addr);
             if (pg)
                 MmH_DerefPage(pg);
         }

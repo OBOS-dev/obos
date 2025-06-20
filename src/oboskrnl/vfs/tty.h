@@ -9,6 +9,7 @@
 #include <int.h>
 #include <text.h>
 #include <error.h>
+#include <flanterm.h>
 
 #include <locks/event.h>
 
@@ -26,6 +27,10 @@ typedef struct tty_interface {
     obos_status(*write)(void* tty, const char* buf, size_t szBuf);
     // Drain output buffers, optional to implement.
     obos_status(*tcdrain)(void* tty);
+    struct {
+        uint16_t row, col; // characters
+        uint16_t width, height; // pixels
+    } size;
 } tty_interface;
 
 #define VINTR    0
@@ -126,4 +131,4 @@ typedef struct tty {
 // Makes a copy of 'i' before creating the TTY.
 obos_status Vfs_RegisterTTY(const tty_interface* i, dirent** node, bool pty);
 
-obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout);
+obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout);

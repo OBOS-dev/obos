@@ -85,6 +85,8 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	endif()
 	message("Fetching uACPI.")
 	include ("dependencies/uacpi.cmake")
+	message("Fetching flanterm.")
+	include ("dependencies/flanterm.cmake")
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -95,6 +97,7 @@ else()
 	if (NOT EXISTS uacpi_cmake_file)
         include("dependencies/uacpi.cmake")
 	endif()
+	include("dependencies/flanterm.cmake")
 endif()
 
 if (OBOS_UP)

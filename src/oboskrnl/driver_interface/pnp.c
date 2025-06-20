@@ -454,10 +454,7 @@ static void driver_file_free(void* ele)
     // if (drv->main)
     //     if (!(--drv->main->references) && drv->main->free)
     //         drv->main->free(drv->main);
-    Vfs_FdSeek(drv->file, 0, SEEK_END);
-    size_t filesize = Vfs_FdTellOff(drv->file);
-    Vfs_FdSeek(drv->file, 0, SEEK_SET);
-    Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, filesize);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, drv->file->vn->filesize);
     // drv->hdr is invalid.
     Vfs_FdClose(drv->file);
 }
@@ -591,6 +588,19 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         driver_header_node* next = node->next;
         Free(OBOS_KernelAllocator, node, sizeof(*node));
         node = next;
+    }
+    size_t i = 0;
+    void* item = nullptr;
+    while (hashmap_iter(drivers, &i, &item))
+    {
+        if (!item)
+            continue; // fnuy
+        struct driver_file* file = item;
+        if (!file->id)
+            continue;
+        if (!file->id->main_thread)
+            continue;
+        driver_file_free(file);
     }
     hashmap_clear(drivers, true);
     hashmap_free(drivers);
