@@ -181,3 +181,13 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strchr(const char* str, char ch)
     return i + (str[i] == ch ? 1 : 0);
 }
 #endif
+
+#if !OBOS_ARCH_HAS_STRNCHR
+OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strnchr(const char* str, char ch, size_t count)
+{
+    size_t i = 0;
+    for (; str[i] != ch && i < count; i++)
+        ;
+    return i + (str[i] == ch ? 1 : 0);
+}
+#endif

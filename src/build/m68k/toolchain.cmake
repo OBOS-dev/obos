@@ -74,6 +74,7 @@ add_compile_definitions(
     OBOS_ARCH_HAS_STRLEN=0
     OBOS_ARCH_HAS_STRNLEN=0
     OBOS_ARCH_HAS_STRCHR=0
+    OBOS_ARCH_HAS_STRNCHR=0
 )
 add_compile_options($<$<CONFIG:Debug>:-g>)
 

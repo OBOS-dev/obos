@@ -242,7 +242,7 @@ static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *nod
     return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
-obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+OBOS_NO_UBSAN obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
     OBOS_UNUSED(what);
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
@@ -258,19 +258,19 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
                 uint32_t stopBits;
                 uint32_t parityBit;
                 dev_desc* connection;
-            } aligned(4) open_serial_connection_argp;
+            } aligned(sizeof(uintptr_t)) open_serial_connection_argp;
             */
 
             uint8_t id = (uint8_t)*(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 8);
+            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
             uint32_t baudRate = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 8);
+            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
             data_bits dataBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 8);
+            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
             stop_bits stopBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 8);
+            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
             parity_bit parityBit = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + 8);
+            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
             dev_desc* connection = (void*)*(uintptr_t*)argp;
             argp = (void*)((uintptr_t)argp + sizeof(dev_desc*));
 

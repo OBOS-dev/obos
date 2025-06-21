@@ -76,8 +76,8 @@ set(TARGET_LINKER_OPTIONS -mcmodel=kernel)
 set(TARGET_DRIVER_LINKER_OPTIONS)
 
 set(gdbstub_source
-    # "arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
-    # "arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
+    "arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
+    "arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
 )
 
 list (APPEND oboskrnl_sources 
@@ -116,6 +116,7 @@ add_compile_definitions(
     OBOS_ARCH_HAS_STRLEN=1
     OBOS_ARCH_HAS_STRNLEN=0
     OBOS_ARCH_HAS_STRCHR=1
+    OBOS_ARCH_HAS_STRNCHR=0
 )
 add_compile_options($<$<CONFIG:Debug>:-g>)
 
