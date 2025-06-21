@@ -4,8 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "irq/dpc.h"
-#include "locks/spinlock.h"
+#include "allocators/base.h"
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
@@ -22,11 +21,12 @@
 
 #include <irq/irql.h>
 
+#include <locks/mutex.h>
+
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
 #include <scheduler/process.h>
-#include <stdint.h>
 
 gdb_connection* Kdbg_CurrentConnection;
 
@@ -38,7 +38,7 @@ void Kdbg_Break()
 {
     asm("int3");
 }
-spinlock lock;
+static mutex lock;
 void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource)
 {
     if (!Kdbg_CurrentConnection)
@@ -67,7 +67,7 @@ void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource)
 }
 void Kdbg_NotifyGDB(gdb_connection* con, uint8_t signal)
 {
-    char* packet = KdbgH_FormatResponse("T%02xthread:p%x.%x;", signal, Core_GetCurrentThread()->proc->pid, Core_GetCurrentThread()->tid);
+    char* packet = KdbgH_FormatResponse("T%02xthread:p%x.%x;", signal, Core_GetCurrentThread()->proc->pid+1, Core_GetCurrentThread()->tid);
     Kdbg_ConnectionSendPacket(con, packet);
 }
 
@@ -75,9 +75,9 @@ void Kdbg_int3_handler(interrupt_frame* frame)
 {
     asm("sti");
     static bool initialized = false;
-    if (Core_SpinlockAcquired(&lock))
-        return; // abort
-    irql oldIrql = Core_SpinlockAcquire(&lock);
+    obos_status status = Core_MutexTryAcquire(&lock);
+    if (obos_is_error(status))
+        return;
     if (initialized)
         Kdbg_NotifyGDB(Kdbg_CurrentConnection, 0x05); // trap
     // Adjust rip properly
@@ -107,7 +107,7 @@ void Kdbg_int3_handler(interrupt_frame* frame)
         // else
         //     frame->rip = frame->rip; // if the rip wasn't artifically modified, set rip back to the instruction it was before
     }
-    Core_SpinlockRelease(&lock, oldIrql);
+    Core_MutexRelease(&lock);
     if (!initialized)
         Kdbg_CurrentConnection->connection_active = true;
     initialized = Kdbg_CurrentConnection->connection_active;
@@ -116,14 +116,14 @@ void Kdbg_int3_handler(interrupt_frame* frame)
 void Kdbg_int1_handler(interrupt_frame* frame)
 {
     asm("sti");
-    irql oldIrql = Core_SpinlockAcquire(&lock);
+    Core_MutexAcquire(&lock);
     if (getDR6() & BIT(14))
     {
         Kdbg_NotifyGDB(Kdbg_CurrentConnection, 0x05); // trap
         frame->rflags &= ~RFLAGS_TRAP;
     }
     Kdbg_CallDebugExceptionHandler(frame, true);
-    Core_SpinlockRelease(&lock, oldIrql);
+    Core_MutexRelease(&lock);
     asm("cli");
 }
 
@@ -140,8 +140,11 @@ void Kdbg_GeneralDebugExceptionHandler(gdb_connection* conn, gdb_ctx* dbg_ctx, b
 		char* packet = nullptr;
 		size_t packetLen = 0;
 		Kdbg_ConnectionRecvPacket(conn, &packet, &packetLen);
-		Kdbg_DispatchPacket(conn, packet, packetLen, dbg_ctx);
-		Kdbg_Free(packet);
-	}
+        // printf("<%s\n", packet);
+		obos_status st = Kdbg_DispatchPacket(conn, packet, packetLen, dbg_ctx);
+		if (obos_is_error(st))
+            OBOS_Debug("Kdbg: While dispatching packet: Got status %d\n", st);
+        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, packet, packetLen);
+    }
     Kdbg_Paused = false;
 }
