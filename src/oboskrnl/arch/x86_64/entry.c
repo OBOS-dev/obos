@@ -669,6 +669,12 @@ void Arch_KernelMainBootstrap()
             }
         }
         ((struct flanterm_fb_context*)OBOS_FlantermContext)->framebuffer = base_;
+        OBOS_TextRendererState.fb.base = base_;
+        OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
+        OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+        OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
+        OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
+        OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
     }
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
     Core_InitializeTimerInterface();

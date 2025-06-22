@@ -111,8 +111,8 @@ struct fb_mode {
     uint32_t pitch;
     uint32_t width;
     uint32_t height;
-    uint16_t format;
-    uint8_t bpp; // See OBOS_FB_FORMAT_*
+    uint16_t format; // See OBOS_FB_FORMAT_*
+    uint8_t bpp; 
 };
 static obos_status ioctl_fb0(uint32_t request, void* argp)
 {
