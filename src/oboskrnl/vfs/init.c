@@ -152,11 +152,29 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find partition %s\n", root_uuid_str ? root_uuid_str : root_partid);
     if (!to_mount->fs_driver) 
        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No filesystem driver exists for partition %s\n", root_uuid_str ? root_uuid_str : root_partid);
-    Vfs_UnmountP("/");
+    // Vfs_UnmountP("/");
+    dirent* initrd_vfs_root = Vfs_Root;
+    Vfs_Root = Vfs_Calloc(1, sizeof(dirent));
+    OBOS_StringSetAllocator(&Vfs_Root->name, Vfs_Allocator);
+    OBOS_InitString(&Vfs_Root->name, "/");
+    Vfs_Root->vnode = Vfs_Calloc(1, sizeof(vnode));
+    Vfs_Root->vnode->vtype = VNODE_TYPE_DIR;
+    Vfs_Root->vnode->perm.group_exec = true;
+    Vfs_Root->vnode->perm.group_write = true;
+    Vfs_Root->vnode->perm.group_read = true;
+    Vfs_Root->vnode->perm.owner_exec = true;
+    Vfs_Root->vnode->perm.owner_write = true;
+    Vfs_Root->vnode->perm.owner_read = true;
+    Vfs_Root->vnode->perm.other_exec = true;
+    Vfs_Root->vnode->perm.other_write = false;
+    Vfs_Root->vnode->perm.other_read = true;
+    Vfs_Root->vnode->desc = UINTPTR_MAX;
     memzero(&Vfs_Root->tree_info, sizeof(Vfs_Root->tree_info));
-    Vfs_DevRoot->tree_info.next_child = nullptr;
-    Vfs_DevRoot->tree_info.prev_child = nullptr;
+    VfsH_DirentRemoveChild(Vfs_DevRoot->tree_info.parent, Vfs_DevRoot);
     vdev fs_vdev = {.driver=to_mount->fs_driver};
+    OBOS_FreeString(&initrd_vfs_root->name);
+    memzero(&initrd_vfs_root->name, sizeof(initrd_vfs_root->name));
+    OBOS_InitStringLen(&initrd_vfs_root->name, "initrd", 6);
     Vfs_Mount("/", to_mount->vn, &fs_vdev, &Vfs_Root->vnode->mount_point);
     dirent* dev = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!dev)
@@ -166,6 +184,7 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
         VfsH_DirentRemoveChild(parent, dev);
     Vfs_DevRoot->vnode = dev->vnode;
     VfsH_DirentAppendChild(parent, Vfs_DevRoot);
+    VfsH_DirentAppendChild(Vfs_Root, initrd_vfs_root);
     end:
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));

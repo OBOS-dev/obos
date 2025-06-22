@@ -222,11 +222,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         }
 
         if (!curr)
-        {
-            root = root->d_parent;
-            if (root == root_par->d_parent)
-                break;
-        }
+            break;
     }
 
     if (only_cache || !lastMount->fs_driver->driver->header.ftable.path_search)
