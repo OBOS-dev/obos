@@ -16,6 +16,8 @@
 #include <vfs/alloc.h>
 
 #include <locks/pushlock.h>
+#include <locks/wait.h>
+#include <locks/event.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
@@ -31,8 +33,9 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
         return OBOS_STATUS_INVALID_ARGUMENT;
     // OBOS_ASSERT(!"untested");
     pipe_desc *pipe = (void*)desc;
-    while (!pipe->offset && pipe->vn->opened.nNodes > 1)
-        OBOSS_SpinlockHint();
+    // while (!pipe->offset && pipe->vn->opened.nNodes > 1)
+    //     OBOSS_SpinlockHint();
+    Core_WaitOnObject(WAITABLE_OBJECT(pipe->evnt));
     if (pipe->vn->opened.nNodes == 1 && !pipe->offset)
         return OBOS_STATUS_EOF;
     if (blkCount > pipe->offset)
@@ -77,6 +80,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
     pipe->offset += blkCount;
     Core_PushlockRelease(&pipe->lock, false);
+    Core_EventSet(&pipe->evnt, false);
     // Core_PushlockRelease(&pipe->lock, !atomic);
     if (nBlkWritten)
         *nBlkWritten = blkCount;

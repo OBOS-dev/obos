@@ -12,7 +12,7 @@
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
 
-#include <locks/wait.h>
+#include <locks/event.h>
 #include <locks/pushlock.h>
 
 // fds is an array of 2 file descriptors
@@ -30,7 +30,7 @@ void Vfs_InitializePipeInterface();
 
 typedef struct pipe_desc
 {
-    struct waitable_header wait_hdr;
+    event evnt;
     vnode *vn;
     void* buf;
     size_t pipe_size;

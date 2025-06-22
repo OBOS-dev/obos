@@ -18,6 +18,7 @@
 #include <vfs/pagecache.h>
 #include <vfs/mount.h>
 #include <vfs/irp.h>
+#include <vfs/pipe.h>
 
 #include <allocators/base.h>
 
@@ -497,6 +498,11 @@ obos_status Vfs_FdClose(fd* desc)
         driver->ftable.unreference_device(desc->desc);
     vnode* vn = desc->vn;
     LIST_REMOVE(fd_list, &desc->vn->opened, desc);
+    if (vn->vtype == VNODE_TYPE_FIFO)
+    {
+        pipe_desc* desc = (void*)vn->desc;
+        Core_EventSet(&desc->evnt, true);
+    }
     vn->refs--;
     desc->flags &= ~FD_FLAGS_OPEN;
     
