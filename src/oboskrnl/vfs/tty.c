@@ -527,7 +527,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         }
         uint8_t mask = tty->termios.iflag & ISTRIP ? 0x7f : 0xff;
         tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = 
-            (tty->termios.iflag & (IUCLC|IEXTEN|ICANON)) ? 
+            ((tty->termios.lflag & (IEXTEN|ICANON)) == (IEXTEN|ICANON) && (tty->termios.iflag & IUCLC)) ? 
                 toupper(buf8[i] & mask) : 
                 (buf8[i] & mask);
     }
