@@ -1,0 +1,69 @@
+/*
+ * drivers/generic/nvme/main.c
+ *
+ * Copyright (c) 2025 Omar Berrow
+*/
+
+#include <int.h>
+#include <error.h>
+
+#include <driver_interface/header.h>
+#include <driver_interface/driverId.h>
+#include <driver_interface/pci.h>
+
+OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
+OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
+OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
+OBOS_WEAK obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
+OBOS_WEAK obos_status foreach_device(iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* u), void* u);
+OBOS_WEAK obos_status query_user_readable_name(dev_desc what, const char** name);
+OBOS_WEAK obos_status submit_irp(void*);
+OBOS_WEAK obos_status finalize_irp(void*);
+OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+{
+    OBOS_UNUSED(what);
+    OBOS_UNUSED(request);
+    OBOS_UNUSED(argp);
+    return OBOS_STATUS_INVALID_IOCTL;
+}
+void driver_cleanup_callback()
+{}
+OBOS_WEAK void on_wake();
+OBOS_WEAK void on_suspend();
+
+__attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
+    .magic = OBOS_DRIVER_MAGIC,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI|DRIVER_HEADER_HAS_VERSION_FIELD,
+    .acpiId.nPnpIds = 0,
+    .pciId.indiv = {
+        .classCode = 0x01, // mass storage controller
+        .subClass  = 0x08, // Non-Volatile Memory Controller
+        .progIf    = 0x02, // NVMe
+    },
+    .ftable = {
+        .driver_cleanup_callback = driver_cleanup_callback,
+        .ioctl = ioctl,
+        .get_blk_size = get_blk_size,
+        .get_max_blk_count = get_max_blk_count,
+        .query_user_readable_name = query_user_readable_name,
+        .foreach_device = foreach_device,
+        .read_sync = read_sync,
+        .write_sync = write_sync,
+        .on_wake = on_wake,
+        .on_suspend = on_suspend,
+        .submit_irp = submit_irp,
+        .finalize_irp = finalize_irp,
+    },
+    .driverName = "NVMe Driver",
+    .version=1,
+    .uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL
+};
+
+driver_id* this_driver;
+
+driver_init_status OBOS_DriverEntry(driver_id* this)
+{
+    this_driver = this;
+    return (driver_init_status){.status=OBOS_STATUS_SUCCESS};
+}
+

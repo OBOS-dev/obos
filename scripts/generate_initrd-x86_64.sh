@@ -9,6 +9,7 @@ cp out/ahci tar
 cp out/slowfat tar
 cp out/extfs tar
 cp out/bochs_vbe tar
+cp out/nvme tar
 cp out/r8169 tar
 cp out/i8042 tar
 cp out/libps2 tar
