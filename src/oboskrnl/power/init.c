@@ -28,6 +28,7 @@
 #include <uacpi/notify.h>
 #include <uacpi/types.h>
 #include <uacpi/osi.h>
+#include <uacpi/platform/arch_helpers.h>
 
 #define verify_status(st, in) \
 if (st != UACPI_STATUS_OK)\
@@ -82,6 +83,8 @@ void OBOS_InitializeUACPI()
 
     if (OBOS_GetLogLevel() <= LOG_LEVEL_LOG)
         uacpi_context_set_log_level(UACPI_LOG_INFO);
+    // else if (OBOS_GetLogLevel() == LOG_LEVEL_DEBUG)
+    //     uacpi_context_set_log_level(UACPI_LOG_TRACE);
 
     OBOS_InitializeECFromECDT();
 
@@ -98,8 +101,13 @@ void OBOS_InitializeUACPI()
 
     uacpi_install_notify_handler(uacpi_namespace_root(), default_notify, nullptr);
 
+    // We would raise the IRQL to IRQL_GPE,
+    // but doing so would be incompatible 
+    // with uACPI, as it uses mutexes here.
+    UACPI_ARCH_DISABLE_INTERRUPTS();
     uacpi_finalize_gpe_initialization();
-
+    UACPI_ARCH_ENABLE_INTERRUPTS();
+    
     Core_LowerIrql(oldIrql);
 }
 
