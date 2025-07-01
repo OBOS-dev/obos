@@ -129,12 +129,18 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     phys -= phys_page_offset;
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
     size += phys_page_offset;
+    obos_status status = OBOS_STATUS_SUCCESS;
     void* virt = Mm_VirtualMemoryAlloc(
         &Mm_KernelContext, 
         nullptr, size,
         uc ? OBOS_PROTECTION_CACHE_DISABLE : 0, VMA_FLAGS_NON_PAGED,
         nullptr, 
-        nullptr);
+        &status);
+    if (obos_is_error(status))
+    {
+        OBOS_Error("%s: Status %d\n", __func__, status);
+        OBOS_ENSURE(virt);
+    }
     for (uintptr_t offset = 0; offset < size; offset += OBOS_PAGE_SIZE)
     {
         page_info page = {.virt=offset+(uintptr_t)virt};
