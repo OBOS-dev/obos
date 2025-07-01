@@ -21,6 +21,7 @@ obos_status Drv_LoadDriverHeader(const void* file, size_t szFile, driver_header*
 driver_id *Drv_LoadDriver(const void* file, size_t szFile, obos_status* status);
 obos_status Drv_StartDriver(driver_id* driver, thread** mainThread);
 obos_status Drv_UnloadDriver(driver_id* driver);
+obos_status Drv_UnrefDriver(driver_id* driver);
 
 // returns the base of the elf.
 // if this resolves a symbol from a driver while relocating, then it must add the driver to the dependency list.

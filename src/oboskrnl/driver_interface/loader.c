@@ -358,18 +358,27 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
 
 obos_status Drv_UnloadDriver(driver_id* driver)
 {
+    return Drv_UnrefDriver(driver);
+}
+
+obos_status Drv_UnrefDriver(driver_id* driver)
+{
     if (!driver)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (driver->refCnt > 1)
-        return OBOS_STATUS_IN_USE;
-    while (!(driver->main_thread->flags & THREAD_FLAGS_DIED))
-		Core_Yield();
-    if (!(--driver->main_thread->references) && driver->main_thread->free)
-        driver->main_thread->free(driver->main_thread);
+    if ((--driver->refCnt) > 0)
+        return OBOS_STATUS_SUCCESS;
+    if (driver->main_thread)
+    {
+        while (!(driver->main_thread->flags & THREAD_FLAGS_DIED))
+            Core_Yield();
+        if (!(--driver->main_thread->references) && driver->main_thread->free)
+            driver->main_thread->free(driver->main_thread);
+    }
     driver->header.ftable.driver_cleanup_callback();
     for (driver_node* node = driver->dependencies.head; node; )
     {
-        node->data->refCnt--;
+        // node->data->refCnt--;
+        Drv_UnrefDriver(node->data);
 
         node = node->next;
     }
@@ -377,7 +386,7 @@ obos_status Drv_UnloadDriver(driver_id* driver)
     size_t size = ((uintptr_t)driver->top-(uintptr_t)driver->base);
     if (size % OBOS_PAGE_SIZE)
         size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
-    Mm_VirtualMemoryFree(&Mm_KernelContext, driver->base, size);
+    // Mm_VirtualMemoryFree(&Mm_KernelContext, driver->base, size);
     Free(OBOS_KernelAllocator, driver, sizeof(*driver));
     return OBOS_STATUS_SUCCESS;
 }
