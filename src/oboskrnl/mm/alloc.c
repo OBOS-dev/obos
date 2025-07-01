@@ -243,6 +243,8 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         }
         else
         {
+            if (!base_)
+                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "BUG: MmH_FindAvailableAddress returned an address (%p) already in-use\n", base);
             set_statusp(ustatus, OBOS_STATUS_IN_USE);
             Core_SpinlockRelease(&ctx->lock, oldIrql);
             return nullptr;
@@ -441,6 +443,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_NOT_FOUND;
     }
+    if (rng->size > size)
+        size = rng->size; // TODO: Fix
 
     // printf("freeing %d at %p. called from %p\n", size, base, __builtin_return_address(0));
     bool sizeHasGuardPage = false;
