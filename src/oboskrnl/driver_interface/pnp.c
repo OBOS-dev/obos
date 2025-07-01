@@ -451,9 +451,8 @@ static uint64_t driver_file_hash(const void *item, uint64_t seed0, uint64_t seed
 static void driver_file_free(void* ele)
 {
     struct driver_file* drv = ele;
-    // if (drv->main)
-    //     if (!(--drv->main->references) && drv->main->free)
-    //         drv->main->free(drv->main);
+    if (drv->id)
+        Drv_UnrefDriver(drv->id);
     Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, drv->file->vn->filesize);
     // drv->hdr is invalid.
     Vfs_FdClose(drv->file);
@@ -550,6 +549,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
                 OBOS_Warning("Could not load '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 continue;
             }
+            drv->refCnt++;
             file->id = drv;
             loadStatus = Drv_StartDriver(drv, nullptr);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
