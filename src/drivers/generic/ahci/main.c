@@ -228,6 +228,8 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     OBOS_Debug("Mapping HBA memory.\n");
     HBA = map_registers(bar->bar->phys, barlen, true);
     // OBOS_Log("Mapped HBA memory at 0x%p-0x%p.\n", HBA, ((uintptr_t)HBA)+barlen);
+    HbaIrq.handler = ahci_irq_handler;
+    HbaIrq.irqChecker = ahci_irq_checker;
     obos_status status = Core_IrqObjectInitializeIRQL(&HbaIrq, IRQL_AHCI, true, true);
     if (obos_is_error(status))
         return (driver_init_status){.status=status,.fatal=true,.context="Could not initialize IRQ object."};
@@ -241,8 +243,8 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     PCIIrqResource->irq->irq = &HbaIrq;
     PCIIrqResource->irq->masked = false;
     Drv_PCISetResource(PCIIrqResource);
-    HbaIrq.irqChecker = ahci_irq_checker;
     HbaIrq.handler = ahci_irq_handler;
+    HbaIrq.irqChecker = ahci_irq_checker;
     OBOS_Debug("Enabled IRQs.\n");
     HBA->ghc |= BIT(31);
     while (!(HBA->ghc & BIT(31)))

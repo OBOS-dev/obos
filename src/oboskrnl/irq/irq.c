@@ -72,7 +72,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 		for (irq_node* node = vector->irqObjects.head; node && !irq_obj; )
 		{
 			irq* cur = node->data;
-			OBOS_ASSERT(cur->irqChecker); // to make sure the developer doesn't mess up; compiled out in release mode
+			OBOS_ASSERT_NPANIC(cur->irqChecker); // to make sure the developer doesn't mess up; compiled out in release mode
 			if (cur->irqChecker)
 				if (cur->irqChecker(cur, cur->irqCheckerUserdata))
 					irq_obj = cur;

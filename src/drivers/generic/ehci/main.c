@@ -11,6 +11,12 @@
 #include <driver_interface/driverId.h>
 #include <driver_interface/pci.h>
 
+#include <utils/list.h>
+
+#include <allocators/base.h>
+
+#include "structs.h"
+
 OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
 OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
@@ -36,9 +42,9 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_PCI|DRIVER_HEADER_HAS_VERSION_FIELD,
     .acpiId.nPnpIds = 0,
     .pciId.indiv = {
-        .classCode = 0x01, // mass storage controller
-        .subClass  = 0x08, // Non-Volatile Memory Controller
-        .progIf    = 0x02, // NVMe
+        .classCode = 0x0c, // serial bus controller
+        .subClass  = 0x03, // USB Controller
+        .progIf    = 0x20, // EHCI
     },
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
@@ -61,8 +67,29 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
 driver_id* this_driver;
 
+static void search_bus(pci_bus* bus)
+{
+    for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev; )
+    {
+        if (dev->hid.indiv.classCode == drv_hdr.pciId.indiv.classCode &&
+            dev->hid.indiv.subClass == drv_hdr.pciId.indiv.subClass &&
+            dev->hid.indiv.progIf == drv_hdr.pciId.indiv.progIf)
+        {
+            g_controller_count++;
+            g_controllers = Reallocate(OBOS_KernelAllocator, g_controllers, g_controller_count*sizeof(ehci_controller), (g_controller_count-1)*sizeof(ehci_controller), nullptr);
+            g_controllers->dev = dev;
+        }
+
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+    }
+}
+
 driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
+    for (size_t i = 0; i < Drv_PCIBusCount; i++)
+        search_bus(&Drv_PCIBuses[i]);
+    for (size_t i = 0; i < g_controller_count; i++)
+        ehci_initialize_controller(&g_controllers[i]);
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS};
 }

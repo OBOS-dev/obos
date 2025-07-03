@@ -2,7 +2,7 @@
 # 
 # Copyright (c) 2024 Omar Berrow
 
-add_executable(ehci "main.c")
+add_executable(ehci "main.c" "reset.c" "ehci_irq.c")
 
 target_compile_options(ehci
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
@@ -10,6 +10,7 @@ target_compile_options(ehci
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector-all>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-address-of-packed-member>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
