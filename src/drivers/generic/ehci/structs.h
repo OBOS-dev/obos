@@ -39,8 +39,17 @@ typedef volatile struct ehci_operational_base_registers {
     uint32_t portsc[];
 } OBOS_PACK ehci_operational_base_registers;
 
+enum {
+    EHCI_PORT_SPEED_INVALID = 0,
+    EHCI_PORT_LOW_SPEED,
+    EHCI_PORT_FULL_SPEED,
+    EHCI_PORT_HIGH_SPEED,
+};
+
 typedef struct ehci_port {
-    void* resv;
+    uint32_t id;
+    uint8_t speed;
+    volatile uint32_t *sc; // status&control
 } ehci_port, *ehci_ports;
 
 typedef struct ehci_controller {
@@ -63,14 +72,11 @@ typedef struct ehci_controller {
     
     ehci_ports ports;
     size_t nPorts;
+    ehci_port* debug_port_ptr;
+    uint32_t debug_port;
 
     bool suspended;
     bool initialized;
-
-    struct {
-        uintptr_t phys;
-        uint32_t* virt; 
-    } periodicList;
 } ehci_controller, *ehci_controllers;
 extern ehci_controllers g_controllers;
 extern size_t g_controller_count;

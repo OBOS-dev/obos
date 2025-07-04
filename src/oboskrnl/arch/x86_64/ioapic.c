@@ -168,10 +168,13 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMaskIRQ(uint32_t gsi, bool mask)
     uint32_t ent[2];
     ent[0] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi])));
     ent[1] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4));
-    ioapic_redirection_entry *entry = (ioapic_redirection_entry*)&ent;
-    if (!entry->vector)
+    uint64_t *entry = (uint64_t*)&ent;
+    if (!(*entry & 0xff))
         return OBOS_STATUS_UNINITIALIZED;
-    entry->mask = mask;
+    if (mask)
+        *entry |= BIT(16); // mask
+    else
+        *entry &= ~BIT(16);
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4, ent[1]);
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     return OBOS_STATUS_SUCCESS;
@@ -198,25 +201,26 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICMapIRQToVector(uint32_t gsi, uint8
     uint32_t ent[2];
     ent[0] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi])));
     ent[1] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4));
-    ioapic_redirection_entry *entry = (ioapic_redirection_entry*)&ent;
+    uint64_t *entry = (uint64_t*)&ent;
     // Set vector info.
     if (vector)
     {
-        entry->vector = vector;
-        entry->delMod = 0b000 /* FIXED */;
+        *entry = BIT(16);
+        *entry |= vector;
+        // entry->delMod = 0b000 /* FIXED */;
         // Set polarity info.
-        entry->intPol = polarity;
-        entry->triggerMode = tm;
-        // Set LAPIC info.
-        entry->destMode = 0 /* Physical */;
-        entry->destination.physical.lapicId = 0 /* BSP */;
+        if (polarity)
+            *entry |= BIT(13);
+        // else, it's already zero
+        if (tm)
+            *entry |= BIT(15);
+        // else, it's already zero
+        // destination fields are already zero
     }
     else 
     {
         memzero(entry, sizeof(*entry));
     }
-    // Mask the IRQ.
-    entry->mask = true;
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4, ent[1]);
     ArchH_IOAPICWriteRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]),     ent[0]);
     return OBOS_STATUS_SUCCESS;
@@ -236,8 +240,8 @@ OBOS_PAGEABLE_FUNCTION obos_status Arch_IOAPICGSIUsed(uint32_t gsi)
     volatile uint32_t ent[2];
     ent[0] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi])));
     ent[1] = ((uint64_t)ArchH_IOAPICReadRegister(ioapic->address, OffsetOfReg(redirectionEntries[gsi-ioapic->gsi]) + 4));
-    volatile ioapic_redirection_entry *entry = (ioapic_redirection_entry*)&ent;
-    return entry->vector == 0 ? OBOS_STATUS_SUCCESS : OBOS_STATUS_IN_USE;
+    volatile uint64_t *entry = (uint64_t*)&ent;
+    return ((*entry & 0xff) == 0) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_IN_USE;
 }
 OBOS_PAGEABLE_FUNCTION void ArchH_IOAPICWriteRegister(ioapic* ioapic_, uint32_t offset, uint32_t value)
 {

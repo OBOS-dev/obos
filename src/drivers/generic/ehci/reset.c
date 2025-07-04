@@ -15,8 +15,13 @@
 
 #include <utils/list.h>
 
-#include "irq/timer.h"
-#include "mm/pmm.h"
+#include <allocators/base.h>
+
+#include <irq/timer.h>
+#include <irq/irq.h>
+#include <irq/irql.h>
+
+#include "error.h"
 #include "structs.h"
 
 ehci_controllers g_controllers;
@@ -79,45 +84,88 @@ void ehci_initialize_controller(ehci_controller* controller)
     }
 
     Core_IrqObjectInitializeIRQL(&controller->irq, IRQL_EHCI, true, true);
-    
+
+    controller->bar_base = map_registers(bar->phys, bar->size, true);
+    controller->op_base_reg = (void*)((char*)controller->bar_base + controller->base_reg->caplength);
+
+    controller->nPorts = controller->base_reg->hcsparams & 0xf;
+    controller->ports = ZeroAllocate(OBOS_KernelAllocator, controller->nPorts, sizeof(ehci_port), nullptr);
+    controller->debug_port = (controller->base_reg->hcsparams >> 20) & 0xf;
+    controller->debug_port_ptr = controller->debug_port ? &controller->ports[controller->debug_port-1] : nullptr;
+    for (size_t i = 0; i < controller->nPorts; i++)
+    {
+        controller->ports[i].id = i+1;
+        controller->ports[i].sc = &controller->op_base_reg->portsc[i];
+    }
+
     irq_resource->irq->irq = &controller->irq;
     irq_resource->irq->masked = false;
-    Drv_PCISetResource(irq_resource);
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = Drv_PCISetResource(irq_resource)))
+    {
+        OBOS_Error("EHCI: %02x:%02x:%02x: Drv_PCISetResource(irq_resource) returned status %d\n",
+            controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function, 
+            status);
+            return;
+    }
     
     controller->irq.irqCheckerUserdata = controller;
     controller->irq.handlerUserdata = controller;
     controller->irq.irqChecker = ehci_irq_check;
     controller->irq.handler = ehci_irq_handler;
 
-    controller->bar_base = map_registers(bar->phys, bar->size, true);
-    controller->op_base_reg = (void*)((char*)controller->bar_base + controller->base_reg->caplength);
+    OBOS_Log("EHCI: %02x:%02x:%02x: Initialized EHCI controller. BAR at 0x%p, IRQ on vector ID 0x%x. Controller has %d ports\n",
+        controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function,
+        controller->bar_resource->bar->phys, controller->irq.vector->id,
+        controller->nPorts);
+    if (controller->debug_port)
+        OBOS_Log("EHCI: %02x:%02x:%02x: NOTE: Debug port on port %d\n",
+            controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function,
+            controller->debug_port
+        );
 
     controller->initialized = true;
-
-    OBOS_Log("EHCI: %02x:%02x:%02x: Initialized EHCI controller. BAR at 0x%p, IRQ on vector ID 0x%x\n",
-        controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function,
-        controller->bar_resource->bar->phys, controller->irq.vector->id);
-
-    controller->periodicList.phys = ehci_alloc_phys(OBOS_PAGE_SIZE <= (4*1024) ? OBOS_PAGE_SIZE/(4*1024) : 1);
-    controller->periodicList.virt = map_registers(controller->periodicList.phys, (OBOS_PAGE_SIZE <= (4*1024) ? OBOS_PAGE_SIZE/(4*1024) : 1)*OBOS_PAGE_SIZE, false);
-    for (size_t i = 0; i < 1024; i++)
-        controller->periodicList.virt[i] |= BIT(0);
-
+    
     ehci_reset_controller(controller);
 }
 
 void ehci_reset_controller(ehci_controller* controller)
 {
+    OBOS_ENSURE(controller->initialized);
+
     // Halt the controler.
     controller->op_base_reg->usbcmd &= ~BIT(0);
-    if (!wait_bit_timeout(&controller->op_base_reg->usbsts, BIT(12), BIT(12), 2000))
+    if (!wait_bit_timeout(&controller->op_base_reg->usbsts, BIT(12), BIT(12), 2050 /* 16 microframes */))
+    {
+        OBOS_Debug("usbsts&0x1000 == 0x1000 timed after 2ms\n");
         return;
+    }
     controller->op_base_reg->usbcmd |= BIT(1); // Reset
-    if (!wait_bit_timeout(&controller->op_base_reg->usbcmd, BIT(1), 0, 2000 /* 16 microframes */))
+    if (!wait_bit_timeout(&controller->op_base_reg->usbcmd, BIT(1), 0, UINT32_MAX /* an unrealistically long time for this to complete*/))
+    {
+        OBOS_Debug("usbcmd&0x2 == 0x0 timed after 1.1 hours\n");
         return;
+    }
     controller->op_base_reg->ctrldsssegment = 0; // All allocated memory is in the bottom 4GiB segment
-    controller->op_base_reg->usbintr = 0; // enable all IRQs
-    controller->op_base_reg->periodiclistbase = controller->periodicList.phys;
+    controller->op_base_reg->usbintr = 0x37; // enable most IRQs
+    uint32_t usbcmd = controller->op_base_reg->usbcmd;
+    usbcmd &= ~(0xff<<16);
+    usbcmd |= BIT(19);
+    usbcmd &= ~(BIT(4)|BIT(5));
+    usbcmd |= BIT(0); // Start the controller.
+    controller->op_base_reg->usbcmd = usbcmd;
+    wait_bit_timeout(&controller->op_base_reg->usbsts, BIT(12), 0, UINT32_MAX);
+    controller->op_base_reg->configflag = 1;
+
+    for (size_t i = 0; i < controller->nPorts; i++)
+    {
+        *controller->ports[i].sc |= BIT(8);
+        for (size_t stall = 0; stall < 5000; stall++)
+            OBOSS_SpinlockHint();
+        *controller->ports[i].sc &= ~BIT(8);
+        wait_bit_timeout(controller->ports[i].sc, BIT(8), 0, 2000);
+        printf("%08x\n", *controller->ports[i].sc);
+    }
 }
 
 uintptr_t ehci_alloc_phys(size_t nPages)

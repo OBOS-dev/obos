@@ -15,31 +15,6 @@ typedef struct ioapic
 	OBOS_ALIGNAS(0x10) volatile uint8_t ioregsel;
 	OBOS_ALIGNAS(0x10) volatile uint32_t iowin;
 } ioapic;
-typedef struct OBOS_PACK ioapic_redirection_entry
-{
-    uint8_t vector; // the vector
-    uint8_t delMod : 3; // delivery mode (1:1 as the lapic's delivery mode)
-    bool destMode : 1; // the destination mode (logical: 1, physical: 0)
-    const bool delivStatus : 1; // 1: send pending, 0: idle line
-    bool intPol : 1; // polarity (0: active-high, 1: active-low)
-    const bool remoteIRR : 1; // (level-triggered only): set to one when a lapic accepts the irq from the ioapic, and set to zero on EOI in the lapic.
-    bool triggerMode : 1; // the irq trigger mode
-    bool mask : 1; // whether the irq is masked
-    const uint64_t padding : 39; // resv.
-    union
-    {
-        struct
-        {
-            uint8_t setOfProcessors; // unused in obos
-        } OBOS_PACK logical;
-        struct
-        {
-            const uint8_t resv1 : 4; // resv.
-            uint8_t lapicId : 4; // the lapic id.
-        } OBOS_PACK physical;
-    } OBOS_PACK destination; // the destination
-} ioapic_redirection_entry;
-OBOS_STATIC_ASSERT(sizeof(ioapic_redirection_entry) == 8, "sizeof(ioapic_redirection_entry) must be 8!");
 typedef struct OBOS_PACK ioapic_registers
 {
     struct {
@@ -61,7 +36,7 @@ typedef struct OBOS_PACK ioapic_registers
         const uint8_t resv2 : 4;
     } OBOS_PACK ioapicArbitrationID;
     uint32_t resv1[13];
-    ioapic_redirection_entry redirectionEntries[];
+    uint64_t redirectionEntries[];
 } ioapic_registers;
 typedef enum ioapic_trigger_mode
 {
