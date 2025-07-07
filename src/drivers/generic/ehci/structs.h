@@ -7,6 +7,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 #include <struct_packing.h>
 
 #include <driver_interface/pci.h>
@@ -41,8 +42,8 @@ typedef volatile struct ehci_operational_base_registers {
 
 enum {
     EHCI_PORT_SPEED_INVALID = 0,
-    EHCI_PORT_LOW_SPEED,
     EHCI_PORT_FULL_SPEED,
+    EHCI_PORT_LOW_SPEED,
     EHCI_PORT_HIGH_SPEED,
 };
 
@@ -75,8 +76,11 @@ typedef struct ehci_controller {
     ehci_port* debug_port_ptr;
     uint32_t debug_port;
 
-    bool suspended;
-    bool initialized;
+    bool suspended : 1;
+    bool initialized : 1;
+    bool bios_handoff_done : 1;
+
+    uint8_t eecp;
 } ehci_controller, *ehci_controllers;
 extern ehci_controllers g_controllers;
 extern size_t g_controller_count;
@@ -94,6 +98,7 @@ extern size_t g_controller_count;
 #endif
 
 void ehci_initialize_controller(ehci_controller* controller);
+bool ehci_do_bios_handoff(ehci_controller* controller);
 void ehci_reset_controller(ehci_controller* controller);
 uintptr_t ehci_alloc_phys(size_t nPages);
 
@@ -101,3 +106,6 @@ bool ehci_irq_check(irq* i, void* userdata);
 void ehci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
 
 bool wait_bit_timeout(volatile uint32_t* field, uint32_t mask, uint32_t expected, uint32_t us_timeout);
+
+// Signals up the USB stack that 'port' has changed status
+obos_status ehci_signal_connection_change(ehci_controller* controller, ehci_port* port, bool connected);

@@ -5,6 +5,8 @@
 */
 
 #include <int.h>
+#include <klog.h>
+#include <memmanip.h>
 #include <error.h>
 
 #include <driver_interface/header.h>
@@ -77,11 +79,21 @@ static void search_bus(pci_bus* bus)
         {
             g_controller_count++;
             g_controllers = Reallocate(OBOS_KernelAllocator, g_controllers, g_controller_count*sizeof(ehci_controller), (g_controller_count-1)*sizeof(ehci_controller), nullptr);
-            g_controllers->dev = dev;
+            memzero(&g_controllers[g_controller_count-1], sizeof(ehci_controller));
+            g_controllers[g_controller_count-1].dev = dev;
         }
 
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
     }
+}
+
+obos_status ehci_signal_connection_change(ehci_controller* controller, ehci_port* port, bool connected)
+{
+    OBOS_UNUSED(controller);
+    OBOS_UNUSED(port);
+    OBOS_UNUSED(connected);
+    *port->sc |= BIT(1);
+    return OBOS_STATUS_UNIMPLEMENTED;
 }
 
 driver_init_status OBOS_DriverEntry(driver_id* this)

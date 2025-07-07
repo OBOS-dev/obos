@@ -64,6 +64,10 @@ void ehci_initialize_controller(ehci_controller* controller)
     OBOS_ENSURE(controller);
     OBOS_ENSURE(!controller->initialized);
 
+    controller->dev->resource_cmd_register->cmd_register |= (BIT(1)|BIT(2));
+    controller->dev->resource_cmd_register->cmd_register &= ~BIT(10);
+    Drv_PCISetResource(controller->dev->resource_cmd_register);
+
     // Map the BARs.
     pci_bar* bar = nullptr;
     pci_resource* irq_resource = nullptr;
@@ -114,6 +118,8 @@ void ehci_initialize_controller(ehci_controller* controller)
     controller->irq.irqChecker = ehci_irq_check;
     controller->irq.handler = ehci_irq_handler;
 
+    controller->eecp = (controller->base_reg->hccparams >> 8) & 0xff;
+
     OBOS_Log("EHCI: %02x:%02x:%02x: Initialized EHCI controller. BAR at 0x%p, IRQ on vector ID 0x%x. Controller has %d ports\n",
         controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function,
         controller->bar_resource->bar->phys, controller->irq.vector->id,
@@ -126,7 +132,33 @@ void ehci_initialize_controller(ehci_controller* controller)
 
     controller->initialized = true;
     
+    if (!ehci_do_bios_handoff(controller))
+    {
+        OBOS_Error("EHCI: %02x:%02x:%02x: Could not do BIOS handoff: Timed out.\n",
+            controller->dev->location.bus,controller->dev->location.slot,controller->dev->location.function
+        );
+        return;
+    }
+
     ehci_reset_controller(controller);
+}
+
+bool ehci_do_bios_handoff(ehci_controller* controller)
+{
+    OBOS_ASSERT(!controller->bios_handoff_done);
+    
+    uint64_t usblegsup = 0;
+    DrvS_ReadPCIRegister(controller->dev->location, controller->eecp, 4, &usblegsup);
+    usblegsup |= BIT(24); // OS Owned Semaphore
+    DrvS_WritePCIRegister(controller->dev->location, controller->eecp, 4, usblegsup);
+    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(60*1000*1000);
+    do {
+        DrvS_ReadPCIRegister(controller->dev->location, controller->eecp, 4, &usblegsup);
+        if (CoreS_GetTimerTick() >= deadline)
+            return false;
+    } while(usblegsup & BIT(16) /* BIOS Owner Semaphore*/);
+
+    return (controller->bios_handoff_done = true);
 }
 
 void ehci_reset_controller(ehci_controller* controller)
@@ -140,14 +172,16 @@ void ehci_reset_controller(ehci_controller* controller)
         OBOS_Debug("usbsts&0x1000 == 0x1000 timed after 2ms\n");
         return;
     }
+
     controller->op_base_reg->usbcmd |= BIT(1); // Reset
     if (!wait_bit_timeout(&controller->op_base_reg->usbcmd, BIT(1), 0, UINT32_MAX /* an unrealistically long time for this to complete*/))
     {
         OBOS_Debug("usbcmd&0x2 == 0x0 timed after 1.1 hours\n");
         return;
     }
+    
     controller->op_base_reg->ctrldsssegment = 0; // All allocated memory is in the bottom 4GiB segment
-    controller->op_base_reg->usbintr = 0x37; // enable most IRQs
+
     uint32_t usbcmd = controller->op_base_reg->usbcmd;
     usbcmd &= ~(0xff<<16);
     usbcmd |= BIT(19);
@@ -155,17 +189,10 @@ void ehci_reset_controller(ehci_controller* controller)
     usbcmd |= BIT(0); // Start the controller.
     controller->op_base_reg->usbcmd = usbcmd;
     wait_bit_timeout(&controller->op_base_reg->usbsts, BIT(12), 0, UINT32_MAX);
+    
     controller->op_base_reg->configflag = 1;
 
-    for (size_t i = 0; i < controller->nPorts; i++)
-    {
-        *controller->ports[i].sc |= BIT(8);
-        for (size_t stall = 0; stall < 5000; stall++)
-            OBOSS_SpinlockHint();
-        *controller->ports[i].sc &= ~BIT(8);
-        wait_bit_timeout(controller->ports[i].sc, BIT(8), 0, 2000);
-        printf("%08x\n", *controller->ports[i].sc);
-    }
+    controller->op_base_reg->usbintr = 0x37; // enable most IRQs
 }
 
 uintptr_t ehci_alloc_phys(size_t nPages)
