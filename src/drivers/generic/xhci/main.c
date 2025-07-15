@@ -49,7 +49,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .submit_irp = submit_irp,
         .finalize_irp = finalize_irp,
     },
-    .driverName = "xHCI Driver",
+    .driverName = "XHCI Driver",
     .version=1,
     .uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL
 };
@@ -57,6 +57,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
-    
+    for (size_t i = 0; i < Drv_PCIBusCount; i++)
+        xhci_probe_bus(&Drv_PCIBuses[i]);
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }
