@@ -1,7 +1,7 @@
 /*
-	drivers/x86_64/sata/structs.h
-
-	Copyright (c) 2023-2024 Omar Berrow
+ * drivers/generic/ahci/structs.h
+ * 
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once

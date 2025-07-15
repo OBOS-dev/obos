@@ -6,6 +6,7 @@ then
 fi
 cp out/uart tar
 cp out/ahci tar
+cp out/xhci tar
 cp out/slowfat tar
 cp out/extfs tar
 cp out/bochs_vbe tar
