@@ -758,7 +758,15 @@ static void poll_keyboard(struct screen_tty* data)
                         buffer = Vfs_Realloc(buffer, nReady);
                         memcpy(buffer, buf, nReady);
                         break;
-
+                    }
+                    case SCANCODE_ESC:
+                    {
+                        nReady += 1;
+                        i += 1;
+                        char buf[2] = {"\x1b["};
+                        buffer = Vfs_Realloc(buffer, nReady);
+                        memcpy(buffer, buf, nReady);
+                        break;
                     }
                     default:
                         i--;
