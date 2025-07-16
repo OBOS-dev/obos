@@ -35,14 +35,15 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     if (dpc->cpu)
         return OBOS_STATUS_DPC_ALREADY_ENQUEUED;
         // if (LIST_IS_NODE_UNLINKED(dpc_queue, &dpc->cpu->dpcs, dpc))
-    affinity &= Core_DefaultThreadAffinity;
-    if (!affinity)
-        affinity = Core_DefaultThreadAffinity;
+    const thread_affinity affinity_real = !(affinity & Core_DefaultThreadAffinity) ? (Core_DefaultThreadAffinity) : (affinity & Core_DefaultThreadAffinity);
     dpc->handler = handler;
     cpu_local* target = nullptr;
     for (size_t i = 0; i < Core_CpuCount; i++)
-        if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes))
-            target = (affinity & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)) ? &Core_CpuInfo[i] : nullptr;
+    {
+        if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes) && 
+             (affinity_real & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)))
+            target = &Core_CpuInfo[i];
+    }
     // If this fails, something stupid has happened.
     OBOS_ENSURE(target);
     dpc->cpu = target;
