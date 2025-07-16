@@ -18,6 +18,7 @@
 
 #include <scheduler/process.h>
 #include <scheduler/thread.h>
+#include <scheduler/schedule.h>
 #include <scheduler/thread_context_info.h>
 
 #include <vfs/fd.h>
@@ -32,6 +33,12 @@ static struct exec_aux_values aux;
 
 void OBOS_LoadInit()
 {
+    if (!Core_GetCurrentThread()->proc->controlling_tty)
+    {
+        OBOS_Error("%s: Cannot load init due to non-existent controlling tty.\n", __func__);
+        return;
+    }
+
     bool should_load_init = OBOS_GetOPTF("no-init");
     if (should_load_init)
     {
