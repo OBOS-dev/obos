@@ -25,6 +25,8 @@
 
 static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
 {
+    if (vn->flags & VFLAGS_FB)
+        return nullptr;
     vn->refs++;
     page* phys = MmH_PgAllocatePhysical(false, false);
     phys->backing_vn = vn;
@@ -82,6 +84,8 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
     if (!phys)
     {
         phys = VfsH_PageCacheCreateEntry(vn, offset);
+        if (!phys)
+            return nullptr;
         if (ent)
             *ent = phys;
         return MmS_MapVirtFromPhys(phys->phys) + pg_offset;

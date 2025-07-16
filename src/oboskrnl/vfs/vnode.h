@@ -43,6 +43,7 @@ enum
     VFLAGS_MOUNTPOINT = 1,
     VFLAGS_IS_TTY = 2,
     VFLAGS_PARTITION = 4,
+    VFLAGS_FB = 8,
 };
 
 // basically a struct specinfo, but renamed.
