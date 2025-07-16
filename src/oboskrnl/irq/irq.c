@@ -131,6 +131,7 @@ static void append_irq_to_vector(irq_vector* This, irq* what)
 	node->prev = This->irqObjects.tail;
 	This->irqObjects.tail = node;
 	This->irqObjects.nNodes++;
+	what->node = node;
 }
 static void remove_irq_from_vector(irq_vector* This, irq_node* what)
 {
@@ -145,6 +146,8 @@ static void remove_irq_from_vector(irq_vector* This, irq_node* what)
 	if (This->irqObjects.tail == what)
 		This->irqObjects.tail = what->prev;
 	This->irqObjects.nNodes--;
+	what->data->node = nullptr;
+	what->data = nullptr;
 }
 static obos_status register_irq_vector_handler(irq_vector_id id, void(*handler)(interrupt_frame*))
 {
@@ -347,18 +350,7 @@ obos_status Core_IrqObjectFree(irq* obj)
 	if (obj->vector)
 	{
 		irql oldIrql = Core_SpinlockAcquire(&s_lock);
-		irq_node* node = nullptr;
-		if (!obj->vector->allowWorkSharing)
-			node = obj->vector->irqObjects.head;
-		else
-		{
-			for (irq_node* cur = obj->vector->irqObjects.head; cur && !node; )
-			{
-				if (cur->data == obj)
-					node = cur;
-				cur = cur->next;
-			}
-		}
+		irq_node* node = obj->node;
 		OBOS_ASSERT(node);
 		OBOS_ASSERT(node->data == obj);
 		remove_irq_from_vector(obj->vector, node);
@@ -370,8 +362,10 @@ obos_status Core_IrqObjectFree(irq* obj)
 		obj->vector->nIRQsWithChosenID -= (size_t)obj->choseVector;
 		Core_SpinlockRelease(&s_lock, oldIrql);
 	}
-	// FIXME: Set a free callback in the irq object instead of assuming the kernel allocator.
-	Free(OBOS_KernelAllocator, obj, sizeof(*obj));
+	if (!obj->free)
+		Free(OBOS_KernelAllocator, obj, sizeof(*obj));
+	else
+	 	obj->free(obj);
 	return OBOS_STATUS_SUCCESS;
 }
 bool Core_IrqInterfaceInitialized()

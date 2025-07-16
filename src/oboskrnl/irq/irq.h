@@ -111,6 +111,8 @@ typedef struct irq
 	check_irq_callback irqChecker;
 	irq_handler handler;
 	irq_move_callback moveCallback;
+	irq_node *node;
+	void(*free)(struct irq* i);
 } irq;
 
 /// <summary>
