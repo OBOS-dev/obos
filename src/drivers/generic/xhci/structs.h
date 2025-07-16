@@ -162,6 +162,11 @@ typedef struct xhci_device {
     // Same bitfield as usbsts, but only the interrupt status bits
     uint32_t irqsts;
 
+    bool did_bios_handoff : 1;
+    bool has_64bit_support : 1;
+    bool port_power_control_supported : 1;
+    uint16_t xecp;
+
     struct xhci_device *next, *prev;
 } xhci_device;
 #ifndef INIT_C
@@ -179,6 +184,9 @@ obos_status xhci_reset_device(xhci_device* dev);
 
 OBOS_WEAK bool xhci_irq_checker(irq*, void*);
 OBOS_WEAK void xhci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
+
+// true indicates a successful wait, false indicates timeout
+bool poll_bit_timeout(volatile uint32_t *field, uint32_t mask, uint32_t expected, uint32_t us_timeout);
 
 #define xhci_append_device(dev_) \
 do {\
