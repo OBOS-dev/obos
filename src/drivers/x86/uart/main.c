@@ -46,9 +46,7 @@ void cleanup()
 {
     for (size_t i = 0; i < nSerialPorts; i++)
     {
-        size_t sz = 0;
-        QueryBlockSize(OBOS_KernelAllocator, serialPorts[i].user_name, &sz);
-        Free(OBOS_KernelAllocator, serialPorts[i].user_name, sz);
+        Free(OBOS_KernelAllocator, serialPorts[i].user_name, strlen(serialPorts[i].user_name));
         free_buffer(&serialPorts[i].in_buffer);
         free_buffer(&serialPorts[i].out_buffer);
     }
