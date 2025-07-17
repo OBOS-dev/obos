@@ -271,6 +271,24 @@ static void init_flanterm_backend()
     OBOS_AddLogSource(&backend);
 }
 
+static struct ultra_module_info_attribute* Arch_FlantermBumpAllocator;
+static void *flanterm_malloc(size_t sz)
+{
+    if (!Arch_FlantermBumpAllocator)
+        return nullptr;
+    static size_t bump_off = 0;
+    if ((bump_off + sz) > Arch_FlantermBumpAllocator->size)
+        return nullptr;
+    void* ret = (void*)(Arch_FlantermBumpAllocator->address + bump_off);
+    bump_off += sz;
+    return ret;
+}
+static void flanterm_free(void* blk, size_t sz)
+{
+    OBOS_UNUSED(blk && sz);
+    return;
+}
+
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
     bsp_cpu.id = 0;
@@ -318,6 +336,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
     else
     {
+        // OBOS_TextRendererState.fg_color = 0xffffffff;
         // OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
         // OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
         // OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
@@ -360,7 +379,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
                 blue_mask_shift = 16;
                 bg = bg >> 8;
                 break;
-        
+
         }
         static uint32_t ansi_colors[8] = {
             __builtin_bswap32(0x000000) >> 8,
@@ -384,7 +403,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 
         };
         OBOS_FlantermContext = flanterm_fb_init(
-            nullptr, nullptr, 
+            flanterm_malloc, flanterm_free, 
             Arch_MapToHHDM(Arch_Framebuffer->physical_address), Arch_Framebuffer->width, Arch_Framebuffer->height, Arch_Framebuffer->pitch, 
             red_mask_size, red_mask_shift, 
             green_mask_size, green_mask_shift, 
@@ -396,10 +415,10 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
             (void*)font_bin, 8, 16, 0, 
             0,0,
             0);
+        // while(1);
         init_flanterm_backend();
     }
 
-    OBOS_TextRendererState.fg_color = 0xffffffff;
     if (Arch_LdrPlatformInfo->page_table_depth != 4)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 
@@ -521,6 +540,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
             struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
             if (strcmp(module->name, "__KERNEL__"))
                 Arch_KernelBinary = module;
+            else if (strcmp(module->name, "FLANTERM_BUFF"))
+                Arch_FlantermBumpAllocator = module;
             break;
         }
         case ULTRA_ATTRIBUTE_INVALID:
@@ -540,6 +561,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
     if (!Arch_KernelBinary)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
+    if (!Arch_FlantermBumpAllocator)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the FLANTERM_BUFF module in boot context!\nMake sure to pass a module named FLANTERM_BUFF with a size big enough for width*pitch?\n");
 }
 
 extern obos_status Arch_InitializeKernelPageTable();
