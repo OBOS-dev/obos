@@ -108,7 +108,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
                     OBOS_Debug("Found MSI capability at 0x%02x.\n", msi_offset);
                     break;
                 case 0x11:
-                    // has_msix = true;
+                    has_msix = true;
                     msix_offset = curr->offset;
                     handle->msi_capability = curr;
                     OBOS_Debug("Found MSI-X capability at 0x%02x.\n", msix_offset);
@@ -142,7 +142,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
     if (!has_msi && !has_msix)
         goto fallback;
     uint64_t msi_data = 0;
-    uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, irq->vector->id, 0, true, false);
+    uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, !irq ? 0 : irq->vector->id, 0, true, false);
     if (has_msix)
     {
         // Prefer MSI-X over MSI.
@@ -155,7 +155,11 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         uint64_t bar = 0;
         DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
         if (((bar >> 1) & 0b11) == 0x2)
-            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, (uint64_t*)(((uint32_t*)&bar) + 1));
+        {
+            uint64_t bar_half2 = 0;
+            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, &bar_half2);
+            bar |= bar_half2 << 32;
+        }
         bar &= ~0xf;
         uint32_t bar_offset = bar_info & ~0x7;
         handle->un.msix_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
@@ -165,7 +169,11 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         bar = 0;
         DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
         if (((bar >> 1) & 0b11) == 0x2)
-            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, (uint64_t*)(((uint32_t*)&bar) + 1));
+        {
+            uint64_t bar_half2 = 0;
+            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, &bar_half2);
+            bar |= bar_half2 << 32;
+        }
         bar &= ~0xf;
         bar_offset = bar_info & ~0x7;
         handle->msix_pending_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
