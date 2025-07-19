@@ -857,7 +857,7 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
         index = strrfind(path, '/');
     }
     if (index == SIZE_MAX)
-        index = sz_path;
+        index = 0;
     char ch = path[index];
     path[index] = 0;
     const char* dirname = path;
@@ -872,7 +872,7 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
     // printf("%s\n", OBOS_GetStringCPtr(&parent->name));
     file_perm real_mode = unix_to_obos_mode(mode);
     // printf("%s\n", path);
-    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_DIR, real_mode);
+    status = Vfs_CreateNode(parent, path+(!index ? index : index+1), VNODE_TYPE_DIR, real_mode);
     Free(OBOS_KernelAllocator, path, sz_path);
     // printf("%d\n", status);
     return status;
