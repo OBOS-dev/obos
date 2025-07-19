@@ -6,14 +6,17 @@
 
 #include <unistd.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
+#include <fcntl.h>
 #include <errno.h>
 
 #include <sys/wait.h>
+#include <sys/select.h>
 
 #include <obos/syscall.h>
 #include <obos/error.h>
@@ -41,11 +44,14 @@ static int parse_file_status(obos_status status)
 
 const char* sigchld_action = "shutdown";
 
+bool is_power_button_handler = false;
+
 // NOTE: This might need to be changed if init starts "adopting" processes when their parents die (as of this commit, the kernel adopts them).
 void sigchld_handler(int num)
 {
     (void)(num);
-    printf("init: Child process died. Performing sigchld action \"%s\"\n", sigchld_action);
+    if (!is_power_button_handler)
+        printf("init: Child process died. Performing sigchld action \"%s\"\n", sigchld_action);
     sync();
     if (strcasecmp(sigchld_action, "shutdown") == 0)
         syscall0(Sys_Shutdown);
@@ -98,7 +104,7 @@ int main(int argc, char** argv)
             }
             case 'h':
             default:
-                fprintf(stderr, "Usage: %s [-c sigchld_action -s swap_dev] handoff_path", argv[0]);
+                fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action -s swap_dev] handoff_path", argv[0]);
                 return opt != 'h';
         }
     }
@@ -139,6 +145,23 @@ int main(int argc, char** argv)
     else 
     {
         tcsetpgrp(0, getpgid(pid));
+    }
+    if (fork() == 0)
+    {
+        // ACPI Event Handler.
+        is_power_button_handler = true;
+        int power_button = open("/dev/power_button", O_RDONLY);
+        if (power_button == -1)
+        {
+            perror("open(\"/dev/power_button\")");
+            return errno;
+        }
+        fd_set set = {};
+        FD_ZERO(&set);
+        FD_SET(power_button, &set);
+        select(power_button+1, &set, NULL, NULL, NULL);
+        syscall1(Sys_LibCLog, "init: Received power button event\n");
+        sigchld_handler(SIGCHLD);
     }
     int status;
     top:
