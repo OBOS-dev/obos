@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -122,18 +122,23 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_NOEXEC;
     if (vnode->vtype == VNODE_TYPE_CHR || vnode->vtype == VNODE_TYPE_FIFO)
         desc->flags |= FD_FLAGS_UNCACHED;
+    if (vnode->flags & VFLAGS_EVENT_DEV)
+        desc->flags &= ~(FD_FLAGS_READ|FD_FLAGS_WRITE);
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
-    mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
-    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (~desc->vn->flags & VFLAGS_EVENT_DEV)
     {
-        point = nullptr;
-        driver = &desc->vn->un.device->driver->header;
+        mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+        const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+        if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+        {
+            point = nullptr;
+            driver = &desc->vn->un.device->driver->header;
+        }
+        desc->desc = desc->vn->desc;
+        if (driver->ftable.reference_device)
+            driver->ftable.reference_device(&desc->desc);
     }
-    desc->desc = desc->vn->desc;
-    if (driver->ftable.reference_device)
-        driver->ftable.reference_device(&desc->desc);
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }
@@ -547,7 +552,12 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
 }
 obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
 {
-    vnode* const vn = request->vn; 
+    vnode* const vn = request->vn;
+    if (vn->flags & VFLAGS_EVENT_DEV)
+    {
+        request->evnt = vn->un.evnt;
+        return OBOS_STATUS_SUCCESS;
+    }
     if (!request || !vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
@@ -586,6 +596,8 @@ obos_status VfsH_IRPWait(irp* request)
         if (request->status != OBOS_STATUS_IRP_RETRY)
             break;
     }
+    if (vn->flags & VFLAGS_EVENT_DEV)
+        return OBOS_STATUS_SUCCESS;
     // If request-evnt == nullptr, there is data available immediately.
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
