@@ -95,8 +95,8 @@ static void suspend_impl()
     UACPI_ARCH_DISABLE_INTERRUPTS();
     // good night computer.
     uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S3);
-    while(1)
-        asm volatile("");
+    // uh oh
+    OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S3) returned!\n");
 }
 static uacpi_iteration_decision acpi_enumerate_callback(void *ctx, uacpi_namespace_node *node, uint32_t max_depth)
 {
@@ -204,6 +204,7 @@ obos_status OBOS_Suspend()
 
         node = node->next;
     }
+    OBOS_SuspendWorkerThread = nullptr;
     Core_MutexRelease(&suspend_lock);
     OBOS_Log("oboskrnl: Woke up from suspend.\n");
     return OBOS_STATUS_SUCCESS;
