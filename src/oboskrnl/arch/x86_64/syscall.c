@@ -281,7 +281,7 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19 || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY))
         OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
-        OBOS_Warning("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+        OBOS_Log("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     if (Core_GetCurrentThread()->signal_info->pending)
         Arch_LAPICSendIPI(
             (ipi_lapic_info){.isShorthand=true,.info={.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF}},
