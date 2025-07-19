@@ -79,6 +79,7 @@ void Sys_LibCLog(const char* ustr)
     }
     char* buf = Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
     OBOSH_ReadUserString(ustr, buf, &str_len);
+    buf[str_len] = 0;
     OBOS_LibCLog("%s\n", buf);
     Free(OBOS_KernelAllocator, buf, str_len+1);
 }

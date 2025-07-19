@@ -55,6 +55,7 @@ static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, siz
 
     char** iter = kstr;
     char* const* uiter = vec;
+    OBOS_UNUSED(uiter);
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
     size_t currSize = OBOS_PAGE_SIZE;
 
