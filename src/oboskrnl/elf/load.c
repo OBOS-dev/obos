@@ -209,7 +209,8 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         kbase = Mm_MapViewOfUserMemory(ctx,
                                        (void*)real_base,
                                        nullptr,
-                                       real_limit-real_base,
+                                    //    real_limit-real_base,
+                                       phdrs[i].p_memsz,
                                        0,
                                        false, // disrespect user protection flags.
                                        &status) + (phdrs[i].p_vaddr % OBOS_PAGE_SIZE);
