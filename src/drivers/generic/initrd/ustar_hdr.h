@@ -39,6 +39,7 @@ typedef struct initrd_inode {
     char* name;
     char* path;
     char* data;
+    const ustar_hdr* hdr;
     size_t filesize;
     size_t path_len;
     size_t path_size;

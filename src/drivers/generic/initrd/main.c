@@ -202,6 +202,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.other_exec = filemode & FILEMODE_OTHER_EXEC;
     ino->perm.set_uid = filemode & 04000;
     ino->perm.set_gid = filemode & 02000;
+    ino->hdr = hdr;
     return ino;
 }
 driver_init_status OBOS_DriverEntry(driver_id* this)
@@ -218,7 +219,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     InitrdRoot->name = "";
     InitrdRoot->path = "";
     InitrdRoot->type = FILE_TYPE_DIRECTORY;
-    InitrdRoot->persistent = true;
+    InitrdRoot->persistent = false;
     
     InitrdRoot->perm.owner_exec = true;
     InitrdRoot->perm.group_exec = true;
@@ -237,67 +238,13 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
     while (memcmp(hdr->magic, USTAR_MAGIC, 6))
     {
-        if (hdr->type == DIRTYPE)
-        {
-            // Check if it exists first.
-            initrd_inode* us = DirentLookupFrom(hdr->filename, InitrdRoot);
-            if (us)
-                continue;
-        }
+        size_t filename_len = strlen(hdr->filename);
+        size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+        if (strchr(hdr->filename, '/') != filename_len)
+            goto down;
+
         initrd_inode* ino = create_inode_boot(hdr);
-        if (!ino)
-            goto out;
-
-        // Get our parent.
-        int64_t index = strrfind(ino->path, '/');
-        if (index == -1)
-            index = 0;
-        char presv = ino->path[index];
-        ino->path[index] = 0;
-        ino->parent = DirentLookupFrom(ino->path /* really the 'dirname' */, InitrdRoot);
-        ino->path[index] = presv;
-
-        if (!ino->parent)
-        {
-            ino->parent = InitrdRoot;
-            // Create all parent directories
-            char* iter = ino->path;
-            char* end = ino->path + ino->path_len;
-            while (iter < end)
-            {
-                size_t off = strchr(iter, '/');
-                presv = iter[off];
-                iter[off] = 0;
-                initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
-                if (found)
-                {
-                    ino->parent = found;
-                    goto down;
-                }
-
-                const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
-                OBOS_ASSERT(sub_hdr);
-                
-                initrd_inode* sub_ino = create_inode_boot(sub_hdr);
-                sub_ino->parent = ino->parent;
-                // printf("%s %s\n", iter, sub_ino->parent->name);
-                if (!sub_ino->parent->children.head)
-                    sub_ino->parent->children.head = sub_ino;
-                if (sub_ino->parent->children.tail)
-                    sub_ino->parent->children.tail->next = sub_ino;
-                sub_ino->prev = sub_ino->parent->children.tail;
-                sub_ino->parent->children.tail = sub_ino;
-                sub_ino->parent->children.nChildren++;
-                
-                ino->parent = sub_ino;
-
-                down:
-                iter[off] = presv;
-                iter += off;
-            }
-        }
-        if (!ino->parent)
-            ino->parent = InitrdRoot;
+        ino->parent = InitrdRoot;
         if (!ino->parent->children.head)
             ino->parent->children.head = ino;
         if (ino->parent->children.tail)
@@ -306,11 +253,89 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         ino->parent->children.tail = ino;
         ino->parent->children.nChildren++;
 
-        out:
+        down:
         (void)0;
-        size_t filesize_rounded = (ino->filesize + 0x1ff) & ~0x1ff;
+        size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
-    }    
+    }
+
+    // const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
+    // while (memcmp(hdr->magic, USTAR_MAGIC, 6))
+    // {
+    //     if (hdr->type == DIRTYPE)
+    //     {
+    //         // Check if it exists first.
+    //         initrd_inode* us = DirentLookupFrom(hdr->filename, InitrdRoot);
+    //         if (us)
+    //             continue;
+    //     }
+    //     initrd_inode* ino = create_inode_boot(hdr);
+    //     if (!ino)
+    //         goto out;
+
+    //     // Get our parent.
+    //     int64_t index = strrfind(ino->path, '/');
+    //     if (index == -1)
+    //         index = 0;
+    //     char presv = ino->path[index];
+    //     ino->path[index] = 0;
+    //     ino->parent = DirentLookupFrom(ino->path /* really the 'dirname' */, InitrdRoot);
+    //     ino->path[index] = presv;
+
+    //     if (!ino->parent)
+    //     {
+    //         ino->parent = InitrdRoot;
+    //         // Create all parent directories
+    //         char* iter = ino->path;
+    //         char* end = ino->path + ino->path_len;
+    //         while (iter < end)
+    //         {
+    //             size_t off = strchr(iter, '/');
+    //             presv = iter[off];
+    //             iter[off] = 0;
+    //             initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
+    //             if (found)
+    //             {
+    //                 ino->parent = found;
+    //                 goto down;
+    //             }
+
+    //             const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
+    //             OBOS_ASSERT(sub_hdr);
+                
+    //             initrd_inode* sub_ino = create_inode_boot(sub_hdr);
+    //             sub_ino->parent = ino->parent;
+    //             // printf("%s %s\n", iter, sub_ino->parent->name);
+    //             if (!sub_ino->parent->children.head)
+    //                 sub_ino->parent->children.head = sub_ino;
+    //             if (sub_ino->parent->children.tail)
+    //                 sub_ino->parent->children.tail->next = sub_ino;
+    //             sub_ino->prev = sub_ino->parent->children.tail;
+    //             sub_ino->parent->children.tail = sub_ino;
+    //             sub_ino->parent->children.nChildren++;
+                
+    //             ino->parent = sub_ino;
+
+    //             down:
+    //             iter[off] = presv;
+    //             iter += off;
+    //         }
+    //     }
+    //     if (!ino->parent)
+    //         ino->parent = InitrdRoot;
+    //     if (!ino->parent->children.head)
+    //         ino->parent->children.head = ino;
+    //     if (ino->parent->children.tail)
+    //         ino->parent->children.tail->next = ino;
+    //     ino->prev = ino->parent->children.tail;
+    //     ino->parent->children.tail = ino;
+    //     ino->parent->children.nChildren++;
+
+    //     out:
+    //     (void)0;
+    //     size_t filesize_rounded = (ino->filesize + 0x1ff) & ~0x1ff;
+    //     hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
+    // }
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false};
 }
@@ -364,14 +389,111 @@ OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** f
     OBOS_UNUSED(desc && found);
     return OBOS_STATUS_UNIMPLEMENTED;
 }
+static char* fullpath(dev_desc parent, const char* what)
+{
+    char *ret = nullptr;
+    if (parent != UINTPTR_MAX)
+    {
+        size_t ppath_len = strlen(((initrd_inode*)parent)->path);
+        const char* format = (((initrd_inode*)parent)->path)[ppath_len-1] == '/' ?
+                                "%s%s" : "%s/%s";
+        size_t len = snprintf(nullptr, 0, format, ((initrd_inode*)parent)->path, what);
+        ret = Allocate(OBOS_KernelAllocator, len+1, nullptr);
+        snprintf(ret, len+1, format, ((initrd_inode*)parent)->path, what);
+    }
+    else
+    {
+        size_t len = strlen(what);
+        ret = memcpy(Allocate(OBOS_KernelAllocator, len+1, nullptr), what, len+1);
+    }
+    OBOS_ENSURE(ret);
+    return ret;
+}
+initrd_inode* create_inode_with_parents(const char* path)
+{
+    const ustar_hdr* hdr = GetFile(path, nullptr);
+    if (!hdr)
+        return nullptr;
+    initrd_inode* ino = create_inode_boot(hdr);
+    // Get our parent.
+    int64_t index = strrfind(ino->path, '/');
+    if (index == -1)
+        index = 0;
+    char presv = ino->path[index];
+    ino->path[index] = 0;
+    ino->parent = DirentLookupFrom(ino->path /* really the 'dirname' */, InitrdRoot);
+    ino->path[index] = presv;
+
+    if (!ino->parent)
+    {
+        ino->parent = InitrdRoot;
+        // Create all parent directories
+        char* iter = ino->path;
+        char* end = ino->path + ino->path_len;
+        while (iter < end)
+        {
+            size_t off = strchr(iter, '/');
+            presv = iter[off];
+            iter[off] = 0;
+            initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
+            if (found)
+            {
+                ino->parent = found;
+                goto down;
+            }
+
+            const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
+            OBOS_ASSERT(sub_hdr);
+            
+            initrd_inode* sub_ino = create_inode_boot(sub_hdr);
+            sub_ino->parent = ino->parent;
+            // printf("%s %s\n", iter, sub_ino->parent->name);
+            if (!sub_ino->parent->children.head)
+                sub_ino->parent->children.head = sub_ino;
+            if (sub_ino->parent->children.tail)
+                sub_ino->parent->children.tail->next = sub_ino;
+            sub_ino->prev = sub_ino->parent->children.tail;
+            sub_ino->parent->children.tail = sub_ino;
+            sub_ino->parent->children.nChildren++;
+            
+            ino->parent = sub_ino;
+
+            down:
+            iter[off] = presv;
+            iter += off;
+        }
+    }
+    if (!ino->parent)
+        ino->parent = InitrdRoot;
+    if (!ino->parent->children.head)
+        ino->parent->children.head = ino;
+    if (ino->parent->children.tail)
+        ino->parent->children.tail->next = ino;
+    ino->prev = ino->parent->children.tail;
+    ino->parent->children.tail = ino;
+    ino->parent->children.nChildren++;
+
+    return ino;
+}
 OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, const char* what, dev_desc parent)
 {
     OBOS_UNUSED(unused);
     if (!found || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    *found = (dev_desc)DirentLookupFrom(what, parent == UINTPTR_MAX ? InitrdRoot : (initrd_inode*)parent);
-    return *found ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
+    initrd_inode* ino = DirentLookupFrom(what, parent == UINTPTR_MAX ? InitrdRoot : (initrd_inode*)parent);
+    if (ino)
+    {
+        *found = (dev_desc)ino;
+        return OBOS_STATUS_SUCCESS;
+    }
+    char* path = fullpath(parent, what);
+    ino = create_inode_with_parents(path);
+    Free(OBOS_KernelAllocator, path, strlen(path));
+
+    *found = (dev_desc)ino;
+    return ino ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
 }
+
 OBOS_PAGEABLE_FUNCTION obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
 {
     initrd_inode* inode = (void*)desc;
@@ -380,6 +502,7 @@ OBOS_PAGEABLE_FUNCTION obos_status get_file_perms(dev_desc desc, driver_file_per
     *perm = inode->perm;
     return OBOS_STATUS_SUCCESS;
 }
+
 OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
 {
     if (!type || !desc)
@@ -388,17 +511,51 @@ OBOS_PAGEABLE_FUNCTION obos_status get_file_type(dev_desc desc, file_type *type)
     *type = inode->type;
     return OBOS_STATUS_SUCCESS;
 }
+
 OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
     OBOS_UNUSED(unused);
     if (!dir_)
         return OBOS_STATUS_INVALID_ARGUMENT;
     initrd_inode* dir = dir_ == UINTPTR_MAX ? InitrdRoot : (void*)dir_;
-    for (initrd_inode* ino = dir->children.head; ino; )
+    const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
+    // FIXME: Non persistent entries won't appear here.
+    if (dir->persistent)
     {
-        if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
-            break;
-        ino = ino->next;
+        while (memcmp(hdr->magic, USTAR_MAGIC, 6))
+        {
+            size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+            size_t filename_len = uacpi_strnlen(hdr->filename, 100);
+            if (hdr == dir->hdr)
+                goto down;
+            if (!dir->path_len || (uacpi_strncmp(dir->path, hdr->filename, dir->path_len) == 0  && dir->path_len != filename_len))
+            {
+                int addend = 0;
+                if (dir->path_len)
+                    addend = dir->path[dir->path_len-1] != '/';
+                if (strchr(hdr->filename+dir->path_len+addend, '/') == filename_len-(dir->path_len+addend))
+                {
+                    initrd_inode *ino = DirentLookupFrom(hdr->filename, dir);
+                    if (!ino)
+                        ino = create_inode_with_parents(hdr->filename);
+                    if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
+                        break;
+                }
+            }
+            down:
+            (void)0;
+            size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
+            hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
+        }
+    }
+    else
+    {
+        for (initrd_inode* ino = dir->children.head; ino; )
+        {
+            if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
+                break;
+            ino = ino->next;
+        }
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -421,12 +578,12 @@ static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void*
 obos_status stat_fs_info(void *vn, drv_fs_info *info)
 {
     OBOS_UNUSED(vn);
-    static size_t fileCount = SIZE_MAX;
-    if (fileCount == SIZE_MAX)
-    {
-        fileCount = 0;
-        list_dir(UINTPTR_MAX, vn, cb, &fileCount);
-    }
+    static size_t fileCount = 0;
+    // if (fileCount == SIZE_MAX)
+    // {
+    //     fileCount = 0;
+    //     list_dir(UINTPTR_MAX, vn, cb, &fileCount);
+    // }
     info->partBlockSize = 1;
     info->fsBlockSize = 1;
     info->availableFiles = 0;

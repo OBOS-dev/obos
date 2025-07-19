@@ -139,6 +139,11 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
             name.len = strlen(root->name);
             if (OBOS_CompareStringNC(&name, tok, tok_len))
             {
+                // Match!
+                initrd_inode* what = 
+                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
+                if (what)
+                    return what;
                 root = curr->children.head;
                 continue;
             }
