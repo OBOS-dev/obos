@@ -546,17 +546,6 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     if (!to_stat)
         return status;
     st.st_size = to_stat->filesize;
-    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
-        driver = &to_stat->un.device->driver->header;
-    size_t blkSize = 0;
-    size_t blocks = 0;
-    OBOS_ENSURE(driver);
-    OBOS_ENSURE(to_stat);
-    driver->ftable.get_blk_size(to_stat->desc, &blkSize);
-    driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
-    st.st_blksize = blkSize;
     st.st_mode = 0;
     if (to_stat->perm.owner_read)
         st.st_mode |= 0400;
@@ -602,7 +591,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK &&  to_stat->vtype != VNODE_TYPE_FIFO)
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && (~to_stat->flags & VFLAGS_EVENT_DEV))
     {
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
@@ -612,7 +601,21 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     }
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
-    st.st_ino = to_stat->inode;
+    st.st_ino = to_stat->inode;   
+    if (to_stat->flags & VFLAGS_EVENT_DEV)
+        goto done;
+    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
+    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
+    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
+        driver = &to_stat->un.device->driver->header;
+    size_t blkSize = 0;
+    size_t blocks = 0;
+    OBOS_ENSURE(driver);
+    OBOS_ENSURE(to_stat);
+    driver->ftable.get_blk_size(to_stat->desc, &blkSize);
+    driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
+    st.st_blksize = blkSize;
+    done:
     memcpy_k_to_usr(target, &st, sizeof(struct stat));
     return OBOS_STATUS_SUCCESS;
 }
