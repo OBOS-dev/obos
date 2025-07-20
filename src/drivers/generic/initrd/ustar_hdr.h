@@ -11,6 +11,8 @@
 
 #include <driver_interface/header.h>
 
+#include <vfs/vnode.h>
+
 typedef struct ustar_hdr
 {
     char filename[100];
@@ -49,6 +51,7 @@ typedef struct initrd_inode {
     uint32_t ino;
     bool persistent : 1;
     driver_file_perm perm;
+    vnode* vnode;
 } initrd_inode;
 
 enum {

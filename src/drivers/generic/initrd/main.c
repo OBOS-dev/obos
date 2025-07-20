@@ -13,6 +13,8 @@
 #include <stdarg.h>
 
 #include <vfs/irp.h>
+#include <vfs/alloc.h>
+#include <vfs/vnode.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
@@ -84,6 +86,16 @@ dev_desc irp_process_dryop(irp* req)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn)
+{
+    OBOS_UNUSED(dev_vn);
+    initrd_inode* ino = (void*)desc;
+    if (!ino)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *vn_found = ino->vnode;
+    return OBOS_STATUS_SUCCESS;
+}
+
 OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
 {
     if (!request_)
@@ -94,7 +106,9 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
     if (request->dryOp)
         request->status = irp_process_dryop(request);
     else
-        request->status = read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead);
+        request->status = request->op == IRP_READ ? 
+            read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead) :
+            write_sync(request->desc, request->cbuff, request->blkCount, request->blkOffset, &request->nBlkRead);
     request->evnt = nullptr;
     return OBOS_STATUS_SUCCESS;
 }
@@ -118,6 +132,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .query_path = query_path,
         .path_search = path_search,
         .get_linked_path = get_linked_path,
+        .vnode_search = vnode_search,
         .move_desc_to = move_desc_to,
         .mk_file = mk_file,
         .remove_file = remove_file,
@@ -202,6 +217,25 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.other_exec = filemode & FILEMODE_OTHER_EXEC;
     ino->perm.set_uid = filemode & 04000;
     ino->perm.set_gid = filemode & 02000;
+    ino->vnode = Vfs_Calloc(1, sizeof(vnode));
+    ino->vnode->desc = (uintptr_t)ino;
+    ino->vnode->filesize = ino->filesize;
+    ino->vnode->blkSize = 1;
+    ino->vnode->owner_uid = 0;
+    ino->vnode->group_uid = 0;
+    ino->vnode->inode = ino->ino;
+    ino->vnode->perm = ino->perm;
+    switch (ino->type) {
+        case FILE_TYPE_REGULAR_FILE:
+            ino->vnode->vtype = VNODE_TYPE_REG;
+            break;
+        case FILE_TYPE_DIRECTORY:
+            ino->vnode->vtype = VNODE_TYPE_DIR;
+            break;
+        default:
+            OBOS_UNREACHABLE;
+    }
+
     ino->hdr = hdr;
     return ino;
 }
@@ -560,20 +594,20 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     return OBOS_STATUS_SUCCESS;
 }
 
-static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
-{
-    OBOS_UNUSED(blkSize);
-    OBOS_UNUSED(blkCount);
-    OBOS_UNUSED(name);
+// static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
+// {
+//     OBOS_UNUSED(blkSize);
+//     OBOS_UNUSED(blkCount);
+//     OBOS_UNUSED(name);
 
-    size_t* const fileCount = userdata;
-    (*fileCount)++;
+//     size_t* const fileCount = userdata;
+//     (*fileCount)++;
 
-    initrd_inode* ino = (void*)desc;
-    if (ino->type == FILE_TYPE_DIRECTORY)
-        list_dir(desc, nullptr, cb, userdata);
-    return ITERATE_DECISION_CONTINUE;
-}
+//     initrd_inode* ino = (void*)desc;
+//     if (ino->type == FILE_TYPE_DIRECTORY)
+//         list_dir(desc, nullptr, cb, userdata);
+//     return ITERATE_DECISION_CONTINUE;
+// }
 
 obos_status stat_fs_info(void *vn, drv_fs_info *info)
 {
