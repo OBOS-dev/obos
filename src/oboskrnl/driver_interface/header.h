@@ -196,6 +196,7 @@ typedef struct driver_ftable
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
+    obos_status(*get_file_inode)(dev_desc desc, uint32_t *ino);
 
     // If dir is UINTPTR_MAX, it refers to the root directory.
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);

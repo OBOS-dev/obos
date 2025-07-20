@@ -112,6 +112,14 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
     request->evnt = nullptr;
     return OBOS_STATUS_SUCCESS;
 }
+obos_status get_file_inode(dev_desc desc, uint32_t *out)
+{
+    initrd_inode* ino = (void*)desc;
+    if (!ino)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *out = ino->ino;
+    return OBOS_STATUS_SUCCESS;
+}
 OBOS_WEAK obos_status finalize_irp(void* /* irp* */ request_);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
@@ -139,6 +147,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
         .get_file_type = get_file_type,
+        .get_file_inode = get_file_inode,
         .list_dir = list_dir,
         .stat_fs_info = stat_fs_info,
     },
@@ -643,6 +652,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const cha
     new->name_size = new->name_len = strlen(name);
     new->type = type;
     new->perm = perm;
+    new->ino = CurrentInodeNumber++;
     new->name = Allocate(OBOS_KernelAllocator, new->name_len+1, nullptr);
     memcpy(new->name, name, new->name_len);
     new->name[new->name_len] = 0;
