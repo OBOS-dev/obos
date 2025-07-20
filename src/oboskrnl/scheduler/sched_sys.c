@@ -172,13 +172,13 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
         Core_PushlockRelease(&ctx->un.thread_ctx->lock, false);
     }
 
+    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+
     handle_desc* desc = nullptr;
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD, &desc);
     desc->un.thread = thr;
     thr->references++;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-
-    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
 
     return hnd;
 }
