@@ -101,8 +101,6 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
     if (!request_)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irp* request = request_;
-    if (request->op == IRP_WRITE)
-        return OBOS_STATUS_INVALID_OPERATION;
     if (request->dryOp)
         request->status = irp_process_dryop(request);
     else
