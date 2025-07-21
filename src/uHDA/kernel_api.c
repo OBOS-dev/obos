@@ -25,9 +25,9 @@
 #include <uhda/types.h>
 
 #if OBOS_IRQL_COUNT == 16
-#	define IRQL_UHDA (8)
+#	define IRQL_UHDA (14)
 #elif OBOS_IRQL_COUNT == 8
-#	define IRQL_UHDA (4)
+#	define IRQL_UHDA (7)
 #elif OBOS_IRQL_COUNT == 4
 #	define IRQL_UHDA (3)
 #elif OBOS_IRQL_COUNT == 2
@@ -59,7 +59,9 @@ UhdaStatus uhda_kernel_pci_write(void* dev_ptr, uint8_t offset, uint8_t size, ui
 static void bootstrap_irq_handler_uhda(irq* i, interrupt_frame* f, void* udata, irql oldIrql)
 {
     OBOS_UNUSED(i && f && oldIrql);
-
+    uintptr_t *user = udata;
+    UhdaIrqHandlerFn cb = (void*)user[0];
+    cb((void*)user[1]);
 }
 
 UhdaStatus uhda_kernel_pci_allocate_irq(
@@ -126,6 +128,7 @@ void uhda_kernel_pci_enable_irq(void* pci_device, void* opaque_irq, bool enable)
     pci_resource* res = opaque_irq;
     OBOS_ENSURE (res->type == PCI_RESOURCE_IRQ);
     res->irq->masked = !enable;
+    Drv_PCISetResource(res);
 }
 
 static void* map_registers(uintptr_t phys, size_t size, bool uc)

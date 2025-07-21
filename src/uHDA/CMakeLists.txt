@@ -13,6 +13,8 @@ target_compile_options(uhda
 	# PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-all>
 	PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:-fno-builtin-memset>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+	PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
 #	PRIVATE $<$<COMPILE_LANGUAGE:C>:-g0>
 	PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:-fvisibility=default> # uhda should have all its symbols exported
 	# PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=c++20>

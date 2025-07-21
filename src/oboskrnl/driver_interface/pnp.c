@@ -606,3 +606,50 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     hashmap_free(drivers);
     return status;
 }
+
+#if OBOS_ENABLE_UHDA
+#include <uhda/uhda.h>
+
+UhdaController** Drv_uHDAControllers;
+size_t Drv_uHDAControllerCount;
+
+obos_status Drv_PnpLoad_uHDA()
+{
+    pci_hid target_class = {};
+    target_class.indiv.classCode = UHDA_MATCHING_CLASS;
+    target_class.indiv.subClass = UHDA_MATCHING_SUBCLASS;
+
+    for (uint8_t bus = 0; bus < Drv_PCIBusCount; bus++)
+    {
+        for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &Drv_PCIBuses[bus].devices); dev; )
+        {
+            if (uhda_class_matches(dev->hid.indiv.classCode, dev->hid.indiv.subClass) || 
+                uhda_device_matches(dev->hid.indiv.vendorId, dev->hid.indiv.deviceId))
+            {
+                OBOS_Log("%02x:%02x:%02x: uHDA device match!\n",
+                    dev->location.bus, dev->location.slot, dev->location.function
+                );
+                UhdaController* controller = nullptr;
+                if (uhda_init(dev, &controller) == UHDA_STATUS_SUCCESS)
+                {
+                    Drv_uHDAControllers = Reallocate(OBOS_KernelAllocator,
+                                              Drv_uHDAControllers, 
+                                              (Drv_uHDAControllerCount+1)*sizeof(*Drv_uHDAControllers), 
+                                              Drv_uHDAControllerCount*sizeof(*Drv_uHDAControllers),
+                                              nullptr);
+                    Drv_uHDAControllers[Drv_uHDAControllerCount++] = controller;
+                }
+            }
+
+            dev = LIST_GET_NEXT(pci_device_list, &Drv_PCIBuses[bus].devices, dev);
+        }
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
+#else
+obos_status Drv_PnpLoad_uHDA()
+{
+    return OBO_SSTATUS_UNIMPLEMENTED;
+}
+#endif

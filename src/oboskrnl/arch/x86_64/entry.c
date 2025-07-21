@@ -595,6 +595,23 @@ static void test_allocator(allocator_info* alloc)
     }
 }
 
+#include <uhda/uhda.h>
+#include <uhda/types.h>
+
+uint32_t fill_fn(void* arg, void* buffer, uint32_t space)
+{
+    uintptr_t *udata = arg;
+    uint8_t* buff = (void*)udata[0];
+    size_t size = udata[1];
+    size_t offset = udata[2];
+    memcpy(buffer, buff+offset, OBOS_MIN(space, size-offset));
+    offset += OBOS_MIN(space, size-offset);
+    if (offset == size)
+        offset = 0;
+    udata[2] = offset;
+    return OBOS_MIN(space, size-offset);
+}
+
 void Arch_KernelMainBootstrap()
 {
     //Core_Yield();
@@ -979,6 +996,55 @@ void Arch_KernelMainBootstrap()
             left -= namelen;
         }
     } while(0);
+    if (Drv_PnpLoad_uHDA() == OBOS_STATUS_SUCCESS)
+    {
+        OBOS_Log("Initialized HDA devices via %s\n", OBOS_ENABLE_UHDA ? "uHDA" : nullptr /* should be impossible */);
+
+        fd wav_file_fd = {};
+        Vfs_FdOpen(&wav_file_fd, "/once_upon_a_time.wav", FD_OFLAGS_READ);
+        size_t wav_file_size = wav_file_fd.vn->filesize;
+        void* wav_file = Allocate(OBOS_NonPagedPoolAllocator, wav_file_size, nullptr);
+        Vfs_FdRead(&wav_file_fd, wav_file, wav_file_size, nullptr);
+
+        extern UhdaController** Drv_uHDAControllers;
+        const UhdaCodec *const *codecs = nullptr;
+        size_t codec_count = 0;
+        UhdaStream** streams = 0;
+        size_t stream_count = 0;
+        uhda_get_codecs(Drv_uHDAControllers[0], &codecs, &codec_count);
+        OBOS_ENSURE(codec_count);
+        uhda_get_output_streams(Drv_uHDAControllers[0], &streams, &stream_count);
+        const UhdaOutputGroup *const * output_groups;
+        size_t output_group_count = 0;
+        uhda_codec_get_output_groups(codecs[0], &output_groups, &output_group_count);
+        const UhdaOutput *const *outputs = nullptr;
+        size_t output_count;
+        uhda_output_group_get_outputs(output_groups[0], &outputs, &output_count);
+        UhdaPath *path = {};
+        OBOS_ENSURE(uhda_find_path(outputs[0], (void*)outputs+1, output_count-1, false, &path) == UHDA_STATUS_SUCCESS);
+        UhdaStream* stream = streams[0];
+        UhdaStreamParams stream_params = {.sample_rate=44100,.channels=2,.fmt=UHDA_FORMAT_PCM16};
+        uint32_t size = wav_file_size;
+        // char* data = Allocate(OBOS_NonPagedPoolAllocator, size, nullptr);
+        // for (size_t i = 0; i < size; i++)
+        //     data[i] = random_number8();
+        char* data = wav_file;
+        uintptr_t udata[3] = {
+            (uintptr_t)data,
+            size,
+            0,
+        };
+        // uint32_t size_queue = 44100;
+        uint32_t size_queue = size;
+        OBOS_ENSURE(uhda_stream_setup(stream, &stream_params, size, fill_fn, udata, 0, nullptr, nullptr) == UHDA_STATUS_SUCCESS);
+        OBOS_ENSURE(uhda_stream_queue_data(stream, data, &size_queue) == UHDA_STATUS_SUCCESS);
+        OBOS_ENSURE(uhda_path_setup(path, &stream_params, stream) == UHDA_STATUS_SUCCESS);
+        OBOS_ENSURE(uhda_path_set_volume(path, 30) == UHDA_STATUS_SUCCESS);
+        OBOS_ENSURE(uhda_stream_play(stream, true) == UHDA_STATUS_SUCCESS);
+        while (1)
+            OBOSS_SpinlockHint();
+
+    }
     OBOS_Log("%s: Probing partitions.\n", __func__);
     OBOS_PartProbeAllDrives(true);
     // uint32_t ecx = 0;
