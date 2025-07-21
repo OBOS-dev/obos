@@ -83,3 +83,7 @@ set_source_files_properties(
     PROPERTIES
     OBJECT_DEPENDS "${OUTPUT_DIR}/initrd"
 )
+
+if (OBOS_ENABLE_UHDA)
+	target_link_libraries(oboskrnl PRIVATE uhda)
+endif()

@@ -18,7 +18,7 @@ option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
 option (OBOS_COMPILE_USER_EXAMPLES "Compiles user examples" ${OBOS_USE_OBOS_GCC})
-option (OBOS_SUPPORT_UHDA "Whether to include uHDA" ON)
+option (OBOS_ENABLE_UHDA "Whether to include uHDA" ON)
 
 if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_EXAMPLES)
 	message(WARNING "OBOS_COMPILE_USER_EXAMPLES must be OFF if OBOS_USE_OBOS_GCC is OFF")
@@ -88,7 +88,7 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	include ("dependencies/uacpi.cmake")
 	message("Fetching flanterm.")
 	include ("dependencies/flanterm.cmake")
-	if (OBOS_SUPPORT_UHDA)
+	if (OBOS_ENABLE_UHDA)
 		message("Fetching uHDA.")
 		include ("dependencies/uhda.cmake")
 	endif()
@@ -209,7 +209,7 @@ add_compile_definitions(OBOS_PAGE_REPLACEMENT_ALGORITHM=${OBOS_PAGE_REPLACEMENT_
 
 set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true
-					PROPERTY C_EXTENSIONS On)
+					PROPERTY C_EXTENSIONS ON)
 
 if (OBOS_ENABLE_WERROR AND NOT OBOS_ENABLE_FANALYZER)
 	add_compile_options("-Werror" $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function> $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-parameter>)
@@ -220,6 +220,8 @@ endif()
 if (OBOS_ENABLE_FANALYZER AND OBOS_ENABLE_WERROR)
 	message(WARNING "OBOS_ENABLE_FANALYZER and OBOS_ENABLE_WERROR are mutually exclusive. Preferring OBOS_ENABLE_FANALYZER.")
 endif()
+
+add_compile_definitions(OBOS_ENABLE_UHDA=${OBOS_ENABLE_UHDA})
 
 # Now done somewhere else.
 # if (NOT DEFINED OBOS_DEV_PREFIX)
@@ -245,6 +247,9 @@ if (OBOS_ARCHITECTURE STREQUAL "m68k")
 	add_subdirectory("src/oboskrnl/arch/m68k/loader")
 endif()
 add_subdirectory("src/uACPI")
+if (OBOS_ENABLE_UHDA)
+	add_subdirectory("src/uHDA")
+endif()
 add_subdirectory("src/sanitizers")
 # Include drivers
 get_target_property(uacpi_INCLUDES uacpi INCLUDE_DIRECTORIES)
