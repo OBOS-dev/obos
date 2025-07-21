@@ -15,10 +15,12 @@ option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
 option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" ON)
 option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
-option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
+option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is a hypervisor, where writing to cr8 can be slow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
 option (OBOS_COMPILE_USER_EXAMPLES "Compiles user examples" ${OBOS_USE_OBOS_GCC})
 option (OBOS_ENABLE_UHDA "Whether to include uHDA" ON)
+
+set (OBOS_LAZY_IRQL OFF)
 
 if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_EXAMPLES)
 	message(WARNING "OBOS_COMPILE_USER_EXAMPLES must be OFF if OBOS_USE_OBOS_GCC is OFF")
@@ -180,7 +182,13 @@ if (OBOS_ENABLE_KASAN)
 else()
 	set (OBOS_ENABLE_KASAN "0")
 endif()
+if (OBOS_ENABLE_UHDA)
+	set (OBOS_ENABLE_UHDA "1")
+else()
+	set (OBOS_ENABLE_UHDA "0")
+endif()
 add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+add_compile_definitions(OBOS_ENABLE_UHDA=${OBOS_ENABLE_UHDA})
 add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})
 
 add_compile_definitions(
@@ -220,8 +228,6 @@ endif()
 if (OBOS_ENABLE_FANALYZER AND OBOS_ENABLE_WERROR)
 	message(WARNING "OBOS_ENABLE_FANALYZER and OBOS_ENABLE_WERROR are mutually exclusive. Preferring OBOS_ENABLE_FANALYZER.")
 endif()
-
-add_compile_definitions(OBOS_ENABLE_UHDA=${OBOS_ENABLE_UHDA})
 
 # Now done somewhere else.
 # if (NOT DEFINED OBOS_DEV_PREFIX)
