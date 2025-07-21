@@ -128,6 +128,11 @@ void OBOS_InitWakeGPEs()
         (void*)true // only mark GPEs for wake.
     );
 }
+
+#if OBOS_ENABLE_UHDA
+#   include <uhda/uhda.h>
+#endif
+
 obos_status OBOS_Suspend()
 {
     if (uacpi_get_current_init_level() < UACPI_INIT_LEVEL_NAMESPACE_INITIALIZED)
@@ -168,6 +173,12 @@ obos_status OBOS_Suspend()
 
         node = node->next;
     }
+#if OBOS_ENABLE_UHDA
+    extern UhdaController** Drv_uHDAControllers;
+    extern size_t Drv_uHDAControllerCount;
+    for (size_t i = 0; i < Drv_uHDAControllerCount; i++)
+        uhda_suspend(Drv_uHDAControllers[i]);
+#endif
 
     // printf("hallo 2\n");
 
@@ -204,6 +215,10 @@ obos_status OBOS_Suspend()
 
         node = node->next;
     }
+#if OBOS_ENABLE_UHDA
+    for (size_t i = 0; i < Drv_uHDAControllerCount; i++)
+        uhda_resume(Drv_uHDAControllers[i]);
+#endif
     OBOS_SuspendWorkerThread = nullptr;
     Core_MutexRelease(&suspend_lock);
     OBOS_Log("oboskrnl: Woke up from suspend.\n");
