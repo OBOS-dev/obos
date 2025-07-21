@@ -613,6 +613,8 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
 UhdaController** Drv_uHDAControllers;
 size_t Drv_uHDAControllerCount;
 
+void OBOS_InitializeHDAAudioDev();
+
 obos_status Drv_PnpLoad_uHDA()
 {
     pci_hid target_class = {};
@@ -644,6 +646,8 @@ obos_status Drv_PnpLoad_uHDA()
             dev = LIST_GET_NEXT(pci_device_list, &Drv_PCIBuses[bus].devices, dev);
         }
     }
+
+    OBOS_InitializeHDAAudioDev();
 
     return OBOS_STATUS_SUCCESS;
 }

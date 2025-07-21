@@ -4,7 +4,7 @@
 
 include (${uhda_cmake_file})
 
-add_library(uhda STATIC ${UHDA_SOURCES} "kernel_api.c")
+add_library(uhda STATIC ${UHDA_SOURCES} "kernel_api.c" "hdadev.c")
 
 target_compile_options(uhda
 	PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:${TARGET_COMPILE_OPTIONS_C}>
