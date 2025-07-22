@@ -15,9 +15,12 @@ option (OBOS_USE_CLANG "Use clang instead of GCC to build.")
 option (OBOS_NVS_SAVE_S3 "Enable compile-time support for saving NVS before S3" ON)
 option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
-option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is hypervisors, where writing to cr8 is slooow.")
+option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is a hypervisor, where writing to cr8 can be slow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
 option (OBOS_COMPILE_USER_EXAMPLES "Compiles user examples" ${OBOS_USE_OBOS_GCC})
+option (OBOS_ENABLE_UHDA "Whether to include uHDA" ON)
+
+set (OBOS_LAZY_IRQL OFF)
 
 if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_EXAMPLES)
 	message(WARNING "OBOS_COMPILE_USER_EXAMPLES must be OFF if OBOS_USE_OBOS_GCC is OFF")
@@ -87,6 +90,10 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	include ("dependencies/uacpi.cmake")
 	message("Fetching flanterm.")
 	include ("dependencies/flanterm.cmake")
+	if (OBOS_ENABLE_UHDA)
+		message("Fetching uHDA.")
+		include ("dependencies/uhda.cmake")
+	endif()
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -98,6 +105,7 @@ else()
         include("dependencies/uacpi.cmake")
 	endif()
 	include("dependencies/flanterm.cmake")
+	include("dependencies/uhda.cmake")
 endif()
 
 if (OBOS_UP)
@@ -174,7 +182,13 @@ if (OBOS_ENABLE_KASAN)
 else()
 	set (OBOS_ENABLE_KASAN "0")
 endif()
+if (OBOS_ENABLE_UHDA)
+	set (OBOS_ENABLE_UHDA "1")
+else()
+	set (OBOS_ENABLE_UHDA "0")
+endif()
 add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
+add_compile_definitions(OBOS_ENABLE_UHDA=${OBOS_ENABLE_UHDA})
 add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})
 
 add_compile_definitions(
@@ -203,7 +217,7 @@ add_compile_definitions(OBOS_PAGE_REPLACEMENT_ALGORITHM=${OBOS_PAGE_REPLACEMENT_
 
 set_property(GLOBAL PROPERTY C_STANDARD 17
 					PROPERTY C_STANDARD_REQUIRED true
-					PROPERTY C_EXTENSIONS On)
+					PROPERTY C_EXTENSIONS ON)
 
 if (OBOS_ENABLE_WERROR AND NOT OBOS_ENABLE_FANALYZER)
 	add_compile_options("-Werror" $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-function> $<$<COMPILE_LANGUAGE:C>:-Wno-error=unused-parameter>)
@@ -239,6 +253,9 @@ if (OBOS_ARCHITECTURE STREQUAL "m68k")
 	add_subdirectory("src/oboskrnl/arch/m68k/loader")
 endif()
 add_subdirectory("src/uACPI")
+if (OBOS_ENABLE_UHDA)
+	add_subdirectory("src/uHDA")
+endif()
 add_subdirectory("src/sanitizers")
 # Include drivers
 get_target_property(uacpi_INCLUDES uacpi INCLUDE_DIRECTORIES)

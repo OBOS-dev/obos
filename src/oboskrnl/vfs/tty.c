@@ -367,7 +367,7 @@ static obos_status tty_submit_irp(void* request)
     if (tty->fg_job != Core_GetCurrentThread()->proc)
     {
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTTIN);
-        if (~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
+        if (Core_GetCurrentThread()->signal_info && ~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
             req->status = OBOS_STATUS_INTERNAL_ERROR; // EIO
         else
             req->status = OBOS_STATUS_SUCCESS; // EIO

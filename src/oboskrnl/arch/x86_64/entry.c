@@ -979,6 +979,9 @@ void Arch_KernelMainBootstrap()
             left -= namelen;
         }
     } while(0);
+    if (Drv_PnpLoad_uHDA() == OBOS_STATUS_SUCCESS)
+        OBOS_Log("Initialized HDA devices via %s\n", OBOS_ENABLE_UHDA ? "uHDA" : nullptr /* should be impossible */);
+
     OBOS_Log("%s: Probing partitions.\n", __func__);
     OBOS_PartProbeAllDrives(true);
     // uint32_t ecx = 0;
