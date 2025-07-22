@@ -41,7 +41,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (blkCount > pipe->offset)
         blkCount = pipe->offset;
     Core_PushlockAcquire(&pipe->lock, true);
-    memcpy(buf, (char*)pipe->buf, blkCount);
+    memcpy(buf, (char*)pipe->buf+blkOffset, blkCount);
     pipe->offset -= blkCount;
     Core_PushlockRelease(&pipe->lock, true);
     if (nBlkRead)
@@ -80,7 +80,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
     pipe->offset += blkCount;
     Core_PushlockRelease(&pipe->lock, false);
-    Core_EventSet(&pipe->evnt, false);
+    OBOS_ENSURE(obos_is_success(Core_EventSet(&pipe->evnt, false)));
     // Core_PushlockRelease(&pipe->lock, !atomic);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
@@ -149,7 +149,8 @@ obos_status Vfs_CreatePipe(fd* fds, size_t pipesize)
     pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
     desc->pipe_size = pipesize;
     desc->lock = PUSHLOCK_INITIALIZE();
-    desc->buf = Vfs_Calloc(desc->pipe_size, 1);
+    desc->buf = Allocate(OBOS_NonPagedPoolAllocator, desc->pipe_size, nullptr);
+    desc->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
     vn->desc = (uintptr_t)desc;
@@ -175,8 +176,9 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, co
         pipesize = PIPE_BUF;
     pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
     desc->pipe_size = pipesize;
-    desc->buf = Vfs_Calloc(desc->pipe_size, 1);
+    desc->buf = Allocate(OBOS_NonPagedPoolAllocator, desc->pipe_size, nullptr);
     desc->lock = PUSHLOCK_INITIALIZE();
+    desc->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
