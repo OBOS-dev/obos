@@ -5,6 +5,7 @@
 */
 
 #include <int.h>
+#include <handle.h>
 #include <klog.h>
 #include <memmanip.h>
 
@@ -98,6 +99,7 @@ enum hda_ioctls {
     IOCTL_HDA_STREAM_PLAY,
     IOCTL_HDA_STREAM_QUEUE_DATA, // No parameters, but the next write will queue the data written
     IOCTL_HDA_STREAM_CLEAR_QUEUE,
+    IOCTL_HDA_STREAM_SHUTDOWN,
     IOCTL_HDA_STREAM_GET_STATUS,
     IOCTL_HDA_STREAM_GET_REMAINING,
     IOCTL_HDA_STREAM_GET_BUFFER_SIZE,
@@ -107,6 +109,9 @@ enum hda_ioctls {
     IOCTL_HDA_PATH_SHUTDOWN,
     IOCTL_HDA_PATH_VOLUME,
     IOCTL_HDA_PATH_MUTE,
+
+    // takes in a handle instead of a struct fd
+    IOCTL_HDA_STREAM_SETUP_USER,
 };
 
 enum {
@@ -135,6 +140,13 @@ typedef struct hda_stream_setup_parameters {
     // can be nullptr
     fd* ring_buffer_pipe; 
 } *hda_stream_setup_parameters;
+typedef struct hda_stream_setup_user_parameters {
+    stream_parameters stream_params;
+    uint32_t ring_buffer_size;
+    // doesn't need to be a pipe
+    // can be nullptr
+    handle ring_buffer_pipe; 
+} *hda_stream_setup_user_parameters;
 typedef const bool *hda_stream_play;
 typedef struct hda_path_find_parameters {
     bool same_stream; // whether all paths will be playing the same stream.
@@ -240,6 +252,7 @@ uint32_t fd_fill_fn(void* arg, void* buffer, uint32_t space)
     udata->dest_buffer = buffer;
     udata->space = space;
     udata->dpc.userdata = udata;
+    // fd_fill_fn_impl(0, udata);
     CoreH_InitializeDPC(&udata->dpc, fd_fill_fn_impl, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
     return space;
 }
@@ -261,6 +274,7 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
         hda_path_find_parameters path_find;
         hda_path_get_status_parameter path_get_status;
         hda_stream_setup_parameters stream_setup;
+        hda_stream_setup_user_parameters stream_setup_user;
         hda_stream_play stream_play;
         hda_path_volume_parameter path_volume;
         hda_path_mute_parameter path_mute;
@@ -353,6 +367,11 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
                 uhda_stream_clear_queue(dev->selected_output_stream);
             else return OBOS_STATUS_UNINITIALIZED;
             break;
+        case IOCTL_HDA_STREAM_SHUTDOWN:
+            if (dev->selected_output_stream)
+                uhda_stream_shutdown(dev->selected_output_stream);
+            else return OBOS_STATUS_UNINITIALIZED;
+            break;
         case IOCTL_HDA_STREAM_QUEUE_DATA:
             if (dev->selected_output_stream)
                 dev->next_write_is_data_queue = true;
@@ -369,10 +388,11 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
             params.fmt = argp.stream_setup->stream_params.format;
             if (params.fmt > UHDA_FORMAT_PCM32 || params.fmt < 0)
                 return OBOS_STATUS_INVALID_ARGUMENT;
-            void *udata = nullptr;
+            struct fd_fill_userdata *udata = nullptr;
             if (argp.stream_setup->ring_buffer_pipe)
             {
-                
+                udata = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(struct fd_fill_userdata), nullptr);
+                udata->pipe = argp.stream_setup->ring_buffer_pipe;
             }
             uhda_stream_setup(dev->selected_output_stream, 
                               &params, 
@@ -381,6 +401,24 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
                               0, nullptr, nullptr);
             break;
         }
+        case IOCTL_HDA_STREAM_SETUP_USER:
+        {
+            struct hda_stream_setup_parameters real_params = {};
+            real_params.stream_params = argp.stream_setup_user->stream_params;
+            real_params.ring_buffer_size = argp.stream_setup_user->ring_buffer_size;
+            if (HANDLE_TYPE(argp.stream_setup_user->ring_buffer_pipe) != HANDLE_TYPE_INVALID)
+            {
+                obos_status status = OBOS_STATUS_SUCCESS;
+                handle_desc* pipe_desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), argp.stream_setup_user->ring_buffer_pipe, HANDLE_TYPE_FD, false, &status);
+                if (obos_is_error(status))
+                    return status;
+                fd *pipe = pipe_desc->un.fd;
+                real_params.ring_buffer_pipe = pipe;
+            }
+            ioctl(what, IOCTL_HDA_STREAM_SETUP, &real_params);
+            break;
+        }
+
         // TODO: Make path ioctls safer?
         case IOCTL_HDA_PATH_MUTE:
             uhda_path_mute((UhdaPath *)argp.path_mute->path, argp.path_mute->par1);
@@ -462,10 +500,14 @@ obos_status ioctl_argp_size(uint32_t request, size_t* osize)
         // *queue data simply queues the data written on the next WRITE IRP or write_sync
         case IOCTL_HDA_STREAM_CLEAR_QUEUE:
         case IOCTL_HDA_STREAM_QUEUE_DATA:
+        case IOCTL_HDA_STREAM_SHUTDOWN:
             *osize = 0;
             break;
         case IOCTL_HDA_STREAM_SETUP:
             *osize = sizeof(*(hda_stream_setup_parameters)nullptr);
+            break;
+        case IOCTL_HDA_STREAM_SETUP_USER:
+            *osize = sizeof(*(hda_stream_setup_user_parameters)nullptr);
             break;
         case IOCTL_HDA_PATH_MUTE: 
             *osize = sizeof(*(hda_path_mute_parameter)nullptr);
