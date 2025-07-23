@@ -247,7 +247,7 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
         desc = &current_table->arr[hnd];
         handle_type type = new_desc->type;
         handle_close_unlocked(current_table, new | (type << 24));
-	current_table->head = new_desc->un.next;
+	    current_table->head = new_desc->un.next;
     }
 
     void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[type];
