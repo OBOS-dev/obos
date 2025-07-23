@@ -456,7 +456,9 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
         }
         case IOCTL_HDA_PATH_FIND:
         {
-            const UhdaPath* other_paths[argp.path_find->other_path_count];
+            if (((intptr_t)argp.path_find->other_path_count) < 0)
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            const UhdaPath* other_paths[argp.path_find->other_path_count+1];
             memcpy(other_paths, argp.path_find->other_paths, argp.path_find->other_path_count*sizeof(uintptr_t));
             uhda_find_path(dev->selected_output,
                            other_paths, 
