@@ -78,19 +78,22 @@ typedef enum iterate_decision
     ITERATE_DECISION_CONTINUE,
     ITERATE_DECISION_STOP,
 } iterate_decision;
-typedef struct driver_file_perm
+typedef union driver_file_perm
 {
-    bool other_exec : 1;
-    bool other_write : 1;
-    bool other_read : 1;
-    bool group_exec : 1;
-    bool group_write : 1;
-    bool group_read : 1;
-    bool owner_exec : 1;
-    bool owner_write : 1;
-    bool owner_read : 1;
-    bool set_uid : 1;
-    bool set_gid : 1;
+    struct {
+        bool other_exec : 1;
+        bool other_write : 1;
+        bool other_read : 1;
+        bool group_exec : 1;
+        bool group_write : 1;
+        bool group_read : 1;
+        bool owner_exec : 1;
+        bool owner_write : 1;
+        bool owner_read : 1;
+        bool set_uid : 1;
+        bool set_gid : 1;
+    } OBOS_PACK;
+    uint16_t mode;
 } OBOS_PACK driver_file_perm;
 typedef enum file_type
 {
