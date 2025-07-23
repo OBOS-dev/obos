@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     const char* swap_file = NULL;
     char* handoff_process = NULL;
     int opt = 0;
-    while ((opt = getopt(argc, argv, "s:c:h")) != -1)
+    while ((opt = getopt(argc, argv, "+s:c:h")) != -1)
     {
         switch (opt)
         {
