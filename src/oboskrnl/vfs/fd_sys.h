@@ -103,6 +103,9 @@ obos_status Sys_Chdir(const char *path);
 obos_status Sys_ChdirEnt(handle ent);
 obos_status Sys_GetCWD(char* path, size_t len);
 
+obos_status Sys_SymLink(const char* target, const char* link);
+obos_status Sys_SymLinkAt(const char* target, handle dirfd, const char* link);
+
 struct pselect_extra_args
 {
     const uintptr_t* timeout;

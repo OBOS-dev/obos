@@ -387,6 +387,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SyncAnonPages,
     (uintptr_t)Sys_FdPWrite,
     (uintptr_t)Sys_FdPRead,
+    (uintptr_t)Sys_SymLink,
+    (uintptr_t)Sys_SymLinkAt,
 };
 
 // Arch syscall table is defined per-arch

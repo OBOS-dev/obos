@@ -1382,3 +1382,88 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
     return status;
 }
+
+obos_status Sys_SymLink(const char* target, const char* link)
+{
+    return Sys_SymLinkAt(target, AT_FDCWD, link);
+}
+
+obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    char* target = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    target = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(utarget, target, nullptr);
+    
+    char* link = nullptr;
+    size_t sz_path2 = 0;
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path2);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, target, sz_path);
+        return status;
+    }
+    link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(ulink, link, nullptr);
+
+    dirent* parent = nullptr;
+    const char* link_name = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        parent = desc->un.dirent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(link, '/') != strlen(link))
+        {
+            size_t last_slash = strrfind(link, '/');
+            char ch = link[last_slash];
+            link[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(link, parent);
+            link[last_slash] = ch;
+            link_name = link+last_slash+1;
+        }
+        else
+            link_name = link;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(link, '/') != strlen(link))
+        {
+            size_t last_slash = strrfind(link, '/');
+            char ch = link[last_slash];
+            link[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(link, parent);
+            link[last_slash] = ch;
+            link_name = link+last_slash+1;
+        }
+        else
+            link_name = link;
+    }
+
+    if (!parent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+
+    file_perm perm = {.mode=0777};
+    status = Vfs_CreateNode(parent, link_name, VNODE_TYPE_LNK, perm);
+
+    fail:
+    Free(OBOS_KernelAllocator, link, sz_path2);
+    Free(OBOS_KernelAllocator, target, sz_path);
+    return status;
+}
