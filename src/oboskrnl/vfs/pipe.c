@@ -76,6 +76,8 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     }
     bool atomic = blkCount <= PIPE_BUF;
     OBOS_UNUSED(atomic);
+    if (pipe->offset == pipe->pipe_size)
+        return OBOS_STATUS_NO_SPACE;
     // Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
     Core_PushlockAcquire(&pipe->lock, false);
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
