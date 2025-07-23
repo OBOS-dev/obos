@@ -1461,9 +1461,12 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
 
     file_perm perm = {.mode=0777};
     status = Vfs_CreateNode(parent, link_name, VNODE_TYPE_LNK, perm);
+    dirent* node = VfsH_DirentLookupFrom(link_name, parent);
+    node->vnode->un.linked = target;
 
     fail:
     Free(OBOS_KernelAllocator, link, sz_path2);
-    Free(OBOS_KernelAllocator, target, sz_path);
+    if (obos_is_error(status))
+        Free(OBOS_KernelAllocator, target, sz_path);
     return status;
 }
