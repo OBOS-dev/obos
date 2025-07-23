@@ -40,10 +40,7 @@ obos_status hda_read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkO
 {
     return OBOS_STATUS_UNIMPLEMENTED;
 }
-obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
-{
-    return OBOS_STATUS_UNIMPLEMENTED;
-}
+obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten);
 
 void driver_cleanup_callback(){};
 OBOS_WEAK obos_status ioctl(dev_desc what, uint32_t request, void* argp);
@@ -229,6 +226,20 @@ void OBOS_InitializeHDAAudioDev()
         dev->vn = Drv_AllocateVNode(&HDADriver, (dev_desc)dev, 0, nullptr, VNODE_TYPE_CHR);
         dev->dent = Drv_RegisterVNode(dev->vn, dev->name);
     }
+}
+
+obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
+{
+    audio_dev* dev = (void*)desc;
+    if (!dev->next_write_is_data_queue)
+        return OBOS_STATUS_SUCCESS;
+    if (!dev->selected_output_stream)
+        return OBOS_STATUS_UNINITIALIZED;
+    uint32_t count = blkCount;
+    uhda_stream_queue_data(dev->selected_output_stream, buf, &count);
+    if (nBlkWritten)
+        *nBlkWritten = count;
+    return OBOS_STATUS_SUCCESS;
 }
 
 struct fd_fill_userdata
