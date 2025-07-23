@@ -214,6 +214,9 @@ const char* syscall_to_string[] = {
     "Sys_SyncAnonPages",
     "Sys_FdPWrite",
     "Sys_FdPRead",
+    "Sys_SymLink",
+    "Sys_SymLinkAt",
+    "Sys_CreateNamedPipe",
 };
 
 const char* status_to_string[] = {

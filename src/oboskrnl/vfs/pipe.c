@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/pipe.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -75,6 +75,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         return OBOS_STATUS_SUCCESS;
     }
     bool atomic = blkCount <= PIPE_BUF;
+    OBOS_UNUSED(atomic);
     // Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
     Core_PushlockAcquire(&pipe->lock, false);
     memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
@@ -163,13 +164,10 @@ obos_status Vfs_CreatePipe(fd* fds, size_t pipesize)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, const char* parentpath, const char* name, size_t pipesize)
+obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, dirent *parent, const char* name, size_t pipesize)
 {
-    if (!parentpath || !name)
+    if (!parent || !name)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    dirent* parent = VfsH_DirentLookup(parentpath);
-    if (!parent)
-        return OBOS_STATUS_NOT_FOUND;
     if (!pipesize)
         pipesize = OBOS_PAGE_SIZE*16;
     if (pipesize < PIPE_BUF)

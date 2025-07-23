@@ -1190,6 +1190,73 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
 
     return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
 }
+obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_t pipesize)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, path, sz_path);
+        return status;
+    }
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    file_perm perm = unix_to_obos_mode(mode);
+    const char* fifo_name = nullptr;
+
+    dirent* parent = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            Free(OBOS_KernelAllocator, path, sz_path);
+            return status;
+        }
+        parent = desc->un.dirent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(path, '/') != strlen(path))
+        {
+            size_t last_slash = strrfind(path, '/');
+            char ch = path[last_slash];
+            path[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(path, parent);
+            path[last_slash] = ch;
+            fifo_name = path+last_slash+1;
+        }
+        else
+            fifo_name = path;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(path, '/') != strlen(path))
+        {
+            size_t last_slash = strrfind(path, '/');
+            char ch = path[last_slash];
+            path[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(path, parent);
+            path[last_slash] = ch;
+            fifo_name = path+last_slash+1;
+        }
+        else
+            fifo_name = path;
+    }
+
+    gid current_gid = Core_GetCurrentThread()->proc->currentGID;
+    uid current_uid = Core_GetCurrentThread()->proc->currentUID;
+    status = Vfs_CreateNamedPipe(perm, current_gid, current_uid, parent, fifo_name, pipesize);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    
+    return status;
+}
 
 #define set_foreach(set, size) \
 for (size_t _i = 0; _i < size; _i++)\
@@ -1405,7 +1472,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     status = OBOSH_ReadUserString(utarget, nullptr, &sz_path2);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, target, sz_path);
+        Free(OBOS_KernelAllocator, target, sz_path2);
         return status;
     }
     link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
@@ -1420,7 +1487,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
         if (obos_is_error(status))
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return status;
+            goto fail;
         }
         parent = desc->un.dirent;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());

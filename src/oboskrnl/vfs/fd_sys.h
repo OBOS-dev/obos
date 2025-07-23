@@ -116,3 +116,4 @@ struct pselect_extra_args
 obos_status Sys_PSelect(size_t nFds, uint8_t* read_set, uint8_t *write_set, uint8_t *except_set, const struct pselect_extra_args* extra);
 
 obos_status Sys_CreatePipe(handle* ufds, size_t pipesize);
+obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t pipesize);

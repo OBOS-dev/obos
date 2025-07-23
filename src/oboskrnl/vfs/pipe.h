@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/pipe.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -11,13 +11,14 @@
 
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
+#include <vfs/dirent.h>
 
 #include <locks/event.h>
 #include <locks/pushlock.h>
 
 // fds is an array of 2 file descriptors
 obos_status Vfs_CreatePipe(fd* fds, size_t pipesize);
-obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, const char* parentpath, const char* name, size_t pipesize);
+obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, dirent* parent, const char* name, size_t pipesize);
 
 // Called in Vfs_Initialize.
 void Vfs_InitializePipeInterface();
