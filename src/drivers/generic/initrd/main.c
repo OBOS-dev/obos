@@ -224,6 +224,9 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.other_exec = filemode & FILEMODE_OTHER_EXEC;
     ino->perm.set_uid = filemode & 04000;
     ino->perm.set_gid = filemode & 02000;
+    ino->linked_path = hdr->linked;
+
+
     ino->vnode = Vfs_Calloc(1, sizeof(vnode));
     ino->vnode->desc = (uintptr_t)ino;
     ino->vnode->filesize = ino->filesize;
@@ -238,6 +241,10 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
             break;
         case FILE_TYPE_DIRECTORY:
             ino->vnode->vtype = VNODE_TYPE_DIR;
+            break;
+        case FILE_TYPE_SYMBOLIC_LINK:
+            ino->vnode->vtype = VNODE_TYPE_LNK;
+            ino->vnode->un.linked = ino->linked_path;
             break;
         default:
             OBOS_UNREACHABLE;
@@ -426,9 +433,12 @@ OBOS_PAGEABLE_FUNCTION obos_status query_path(dev_desc desc, const char** path)
     return OBOS_STATUS_SUCCESS;
 }
 OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** found)
-{    
-    OBOS_UNUSED(desc && found);
-    return OBOS_STATUS_UNIMPLEMENTED;
+{
+    initrd_inode* ino = (void*)desc;
+    if (ino->type == FILE_TYPE_SYMBOLIC_LINK)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *found = ino->linked_path;
+    return OBOS_STATUS_SUCCESS;
 }
 static char* fullpath(dev_desc parent, const char* what)
 {
