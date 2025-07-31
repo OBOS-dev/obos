@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <error.h>
+#include <memmanip.h>
 #include <struct_packing.h>
 
 #include <irq/irq.h>
@@ -16,6 +17,8 @@
 #include <allocators/base.h>
 
 #include <mm/page.h>
+
+#include <vfs/vnode.h>
 
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
@@ -207,6 +210,7 @@ static void initialize_capability_resources(pci_device* dev)
     pci_capability* tail = nullptr;
 
     uint8_t visited_offsets[256/8];
+    memzero(visited_offsets, sizeof(visited_offsets));
 #define set_visited_offset(off) (visited_offsets[(off)/8] |= BIT((off)%8))
 #define visited_offset(off) !!(visited_offsets[(off)/8] & BIT((off)%8))
 

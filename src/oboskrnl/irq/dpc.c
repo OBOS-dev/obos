@@ -34,7 +34,6 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (dpc->cpu)
         return OBOS_STATUS_DPC_ALREADY_ENQUEUED;
-        // if (LIST_IS_NODE_UNLINKED(dpc_queue, &dpc->cpu->dpcs, dpc))
     const thread_affinity affinity_real = !(affinity & Core_DefaultThreadAffinity) ? (Core_DefaultThreadAffinity) : (affinity & Core_DefaultThreadAffinity);
     dpc->handler = handler;
     cpu_local* target = nullptr;
@@ -50,6 +49,7 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
     irql oldIrql = Core_SpinlockAcquireExplicit(&target->dpc_queue_lock, IRQL_MASKED, false);
     LIST_PREPEND(dpc_queue, &target->dpcs, dpc);
     Core_SpinlockRelease(&target->dpc_queue_lock, oldIrql);
+    dpc->handler = handler;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_FreeDPC(dpc* dpc, bool dealloc)

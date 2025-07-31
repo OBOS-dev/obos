@@ -17,6 +17,8 @@
 #include <locks/event.h>
 #include <locks/spinlock.h>
 
+#include <net/eth.h>
+
 #include <utils/list.h>
 
 #if OBOS_IRQL_COUNT == 16
@@ -79,7 +81,7 @@ typedef struct r8169_device
 
     size_t idx;
 
-    uint8_t mac[6];
+    mac_address mac;
     char mac_readable[6*3+1]; // XX:XX:XX:XX:XX:XX\0
 
     bool ip_checksum_offload : 1;

@@ -191,6 +191,9 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
     }
     if (has_msi)
     {
+        // printf("choosing MSI for device %02x:%02x:%02x\n",
+        //     dev->location.bus,dev->location.slot,dev->location.function
+        // );
         // Fallback to MSI.
         uint64_t header = 0; // 32-bit
         DrvS_ReadPCIRegister(dev->location, msi_offset+0, 4, &header);
@@ -216,6 +219,9 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         return OBOS_STATUS_SUCCESS;
     }
     fallback:
+    // printf("choosing legacy IRQs for device %02x:%02x:%02x\n",
+    //     dev->location.bus,dev->location.slot,dev->location.function
+    // );
     // Use legacy IRQs.
     if (DrvS_CheckIrqCallbackIrqPin)
     {

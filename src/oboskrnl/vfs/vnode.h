@@ -59,7 +59,10 @@ typedef struct vdev
 typedef driver_file_perm file_perm;
 typedef struct vnode
 {
-    void* data;
+    union {
+        void* data;
+        struct net_tables* net_tables;
+    };
     uint32_t vtype;
     uint32_t flags;
     struct mount* mount_point;
