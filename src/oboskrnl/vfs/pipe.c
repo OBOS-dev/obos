@@ -37,7 +37,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
-    printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    // printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->read_event))))
         return status;
@@ -48,7 +48,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (!pipe->offset)
         Core_EventClear(&pipe->read_event);
     Core_PushlockRelease(&pipe->buffer_lock, true);
-    printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    // printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
@@ -57,7 +57,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
-    printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    // printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_event))))
         return status;
@@ -66,7 +66,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     Core_EventSet(&pipe->read_event, false);
     Core_EventClear(&pipe->write_event);
     Core_PushlockRelease(&pipe->buffer_lock, true);
-    printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    // printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
