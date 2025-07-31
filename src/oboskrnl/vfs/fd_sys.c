@@ -265,6 +265,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -297,6 +299,8 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+    
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -331,6 +335,8 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -362,6 +368,8 @@ obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, si
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
         return status;
     }
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
 
     return OBOS_STATUS_SUCCESS;
 }
