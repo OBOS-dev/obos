@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <scheduler/thread.h>
+
 #include <stdarg.h>
 
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
@@ -250,8 +252,10 @@ typedef struct driver_header
     // Only valid if version >= 1, and the version field exists (flags & DRIVER_HEADER_HAS_VERSION_FIELD).
     uint32_t uacpi_init_level_required;
 
-    // Reserved for future use; do not use when version <= 1
-    char reserved[0x100-0x8];
+    thread_affinity mainThreadAffinity;
+
+    // Reserved for future use
+    char reserved[0x100-0x10];
 } driver_header;
 typedef struct driver_header_node
 {

@@ -173,6 +173,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     },
     .driverName = "PS/2 Driver",
     .version = 1,
+    .mainThreadAffinity = 0b1,
 };
 
 OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)

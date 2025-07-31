@@ -102,7 +102,7 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 		cpu_local* cpu = &Core_CpuInfo[cpui];
 		if (!(thr->affinity & CoreH_CPUIdToAffinity(cpu->id)))
 			continue;
-		if (!cpuFound || cpu->priorityLists[thr->priority].list.nNodes < cpuFound->priorityLists[thr->priority].list.nNodes)
+		if (!cpuFound || cpu->nReadyThreads < cpuFound->nReadyThreads)
 			cpuFound = cpu;
 	}
 	if (!cpuFound)
@@ -112,6 +112,7 @@ obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 	node->data = thr;
 	thr->snode = node;
 	thr->masterCPU = cpuFound;
+	thr->masterCPU->nReadyThreads++;
 	thr->status = THREAD_STATUS_READY;
 	thread_list* priorityList = &cpuFound->priorityLists[thr->priority].list;
 	Core_ReadyThreadCount++;
@@ -138,6 +139,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	// TODO: Send an IPI of some sort to make sure the other CPU yields if this current thread is running.
 	Core_ReadyThreadCount--;
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql);
+	thr->masterCPU->nReadyThreads--;
 	thr->masterCPU = nullptr;
 	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql2);
 	if (thr == Core_GetCurrentThread() && canYield)

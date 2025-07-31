@@ -404,8 +404,9 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
-    // if (desc->vn->vtype == VNODE_TYPE_FIFO)
-    //     return OBOS_STATUS_SUCCESS; // act like it worked
+    OBOS_ENSURE(desc->vn);
+    if (desc->vn->vtype == VNODE_TYPE_FIFO)
+        return OBOS_STATUS_SUCCESS; // act like it worked
     size_t finalOff = 0;
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
@@ -480,9 +481,19 @@ obos_status Vfs_FdIoctl(fd* desc, uint64_t request, void* argp)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
-    if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
-        return OBOS_STATUS_INVALID_IOCTL;
-    return desc->vn->un.device->driver->header.ftable.ioctl(desc->desc, request, argp);
+    // if (desc->vn->vtype != VNODE_TYPE_BLK && desc->vn->vtype != VNODE_TYPE_CHR)
+    //     return OBOS_STATUS_INVALID_IOCTL;
+    mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
+    const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    {
+        point = nullptr;
+        driver = &desc->vn->un.device->driver->header;
+    }
+    if (driver->ftable.ioctl)
+        return driver->ftable.ioctl(desc->desc, request, argp);
+    else
+        return OBOS_STATUS_UNIMPLEMENTED;
 }
 obos_status Vfs_FdFlush(fd* desc)
 {
@@ -522,8 +533,8 @@ obos_status Vfs_FdClose(fd* desc)
     LIST_REMOVE(fd_list, &desc->vn->opened, desc);
     if (vn->vtype == VNODE_TYPE_FIFO)
     {
-        pipe_desc* desc = (void*)vn->desc;
-        Core_EventSet(&desc->evnt, true);
+        // pipe_desc* desc = (void*)vn->desc;
+        // Core_EventSet(&desc->evnt, true);
     }
     vn->refs--;
     desc->flags &= ~FD_FLAGS_OPEN;

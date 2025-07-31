@@ -80,7 +80,6 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGSEGV (rip 0x%p, cr2 0x%p, error code 0x%08x)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2(), frame->errorCode);
-        Core_ExitCurrentProcess(0);
         Core_GetCurrentThread()->signal_info->signals[SIGSEGV].addr = (void*)getCR2();
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
         // OBOS_SyncPendingSignal(frame);
@@ -230,7 +229,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FP
 {
     if (frame->cs & 3)
     {
-        OBOS_Log("User thread %d SIGFPE\n", Core_GetCurrentThread()->tid);
+        OBOS_Log("User thread %d SIGFPE (rip 0x%p)\n", Core_GetCurrentThread()->tid, frame->rip);
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGFPE);
         // OBOS_SyncPendingSignal(frame);
         OBOS_RunSignal(SIGFPE, frame); // Ensure SIGFPE runs.

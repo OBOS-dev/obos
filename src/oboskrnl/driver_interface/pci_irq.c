@@ -16,6 +16,8 @@
 #include <mm/alloc.h>
 #include <mm/page.h>
 
+#include <scheduler/cpu_local.h>
+
 #include <utils/tree.h>
 
 #if OBOS_ARCHITECTURE_HAS_PCI
@@ -141,8 +143,14 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
     }
     if (!has_msi && !has_msix)
         goto fallback;
+    
+    cpu_local* target_cpu = nullptr;
+    for (int i = Core_CpuCount-1; i >= 0; i--)
+        if (!target_cpu || Core_CpuInfo[i].nMSIRoutedIRQs < target_cpu->nMSIRoutedIRQs)
+            target_cpu = &Core_CpuInfo[i];
+    
     uint64_t msi_data = 0;
-    uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, irq->vector->id, 0, true, false);
+    uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, irq->vector->id, target_cpu->id, true, false);
     if (has_msix)
     {
         // Prefer MSI-X over MSI.

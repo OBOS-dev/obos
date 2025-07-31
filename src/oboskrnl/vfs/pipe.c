@@ -12,6 +12,7 @@
 #include <vfs/fd.h>
 #include <vfs/pipe.h>
 #include <vfs/dirent.h>
+#include <vfs/mount.h>
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
 
@@ -22,71 +23,50 @@
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
 
+#include <mm/alloc.h>
+
 #include <stdatomic.h>
 
 #include <utils/string.h>
 
+#define IOCTL_PIPE_SET_SIZE 1
+
 static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
 {
-    OBOS_UNUSED(blkOffset);
+    OBOS_UNUSED(desc && buf && blkCount && blkOffset && nBlkRead);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // OBOS_ASSERT(!"untested");
-    pipe_desc *pipe = (void*)desc;
-    // while (!pipe->offset && pipe->vn->opened.nNodes > 1)
-    //     OBOSS_SpinlockHint();
-    Core_WaitOnObject(WAITABLE_OBJECT(pipe->evnt));
-    if (pipe->vn->opened.nNodes == 1 && !pipe->offset)
-        return OBOS_STATUS_EOF;
-    if (blkCount > pipe->offset)
-        blkCount = pipe->offset;
-    Core_PushlockAcquire(&pipe->lock, true);
-    memcpy(buf, (char*)pipe->buf+blkOffset, blkCount);
-    pipe->offset -= blkCount;
-    Core_PushlockRelease(&pipe->lock, true);
-    if (nBlkRead)
-        *nBlkRead = blkCount;
+    pipe_desc* pipe = (void*)desc;
+    printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->read_event))))
+        return status;
+    Core_PushlockAcquire(&pipe->buffer_lock, true);
+    memcpy(buf, pipe->buffer+pipe->offset, blkCount);
+    pipe->offset = (pipe->offset + blkCount) % pipe->size;
+    Core_EventSet(&pipe->write_event, false);
+    if (!pipe->offset)
+        Core_EventClear(&pipe->read_event);
+    Core_PushlockRelease(&pipe->buffer_lock, true);
+    printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
 {
-    OBOS_UNUSED(blkOffset);
+    OBOS_UNUSED(desc && buf && blkCount && blkOffset && nBlkWritten);
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // OBOS_ASSERT(!"untested");
-    pipe_desc *pipe = (void*)desc;
-    if (blkCount > pipe->pipe_size)
-    {
-        size_t written_count = 0;
-        size_t curr_written_count = 0;
-        off_t current_offset = 0;
-        long bytes_left = blkCount;
-        while (bytes_left > 0)
-        {
-            obos_status status = write_sync(desc, buf + current_offset, (size_t)bytes_left > pipe->pipe_size ? pipe->pipe_size : (size_t)bytes_left, 0, &curr_written_count);
-            if (obos_is_error(status))
-                return status;
-            written_count += curr_written_count;
-            bytes_left -= curr_written_count;
-            current_offset += curr_written_count;
-        }
-        if (nBlkWritten)
-            *nBlkWritten = written_count;
-        return OBOS_STATUS_SUCCESS;
-    }
-    bool atomic = blkCount <= PIPE_BUF;
-    OBOS_UNUSED(atomic);
-    if (pipe->offset == pipe->pipe_size)
-        return OBOS_STATUS_NO_SPACE;
-    // Core_PushlockAcquire(&pipe->lock, !atomic /* if we want to do an unatomic write, then we can be a reader, otherwise, we must be a writer */);
-    Core_PushlockAcquire(&pipe->lock, false);
-    memcpy((char*)pipe->buf + pipe->offset, buf, blkCount);
-    pipe->offset += blkCount;
-    Core_PushlockRelease(&pipe->lock, false);
-    OBOS_ENSURE(obos_is_success(Core_EventSet(&pipe->evnt, false)));
-    // Core_PushlockRelease(&pipe->lock, !atomic);
-    if (nBlkWritten)
-        *nBlkWritten = blkCount;
+    pipe_desc* pipe = (void*)desc;
+    printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_event))))
+        return status;
+    Core_PushlockAcquire(&pipe->buffer_lock, true);
+    memcpy(pipe->buffer+pipe->offset, buf, blkCount);
+    Core_EventSet(&pipe->read_event, false);
+    Core_EventClear(&pipe->write_event);
+    Core_PushlockRelease(&pipe->buffer_lock, true);
+    printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
@@ -102,22 +82,53 @@ static obos_status get_max_blk_count(dev_desc desc, size_t* count)
     if (!desc || !count)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc *pipe = (void*)desc;
-    *count = pipe->pipe_size;
+    *count = pipe->size;
     return OBOS_STATUS_SUCCESS;
 }
-OBOS_PAGEABLE_FUNCTION static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what);
-    OBOS_UNUSED(request);
-    OBOS_UNUSED(argp);
-    return OBOS_STATUS_INVALID_IOCTL;
+    if (!what)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    pipe_desc *pipe = (void*)what;
+    size_t* sargp = argp;
+    switch (request)
+    {
+        case IOCTL_PIPE_SET_SIZE:
+        {
+            if (*sargp == pipe->size)
+                return OBOS_STATUS_SUCCESS;
+            Core_PushlockAcquire(&pipe->buffer_lock, false);
+            pipe->buffer = Vfs_Realloc(pipe->buffer, *sargp);
+            pipe->size = *sargp;
+            if (pipe->offset > pipe->size)
+                pipe->offset = 0;
+            pipe->vn->filesize = pipe->size;
+            Core_PushlockRelease(&pipe->buffer_lock, false);
+            break;
+        }
+        default: return OBOS_STATUS_INVALID_IOCTL;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status ioctl_argp_size(uint32_t request, size_t *size)
+{
+    switch (request)
+    {
+        case IOCTL_PIPE_SET_SIZE:
+        {
+            *size = 8;
+            break;
+        }
+        default: return OBOS_STATUS_INVALID_IOCTL;
+    }
+    return OBOS_STATUS_SUCCESS;
 }
 static obos_status remove_file(dev_desc desc)
 {
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc *pipe = (void*)desc;
-    Vfs_Free(pipe->buf);
+    Vfs_Free(pipe->buffer);
     Vfs_Free(pipe);
     return OBOS_STATUS_SUCCESS;
 }
@@ -131,6 +142,7 @@ driver_id OBOS_FIFODriver = {
             .read_sync = read_sync,
             .write_sync = write_sync,
             .ioctl = ioctl,
+            .ioctl_argp_size = ioctl_argp_size,
             .get_blk_size=get_blk_size,
             .get_max_blk_count=get_max_blk_count,
             .remove_file=remove_file,
@@ -141,19 +153,27 @@ vdev OBOS_FIFODriverVdev = {
     .driver = &OBOS_FIFODriver,
 };
 
+pipe_desc* alloc_pipe_desc(size_t pipesize)
+{
+    pipe_desc* desc = Vfs_Calloc(1, sizeof(pipe_desc));
+    desc->size = pipesize;
+    desc->buffer = Vfs_Malloc(pipesize);
+    desc->read_event = EVENT_INITIALIZE(EVENT_SYNC);
+    desc->write_event = EVENT_INITIALIZE(EVENT_SYNC);
+    desc->buffer_lock = PUSHLOCK_INITIALIZE();
+    Core_EventSet(&desc->write_event, false);
+    return desc;
+}
+
 obos_status Vfs_CreatePipe(fd* fds, size_t pipesize)
 {
     if (!fds)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!pipesize)
-        pipesize = OBOS_PAGE_SIZE*16;
+        pipesize = OBOS_PAGE_SIZE;
     if (pipesize < PIPE_BUF)
         pipesize = PIPE_BUF;
-    pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
-    desc->pipe_size = pipesize;
-    desc->lock = PUSHLOCK_INITIALIZE();
-    desc->buf = Allocate(OBOS_NonPagedPoolAllocator, desc->pipe_size, nullptr);
-    desc->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    pipe_desc *desc = alloc_pipe_desc(pipesize);
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
     vn->desc = (uintptr_t)desc;
@@ -168,17 +188,16 @@ obos_status Vfs_CreatePipe(fd* fds, size_t pipesize)
 
 obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, dirent *parent, const char* name, size_t pipesize)
 {
-    if (!parent || !name)
+    if (!name)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!parent) parent = Vfs_Root;
+    if (VfsH_DirentLookupFrom(name, parent))
+        return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!pipesize)
         pipesize = OBOS_PAGE_SIZE*16;
     if (pipesize < PIPE_BUF)
         pipesize = PIPE_BUF;
-    pipe_desc *desc = Vfs_Calloc(1, sizeof(pipe_desc));
-    desc->pipe_size = pipesize;
-    desc->buf = Allocate(OBOS_NonPagedPoolAllocator, desc->pipe_size, nullptr);
-    desc->lock = PUSHLOCK_INITIALIZE();
-    desc->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    pipe_desc *desc = alloc_pipe_desc(pipesize);
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
@@ -190,6 +209,7 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, di
     vn->un.device = &OBOS_FIFODriverVdev;
     ent->vnode = vn;
     vn->refs++;
+    vn->filesize = desc->size;
     vn->mount_point = parent->vnode->mount_point;
     OBOS_InitString(&ent->name, name);
     VfsH_DirentAppendChild(parent, ent);

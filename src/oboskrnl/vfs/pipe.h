@@ -31,10 +31,15 @@ void Vfs_InitializePipeInterface();
 
 typedef struct pipe_desc
 {
-    event evnt;
-    vnode *vn;
-    void* buf;
-    size_t pipe_size;
-    _Atomic(uintptr_t) offset;
-    pushlock lock;
+    vnode* vn;
+    size_t size;
+    void* buffer;
+    size_t offset;
+    event read_event;
+    event write_event;
+    // locks access to buffer and size
+    // read_sync and write_sync don't modify
+    // those variables, so they can take this
+    // as a reader.
+    pushlock buffer_lock;
 } pipe_desc;

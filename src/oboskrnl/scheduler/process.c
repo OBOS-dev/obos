@@ -145,6 +145,31 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
 		proc->controlling_tty->fg_job = proc->parent;
 
+	// Kill all threads.
+	for (thread_node* node = proc->threads.head; node; )
+	{
+		thread* const thr = node->data;
+		node = node->next;
+		if (thr == Core_GetCurrentThread())
+			continue;
+
+		thr->references++;
+
+		// OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
+		thr->kill = true;
+		thr->interrupted = true;
+		thr->signalInterrupted = true;
+		CoreH_ThreadReady(thr);
+
+		// NOTE: This loop should not take too long.
+		while (~thr->flags & THREAD_FLAGS_DIED)
+			OBOSS_SpinlockHint();
+
+		if (!(--thr->references) && thr->free)
+			thr->free(thr);
+	}
+	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
+	(void)oldIrql;
 	// Disown all children.
 	for (process* child = proc->children.head; child; )
 	{
@@ -197,21 +222,6 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 			OBOS_KernelProcess->children.tail = proc->prev;
 		OBOS_KernelProcess->children.nChildren--;
 		Core_SpinlockRelease(&OBOS_KernelProcess->children_lock, oldIrql);
-	}
-
-	// Kill all threads.
-	for (thread_node* node = proc->threads.head; node; )
-	{
-		thread* const thr = node->data;
-		node = node->next;
-		if (thr == Core_GetCurrentThread())
-			continue;
-
-		OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
-
-		// NOTE: This loop should not take too long.
-		while (thr->flags & THREAD_FLAGS_DIED)
-			OBOSS_SpinlockHint();
 	}
 
 	// Close all handles.
@@ -282,8 +292,8 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 {
-	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
-	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	// CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	ExitCurrentProcess(code);
 	while (1)
 		;
 }

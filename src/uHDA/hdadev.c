@@ -16,12 +16,18 @@
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 
+#include <mm/alloc.h>
+#include <mm/context.h>
+
 #include <driver_interface/driverId.h>
 
 #include <irq/dpc.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/thread_context_info.h>
+#include <scheduler/process.h>
 
 #include <vfs/vnode.h>
 
@@ -246,15 +252,45 @@ struct fd_fill_userdata
 {
     fd* pipe;
     dpc dpc;
+    thread* thr;
+    event wake_thr;
+    bool request_thread_kill;
     void* dest_buffer;
     uint32_t space;
 };
 
-void fd_fill_fn_impl(dpc* d, void* arg)
+void fd_fill_worker(void* user)
+{
+    struct fd_fill_userdata *udata = user;
+    while (!udata->request_thread_kill)
+    {
+        Core_WaitOnObject(WAITABLE_OBJECT(udata->wake_thr));
+        Core_EventClear(&udata->wake_thr);
+        if (udata->request_thread_kill)
+            break;
+        Vfs_FdRead(udata->pipe, udata->dest_buffer, udata->space, nullptr);
+    }
+    Core_ExitCurrentThread();
+    
+}
+void fd_fill_fn_start_thread(dpc* d, void* arg)
 {
     OBOS_UNUSED(d);
     struct fd_fill_userdata *udata = arg;
-    Vfs_FdRead(udata->pipe, udata->dest_buffer, udata->space, nullptr);
+    if (udata->thr)
+    {
+        Core_EventSet(&udata->wake_thr, false);
+        return;
+    }
+    udata->wake_thr = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    udata->thr = CoreH_ThreadAllocate(nullptr);
+    thread_ctx ctx = {};
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)fd_fill_worker, (uintptr_t)arg, false, 
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x4000);
+    CoreH_ThreadInitialize(udata->thr, THREAD_PRIORITY_URGENT, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadReady(udata->thr);
+    Core_ProcessAppendThread(OBOS_KernelProcess, udata->thr);
+    // Vfs_FdRead(udata->pipe, udata->dest_buffer, udata->space, nullptr);
 }
 
 uint32_t fd_fill_fn(void* arg, void* buffer, uint32_t space)
@@ -264,7 +300,7 @@ uint32_t fd_fill_fn(void* arg, void* buffer, uint32_t space)
     udata->space = space;
     udata->dpc.userdata = udata;
     // fd_fill_fn_impl(0, udata);
-    CoreH_InitializeDPC(&udata->dpc, fd_fill_fn_impl, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
+    CoreH_InitializeDPC(&udata->dpc, fd_fill_fn_start_thread, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
     return space;
 }
 
