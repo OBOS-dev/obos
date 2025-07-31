@@ -79,6 +79,7 @@ void Sys_LibCLog(const char* ustr)
     }
     char* buf = Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
     OBOSH_ReadUserString(ustr, buf, &str_len);
+    buf[str_len] = 0;
     OBOS_LibCLog("%s\n", buf);
     Free(OBOS_KernelAllocator, buf, str_len+1);
 }
@@ -375,6 +376,20 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_IRPGetStatus,
     (uintptr_t)Sys_CreatePipe,
     (uintptr_t)Sys_PSelect,
+    (uintptr_t)Sys_ReadLinkAt,
+    (uintptr_t)Sys_SetUid,
+    (uintptr_t)Sys_SetGid,
+    (uintptr_t)Sys_GetUid,
+    (uintptr_t)Sys_GetGid,
+    (uintptr_t)Sys_UnlinkAt,
+    (uintptr_t)Sys_MakeDiskSwap,
+    (uintptr_t)Sys_SwitchSwap,
+    (uintptr_t)Sys_SyncAnonPages,
+    (uintptr_t)Sys_FdPWrite,
+    (uintptr_t)Sys_FdPRead,
+    (uintptr_t)Sys_SymLink,
+    (uintptr_t)Sys_SymLinkAt,
+    (uintptr_t)Sys_CreateNamedPipe,
 };
 
 // Arch syscall table is defined per-arch

@@ -79,6 +79,7 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
             phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
             OBOS_ENSURE(phys != Mm_AnonPage);
         }
+        usrphys = phys->phys;
         size_t currCount = bytes_left > OBOS_PAGE_SIZE ? OBOS_PAGE_SIZE-((usrphys+usroffset)%OBOS_PAGE_SIZE) : (size_t)bytes_left;
         memcpy(MmS_MapVirtFromPhys(usrphys+usroffset), (void*)((uintptr_t)k_src + i), currCount);
         usroffset = 0;
@@ -176,6 +177,16 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strchr(const char* str, char ch)
 {
     size_t i = 0;
     for (; str[i] != ch && str[i]; i++)
+        ;
+    return i + (str[i] == ch ? 1 : 0);
+}
+#endif
+
+#if !OBOS_ARCH_HAS_STRNCHR
+OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strnchr(const char* str, char ch, size_t count)
+{
+    size_t i = 0;
+    for (; str[i] != ch && i < count; i++)
         ;
     return i + (str[i] == ch ? 1 : 0);
 }

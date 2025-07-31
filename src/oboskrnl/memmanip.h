@@ -18,6 +18,7 @@ OBOS_EXPORT bool   strcmp(const char* str1, const char* str2);
 OBOS_EXPORT size_t strlen(const char* str);
 OBOS_EXPORT size_t strnlen(const char* str, size_t maxcnt);
 OBOS_EXPORT size_t strchr(const char* str, char ch);
+OBOS_EXPORT size_t strnchr(const char* str, char ch, size_t sz);
 
 obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count);
 obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count);

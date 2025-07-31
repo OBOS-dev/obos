@@ -18,3 +18,4 @@
 // nodes are allocated using the general purpose kernel allocator.
 obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *toLoad);
 obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait);
+obos_status Drv_PnpLoad_uHDA();

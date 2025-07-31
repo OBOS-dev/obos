@@ -55,6 +55,7 @@ static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, siz
 
     char** iter = kstr;
     char* const* uiter = vec;
+    OBOS_UNUSED(uiter);
     uintptr_t offset = (uintptr_t)kstr-(uintptr_t)iter;
     size_t currSize = OBOS_PAGE_SIZE;
 
@@ -132,12 +133,13 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     fd file = {};
-    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
+    status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     Free(OBOS_KernelAllocator, path, sz_path+1);
     if (obos_is_error(status))
         return status;
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE, &file, nullptr);
+    bool set_uid = file.vn->perm.set_uid, set_gid = file.vn->perm.set_gid;
     Vfs_FdClose(&file);
 
     char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
@@ -248,7 +250,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     elf_info info = {};
     status = OBOS_LoadELF(ctx, kbuf, szBuf, &info, false, false);
     if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
+    {
+        OBOS_Error("OBOS_LoadELF failed in %s after already having verified ELF file status. Status: %d\n", __func__, status);
+        Core_ExitCurrentProcess(9 | (9<<8));
+//      OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
+    }
 
     struct exec_aux_values aux = {.elf=info};
     const Elf_Ehdr* ehdr = kbuf;
@@ -267,6 +273,9 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     aux.envp = knvp;
     aux.envpc = envpc;
+
+    Core_GetCurrentThread()->proc->set_uid = set_uid;
+    Core_GetCurrentThread()->proc->set_gid = set_gid;
 
     OBOSS_HandControlTo(ctx, &aux);
 }

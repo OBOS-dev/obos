@@ -33,7 +33,7 @@
 
 handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, size_t stack_size, handle vmm_context)
 {
-    if (!stack || !stack_size)
+    if (!stack)
         return HANDLE_INVALID;
 
     context* vmm_ctx =
@@ -172,13 +172,16 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
         Core_PushlockRelease(&ctx->un.thread_ctx->lock, false);
     }
 
+    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+
     handle_desc* desc = nullptr;
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD, &desc);
     desc->un.thread = thr;
     thr->references++;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+    memcpy(thr->signal_info->signals, Core_GetCurrentThread()->signal_info->signals, sizeof(thr->signal_info->signals));
+    thr->signal_info->mask = Core_GetCurrentThread()->signal_info->mask;
 
     return hnd;
 }
@@ -277,6 +280,9 @@ obos_status Sys_ThreadSetOwner(handle thr_hnd, handle proc_hnd)
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
+
+    thr->stackFreeUserdata = proc->ctx;
+    thr->stackFree = CoreH_VMAStackFree;
 
     return Core_ProcessAppendThread(proc, thr);
 }
@@ -387,6 +393,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         // Clone current file handles, as well as dirent handles.
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
 
+    	OBOS_ExpandHandleTable(&new->handles, OBOS_CurrentHandleTable()->size);
         for (size_t i = 0; i < OBOS_CurrentHandleTable()->size; i++)
         {
             handle_desc* hnd = OBOS_CurrentHandleTable()->arr + i;
@@ -398,22 +405,23 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                         continue;
                     if (!hnd->un.fd->vn)
                         continue;
-                    if (!VfsH_LockMountpoint(hnd->un.fd->vn->mount_point))
-                        continue;
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_FD;
                     new_hnd->un.fd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
-                    new_hnd->un.fd->flags = hnd->un.fd->flags;
-                    new_hnd->un.fd->offset = hnd->un.fd->offset;
-                    new_hnd->un.fd->vn = hnd->un.fd->vn;
-                    LIST_APPEND(fd_list, &new_hnd->un.fd->vn->opened, new_hnd->un.fd);
-                    VfsH_UnlockMountpoint(hnd->un.fd->vn->mount_point);
+                    uint32_t oflags = 0;
+                    if (hnd->un.fd->flags & FD_FLAGS_READ)
+                        oflags |= FD_OFLAGS_READ;
+                    if (hnd->un.fd->flags & FD_FLAGS_WRITE)
+                        oflags |= FD_OFLAGS_WRITE;
+                    if (hnd->un.fd->flags & FD_FLAGS_UNCACHED)
+                        oflags |= FD_OFLAGS_UNCACHED;
+                    if (hnd->un.fd->flags & FD_FLAGS_NOEXEC)
+                        oflags |= FD_OFLAGS_NOEXEC;
+                    Vfs_FdOpenVnode(new_hnd->un.fd, hnd->un.fd->vn, oflags);
                     break;
                 }
                 case HANDLE_TYPE_DIRENT:
                 {
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_DIRENT;
                     new_hnd->un.dirent = hnd->un.dirent;
@@ -421,14 +429,11 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                 }
                 default:
                 {
-                    OBOS_ExpandHandleTable(&new->handles, (i+4) & ~3);
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_INVALID;
 
                     new_hnd->un.next = new->handles.head;
                     new->handles.head = new_hnd;
-
-                    new_hnd->un.as_int = 0;
                     break;
                 }
             }
@@ -578,3 +583,26 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status Sys_SetUid(uid to)
+{
+    process* proc = Core_GetCurrentThread()->proc;
+    if (proc->currentUID != 0 && !proc->set_uid)
+        return OBOS_STATUS_ACCESS_DENIED;
+    proc->currentUID = to;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_SetGid(gid to)
+{
+    process* proc = Core_GetCurrentThread()->proc;
+    if (proc->currentUID != 0 && !proc->set_gid)
+        return OBOS_STATUS_ACCESS_DENIED;
+    proc->currentGID = to;
+    return OBOS_STATUS_SUCCESS;
+}
+
+uid Sys_GetUid()
+{ return Core_GetCurrentThread()->proc->currentUID; }
+gid Sys_GetGid()
+{ return Core_GetCurrentThread()->proc->currentGID; }

@@ -6,6 +6,8 @@
 /dependencies/hyper
 /dependencies/UltraProtocol
 /dependencies/uACPI
+/dependencies/uHDA
+/dependencies/flanterm/
 /dependencies/include/
 /dependencies/needs_download.cmake
 /qemu_log.txt

@@ -30,6 +30,8 @@
 
 #include <irq/irq.h>
 
+#include <vfs/alloc.h>
+
 #if defined(__m68k__)
 #	include <arch/m68k/boot_info.h>
 #	include <arch/m68k/loader/Limine.h>
@@ -127,27 +129,39 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 
 void MmH_RefPage(page* buf)
 {
+	if (!buf)
+		return;
 	buf->refcount++;
 	// printf("refed page %p (now at %d)\n", buf->phys, buf->refcount);
 }
 void MmH_DerefPage(page* buf)
 {
+	if (!buf)
+		return;
 	// printf("derefed page %p (now at %d)\n", buf->phys, buf->refcount - 1);
 	if (!(--buf->refcount))
 	{
 		if (~buf->flags & PHYS_PAGE_MMIO)
 			Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
-		
+
 		if (buf->flags & PHYS_PAGE_DIRTY)
 			LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, buf);
 		else if (buf->flags & PHYS_PAGE_STANDBY)
 			LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, buf);
 
-
 		// printf("removed page from tree (refcount %d)\n", buf->refcount);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
 		if (buf->backing_vn)
+		{
 			RB_REMOVE(pagecache_tree, &Mm_Pagecache, buf);
+			if (!(--buf->backing_vn->refs))
+			{
+				if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO)
+					if (!(buf->backing_vn->un.device->refs--))
+						Vfs_Free(buf->backing_vn->un.device);
+				Vfs_Free(buf->backing_vn);
+			}
+		}
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));
 	}
@@ -179,13 +193,20 @@ swap_allocation* MmH_AddSwapAllocation(uintptr_t id)
 void MmH_RefSwapAllocation(swap_allocation* alloc)
 {
 	alloc->refs++;
+	alloc->provider->refs++;
 }
 void MmH_DerefSwapAllocation(swap_allocation* alloc)
 {
-	if (-(!alloc->refs))
+	if (!(--alloc->refs))
 	{
 		LIST_REMOVE(swap_allocation_list, &Mm_SwapAllocations, alloc);
-		alloc->provider->swap_free(alloc->provider, alloc->id);
+		alloc->provider->swap_free(alloc->provider, alloc->id, alloc->phys->flags & PHYS_PAGE_DIRTY);
+		if (alloc->provider->awaiting_deinit && !(--alloc->provider->refs))
+		{
+			alloc->provider->deinit_dev(alloc->provider);
+			if (alloc->provider->free_obj)
+				alloc->provider->free_obj(alloc->provider);
+		}
 		Mm_Allocator->Free(Mm_Allocator, alloc, sizeof(*alloc));
 	}
 }

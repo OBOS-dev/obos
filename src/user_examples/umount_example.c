@@ -28,13 +28,12 @@ static int parse_file_status(obos_status status)
 
 int main(int argc, char** argv)
 {
-    if (argc < 3)
+    if (argc < 2)
     {
         printf("Usage: %s target\n", argv[0]);
         return -1;
     }
-    char* target = argv[2];
-    char* device = argv[1];
+    char* target = argv[1];
     obos_status st = syscall1(Sys_Unmount, target);
     if (obos_is_error(st))
     {

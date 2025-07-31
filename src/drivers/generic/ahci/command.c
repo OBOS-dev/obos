@@ -32,6 +32,8 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     HBA->ports[port->hbaPortIndex].is = 0xffffffff;
     Core_MutexAcquire(&port->bitmask_lock);
     uint32_t cmdSlot = __builtin_ctz(~port->CommandBitmask);
+    data->internal.cmdSlot = cmdSlot;
+    port->CommandBitmask |= BIT(cmdSlot);
     port->PendingCommands[cmdSlot] = data;
     Core_MutexRelease(&port->bitmask_lock);
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -156,7 +158,7 @@ void WaitForTranscations()
     {
         Port* port = Ports + i;
         for (size_t j = 0; j < 32; j++)
-            if (port->CommandBitmask & BIT(j))
+            if (port->CommandBitmask & BIT(j) && port->PendingCommands[j])
                 Core_WaitOnObject(WAITABLE_OBJECT(port->PendingCommands[j]->completionEvent));
     }
 }

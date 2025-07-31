@@ -28,6 +28,7 @@
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
 #include <vfs/fd.h>
+#include <vfs/vnode.h>
 
 #include <uacpi/uacpi.h>
 #include <uacpi/namespace.h>
@@ -450,13 +451,9 @@ static uint64_t driver_file_hash(const void *item, uint64_t seed0, uint64_t seed
 static void driver_file_free(void* ele)
 {
     struct driver_file* drv = ele;
-    // if (drv->main)
-    //     if (!(--drv->main->references) && drv->main->free)
-    //         drv->main->free(drv->main);
-    Vfs_FdSeek(drv->file, 0, SEEK_END);
-    size_t filesize = Vfs_FdTellOff(drv->file);
-    Vfs_FdSeek(drv->file, 0, SEEK_SET);
-    Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, filesize);
+    if (drv->id)
+        Drv_UnrefDriver(drv->id);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, drv->base, drv->file->vn->filesize);
     // drv->hdr is invalid.
     Vfs_FdClose(drv->file);
 }
@@ -464,6 +461,9 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
 {
     if (!directory)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (directory->vnode->vtype != VNODE_TYPE_DIR)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    Vfs_PopulateDirectory(directory);
     struct hashmap* drivers = 
         hashmap_new_with_allocator(
             malloc,
@@ -549,6 +549,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
                 OBOS_Warning("Could not load '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 continue;
             }
+            drv->refCnt++;
             file->id = drv;
             loadStatus = Drv_StartDriver(drv, nullptr);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
@@ -588,7 +589,71 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         Free(OBOS_KernelAllocator, node, sizeof(*node));
         node = next;
     }
+    size_t i = 0;
+    void* item = nullptr;
+    while (hashmap_iter(drivers, &i, &item))
+    {
+        if (!item)
+            continue; // fnuy
+        struct driver_file* file = item;
+        if (!file->id)
+            continue;
+        if (!file->id->main_thread)
+            continue;
+        driver_file_free(file);
+    }
     hashmap_clear(drivers, true);
     hashmap_free(drivers);
     return status;
 }
+
+#if OBOS_ENABLE_UHDA
+#include <uhda/uhda.h>
+
+UhdaController** Drv_uHDAControllers;
+size_t Drv_uHDAControllerCount;
+
+void OBOS_InitializeHDAAudioDev();
+
+obos_status Drv_PnpLoad_uHDA()
+{
+    pci_hid target_class = {};
+    target_class.indiv.classCode = UHDA_MATCHING_CLASS;
+    target_class.indiv.subClass = UHDA_MATCHING_SUBCLASS;
+
+    for (uint8_t bus = 0; bus < Drv_PCIBusCount; bus++)
+    {
+        for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &Drv_PCIBuses[bus].devices); dev; )
+        {
+            if (uhda_class_matches(dev->hid.indiv.classCode, dev->hid.indiv.subClass) || 
+                uhda_device_matches(dev->hid.indiv.vendorId, dev->hid.indiv.deviceId))
+            {
+                OBOS_Log("%02x:%02x:%02x: uHDA device match!\n",
+                    dev->location.bus, dev->location.slot, dev->location.function
+                );
+                UhdaController* controller = nullptr;
+                if (uhda_init(dev, &controller) == UHDA_STATUS_SUCCESS)
+                {
+                    Drv_uHDAControllers = Reallocate(OBOS_KernelAllocator,
+                                              Drv_uHDAControllers, 
+                                              (Drv_uHDAControllerCount+1)*sizeof(*Drv_uHDAControllers), 
+                                              Drv_uHDAControllerCount*sizeof(*Drv_uHDAControllers),
+                                              nullptr);
+                    Drv_uHDAControllers[Drv_uHDAControllerCount++] = controller;
+                }
+            }
+
+            dev = LIST_GET_NEXT(pci_device_list, &Drv_PCIBuses[bus].devices, dev);
+        }
+    }
+
+    OBOS_InitializeHDAAudioDev();
+
+    return OBOS_STATUS_SUCCESS;
+}
+#else
+obos_status Drv_PnpLoad_uHDA()
+{
+    return OBO_SSTATUS_UNIMPLEMENTED;
+}
+#endif

@@ -17,7 +17,7 @@
 
 #include <locks/mutex.h>
 
-enum 
+enum
 {
     // This vnode has no type.
     VNODE_TYPE_NON,
@@ -43,6 +43,9 @@ enum
     VFLAGS_MOUNTPOINT = 1,
     VFLAGS_IS_TTY = 2,
     VFLAGS_PARTITION = 4,
+    VFLAGS_FB = 8,
+    // A file that only provides events, and cannot be read/written.
+    VFLAGS_EVENT_DEV = 16, 
 };
 
 // basically a struct specinfo, but renamed.
@@ -65,11 +68,12 @@ typedef struct vnode
     struct mount* mount_point;
     union {
         struct mount* mounted;
-        vdev*         device;
+                vdev* device;
+          const char* linked;
+               event* evnt;
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;
-    atomic_size_t nPendingAsyncIO;
     file_perm perm;
     size_t filesize; // filesize.
     uid owner_uid; // the owner's UID.
@@ -78,6 +82,7 @@ typedef struct vnode
     fd_list opened;
     struct partition* partitions;
     size_t nPartitions;
+    uint32_t inode;
 
     size_t blkSize;
 } vnode;

@@ -20,7 +20,7 @@ list (APPEND oboskrnl_sources
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
-	"net/ip.c" "net/arp.c"
+	"net/ip.c" "net/arp.c" "power/event.c"
 )
 
 add_executable(oboskrnl)
@@ -84,3 +84,7 @@ set_source_files_properties(
     PROPERTIES
     OBJECT_DEPENDS "${OUTPUT_DIR}/initrd"
 )
+
+if (OBOS_ENABLE_UHDA)
+	target_link_libraries(oboskrnl PRIVATE uhda)
+endif()

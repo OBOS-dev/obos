@@ -8,13 +8,26 @@
 #include <klog.h>
 #include <error.h>
 #include <memmanip.h>
+#include <cmdline.h>
 
 #include <stdarg.h>
 
 #include <driver_interface/header.h>
 
+#include <arch/x86_64/idt.h>
+
 #include <arch/x86_64/gdbstub/connection.h>
 #include <arch/x86_64/gdbstub/alloc.h>
+#include <arch/x86_64/gdbstub/connection.h>
+#include <arch/x86_64/gdbstub/packet_dispatcher.h>
+#include <arch/x86_64/gdbstub/debug.h>
+#include <arch/x86_64/gdbstub/general_query.h>
+#include <arch/x86_64/gdbstub/stop_reply.h>
+#include <arch/x86_64/gdbstub/bp.h>
+
+#include <utils/string.h>
+
+#include <allocators/base.h>
 
 enum
 {
@@ -94,6 +107,7 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!conn->pipe_interface)
         return OBOS_STATUS_UNINITIALIZED;
+    // printf(">%s\n", packet);
     uint8_t checksum = mod256(packet, strlen(packet));
     const char* format = "$%s#%02x";
     size_t szBuf = snprintf(nullptr, 0, format, packet, checksum);
@@ -157,9 +171,7 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
     retry:
     (void)0;
     char* rawPacket = nullptr;
-    size_t szRawPacket = 0;
-    size_t capRawPacket = 0;
-    const size_t step = 8;
+    size_t rawPacketLen = 0;
     char ch = 0;
     uint8_t calculatedChecksum = 0;
     uint8_t remoteChecksum = 0;
@@ -176,11 +188,6 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
     bool isEscaped = false;
     while((ch = recv_char(conn)) != '#')
     {
-        if (szRawPacket >= capRawPacket)
-        {
-            capRawPacket += step;
-            rawPacket = Kdbg_Realloc(rawPacket, capRawPacket);
-        }
         calculatedChecksum += ch;
         if (ch == '}' && !isEscaped)
             isEscaped = true;
@@ -191,9 +198,15 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
                 isEscaped = false;
                 ch ^= 0x20; // unescape the character.
             }
-            rawPacket[szRawPacket++] = ch;
+            size_t oldSize = rawPacketLen;
+            rawPacketLen++;
+            rawPacket = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen, oldSize, nullptr);
+            rawPacket[rawPacketLen - 1] = ch;
         }
     }
+    size_t oldSize = rawPacketLen;
+    rawPacket = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen+1, oldSize, nullptr);
+    rawPacket[rawPacketLen] = 0;
     checksum[0] = recv_char(conn);
     checksum[1] = recv_char(conn);
     remoteChecksum = KdbgH_hex2bin(checksum, 2);
@@ -204,19 +217,11 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
     conn->pipe_interface->write_sync(conn->pipe, &ackCh, 1, 0, nullptr);
     if (!ack)
     {
-        Kdbg_Free(rawPacket);
-        capRawPacket = 0;
-        szRawPacket = 0;
+        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen);
         goto retry;
     }
-    if (szRawPacket >= capRawPacket)
-    {
-        capRawPacket += step;
-        rawPacket = Kdbg_Realloc(rawPacket, capRawPacket);
-    }
-    rawPacket[szRawPacket] = 0;
     *packet = rawPacket;
-    *szPacket_ = szRawPacket;
+    *szPacket_ = rawPacketLen;
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Kdbg_ConnectionSetAck(gdb_connection* conn, bool ack)
@@ -251,4 +256,36 @@ char* KdbgH_FormatResponseSized(size_t bufSize, const char* format, ...)
     vsnprintf(buf, bufSize+1, format, list);
     va_end(list);
     return buf;
+}
+
+static bool initialized_handlers;
+obos_status Kdbg_InitializeHandlers()
+{
+    if (initialized_handlers)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+    Kdbg_AddPacketHandler("qC", Kdbg_GDB_qC, nullptr);
+    Kdbg_AddPacketHandler("qfThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+    Kdbg_AddPacketHandler("qsThreadInfo", Kdbg_GDB_q_ThreadInfo, nullptr);
+    Kdbg_AddPacketHandler("qAttached", Kdbg_GDB_qAttached, nullptr);
+    Kdbg_AddPacketHandler("qSupported", Kdbg_GDB_qSupported, nullptr);
+    Kdbg_AddPacketHandler("?", Kdbg_GDB_query_halt, nullptr);
+    Kdbg_AddPacketHandler("g", Kdbg_GDB_g, nullptr);
+    Kdbg_AddPacketHandler("G", Kdbg_GDB_G, nullptr);
+    Kdbg_AddPacketHandler("k", Kdbg_GDB_k, nullptr);
+    Kdbg_AddPacketHandler("vKill", Kdbg_GDB_k, nullptr);
+    Kdbg_AddPacketHandler("H", Kdbg_GDB_H, nullptr);
+    Kdbg_AddPacketHandler("T", Kdbg_GDB_T, nullptr);
+    Kdbg_AddPacketHandler("qRcmd", Kdbg_GDB_qRcmd, nullptr);
+    Kdbg_AddPacketHandler("m", Kdbg_GDB_m, nullptr);
+    Kdbg_AddPacketHandler("M", Kdbg_GDB_M, nullptr);
+    Kdbg_AddPacketHandler("c", Kdbg_GDB_c, nullptr);
+    Kdbg_AddPacketHandler("C", Kdbg_GDB_C, nullptr);
+    Kdbg_AddPacketHandler("s", Kdbg_GDB_s, nullptr);
+    Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
+    Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
+    Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
+    Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
+    Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
+    initialized_handlers = true;
+    return OBOS_STATUS_SUCCESS;
 }

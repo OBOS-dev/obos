@@ -33,14 +33,14 @@ mutex futexes_lock = MUTEX_INITIALIZE();
 
 static futex_object* find_futex(uint32_t* obj, bool create)
 {
-    futex_object key = {.obj=obj};
+    futex_object key = {.obj=obj,.ctx=CoreS_GetCPULocalPtr()->currentContext};
     Core_MutexAcquire(&futexes_lock);
     futex_object* ret = RB_FIND(futex_tree, &futexes, &key);
     if (!ret && create)
     {
         ret = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(futex_object), nullptr);
         ret->obj = obj;
-        ret->wait_hdr = WAITABLE_HEADER_INITIALIZE(false, false);
+        ret->wait_hdr = WAITABLE_HEADER_INITIALIZE(true, true);
         ret->ctx = CoreS_GetCPULocalPtr()->currentContext;
         RB_INSERT(futex_tree, &futexes, ret);
     }
@@ -79,7 +79,7 @@ obos_status Sys_FutexWait(uint32_t *futex, uint32_t cmp_with, uint64_t timeout)
     phys = info.phys;
     _Atomic(uint32_t)* val = MmS_MapVirtFromPhys(phys+((uintptr_t)futex % (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE)));
 
-    uint32_t expected = 0;
+    uint32_t expected = cmp_with;
     bool cmp_val =
         atomic_compare_exchange_strong(
             val,
@@ -105,7 +105,7 @@ obos_status Sys_FutexWake(uint32_t *futex, uint32_t nWaiters)
     if ((uintptr_t)futex & 0b11)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    futex_object* obj = find_futex(futex, false);
+    futex_object* obj = find_futex(futex, true);
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
 

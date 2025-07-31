@@ -80,27 +80,27 @@ typedef struct working_set
 typedef struct memstat
 {
     // The size of all allocated (committed) memory.
-    size_t committedMemory;
+    int64_t committedMemory;
     // The size of all memory within this context which has been paged out.
-    size_t paged;
+    int64_t paged;
     // The size of all pageable memory (memory that can be paged out).
-    size_t pageable;
+    int64_t pageable;
     // The size of all non-pageable memory (memory that cannot be paged out).
-    size_t nonPaged;
+    int64_t nonPaged;
     // The size of all uncommitted (reserved) memory. (memory allocated with VMA_FLAGS_RESERVE that has not yet been committed).
-    size_t reserved;
+    int64_t reserved;
     // The amount of total page faults on this context.
-    size_t pageFaultCount;
+    int64_t pageFaultCount;
     // The amount of soft page faults on this context.
-    size_t softPageFaultCount;
+    int64_t softPageFaultCount;
     // The amount of hard page faults on this context.
-    size_t hardPageFaultCount;
+    int64_t hardPageFaultCount;
     // The amount of page faults on this context since the last sampling interval.
-    size_t pageFaultCountSinceSample;
+    int64_t pageFaultCountSinceSample;
     // The amount of soft page faults on this context since the last sampling interval.
-    size_t softPageFaultCountSinceSample;
+    int64_t softPageFaultCountSinceSample;
     // The amount of hard page faults on this context since the last sampling interval.
-    size_t hardPageFaultCountSinceSample;
+    int64_t hardPageFaultCountSinceSample;
 } memstat;
 typedef struct context
 {

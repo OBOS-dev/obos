@@ -33,7 +33,7 @@ static uint8_t read_cmos8(uint8_t offset)
     if (cmos_flags & 0x4)
         return val;
     uint8_t ret = val & 0xf;
-    ret |= ((val >> 4) * 10);
+    ret += ((val >> 4) * 10);
     return ret;
 }
 
@@ -68,7 +68,7 @@ obos_status Arch_CMOSGetTimeOfDay(cmos_timeofday* time)
     time->hours = read_cmos8(CMOS_REGISTER_HOURS);
     time->day_of_month = read_cmos8(CMOS_REGISTER_DAY_OF_MONTH);
     time->month = read_cmos8(CMOS_REGISTER_MONTH);
-    time->year = read_cmos8(CMOS_REGISTER_YEAR) + 4;
+    time->year = read_cmos8(CMOS_REGISTER_YEAR);
     uint16_t century = CMOS_REGISTER_CENTURY ? read_cmos8(CMOS_REGISTER_CENTURY) : 20;
     century *= 100;
     time->year += century;

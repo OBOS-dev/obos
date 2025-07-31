@@ -18,6 +18,10 @@
 #include <font.h>
 #include <partition.h>
 
+#define FLANTERM_IN_FLANTERM
+#include <flanterm.h>
+#include <flanterm_backends/fb.h>
+
 #include <UltraProtocol/ultra_protocol.h>
 
 #include <arch/x86_64/idt.h>
@@ -186,7 +190,7 @@ static const char* color_to_ansi[] = {
     "\x1b[38;5;52m",
     "\x1b[38;5;7m",
     "\x1b[38;5;8m",
-    "\x1b[38;5;75m",
+    "\x1b[38;5;12m",
     "\x1b[38;5;10m",
     "\x1b[38;5;14m",
     "\x1b[38;5;9m",
@@ -250,6 +254,46 @@ static void init_serial_log_backend()
 const uintptr_t Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
 const uintptr_t Arch_cpu_local_currentIrql_offset = offsetof(cpu_local, currentIrql);
 
+struct flanterm_context* OBOS_FlantermContext = nullptr;
+static void flanterm_cb_set_color(color c, void*)
+{
+    flanterm_write(OBOS_FlantermContext, color_to_ansi[c], strlen(color_to_ansi[c]));
+}
+static void flanterm_cb_reset_color(void*)
+{
+    flanterm_write(OBOS_FlantermContext, "\x1b[0m", 4);
+}
+static void flanterm_cb_out(const char* str, size_t sz, void*)
+{
+    flanterm_write(OBOS_FlantermContext, str, sz);
+}
+static void init_flanterm_backend()
+{
+    log_backend backend = {};
+    backend.reset_color = flanterm_cb_reset_color;
+    backend.set_color = flanterm_cb_set_color;
+    backend.write = flanterm_cb_out;
+    OBOS_AddLogSource(&backend);
+}
+
+static struct ultra_module_info_attribute* Arch_FlantermBumpAllocator;
+static void *flanterm_malloc(size_t sz)
+{
+    if (!Arch_FlantermBumpAllocator)
+        return nullptr;
+    static size_t bump_off = 0;
+    if ((bump_off + sz) > Arch_FlantermBumpAllocator->size)
+        return nullptr;
+    void* ret = (void*)(Arch_FlantermBumpAllocator->address + bump_off);
+    bump_off += sz;
+    return ret;
+}
+static void flanterm_free(void* blk, size_t sz)
+{
+    OBOS_UNUSED(blk && sz);
+    return;
+}
+
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
 {
     bsp_cpu.id = 0;
@@ -297,24 +341,89 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
     else
     {
-        OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
-        OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
-        OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
-        OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
-        OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
-        OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
-        for (size_t y = 0; y < Arch_Framebuffer->height; y++)
-            for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-                OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
-        OBOS_TextRendererState.column = 0;
-        OBOS_TextRendererState.row = 0;
-        OBOS_TextRendererState.font = font_bin;
-        OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
-        if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
-            return;
+        // OBOS_TextRendererState.fg_color = 0xffffffff;
+        // OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
+        // OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
+        // OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
+        // OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
+        // OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
+        // OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+        // for (size_t y = 0; y < Arch_Framebuffer->height; y++)
+        //     for (size_t x = 0; x < Arch_Framebuffer->width; x++)
+        //         OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
+        // OBOS_TextRendererState.column = 0;
+        // OBOS_TextRendererState.row = 0;
+        // OBOS_TextRendererState.font = font_bin;
+        // OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
+        // if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
+        //     return;
+        uint8_t red_mask_size = 8, red_mask_shift = 0;
+        uint8_t green_mask_size = 8, green_mask_shift = 0;
+        uint8_t blue_mask_size = 8, blue_mask_shift = 0;
+        uint32_t bg = OBOS_TEXT_BACKGROUND;
+        switch (Arch_Framebuffer->format) {
+            case ULTRA_FB_FORMAT_BGR888:
+                red_mask_shift = 16;
+                green_mask_shift = 8;
+                blue_mask_shift = 0;
+                bg = __builtin_bswap32(bg) >> 8;
+                break;
+            case ULTRA_FB_FORMAT_RGB888:
+                red_mask_shift = 0;
+                green_mask_shift = 8;
+                blue_mask_shift = 16;
+                break;
+            case ULTRA_FB_FORMAT_RGBX8888:
+                red_mask_shift = 8;
+                green_mask_shift = 16;
+                blue_mask_shift = 24;
+                break;
+            case ULTRA_FB_FORMAT_XRGB8888:
+                red_mask_shift = 0;
+                green_mask_shift = 8;
+                blue_mask_shift = 16;
+                bg = bg >> 8;
+                break;
+
+        }
+        static uint32_t ansi_colors[8] = {
+            __builtin_bswap32(0x000000) >> 8,
+            __builtin_bswap32(0xbb0000) >> 8,
+            __builtin_bswap32(0x00bb00) >> 8,
+            __builtin_bswap32(0xbbbb00) >> 8,
+            __builtin_bswap32(0x0000bb) >> 8,
+            __builtin_bswap32(0xbb00bb) >> 8,
+            __builtin_bswap32(0x00bbbb) >> 8,
+            __builtin_bswap32(0xbbbbbb) >> 8,
+        };
+        static uint32_t ansi_bright_colors[8] = {
+            __builtin_bswap32(0x555555) >> 8,
+            __builtin_bswap32(0xff5555) >> 8,
+            __builtin_bswap32(0x55ff55) >> 8,
+            __builtin_bswap32(0xffff55) >> 8,
+            __builtin_bswap32(0x5555aa) >> 8,
+            __builtin_bswap32(0xff55ff) >> 8,
+            __builtin_bswap32(0x55ffff) >> 8,
+            __builtin_bswap32(0xffffff) >> 8,
+
+        };
+        OBOS_FlantermContext = flanterm_fb_init(
+            flanterm_malloc, flanterm_free, 
+            Arch_MapToHHDM(Arch_Framebuffer->physical_address), Arch_Framebuffer->width, Arch_Framebuffer->height, Arch_Framebuffer->pitch, 
+            red_mask_size, red_mask_shift, 
+            green_mask_size, green_mask_shift, 
+            blue_mask_size, blue_mask_shift, 
+            nullptr, ansi_colors, 
+            ansi_bright_colors, nullptr, 
+            nullptr, nullptr,
+            nullptr, 
+            (void*)font_bin, 8, 16, 0, 
+            0,0,
+            0);
+        // while(1);
+        init_flanterm_backend();
     }
 
-    OBOS_TextRendererState.fg_color = 0xffffffff;
     if (Arch_LdrPlatformInfo->page_table_depth != 4)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
 
@@ -436,6 +545,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
             struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
             if (strcmp(module->name, "__KERNEL__"))
                 Arch_KernelBinary = module;
+            else if (strcmp(module->name, "FLANTERM_BUFF"))
+                Arch_FlantermBumpAllocator = module;
             break;
         }
         case ULTRA_ATTRIBUTE_INVALID:
@@ -455,6 +566,8 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
     if (!Arch_KernelBinary)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
+    if (!Arch_FlantermBumpAllocator)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the FLANTERM_BUFF module in boot context!\nMake sure to pass a module named FLANTERM_BUFF with a size big enough for width*pitch?\n");
 }
 
 extern obos_status Arch_InitializeKernelPageTable();
@@ -583,26 +696,13 @@ void Arch_KernelMainBootstrap()
                 MmH_DerefPage(pg);
             }
         }
-        OBOS_TextRendererState.fb.backbuffer_base = Mm_VirtualMemoryAlloc(
-            &Mm_KernelContext, 
-            (void*)(0xffffa00000000000+size), size, 
-            0, VMA_FLAGS_NON_PAGED | VMA_FLAGS_HINT | VMA_FLAGS_HUGE_PAGE | VMA_FLAGS_GUARD_PAGE, 
-            nullptr, nullptr);
-        memcpy(OBOS_TextRendererState.fb.backbuffer_base, OBOS_TextRendererState.fb.base, OBOS_TextRendererState.fb.height*OBOS_TextRendererState.fb.pitch);
-        /*for (size_t y = 0; y < Arch_Framebuffer->height; y++)
-            for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-                // OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.backbuffer_base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);*/
+        ((struct flanterm_fb_context*)OBOS_FlantermContext)->framebuffer = base_;
         OBOS_TextRendererState.fb.base = base_;
-        OBOS_TextRendererState.fb.modified_line_bitmap = ZeroAllocate(
-            OBOS_KernelAllocator,
-            get_line_bitmap_size(OBOS_TextRendererState.fb.height),
-            sizeof(uint32_t),
-            nullptr
-        );
-        Mm_KernelContext.stat.committedMemory -= size*2;
-        Mm_KernelContext.stat.nonPaged -= size*2;
-        Mm_GlobalMemoryUsage.committedMemory -= size*2;
-        Mm_GlobalMemoryUsage.nonPaged -= size*2;
+        OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
+        OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
+        OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
+        OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
+        OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
     }
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
     Core_InitializeTimerInterface();
@@ -717,21 +817,26 @@ void Arch_KernelMainBootstrap()
                 OBOSS_SpinlockHint();
         }
         OBOS_Log("Loaded InitRD driver.\n");
+        OBOS_Debug("%s: Initializing VFS.\n", __func__);
+        Vfs_Initialize();
     }
     else 
     {
+        OBOS_Debug("%s: Initializing VFS.\n", __func__);
+        Vfs_Initialize();
         OBOS_Debug("No InitRD driver!\n");
         OBOS_Debug("Scanning command line...\n");
         char* modules_to_load = OBOS_GetOPTS("load-modules");
         if (!modules_to_load)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initrd, and no drivers passed via the command line. Further boot is impossible.\n");
         size_t len = strlen(modules_to_load);
+        size_t left = len;
         char* iter = modules_to_load;
         while(iter < (modules_to_load + len))
         {
             status = OBOS_STATUS_SUCCESS;
-            size_t namelen = strchr(modules_to_load, ',');
-            if (namelen != len)
+            size_t namelen = strchr(iter, ',');
+            if (namelen != left)
                 namelen--;
             OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
             if (uacpi_strncmp(iter, "__KERNEL__", namelen) == 0)
@@ -773,13 +878,16 @@ void Arch_KernelMainBootstrap()
                 iter += namelen;
                 continue;
             }
+            if (status != OBOS_STATUS_NO_ENTRY_POINT)
+            {
+                while (drv->main_thread)
+                    OBOSS_SpinlockHint();
+            }
             if (namelen != len)
                 namelen++;
             iter += namelen;
         }
     }
-    OBOS_Debug("%s: Initializing VFS.\n", __func__);
-    Vfs_Initialize();
     // fd file1 = {}, file2 = {};
     // Vfs_FdOpen(&file1, "/test.txt", 0);
     // Vfs_FdOpen(&file2, "/test2.txt", 0);
@@ -876,6 +984,9 @@ void Arch_KernelMainBootstrap()
             left -= namelen;
         }
     } while(0);
+    if (Drv_PnpLoad_uHDA() == OBOS_STATUS_SUCCESS)
+        OBOS_Log("Initialized HDA devices via %s\n", OBOS_ENABLE_UHDA ? "uHDA" : nullptr /* should be impossible */);
+
     OBOS_Log("%s: Probing partitions.\n", __func__);
     OBOS_PartProbeAllDrives(true);
     // uint32_t ecx = 0;
@@ -890,7 +1001,7 @@ void Arch_KernelMainBootstrap()
     if (ps2k1)
     {
         tty_interface i = {};
-        VfsH_MakeScreenTTY(&i, ps2k1->vnode, &OBOS_TextRendererState);
+        VfsH_MakeScreenTTY(&i, ps2k1->vnode, nullptr, OBOS_FlantermContext);
         dirent* tty = nullptr;
         Vfs_RegisterTTY(&i, &tty, false);
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;

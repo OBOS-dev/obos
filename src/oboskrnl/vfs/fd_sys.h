@@ -30,6 +30,9 @@ obos_status      Sys_MkdirAt(handle dirent, const char* name, uint32_t mode);
 obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten);
 obos_status  Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead);
 
+obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nWritten, size_t offset);
+obos_status  Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, size_t offset);
+
 // obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
 // obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
 handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* status);
@@ -84,6 +87,9 @@ struct stat {
 obos_status Sys_Stat(int fsfdt, handle fd, const char* path, int flags, struct stat* target);
 obos_status Sys_StatFSInfo(handle dent, drv_fs_info* info);
 
+obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length);
+obos_status Sys_UnlinkAt(handle parent, const char* path, int flags);
+
 handle Sys_OpenDir(const char* path, obos_status *status);
 obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRead);
 
@@ -97,6 +103,9 @@ obos_status Sys_Chdir(const char *path);
 obos_status Sys_ChdirEnt(handle ent);
 obos_status Sys_GetCWD(char* path, size_t len);
 
+obos_status Sys_SymLink(const char* target, const char* link);
+obos_status Sys_SymLinkAt(const char* target, handle dirfd, const char* link);
+
 struct pselect_extra_args
 {
     const uintptr_t* timeout;
@@ -107,3 +116,4 @@ struct pselect_extra_args
 obos_status Sys_PSelect(size_t nFds, uint8_t* read_set, uint8_t *write_set, uint8_t *except_set, const struct pselect_extra_args* extra);
 
 obos_status Sys_CreatePipe(handle* ufds, size_t pipesize);
+obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t pipesize);

@@ -31,7 +31,7 @@ obos_status query_path(dev_desc desc, const char** path)
     *path = OBOS_GetStringCPtr(&cache_entry->path);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status path_search(dev_desc* found, void* vn_, const char* what)
+obos_status path_search(dev_desc* found, void* vn_, const char* what, dev_desc parent)
 {
     if (!found || !vn_ || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -43,14 +43,14 @@ obos_status path_search(dev_desc* found, void* vn_, const char* what)
 
         cache = LIST_GET_NEXT(fat_cache_list, &FATVolumes, cache);
     }
-    if (!cache)
+    if (!cache && parent != UINTPTR_MAX)
         return OBOS_STATUS_INVALID_OPERATION; // not a fat volume we have probed
-    *found = (dev_desc)DirentLookupFrom(what, cache->root);
+    *found = (dev_desc)DirentLookupFrom(what, parent != UINTPTR_MAX ? (fat_dirent_cache*)parent : cache->root);
     if (*found)
         return OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_NOT_FOUND;
 }
-obos_status get_linked_desc(dev_desc desc, dev_desc* found)
+obos_status get_linked_path(dev_desc desc, const char** found)
 {
     OBOS_UNUSED(desc);
     OBOS_UNUSED(found);
@@ -101,7 +101,7 @@ obos_status get_file_type(dev_desc desc, file_type *type)
         *type = FILE_TYPE_REGULAR_FILE;
     return OBOS_STATUS_SUCCESS;
 }
-obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata)
+obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
     if (!dir || !vn || !cb)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -125,7 +125,7 @@ obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc
             continue;
         }
         OBOS_ASSERT(cache_entry->data.attribs != LFN);
-        if (cb((dev_desc)cache_entry, 1, cache_entry->data.filesize, userdata) == ITERATE_DECISION_STOP)
+        if (cb((dev_desc)cache_entry, 1, cache_entry->data.filesize, userdata, OBOS_GetStringCPtr(&cache_entry->name)) == ITERATE_DECISION_STOP)
             break;
         cache_entry = cache_entry->fdc_next_child;
     }

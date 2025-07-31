@@ -41,6 +41,12 @@ obos_status Core_MutexAcquire(mutex* mut)
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+    if (!mut->locked && mut->who)
+    {
+        mut->locked = 0;
+        mut->who = nullptr;
+        atomic_flag_clear(&mut->lock);
+    }
     OBOS_ASSERT(mut->who != Core_GetCurrentThread());
     // Spin for a bit.
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);

@@ -422,19 +422,19 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, u
 	uintptr_t pml2Entry = Arch_GetPML2Entry(pt, addr);
 	uintptr_t pml1Entry = Arch_GetPML1Entry(pt, addr);
 	page.prot.present = pml2Entry & BIT_TYPE(0, UL);
-	if (!page.prot.present)
-	{
-		if (ppage)
-		{
-			ppage->prot = page.prot;
-			ppage->virt = addr & ~0xfff;
-			ppage->phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
-		}
-		if (phys)
-			*phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
-		return OBOS_STATUS_SUCCESS;
-	}
 	page.prot.huge_page = pml2Entry & BIT_TYPE(7, UL) /* Huge page */;
+	// if (!page.prot.present)
+	// {
+	// 	if (ppage)
+	// 	{
+	// 		ppage->prot = page.prot;
+	// 		ppage->virt = addr & ~0xfff;
+	// 		ppage->phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
+	// 	}
+	// 	if (phys)
+	// 		*phys = Arch_MaskPhysicalAddressFromEntry(pml2Entry);
+	// 	return OBOS_STATUS_SUCCESS;
+	// }
 	uintptr_t entry = 0;
 	if (page.prot.huge_page)
 	{

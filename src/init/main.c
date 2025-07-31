@@ -6,25 +6,52 @@
 
 #include <unistd.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <sys/wait.h>
+#include <sys/select.h>
 
 #include <obos/syscall.h>
+#include <obos/error.h>
 
 int print_motd();
 
+static int parse_file_status(obos_status status)
+{
+    switch (status)
+    {
+        case OBOS_STATUS_SUCCESS: return 0;
+        case OBOS_STATUS_NOT_FOUND: return ENOENT;
+        case OBOS_STATUS_INVALID_ARGUMENT: return EINVAL;
+        case OBOS_STATUS_PAGE_FAULT: return EFAULT;
+        case OBOS_STATUS_NOT_A_FILE: return EISDIR;
+        case OBOS_STATUS_UNINITIALIZED: return EBADF;
+        case OBOS_STATUS_EOF: return EIO;
+        case OBOS_STATUS_ACCESS_DENIED: return EACCES;
+        case OBOS_STATUS_NO_SYSCALL: return ENOSYS;
+        case OBOS_STATUS_NOT_ENOUGH_MEMORY: return ENOSPC;
+        case OBOS_STATUS_PIPE_CLOSED: return EPIPE;
+        default: abort();
+    }
+}
+
 const char* sigchld_action = "shutdown";
+
+bool is_power_button_handler = false;
 
 // NOTE: This might need to be changed if init starts "adopting" processes when their parents die (as of this commit, the kernel adopts them).
 void sigchld_handler(int num)
 {
     (void)(num);
-    printf("init: Child process died. Performing sigchld action \"%s\"\n", sigchld_action);
+    if (!is_power_button_handler)
+        printf("init: Child process died. Performing sigchld action \"%s\"\n", sigchld_action);
     sync();
     if (strcasecmp(sigchld_action, "shutdown") == 0)
         syscall0(Sys_Shutdown);
@@ -36,7 +63,7 @@ void sigchld_handler(int num)
         return;
     else
         abort(); // bug
-    
+
     exit(0);
 }
 
@@ -44,12 +71,10 @@ int main(int argc, char** argv)
 {
     if (getpid() != 1)
         return -1;
-    int ret = print_motd();
-    if (ret != 0)
-        return ret;
+    const char* swap_file = NULL;
     char* handoff_process = NULL;
     int opt = 0;
-    while ((opt = getopt(argc, argv, "c:h")) != -1)
+    while ((opt = getopt(argc, argv, "+s:c:h")) != -1)
     {
         switch (opt)
         {
@@ -72,9 +97,14 @@ int main(int argc, char** argv)
                 }
                 break;
             }
+            case 's':
+            {
+                swap_file = optarg;
+                break;
+            }
             case 'h':
             default:
-                fprintf(stderr, "Usage: %s [-c sigchld_action] handoff_path", argv[0]);
+                fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action -s swap_dev] handoff_path", argv[0]);
                 return opt != 'h';
         }
     }
@@ -86,20 +116,52 @@ int main(int argc, char** argv)
     // if (strcasecmp(sigchld_action, "ignore") != 0)
     if (0)
         signal(SIGCHLD, sigchld_handler);
+    if (swap_file)
+    {
+        printf("init: Switching swap to %s\n", swap_file);
+        obos_status st = (obos_status)syscall1(Sys_SwitchSwap, swap_file);
+        if (obos_is_error(st))
+        {
+            errno = parse_file_status(st);
+            perror("Could not switch swap");
+        }
+    }
     handoff_process = argv[optind];
+
+    int ret = print_motd();
+    if (ret != 0)
+        return ret;
+
     // Start a shell, I guess.
     pid_t pid = fork();
     if (pid == 0)
     {
         while (tcgetpgrp(0) != getpgid(0))
             syscall0(Sys_Yield);
-        execlp(handoff_process, "");
+        execvp(handoff_process, &argv[optind]);
         perror("execlp");
         exit(EXIT_FAILURE);
     }
     else 
     {
         tcsetpgrp(0, getpgid(pid));
+    }
+    if (fork() == 0)
+    {
+        // ACPI Event Handler.
+        is_power_button_handler = true;
+        int power_button = open("/dev/power_button", O_RDONLY);
+        if (power_button == -1)
+        {
+            perror("open(\"/dev/power_button\")");
+            return errno;
+        }
+        fd_set set = {};
+        FD_ZERO(&set);
+        FD_SET(power_button, &set);
+        select(power_button+1, &set, NULL, NULL, NULL);
+        syscall1(Sys_LibCLog, "init: Received power button event\n");
+        sigchld_handler(SIGCHLD);
     }
     int status;
     top:

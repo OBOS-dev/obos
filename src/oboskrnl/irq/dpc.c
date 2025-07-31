@@ -34,19 +34,15 @@ obos_status CoreH_InitializeDPC(dpc* dpc, void(*handler)(struct dpc* obj, void* 
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (dpc->cpu)
         return OBOS_STATUS_DPC_ALREADY_ENQUEUED;
-    cpu_local* target = nullptr;
-#if !OBOS_UP
-    // if (LIST_IS_NODE_UNLINKED(dpc_queue, &dpc->cpu->dpcs, dpc))
-    affinity &= Core_DefaultThreadAffinity;
-    if (!affinity)
-        affinity = Core_DefaultThreadAffinity;
+        // if (LIST_IS_NODE_UNLINKED(dpc_queue, &dpc->cpu->dpcs, dpc))
+    const thread_affinity affinity_real = !(affinity & Core_DefaultThreadAffinity) ? (Core_DefaultThreadAffinity) : (affinity & Core_DefaultThreadAffinity);
     dpc->handler = handler;
     for (size_t i = 0; i < Core_CpuCount; i++)
-        if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes))
-            target = (affinity & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)) ? &Core_CpuInfo[i] : nullptr;
-#else
-    target = &Core_CpuInfo[0];
-#endif
+    {
+        if ((!target || Core_CpuInfo[i].dpcs.nNodes < target->dpcs.nNodes) && 
+             (affinity_real & CoreH_CPUIdToAffinity(Core_CpuInfo[i].id)))
+            target = &Core_CpuInfo[i];
+    }
     // If this fails, something stupid has happened.
     OBOS_ENSURE(target);
     dpc->cpu = target;

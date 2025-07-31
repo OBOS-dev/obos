@@ -426,7 +426,9 @@ void uacpi_kernel_free_spinlock(uacpi_handle hnd)
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle hnd)
 {
     spinlock* lock = (spinlock*)hnd;
+    // OBOS_Debug("spinlock %p acquire (attempt)\n", hnd);
     irql r = Core_SpinlockAcquire(lock);
+    // OBOS_Debug("spinlock %p acquire (acquired)\n", hnd);
     return r;
 }
 
@@ -434,6 +436,7 @@ void uacpi_kernel_unlock_spinlock(uacpi_handle hnd, uacpi_cpu_flags oldIrql)
 {
     spinlock* lock = (spinlock*)hnd;
     Core_SpinlockRelease(lock, oldIrql);
+    // OBOS_Debug("spinlock %p release\n", hnd);
 }
 
 uacpi_handle uacpi_kernel_create_event(void)
@@ -449,27 +452,33 @@ void uacpi_kernel_free_event(uacpi_handle e)
 uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle _e, uacpi_u16 t)
 {
     volatile size_t* e = (size_t*)_e;
+    // OBOS_Debug("wait for event %p start (t: 0x%04x)\n", e, t);
     if (t == 0xffff)
     {
         while (*e > 0);
+        *e -= 1;
+        // OBOS_Debug("wait for event %p end (t: 0x%04x)\n", e, t);
         return UACPI_TRUE;
     }
     t *= 4;
     uint64_t wakeTime = CoreS_GetTimerTick() + t;
     while (*e > 0 && CoreS_GetTimerTick() >= wakeTime);
-    bool ret = *e > 0;
+    bool ret = *e <= 0;
     *e -= ret;
+    // OBOS_Debug("wait for event %p end (t: 0x%04x)\n", e, t);
     return ret;
 }
 
 void uacpi_kernel_signal_event(uacpi_handle _e)
 {
     volatile size_t* e = (size_t*)_e;
+    // OBOS_Debug("signaled event %p\n", e);
     __atomic_fetch_add(e, 1, __ATOMIC_SEQ_CST);
 }
 void uacpi_kernel_reset_event(uacpi_handle _e)
 {
     volatile size_t* e = (size_t*)_e;
+    // OBOS_Debug("reset event %p\n", e);
     __atomic_store_n(e, 0, __ATOMIC_SEQ_CST);
 }
 
@@ -505,10 +514,12 @@ uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle hnd, uacpi_u16 t)
 {
     OBOS_UNUSED(t);
     mutex *mut = hnd;
+    // OBOS_Debug("mutex %p acquire (attempt) (t: 0x%04x)\n", hnd, t);
     if (t)
         Core_MutexAcquire(mut);
     else
         Core_MutexTryAcquire(mut);
+    // OBOS_Debug("mutex %p acquire (acquired) (t: 0x%04x)\n", hnd, t);
     return UACPI_STATUS_OK;
 }
 
@@ -516,6 +527,7 @@ void uacpi_kernel_release_mutex(uacpi_handle hnd)
 {
     mutex *mut = (mutex*)hnd;
     Core_MutexRelease(mut);
+    // OBOS_Debug("mutex %p release\n", hnd);
 }
 
 uacpi_thread_id uacpi_kernel_get_thread_id()

@@ -175,7 +175,7 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
                     status = tty->interface.write(tty, &ch, 1);
                     break;
                 }
-                status = tty->interface.write(tty, str, 1);
+                status = tty->interface.write(tty, &str[i], 1);
                 break;
             }
             if (obos_is_error(status)) 
@@ -193,6 +193,14 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
 
 #define TIOCGPGRP 0x540F
 #define TIOCSPGRP 0x5410
+#define TIOCGWINSZ 0x5413
+struct winsize
+{
+    unsigned short row;
+    unsigned short col;
+    unsigned short xpixel;
+    unsigned short ypixel;
+};
 static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret) 
 {
     if (!ret)
@@ -206,6 +214,9 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
             break;
         case TTY_IOCTL_DRAIN:
             *ret = 0;
+            break;
+        case TIOCGWINSZ:
+            *ret = sizeof(struct winsize);
             break;
         case TTY_IOCTL_FLOW:
             *ret = sizeof(uint32_t);
@@ -262,13 +273,22 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             *pid = tty->fg_job->pid;
             break;
         }
+        case TIOCGWINSZ:
+        {
+            struct winsize* sz = argp;
+            sz->col = tty->interface.size.col;
+            sz->row = tty->interface.size.row;
+            sz->xpixel = tty->interface.size.width;
+            sz->ypixel = tty->interface.size.height;
+            break;
+        }
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
                 case TCOOFF:
-                    tty->paused = false;
+                    tty->paused = true;
                     break;
                 case TCOON:
-                    tty->paused = true;
+                    tty->paused = false;
                     break;
                 case TCIOFF:
                 {
@@ -347,7 +367,7 @@ static obos_status tty_submit_irp(void* request)
     if (tty->fg_job != Core_GetCurrentThread()->proc)
     {
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTTIN);
-        if (~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
+        if (Core_GetCurrentThread()->signal_info && ~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
             req->status = OBOS_STATUS_INTERNAL_ERROR; // EIO
         else
             req->status = OBOS_STATUS_SUCCESS; // EIO
@@ -356,6 +376,12 @@ static obos_status tty_submit_irp(void* request)
     }
 
     req->drvData = req->buff;
+    if ((!tty->termios.cc[VTIME] && !tty->termios.cc[VMIN]) && ~tty->termios.lflag & ICANON && !tty->data_ready_evnt.signaled)
+    {
+        req->evnt = nullptr;
+        req->status = OBOS_STATUS_TIMED_OUT;
+        return OBOS_STATUS_SUCCESS;
+    }
     req->evnt = &tty->data_ready_evnt;
     req->on_event_set = irp_on_event_set;
     return OBOS_STATUS_SUCCESS;
@@ -425,7 +451,8 @@ static void tty_kill(tty* tty, int sigval)
         OBOS_KillProcess(tty->fg_job, sigval);
 }
 
-static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
+static void data_ready(void *tty_, const void *buf, size_t nBytesReady) 
+{
     tty *tty = (struct tty *)tty_;
     const uint8_t *buf8 = buf;
     for (size_t i = 0; i < nBytesReady; i++) 
@@ -438,16 +465,20 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 insert_byte = !(tty->quoted = true);
             else
                 tty->quoted = false;
-            if (buf8[i] == tty->termios.cc[VINTR])
-                tty_kill(tty, SIGINT);
-            else if (buf8[i] == tty->termios.cc[VQUIT])
-                tty_kill(tty, SIGQUIT);
-            else if (buf8[i] == tty->termios.cc[VSUSP])
-                tty_kill(tty, SIGTSTP);
+            if (tty->termios.lflag & ISIG)
+            {
+                if (buf8[i] == tty->termios.cc[VINTR])
+                    tty_kill(tty, SIGINT);
+                else if (buf8[i] == tty->termios.cc[VQUIT])
+                    tty_kill(tty, SIGQUIT);
+                else if (buf8[i] == tty->termios.cc[VSUSP])
+                    tty_kill(tty, SIGTSTP);
+                else
+                    insert_byte = true;
+            }
             else
                 insert_byte = true;
-            // TODO: Fix the backspace character not being read.
-            if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && (tty->termios.lflag & (ICANON|ECHOE)))
+            if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && ((tty->termios.lflag & (ICANON|ECHOE)) == (ICANON|ECHOE)))
             {
                 size_t nBytesToErase = buf8[i] == tty->termios.cc[VERASE] ? 1 : 0;
                 if (nBytesToErase == 0)
@@ -464,7 +495,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
                 erase_bytes(tty, nBytesToErase);
                 insert_byte = false;
             }
-            if (buf8[i] == tty->termios.cc[VKILL] && (tty->termios.lflag & (ICANON|ECHOK)))
+            if (buf8[i] == tty->termios.cc[VKILL] && ((tty->termios.lflag & (ICANON|ECHOK)) == (ICANON|ECHOK)))
             {
                 size_t nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - strrfind(tty->input_buffer.buf, '\n') - 1;
                 erase_bytes(tty, nBytesToErase);
@@ -475,13 +506,12 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
             tty->quoted = false;
         if (!insert_byte)
             continue;
+        if (tty->termios.lflag & ECHO)
+            tty_write_sync((dev_desc)tty, buf8, 1, 0, nullptr);
         if (tty->termios.lflag & ICANON)
         {
-            if (tty->termios.lflag & ECHO)
-                tty->interface.write(tty, (char*)&buf8[i], 1);
-            else if (tty->termios.lflag & ECHONL && buf8[i] == '\n')
-                tty->interface.write(tty, "\n", 1);
-            
+            if (tty->termios.lflag & ECHONL && buf8[i] == '\n')
+                tty->interface.write(tty, "\n", 1);   
         }
         if (tty->termios.iflag & IGNCR && buf8[i] == '\r')
             continue;
@@ -490,16 +520,21 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady) {
             tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\r';
             continue;
         }
+        if (tty->termios.iflag & ICRNL && buf8[i] == '\r')
+        {
+            tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\n';
+            continue;
+        }
         uint8_t mask = tty->termios.iflag & ISTRIP ? 0x7f : 0xff;
         tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = 
-            (tty->termios.iflag & (IUCLC|IEXTEN|ICANON)) ? 
+            ((tty->termios.lflag & (IEXTEN|ICANON)) == (IEXTEN|ICANON) && (tty->termios.iflag & IUCLC)) ? 
                 toupper(buf8[i] & mask) : 
                 (buf8[i] & mask);
-        if (tty->termios.lflag & ICANON)
-            find_eol(tty, &tty->input_buffer.buf[(tty->input_buffer.out_ptr - 1) % tty->input_buffer.size]) == SIZE_MAX ? (void)0 : Core_EventSet(&tty->data_ready_evnt, true);
-        else
-            Core_EventSet(&tty->data_ready_evnt, true);
     }
+    if (tty->termios.lflag & ICANON)
+        find_eol(tty, &tty->input_buffer.buf[(tty->input_buffer.out_ptr - 1) % tty->input_buffer.size]) == SIZE_MAX ? (void)0 : Core_EventSet(&tty->data_ready_evnt, true);
+    else
+        Core_EventSet(&tty->data_ready_evnt, true);
 }
 
 obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty) 
@@ -550,10 +585,12 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
 
 struct screen_tty {
     fd keyboard;
-    text_renderer_state* out;
+    text_renderer_state* tout;
+    struct flanterm_context* fout;
     void(*data_ready)(void* tty, const void* buf, size_t nBytesReady);
     thread* data_ready_thread;
     tty* tty;
+    atomic_bool input_paused;
 };
 
 static char number_to_secondary(enum scancode code)
@@ -601,6 +638,8 @@ static void poll_keyboard(struct screen_tty* data)
     keycode* keycode_buffer = &tmp_code;
     while (1)
     {
+        while (data->input_paused)
+            OBOSS_SpinlockHint();
         size_t nReady = 1;
         irp* req = VfsH_IRPAllocate();
         req->vn = data->keyboard.vn;
@@ -646,7 +685,7 @@ static void poll_keyboard(struct screen_tty* data)
                         buffer[i] = '*';
                         break;
                     case SCANCODE_ENTER:
-                        buffer[i] = '\n';
+                        buffer[i] = '\r';
                         break;
                     case SCANCODE_TAB:
                         buffer[i] = '\t';
@@ -690,6 +729,13 @@ static void poll_keyboard(struct screen_tty* data)
                     case SCANCODE_BACKSPACE:
                         buffer[i] = '\177';
                         break;
+                    case SCANCODE_DELETE:
+                        nReady += 3;
+                        i += 3;
+                        char buf[4] = {"\x1b[3~"};
+                        buffer = Vfs_Realloc(buffer, nReady);
+                        memcpy(buffer, buf, nReady);
+                        break;
                     {
                     char ch = '\0';
                     case SCANCODE_DOWN_ARROW:
@@ -705,16 +751,22 @@ static void poll_keyboard(struct screen_tty* data)
                         ch = 'D';
                         
                         down:
-                        nReady += 3;
-                        char buf[4] = {"\x1f[\0"};
-                        buf[3] = ch;
+                        nReady += 2;
+                        i += 2;
+                        char buf[3] = {"\x1b[\0"};
+                        buf[2] = ch;
                         buffer = Vfs_Realloc(buffer, nReady);
-                        buffer[i++] = buf[0];
-                        buffer[i++] = buf[1];
-                        buffer[i++] = buf[2];
-                        buffer[i] = buf[3];
+                        memcpy(buffer, buf, nReady);
                         break;
-
+                    }
+                    case SCANCODE_ESC:
+                    {
+                        nReady += 1;
+                        i += 1;
+                        char buf[2] = {"\x1b["};
+                        buffer = Vfs_Realloc(buffer, nReady);
+                        memcpy(buffer, buf, nReady);
+                        break;
                     }
                     default:
                         i--;
@@ -754,22 +806,59 @@ static obos_status screen_write(void* tty_, const char* buf, size_t szBuf)
     struct screen_tty *data = tty->interface.userdata;
     // for (size_t i = 0; i < szBuf; i++)
     //     OBOS_WriteCharacter(data->out, buf[i]);
-    printf("%.*s", szBuf, buf);
-    data->out->paused = tty->paused;
-    if (!data->out->paused)
-        OBOS_FlushBuffers(data->out);
+    for (size_t i = 0; i < szBuf; i++)
+    {
+        char vstart = tty->termios.iflag & IXON ? tty->termios.cc[VSTART] : '\021' /* assume it is this */;
+        char vstop = tty->termios.iflag & IXON ? tty->termios.cc[VSTOP] : '\023' /* assume it is this */;
+        if (buf[i] == vstart)
+            data->input_paused = false;
+        else if (buf[i] == vstop)
+            data->input_paused = true;
+        // printf("%c", buf[i]);
+        if (data->tout)
+            OBOS_WriteCharacter(data->tout, buf[i]);
+        else
+            flanterm_write(data->fout, &buf[i], 1);
+    }    
+
+    if (data->tout)
+    {
+        data->tout->paused = tty->paused;
+        if (!data->tout->paused)
+            OBOS_FlushBuffers(data->tout);
+    }
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout)
+obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout)
 {
+    if (!conout && !fconout)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     struct screen_tty* screen = Vfs_Calloc(1, sizeof(*screen));
     obos_status status = Vfs_FdOpenVnode(&screen->keyboard, keyboard, FD_OFLAGS_READ|FD_OFLAGS_UNCACHED);
     if (obos_is_error(status))
         return status;
-    screen->out = conout;
+    if (conout)
+    {
+        screen->tout = conout;
+        i->size.width = conout->fb.width;
+        i->size.height = conout->fb.height;
+        i->size.col = conout->fb.width/8;
+        i->size.row = conout->fb.height/16;
+    }
+    else
+    {
+        screen->fout = fconout;
+        size_t col,row;
+        flanterm_get_dimensions(fconout, &col, &row);
+        i->size.row = row;
+        i->size.col = col;
+        i->size.width = col*8;
+        i->size.height = row*16;
+    }
     i->write = screen_write;
     i->set_data_ready_cb = screen_set_data_ready_cb;
     i->userdata = screen;
+    
     return status;
 }

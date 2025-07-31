@@ -15,6 +15,7 @@
 // #include <driver_interface/driverId.h>
 
 #include <utils/uuid.h>
+#include <utils/list.h>
 #include <utils/string.h>
 
 typedef enum partition_format
@@ -35,6 +36,11 @@ typedef struct partition
     uuid part_uuid; // invalid when format != GPT
     string part_name; // optional
     string partid;
+    LIST_NODE(partition_list, struct partition) node;
 } partition;
+typedef LIST_HEAD(partition_list, partition) partition_list;
+LIST_PROTOTYPE(partition_list, partition, node);
+extern partition_list OBOS_Partitions;
+
 void OBOS_PartProbeAllDrives(bool check_checksum);
 obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum);

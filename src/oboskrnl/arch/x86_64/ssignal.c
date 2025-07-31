@@ -50,7 +50,7 @@ void OBOSS_SigReturn(ucontext_t* uctx)
     thread_ctx->cr3 = ctx->cr3;
     thread_ctx->fs_base = ctx->fs_base;
     thread_ctx->gs_base = ctx->gs_base;
-    if (thread_ctx->signal_extended_ctx_ptr)
+    if (thread_ctx->signal_extended_ctx_ptr && thread_ctx->extended_ctx_ptr)
         memcpy(thread_ctx->extended_ctx_ptr, thread_ctx->signal_extended_ctx_ptr, Arch_GetXSaveRegionSize());
     thread_ctx->irql = ctx->irql;
     Mm_VirtualMemoryFree(&Mm_KernelContext, ctx, sizeof(*ctx));
@@ -73,7 +73,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         frame->rsp = Core_GetCurrentThread()->signal_info->sp;
     if (is_kernel_stack)
         frame->rsp = (uintptr_t)Core_GetCurrentThread()->userStack + 0x10000;
-    ctx.irql = Core_GetIrql();
+    ctx.irql = 0;
     
     frame->rsp -= sizeof(ctx);
     uint8_t *rsp = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, (void*)frame->rsp, nullptr, sizeof(ucontext_t), 0, true, nullptr);

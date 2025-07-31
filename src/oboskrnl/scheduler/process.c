@@ -145,6 +145,31 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
 		proc->controlling_tty->fg_job = proc->parent;
 
+	// Kill all threads.
+	for (thread_node* node = proc->threads.head; node; )
+	{
+		thread* const thr = node->data;
+		node = node->next;
+		if (thr == Core_GetCurrentThread())
+			continue;
+
+		thr->references++;
+
+		// OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
+		thr->kill = true;
+		thr->interrupted = true;
+		thr->signalInterrupted = true;
+		CoreH_ThreadReady(thr);
+
+		// NOTE: This loop should not take too long.
+		while (~thr->flags & THREAD_FLAGS_DIED)
+			OBOSS_SpinlockHint();
+
+		if (!(--thr->references) && thr->free)
+			thr->free(thr);
+	}
+	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
+	(void)oldIrql;
 	// Disown all children.
 	for (process* child = proc->children.head; child; )
 	{
@@ -199,29 +224,14 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 		Core_SpinlockRelease(&OBOS_KernelProcess->children_lock, oldIrql);
 	}
 
-	// Kill all threads.
-	for (thread_node* node = proc->threads.head; node; )
-	{
-		thread* const thr = node->data;
-		node = node->next;
-		if (thr == Core_GetCurrentThread())
-			continue;
-
-		OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
-
-		// NOTE: This loop should not take too long.
-		while (thr->flags & THREAD_FLAGS_DIED)
-			OBOSS_SpinlockHint();
-	}
-
 	// Close all handles.
-	// for (uint32_t i = 0; i < (uint32_t)proc->handles.size; i++)
-	// {
-	// 	handle hnd = i;
-	// 	hnd |= (proc->handles.arr[i].type << HANDLE_TYPE_SHIFT);
-	// 	if (proc->handles.arr[i].un.as_int)
-	// 		Sys_HandleClose(hnd);
-	// }
+	for (uint32_t i = 0; i < (uint32_t)proc->handles.size; i++)
+	{
+		handle hnd = i;
+		hnd |= (proc->handles.arr[i].type << HANDLE_TYPE_SHIFT);
+		if (proc->handles.arr[i].un.as_int)
+			Sys_HandleClose(hnd);
+	}
 
 	// Free all memory (TODO: Better strategy?)
 	page_range* rng = nullptr;
@@ -282,8 +292,8 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 {
-	irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
-	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	// CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	ExitCurrentProcess(code);
 	while (1)
 		;
 }

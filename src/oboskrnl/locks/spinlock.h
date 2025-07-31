@@ -1,7 +1,7 @@
 /*
 	oboskrnl/locks/spinlock.h
 
-	Copyright (c) 2024 Omar Berrow
+	Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -12,12 +12,12 @@
 
 #include <irq/irql.h>
 
-typedef struct {
+typedef struct spinlock {
 	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) atomic_flag val;
 	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) bool locked;
 } spinlock;
 
-OBOS_EXPORT spinlock Core_SpinlockCreate();
+#define Core_SpinlockCreate() (spinlock){}
 OBOS_EXPORT irql Core_SpinlockAcquireExplicit(spinlock* const lock, irql minIrql, bool irqlNthrVariant);
 OBOS_EXPORT irql Core_SpinlockAcquire(spinlock* const lock);
 OBOS_EXPORT obos_status Core_SpinlockRelease(spinlock* const lock, irql oldIrql);

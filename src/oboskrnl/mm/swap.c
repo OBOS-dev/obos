@@ -27,6 +27,7 @@
 #include <locks/mutex.h>
 
 #include <vfs/mount.h>
+#include <vfs/irp.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
@@ -164,9 +165,12 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
 
 obos_status Mm_ChangeSwapProvider(swap_dev* to)
 {
-    OBOS_UNUSED(to);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    Mm_SwapProvider->awaiting_deinit = true;
+    Mm_SwapProvider = to;
+    return OBOS_STATUS_SUCCESS;
 }
+
+uint32_t Mm_PageWriterOperation = 0;
 
 static __attribute__((no_instrument_function)) void page_writer()
 {
@@ -175,13 +179,60 @@ static __attribute__((no_instrument_function)) void page_writer()
     {
         Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
         Core_EventClear(&page_writer_done);
+        if (!Mm_PageWriterOperation)
+            Mm_PageWriterOperation = PAGE_WRITER_SYNC_ALL;
         // FOR EACH dirty page.
         // Write them back :)
         // also while we're at it, we'll make them standby
         irql oldIrql = Core_SpinlockAcquire(&swap_lock);
-        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg; )
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_ANON); )
         {
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
+            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
+            if (~pg->flags & PHYS_PAGE_DIRTY)
+            {
+                // Funny business
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+                pg = next;
+                continue;
+            }
+            if (!pg->backing_vn)
+            {
+                Core_SpinlockRelease(&swap_lock, oldIrql);
+                if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
+                {
+                    pg = next;
+                    continue;
+                }
+                swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
+                alloc->refs = pg->virt_pages.nNodes;
+                if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
+                {
+                    alloc->refs = 1;
+                    MmH_DerefSwapAllocation(alloc);
+                    pg = next;
+                    continue;
+                }
+                Mm_GlobalMemoryUsage.paged += pg->flags & PHYS_PAGE_HUGE_PAGE ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+                oldIrql = Core_SpinlockAcquire(&swap_lock);
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
+            }
+
+            // abort:
+            pg = next;
+        }
+
+        for (page* pg = LIST_GET_HEAD(phys_page_list, &Mm_DirtyPageList); pg && (Mm_PageWriterOperation & PAGE_WRITER_SYNC_FILE); )
+        {
+            page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
+            if (next == pg)
+                next = nullptr;
             // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
@@ -194,7 +245,7 @@ static __attribute__((no_instrument_function)) void page_writer()
             {
                 // This is a file page, so writing it back is different than writing back an
                 // anonymous page.
-                size_t nBytes = OBOS_PAGE_SIZE;
+                size_t nBytes = OBOS_MIN((size_t)OBOS_PAGE_SIZE, pg->backing_vn->filesize-pg->file_offset);
                 mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
                 const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
                 if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
@@ -213,33 +264,17 @@ static __attribute__((no_instrument_function)) void page_writer()
                     OBOS_Error("I/O Error while flushing page. Status: %d\n", status);
                 oldIrql = Core_SpinlockAcquire(&swap_lock);
                 // VfsH_UnlockMountpoint(point);
+                pg->flags &= ~PHYS_PAGE_DIRTY;
+                LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+        
+                LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
+                pg->flags |= PHYS_PAGE_STANDBY;
             }
-            else 
-            {
-                if (obos_is_error(Mm_SwapProvider->swap_resv(Mm_SwapProvider, &pg->swap_id, pg->flags & PHYS_PAGE_HUGE_PAGE)))
-                {
-                    pg = next;
-                    continue;
-                }
-                swap_allocation* alloc = MmH_AddSwapAllocation(pg->swap_id);
-                alloc->refs = pg->virt_pages.nNodes;
-                if (obos_is_error(Mm_SwapProvider->swap_write(Mm_SwapProvider, pg->swap_id, pg)))
-                {
-                    alloc->refs = 1;
-                    MmH_DerefSwapAllocation(alloc);
-                    pg = next;
-                    continue;
-                }
-            }
-            pg->flags &= ~PHYS_PAGE_DIRTY;
-            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
-    
-            LIST_APPEND(phys_page_list, &Mm_StandbyPageList, pg);
-            pg->flags |= PHYS_PAGE_STANDBY;
             
             // abort:
             pg = next;
         }
+
         Mm_DirtyPagesBytes = 0;
         Core_SpinlockRelease(&swap_lock, oldIrql);
         Core_EventSet(&page_writer_done, false);
@@ -284,6 +319,7 @@ void Mm_MarkAsDirtyPhys(page* node)
     //     printf("%p:%d\n", node->backing_vn, node->file_offset);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Core_SpinlockRelease(&swap_lock, oldIrql);
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
     if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold && !node->backing_vn)
         Mm_WakePageWriter(false);
 }

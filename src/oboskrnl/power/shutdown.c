@@ -14,6 +14,8 @@
 
 #include <scheduler/schedule.h>
 
+#include <mm/swap.h>
+
 #include <power/shutdown.h>
 
 #include <uacpi/sleep.h>
@@ -21,6 +23,8 @@
 
 OBOS_NORETURN void OBOS_Shutdown()
 {
+    if (Mm_SwapProvider->deinit_dev)
+        Mm_SwapProvider->deinit_dev(Mm_SwapProvider);
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     OBOS_UNUSED(oldIrql);
     Core_SuspendScheduler(true);
@@ -35,6 +39,8 @@ OBOS_NORETURN void OBOS_Shutdown()
 }
 OBOS_NORETURN void OBOS_Reboot()
 {
+    if (Mm_SwapProvider->deinit_dev)
+        Mm_SwapProvider->deinit_dev(Mm_SwapProvider);
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
     uacpi_reboot();
@@ -59,10 +65,12 @@ OBOS_NORETURN void OBOS_Reboot()
 
 OBOS_NORETURN void OBOS_Shutdown()
 {
+    Mm_SwapProvider->deinit_dev(Mm_SwapProvider);
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Shutting down is unsupported\n");
 }
 OBOS_NORETURN void OBOS_Reboot()
 {
+    Mm_SwapProvider->deinit_dev(Mm_SwapProvider);
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Rebooting is unsupported\n");
 }
 

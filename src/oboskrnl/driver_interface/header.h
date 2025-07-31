@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <scheduler/thread.h>
+
 #include <stdarg.h>
 
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
@@ -68,23 +70,32 @@ typedef enum driver_header_flags
     /// Set if PnP should ignore the Prog IF in the the pciId field of the header.
     /// </summary>
     DRIVER_HEADER_PCI_IGNORE_PROG_IF = 0x400,
+    /// <summary>
+    /// Set if the filesystem driver wants paths for mk_file, move_desc_to, and remove_file
+    /// </summary>
+    DRIVER_HEADER_DIRENT_CB_PATHS = 0x800,
 } driver_header_flags;
 typedef enum iterate_decision
 {
     ITERATE_DECISION_CONTINUE,
     ITERATE_DECISION_STOP,
 } iterate_decision;
-typedef struct driver_file_perm
+typedef union driver_file_perm
 {
-    bool other_exec : 1;
-    bool other_write : 1;
-    bool other_read : 1;
-    bool group_exec : 1;
-    bool group_write : 1;
-    bool group_read : 1;
-    bool owner_exec : 1;
-    bool owner_write : 1;
-    bool owner_read : 1;
+    struct {
+        bool other_exec : 1;
+        bool other_write : 1;
+        bool other_read : 1;
+        bool group_exec : 1;
+        bool group_write : 1;
+        bool group_read : 1;
+        bool owner_exec : 1;
+        bool owner_write : 1;
+        bool owner_read : 1;
+        bool set_uid : 1;
+        bool set_gid : 1;
+    } OBOS_PACK;
+    uint16_t mode;
 } OBOS_PACK driver_file_perm;
 typedef enum file_type
 {
@@ -164,29 +175,44 @@ typedef struct driver_ftable
 
     // lifetime of *path is dictated by the driver.
     obos_status(*query_path)(dev_desc desc, const char** path);
-    obos_status(*path_search)(dev_desc* found, void* vn, const char* what);
-    obos_status(*get_linked_desc)(dev_desc desc, dev_desc* found);
+    obos_status(*path_search)(dev_desc* found, void* vn, const char* what, dev_desc parent);
+    obos_status(*get_linked_path)(dev_desc desc, const char** linked);
+    obos_status(*vnode_search)(void** vn_found, dev_desc desc, void* dev_vn); // Not required to exist
 
     // vn is optional if parent is not UINTPTR_MAX (root directory).
-    obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
+    union {
+        obos_status(*mk_file)(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
+        obos_status(*pmk_file)(dev_desc* newDesc, const char* parent_path, void* vn, const char* name, file_type type, driver_file_perm perm);
+    };
     // If !new_parent && name, then we need to rename the file.
     // If new_parent && !name, then we need to move the file to the new parent, and keep the filename.
     // If new_parent && name, then we need to move the file to new parent and rename the file.
-    obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
-    obos_status(*remove_file)(dev_desc desc);
+    union {
+        obos_status(*move_desc_to)(dev_desc desc, dev_desc new_parent_desc, const char* name);
+        obos_status(*pmove_desc_to)(void* vn, const char* path, const char* newpath, const char* name);
+    };
+    union {
+        // Really just unlinks the file.
+        obos_status(*remove_file)(dev_desc desc);
+        obos_status(*premove_file)(void* vn, const char* path);
+    };
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
+    obos_status(*get_file_inode)(dev_desc desc, uint32_t *ino);
 
     // If dir is UINTPTR_MAX, it refers to the root directory.
-    obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+    obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
     obos_status(*stat_fs_info)(void *vn, drv_fs_info *info);
 
     // Can only be nullptr for the InitRD driver.
     // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
     bool(*probe)(void* vn);
+    // vn: vnode*
+    // target: dirent*
+    obos_status(*mount)(void* vn, void* target);
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------
@@ -226,8 +252,10 @@ typedef struct driver_header
     // Only valid if version >= 1, and the version field exists (flags & DRIVER_HEADER_HAS_VERSION_FIELD).
     uint32_t uacpi_init_level_required;
 
-    // Reserved for future use; do not use when version <= 1
-    char reserved[0x100-0x8];
+    thread_affinity mainThreadAffinity;
+
+    // Reserved for future use
+    char reserved[0x100-0x10];
 } driver_header;
 typedef struct driver_header_node
 {

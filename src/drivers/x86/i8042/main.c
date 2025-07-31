@@ -34,13 +34,6 @@
 #include <uacpi/namespace.h>
 #include <uacpi/types.h>
 
-const char* const pnp_ids[] = {
-    "PNP0303",
-    "PNP0F13",
-    "PNP0F03",
-    nullptr,
-};
-
 OBOS_WEAK void cleanup()
 {
     
@@ -67,28 +60,24 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
 driver_id* this_driver;
 
-static bool found_ps2_device;
+// static bool found_ps2_device;
 
-static uacpi_iteration_decision match (
-    void *user, uacpi_namespace_node *node, uacpi_u32 node_depth
-)
-{
-    OBOS_UNUSED(user && node && node_depth);
-    found_ps2_device = true;
-    return UACPI_ITERATION_DECISION_BREAK;
-}
+// static uacpi_iteration_decision match (
+//     void *user, uacpi_namespace_node *node, uacpi_u32 node_depth
+// )
+// {
+//     OBOS_UNUSED(user && node && node_depth);
+//     found_ps2_device = true;
+//     return UACPI_ITERATION_DECISION_BREAK;
+// }
 
 OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
 
-    uacpi_find_devices_at(
-        uacpi_namespace_root(),
-        pnp_ids,
-        match, nullptr   
-    );
-    if (!found_ps2_device)
-        return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find a PS/2 Controller."};
+    // uacpi_find_devices_at(uacpi_namespace_root(), pnp_ids, match, nullptr);
+    // if (!found_ps2_device)
+    //     return (driver_init_status){.status=OBOS_STATUS_NOT_FOUND,.fatal=true,.context="Could not find a PS/2 Controller."};
 
     obos_status status = PS2_InitializeController();
     if (obos_is_error(status))

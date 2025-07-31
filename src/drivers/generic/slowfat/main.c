@@ -40,8 +40,8 @@ void driver_cleanup_callback()
 {
 }
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
-OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what);
-OBOS_WEAK obos_status get_linked_desc(dev_desc desc, dev_desc* found);
+OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
+OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
 OBOS_WEAK obos_status remove_file(dev_desc desc);
@@ -49,7 +49,7 @@ OBOS_WEAK obos_status trunc_file(dev_desc desc, size_t newsize);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
-OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata), void* userdata);
+OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK bool probe(void* vn);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 OBOS_WEAK obos_status submit_irp(void* request);
@@ -72,7 +72,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
 
         .query_path = query_path,
         .path_search = path_search,
-        .get_linked_desc = get_linked_desc,
+        .get_linked_path = get_linked_path,
         .move_desc_to = move_desc_to,
         .mk_file = mk_file,
         .remove_file = remove_file,

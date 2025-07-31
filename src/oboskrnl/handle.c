@@ -228,6 +228,7 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
     handle_desc* new_desc = nullptr;
     handle new = 0;
     memcpy_usr_to_k(&new, unew, sizeof(handle));
+    OBOS_Debug("%s: *unew=%d\n", __func__, new);
     if (new == HANDLE_ANY)
     {
         new = OBOS_HandleAllocate(current_table, type, &new_desc);
@@ -244,7 +245,9 @@ obos_status Sys_HandleClone(handle hnd, handle* unew)
         OBOS_ExpandHandleTable(current_table, new+1);
         new_desc = &current_table->arr[new];
         desc = &current_table->arr[hnd];
-        handle_close_unlocked(current_table, new);
+        handle_type type = new_desc->type;
+        handle_close_unlocked(current_table, new | (type << 24));
+	    current_table->head = new_desc->un.next;
     }
 
     void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[type];

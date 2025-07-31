@@ -9,7 +9,8 @@
 #include <memmanip.h>
 #include <cmdline.h>
 
-#include <stdint.h>
+#include <utils/string.h>
+
 #include <uacpi_libc.h>
 
 #include "parse.h"
@@ -117,7 +118,7 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
         return nullptr;
     size_t path_len = strlen(path);
     if (!path_len)
-        return nullptr;
+        return root;
     for (; *path == '/'; path++, path_len--)
         ;
     const char* tok = path;
@@ -131,26 +132,39 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
     while(root)
     {
         initrd_inode* curr = root;
-        if (strcmp(root->name, tok))
         {
-            // Match!
-            root = curr->children.head ? curr->children.head : root;
-            initrd_inode* what = 
-                on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
-            if (what)
-                return what;
-            continue;
-        }
-        for (curr = root->children.head; curr;)
-        {
-            if (strcmp(curr->name, tok))
+            string name = {};
+            name.cap = 33;
+            name.ls = root->name;
+            name.len = strlen(root->name);
+            if (OBOS_CompareStringNC(&name, tok, tok_len))
             {
                 // Match!
                 initrd_inode* what = 
                     on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
                 if (what)
                     return what;
-                curr = curr->children.head ? curr->children.head : curr;
+                root = curr->children.head;
+                continue;
+            }
+        }
+
+        for (curr = root->children.head; curr;)
+        {
+            string name = {};
+            name.cap = 33;
+            name.ls = curr->name;
+            name.len = strlen(curr->name);
+            if (OBOS_CompareStringNC(&name, tok, tok_len))
+            {
+                // Match!
+                initrd_inode* what = 
+                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
+                if (what)
+                    return what;
+                else if ((tok+tok_len) >= (path+path_len) && !curr->next)
+                    return nullptr;
+                root = curr;
                 break;
             }
 
@@ -158,7 +172,11 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
             curr = curr->next;
         }
         if (!curr)
+        {
+            if ((tok+tok_len) >= (path+path_len))
+                break;
             root = root->parent;
+        }
     }
     return nullptr;
 }

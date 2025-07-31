@@ -4,10 +4,12 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
+#include "mm/swap.h"
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
 #include <error.h>
+#include <syscall.h>
 #include <handle.h>
 
 #include <scheduler/process.h>
@@ -19,7 +21,10 @@
 #include <mm/context.h>
 #include <mm/page.h>
 #include <mm/mm_sys.h>
+#include <mm/disk_swap.h>
 #include <mm/fork.h>
+
+#include <vfs/dirent.h>
 
 #include <allocators/base.h>
 
@@ -170,3 +175,67 @@ obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info)
     return memcpy_k_to_usr(info, &tmp, sizeof(tmp));
 }
 
+obos_status Sys_MakeDiskSwap(const char* upath)
+{
+    char* path = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* dent = VfsH_DirentLookup(path);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    if (!dent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    if (!dent->vnode->nPartitions)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    return Mm_MakeDiskSwap(&dent->vnode->partitions[0]);
+}
+
+obos_status Sys_SwitchSwap(const char* upath)
+{
+    char* path = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* dent = VfsH_DirentLookup(path);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    if (!dent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    if (!dent->vnode->nPartitions)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    swap_dev *dev = ZeroAllocate(Mm_Allocator, 1, sizeof(swap_dev), nullptr);
+    status = Mm_InitializeDiskSwap(dev, &dent->vnode->partitions[0]);
+    if (obos_is_error(status))
+    {
+        Free(Mm_Allocator, dev, sizeof(*dev));
+        return status;
+    }
+
+    status = Mm_ChangeSwapProvider(dev);
+    if (obos_is_error(status))
+    {
+        if (dev->deinit_dev)
+            dev->deinit_dev(dev);
+        Free(Mm_Allocator, dev, sizeof(*dev));
+        return status;
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+void Sys_SyncAnonPages()
+{
+    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
+    Mm_WakePageWriter(true);
+}

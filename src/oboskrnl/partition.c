@@ -22,15 +22,18 @@
 
 #include <utils/string.h>
 #include <utils/uuid.h>
+#include <utils/list.h>
 
 #include <uacpi_libc.h>
+
+LIST_GENERATE(partition_list, partition, node);
+partition_list OBOS_Partitions;
 
 void OBOS_PartProbeAllDrives(bool check_checksum)
 {
     // for (volatile bool b = true; b; )
     //     ;
-    dirent* directory = VfsH_DirentLookup(OBOS_DEV_PREFIX);
-    OBOS_ASSERT(directory);
+    dirent* directory = Vfs_DevRoot;
     for (dirent* ent = directory->d_children.head; ent; )
     {
         if (ent->vnode->vtype == VNODE_TYPE_BLK && !(ent->vnode->flags & VFLAGS_PARTITION))
@@ -54,13 +57,19 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
     status = OBOS_IdentifyGPTPartitions(&drv, nullptr, &nPartitions, !check_checksum);
     Vfs_FdSeek(&drv, 0, SEEK_SET);
     if (obos_is_error(status) && status != OBOS_STATUS_INVALID_FILE)
+    {
+        Vfs_FdClose(&drv);
         return status;
+    }
     if (status == OBOS_STATUS_INVALID_FILE)
     {
         // Fallback to MBR.
         status = OBOS_IdentifyMBRPartitions(&drv, NULL, &nPartitions);
         if (obos_is_error(status) && status != OBOS_STATUS_INVALID_FILE)
+        {
+            Vfs_FdClose(&drv);
             return status;
+        }
         if (status == OBOS_STATUS_INVALID_FILE)
         {
             partitions = Vfs_Calloc(1, sizeof(partition));
@@ -77,20 +86,27 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         partitions = Vfs_Calloc(nPartitions, sizeof(partition));
         status = OBOS_IdentifyMBRPartitions(&drv, partitions, nullptr);
         if (obos_is_error(status))
+        {
+            Vfs_FdClose(&drv);
             return status;
+        }
         for (size_t i = 0; i < nPartitions; i++)
             partitions[i].format = PARTITION_FORMAT_MBR;
         goto done;
 
     }
     if (!nPartitions)
+    {
+        Vfs_FdClose(&drv);
         return OBOS_STATUS_SUCCESS;
+    }
     partitions = Vfs_Calloc(nPartitions, sizeof(partition));
-    if (!partitions)
-        return OBOS_STATUS_INTERNAL_ERROR;
     status = OBOS_IdentifyGPTPartitions(&drv, partitions, nullptr, check_checksum);
     if (obos_is_error(status))
+    {
+        Vfs_FdClose(&drv);
         return status;
+    }
     for (size_t i = 0; i < nPartitions; i++)
         partitions[i].format = PARTITION_FORMAT_GPT;
     done:
@@ -134,6 +150,7 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
             OBOS_FreeString(&uuid_str);
         }
         partitions[i].ent = Drv_RegisterVNode(part_vnode, OBOS_GetStringCPtr(&part_name));
+        partitions[i].vn = part_vnode;
         partitions[i].partid = part_name;
         partitions[i].drive = ent->vnode;
         part_vnode->partitions = &partitions[i];
@@ -152,9 +169,11 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
             }
             node = node->next;
         }
+        LIST_APPEND(partition_list, &OBOS_Partitions, &partitions[i]);
     }
     ent->vnode->partitions = partitions;
     ent->vnode->nPartitions = nPartitions;
     VfsH_UnlockMountpoint(ent->vnode->mount_point);
+    Vfs_FdClose(&drv);
     return OBOS_STATUS_SUCCESS;
 }
