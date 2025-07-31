@@ -87,3 +87,5 @@ set_source_files_properties(
 if (OBOS_ENABLE_UHDA)
 	target_link_libraries(oboskrnl PRIVATE uhda)
 endif()
+
+include("${CMAKE_SOURCE_DIR}/src/isogen/isogen.cmake")
