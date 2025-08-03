@@ -7,7 +7,7 @@ list (APPEND oboskrnl_sources
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
 	"text.c" "irq/irq.c" "scheduler/process.c" "power/shutdown.c"
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
-	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
+	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "power/event.c"
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
 	"locks/event.c" "locks/wait.c" "cmdline.c" "vfs/init.c" 
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
@@ -19,7 +19,7 @@ list (APPEND oboskrnl_sources
 	"mm/fork.c" "power/suspend.c" "power/device.c" "power/init.c"
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
-	"init_proc.c" "vfs/create.c" "power/event.c"
+	"init_proc.c" "vfs/create.c"
 )
 
 add_executable(oboskrnl)
