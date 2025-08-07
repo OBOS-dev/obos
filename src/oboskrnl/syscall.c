@@ -124,7 +124,7 @@ obos_status Sys_SysConf(int num, long *ret_)
             ret = Core_CpuCount;
             break;
         case _SC_OPEN_MAX:
-            ret = INT32_MAX;
+            ret = 0x2000; // we don't really impose a limit, but a reasonable limit is returned here to prevent stuff like gdb from hanging.
             break;
         case _SC_PHYS_PAGES:
             ret = Mm_UsablePhysicalPages;

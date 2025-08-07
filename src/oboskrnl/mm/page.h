@@ -19,6 +19,7 @@ typedef struct page_protection
     bool huge_page : 1;    // If set, the page is a huge page.
     bool executable : 1;   // If set, the page can be executed.
     bool uc : 1;           // If set, this page is uncacheable.
+    bool fb : 1;           // If set, this page is meant to be mapped as a framebuffer page. On x86-64, this uses WC caching.
     bool ro : 1;           // If set, this page was originally allocated as read-only. This is only for decoration, and is only really guaranteed to be set in page ranges.
     bool is_swap_phys : 1; // If set, the physical address of the page is actually a swap id. On x86-64, this uses bit 9 of the PTE.
 } page_protection;
