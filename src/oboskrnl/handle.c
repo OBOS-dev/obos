@@ -137,6 +137,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
 }
 void OBOS_HandleFree(handle_table* table, handle_desc *curr)
 {
+    curr->type = HANDLE_TYPE_INVALID;
     curr->un.next = table->head;
     table->head = curr;
     // any use of this handle past here is a use-after-free
@@ -269,7 +270,7 @@ static obos_status handle_close_unlocked(handle_table* current_table, handle hnd
     }
 
     // Free the handle's underlying object as well as the handle itself.
-    handle_type type = HANDLE_TYPE(hnd);
+    handle_type type = desc->type;
     void(*cb)(handle_desc *hnd) = OBOS_HandleCloseCallbacks[type];
     if (cb)
         cb(desc);
