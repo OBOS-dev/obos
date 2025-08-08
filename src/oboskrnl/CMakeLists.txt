@@ -20,7 +20,7 @@ list (APPEND oboskrnl_sources
 	"driver_interface/pci.c" "utils/shared_ptr.c" "locks/sys_futex.c" "vfs/fd_sys.c"
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
-	"net/ip.c" "net/arp.c" "power/event.c"
+	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
 )
 
 add_executable(oboskrnl)

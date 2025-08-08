@@ -150,4 +150,6 @@ typedef RB_HEAD(unassembled_ip_packets, unassembled_ip_packet) unassembled_ip_pa
 RB_PROTOTYPE(unassembled_ip_packets, unassembled_ip_packet, node, ip_packet_cmp);
 shared_ptr NetH_IPv4ReassemblePacket(vnode* nic, unassembled_ip_packet* packet);
 
+uint16_t NetH_OnesComplementSum(const void *buffer, size_t size);
+
 PacketProcessSignature(IPv4, ethernet2_header*);

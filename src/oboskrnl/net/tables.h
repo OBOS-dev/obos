@@ -17,6 +17,7 @@
 
 #include <net/eth.h>
 #include <net/ip.h>
+#include <net/udp.h>
 
 #include <locks/pushlock.h>
 
@@ -77,6 +78,9 @@ typedef struct net_tables {
 
     unassembled_ip_packets fragmented_packets;
     pushlock fragmented_packets_lock;
+
+    udp_port_tree udp_ports;
+    pushlock udp_ports_lock;
 
     vnode* interface;
     mac_address mac;

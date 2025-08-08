@@ -4,12 +4,13 @@
 #define PacketProcessSignature(name, data) OBOS_WEAK void Net_## name ## Process(vnode* nic, int depth, struct shared_ptr* buf, void* ptr, size_t size, data userdata)
 #define InvokePacketHandler(name, ptr, size, data) !(Net_## name ## Process) ? (void)0 : (Net_## name ## Process)(nic, depth + 1, OBOS_SharedPtrCopy(buf), ptr, size, data)
 #define ExitPacketHandler() do { OBOS_SharedPtrUnref(buf); return; } while(0)
+bool NetH_NetworkErrorLogsEnabled();
 #define NetError(...) do {\
-if (!OBOS_GetOPTF("disable-network-error-logs"))\
+if (!NetH_NetworkErrorLogsEnabled())\
     OBOS_Error(__VA_ARGS__);\
 } while(0)
 #define NetUnimplemented(what) do {\
-    if (!OBOS_GetOPTF("disable-network-error-logs"))\
+    if (!NetH_NetworkErrorLogsEnabled())\
         OBOS_Warning("net: Unimplemented: " #what "\n");\
 } while(0)
 

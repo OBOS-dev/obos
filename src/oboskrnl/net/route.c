@@ -113,6 +113,7 @@ obos_status Net_Initialize(vnode* nic)
     nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->interface = nic;
     nic->net_tables->magic = IP_TABLES_MAGIC;
 
@@ -142,3 +143,14 @@ obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data)
 LIST_GENERATE(gateway_list, gateway, node);
 LIST_GENERATE(ip_table, ip_table_entry, node);
 RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);
+
+bool NetH_NetworkErrorLogsEnabled()
+{
+    static bool initialized_opt = 0, opt_val = 0;
+    if (!initialized_opt)
+    {
+        opt_val = OBOS_GetOPTF("disable-network-error-logs");
+        initialized_opt = true;
+    }
+    return opt_val;
+}
