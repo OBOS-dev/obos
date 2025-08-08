@@ -79,6 +79,7 @@ void Sys_LibCLog(const char* ustr)
     }
     char* buf = Allocate(OBOS_KernelAllocator, str_len+1, nullptr);
     OBOSH_ReadUserString(ustr, buf, &str_len);
+    buf[str_len] = 0;
     OBOS_LibCLog("%s\n", buf);
     Free(OBOS_KernelAllocator, buf, str_len+1);
 }
@@ -123,7 +124,7 @@ obos_status Sys_SysConf(int num, long *ret_)
             ret = Core_CpuCount;
             break;
         case _SC_OPEN_MAX:
-            ret = INT32_MAX;
+            ret = 0x2000; // we don't really impose a limit, but a reasonable limit is returned here to prevent stuff like gdb from hanging.
             break;
         case _SC_PHYS_PAGES:
             ret = Mm_UsablePhysicalPages;
@@ -386,6 +387,9 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SyncAnonPages,
     (uintptr_t)Sys_FdPWrite,
     (uintptr_t)Sys_FdPRead,
+    (uintptr_t)Sys_SymLink,
+    (uintptr_t)Sys_SymLinkAt,
+    (uintptr_t)Sys_CreateNamedPipe,
 };
 
 // Arch syscall table is defined per-arch

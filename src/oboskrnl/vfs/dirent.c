@@ -487,13 +487,12 @@ void Vfs_PopulateDirectory(dirent* dent)
 {
     mount* point = dent->vnode->mount_point ? dent->vnode->mount_point : dent->vnode->un.mounted;
     const driver_header* driver = &point->fs_driver->driver->header;
-    if (dent->vnode->vtype == VNODE_TYPE_CHR || 
-        dent->vnode->vtype == VNODE_TYPE_BLK || 
-        dent->vnode->vtype == VNODE_TYPE_REG || 
-        dent->vnode->vtype == VNODE_TYPE_FIFO)
+    if (dent->vnode->vtype != VNODE_TYPE_DIR)
         return;
     if (driver->ftable.list_dir)
-        driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent);
+        OBOS_ENSURE(obos_is_success(driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent)));
+    else
+        OBOS_Error("driver->ftable.list_dir == nullptr!\n");
 }
 
 struct mlibc_dirent {
@@ -664,7 +663,7 @@ obos_status Sys_GetCWD(char* path, size_t len)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (len < strlen(target->cwd_str))
         return OBOS_STATUS_NO_SPACE;
-    memcpy_k_to_usr(path, target->cwd, strlen(target->cwd_str));
+    memcpy_k_to_usr(path, target->cwd_str, strlen(target->cwd_str));
     return OBOS_STATUS_SUCCESS;
 }
 

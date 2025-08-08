@@ -34,6 +34,8 @@
 
 #include <scheduler/thread.h>
 
+#include <power/event.h>
+
 #include <uacpi_libc.h>
 
 // InitRD driver name.
@@ -191,4 +193,8 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
     if (root_uuid_str)
         Free(OBOS_KernelAllocator, root_uuid_str, strlen(root_uuid_str));
     Vfs_InitDummyDevices();
+
+#if OBOS_ARCHITECTURE_HAS_ACPI
+    OBOS_InitializeACPIEvents();
+#endif
 }

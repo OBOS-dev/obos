@@ -41,7 +41,12 @@ typedef enum
 	/// The difference between this and THREAD_PRIORITY_HIGH is that threads in the list for THREAD_PRIORITY_URGENT are processed before those of THREAD_PRIORITY_HIGH.
 	/// </summary>
 	THREAD_PRIORITY_URGENT,
-	THREAD_PRIORITY_MAX_VALUE = THREAD_PRIORITY_URGENT,
+	/// <summary>
+	/// A thread requring constant execution. This thread gets infinite quantum time.
+	/// Use these kinds of threads with caution, as it will only stop running if it's blocked, 
+	/// </summary>
+	THREAD_PRIORITY_REAL_TIME,
+	THREAD_PRIORITY_MAX_VALUE = THREAD_PRIORITY_REAL_TIME,
 	//PRIORITY_IF_YOU_DONT_RUN_THIS_RIGHT_NOW_THE_KERNEL_DIES,
 } thread_priority;
 typedef enum
@@ -64,7 +69,7 @@ typedef __uint128_t thread_affinity;
 typedef uint64_t thread_affinity;
 #endif
 extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
-extern const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
+extern const uint64_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
 typedef struct thread_node
 {
 	struct thread_node *next, *prev;
@@ -81,7 +86,7 @@ typedef struct thread
 
 	thread_status status;
 	thread_priority priority;
-	uint8_t quantum;
+	uint64_t quantum;
 	thread_affinity affinity;
 	uint64_t lastRunTick;
 	struct cpu_local* masterCPU /* the cpu that contain this thread's priority list. */;
@@ -102,6 +107,7 @@ typedef struct thread
 	bool interrupted : 1;
 	bool signalInterrupted : 1; // if interrupted is true because of a signal.
 	bool inWaitProcess : 1;
+	bool kill : 1;
 	
 	struct signal_header* signal_info;
 

@@ -198,6 +198,7 @@ bool probe(void* vn_)
     if (blkSize != 1)
         OBOS_ASSERT(blkSize >= sizeof(bpb));
     bpb* bpb = FATAllocator->ZeroAllocate(FATAllocator, 1, blkSize == 1 ? sizeof(struct bpb) : blkSize, nullptr);
+    OBOS_ENSURE(bpb);
     obos_status status = Vfs_FdRead(volume, bpb, blkSize == 1 ? sizeof(struct bpb) : blkSize, nullptr);
     if (obos_is_error(status))
     {

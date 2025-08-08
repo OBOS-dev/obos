@@ -43,6 +43,9 @@ enum
     VFLAGS_MOUNTPOINT = 1,
     VFLAGS_IS_TTY = 2,
     VFLAGS_PARTITION = 4,
+    VFLAGS_FB = 8,
+    // A file that only provides events, and cannot be read/written.
+    VFLAGS_EVENT_DEV = 16, 
 };
 
 // basically a struct specinfo, but renamed.
@@ -64,6 +67,7 @@ typedef struct vnode
         struct mount* mounted;
                 vdev* device;
           const char* linked;
+               event* evnt;
         // TODO: Add more stuff, such as pipes, sockets, etc.
     } un;
     size_t refs;

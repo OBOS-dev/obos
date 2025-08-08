@@ -113,6 +113,8 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         Vfs_Free(ent);
         return status;
     }
+    if (ftable->get_file_inode)
+        ftable->get_file_inode(vn->desc, &vn->inode);
     VfsH_DirentAppendChild(parent, ent);
     LIST_APPEND(dirent_list, &parent_mnt->dirent_list, ent);
     ent->vnode->refs++;

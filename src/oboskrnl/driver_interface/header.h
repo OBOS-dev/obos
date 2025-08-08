@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <scheduler/thread.h>
+
 #include <stdarg.h>
 
 enum { OBOS_DRIVER_MAGIC = 0x00116d868ac84e59 };
@@ -78,19 +80,22 @@ typedef enum iterate_decision
     ITERATE_DECISION_CONTINUE,
     ITERATE_DECISION_STOP,
 } iterate_decision;
-typedef struct driver_file_perm
+typedef union driver_file_perm
 {
-    bool other_exec : 1;
-    bool other_write : 1;
-    bool other_read : 1;
-    bool group_exec : 1;
-    bool group_write : 1;
-    bool group_read : 1;
-    bool owner_exec : 1;
-    bool owner_write : 1;
-    bool owner_read : 1;
-    bool set_uid : 1;
-    bool set_gid : 1;
+    struct {
+        bool other_exec : 1;
+        bool other_write : 1;
+        bool other_read : 1;
+        bool group_exec : 1;
+        bool group_write : 1;
+        bool group_read : 1;
+        bool owner_exec : 1;
+        bool owner_write : 1;
+        bool owner_read : 1;
+        bool set_uid : 1;
+        bool set_gid : 1;
+    } OBOS_PACK;
+    uint16_t mode;
 } OBOS_PACK driver_file_perm;
 typedef enum file_type
 {
@@ -196,6 +201,7 @@ typedef struct driver_ftable
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
+    obos_status(*get_file_inode)(dev_desc desc, uint32_t *ino);
 
     // If dir is UINTPTR_MAX, it refers to the root directory.
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
@@ -246,8 +252,10 @@ typedef struct driver_header
     // Only valid if version >= 1, and the version field exists (flags & DRIVER_HEADER_HAS_VERSION_FIELD).
     uint32_t uacpi_init_level_required;
 
-    // Reserved for future use; do not use when version <= 1
-    char reserved[0x100-0x8];
+    thread_affinity mainThreadAffinity;
+
+    // Reserved for future use
+    char reserved[0x100-0x10];
 } driver_header;
 typedef struct driver_header_node
 {

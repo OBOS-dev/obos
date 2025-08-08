@@ -7,7 +7,7 @@ list (APPEND oboskrnl_sources
 	"scheduler/thread.c" "mm/bare_map.c" "allocators/basic_allocator.c"
 	"text.c" "irq/irq.c" "scheduler/process.c" "power/shutdown.c"
 	"irq/timer.c" "mm/context.c" "mm/init.c" "mm/swap.c"
-	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "utils/hashmap.c"
+	"mm/handler.c" "mm/alloc.c" "driver_interface/loader.c" "power/event.c"
 	"driver_interface/pnp.c" "irq/dpc.c" "locks/mutex.c" "locks/semaphore.c"
 	"locks/event.c" "locks/wait.c" "cmdline.c" "vfs/init.c" 
 	"vfs/alloc.c" "utils/string.c" "vfs/mount.c" "vfs/dirent.c"
@@ -83,3 +83,9 @@ set_source_files_properties(
     PROPERTIES
     OBJECT_DEPENDS "${OUTPUT_DIR}/initrd"
 )
+
+if (OBOS_ENABLE_UHDA)
+	target_link_libraries(oboskrnl PRIVATE uhda)
+endif()
+
+include("${CMAKE_SOURCE_DIR}/src/isogen/isogen.cmake")

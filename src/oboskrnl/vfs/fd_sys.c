@@ -265,6 +265,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -297,6 +299,8 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+    
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -331,6 +335,8 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -362,6 +368,8 @@ obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, si
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
         return status;
     }
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -546,17 +554,6 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     if (!to_stat)
         return status;
     st.st_size = to_stat->filesize;
-    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
-        driver = &to_stat->un.device->driver->header;
-    size_t blkSize = 0;
-    size_t blocks = 0;
-    OBOS_ENSURE(driver);
-    OBOS_ENSURE(to_stat);
-    driver->ftable.get_blk_size(to_stat->desc, &blkSize);
-    driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
-    st.st_blksize = blkSize;
     st.st_mode = 0;
     if (to_stat->perm.owner_read)
         st.st_mode |= 0400;
@@ -602,7 +599,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK &&  to_stat->vtype != VNODE_TYPE_FIFO)
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && (~to_stat->flags & VFLAGS_EVENT_DEV))
     {
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
@@ -612,7 +609,21 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     }
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
-    st.st_ino = to_stat->inode;
+    st.st_ino = to_stat->inode;   
+    if (to_stat->flags & VFLAGS_EVENT_DEV)
+        goto done;
+    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
+    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
+    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
+        driver = &to_stat->un.device->driver->header;
+    size_t blkSize = 0;
+    size_t blocks = 0;
+    OBOS_ENSURE(driver);
+    OBOS_ENSURE(to_stat);
+    driver->ftable.get_blk_size(to_stat->desc, &blkSize);
+    driver->ftable.get_max_blk_count(to_stat->desc, &blocks);
+    st.st_blksize = blkSize;
+    done:
     memcpy_k_to_usr(target, &st, sizeof(struct stat));
     return OBOS_STATUS_SUCCESS;
 }
@@ -854,7 +865,7 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
         index = strrfind(path, '/');
     }
     if (index == SIZE_MAX)
-        index = sz_path;
+        index = 0;
     char ch = path[index];
     path[index] = 0;
     const char* dirname = path;
@@ -869,7 +880,7 @@ obos_status Sys_Mkdir(const char* upath, uint32_t mode)
     // printf("%s\n", OBOS_GetStringCPtr(&parent->name));
     file_perm real_mode = unix_to_obos_mode(mode);
     // printf("%s\n", path);
-    status = Vfs_CreateNode(parent, path+(index == sz_path ? 0 : index+1), VNODE_TYPE_DIR, real_mode);
+    status = Vfs_CreateNode(parent, path+(!index ? index : index+1), VNODE_TYPE_DIR, real_mode);
     Free(OBOS_KernelAllocator, path, sz_path);
     // printf("%d\n", status);
     return status;
@@ -1187,6 +1198,73 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
 
     return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
 }
+obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_t pipesize)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, path, sz_path);
+        return status;
+    }
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    file_perm perm = unix_to_obos_mode(mode);
+    const char* fifo_name = nullptr;
+
+    dirent* parent = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            Free(OBOS_KernelAllocator, path, sz_path);
+            return status;
+        }
+        parent = desc->un.dirent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(path, '/') != strlen(path))
+        {
+            size_t last_slash = strrfind(path, '/');
+            char ch = path[last_slash];
+            path[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(path, parent);
+            path[last_slash] = ch;
+            fifo_name = path+last_slash+1;
+        }
+        else
+            fifo_name = path;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(path, '/') != strlen(path))
+        {
+            size_t last_slash = strrfind(path, '/');
+            char ch = path[last_slash];
+            path[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(path, parent);
+            path[last_slash] = ch;
+            fifo_name = path+last_slash+1;
+        }
+        else
+            fifo_name = path;
+    }
+
+    gid current_gid = Core_GetCurrentThread()->proc->currentGID;
+    uid current_uid = Core_GetCurrentThread()->proc->currentUID;
+    status = Vfs_CreateNamedPipe(perm, current_gid, current_uid, parent, fifo_name, pipesize);
+    Free(OBOS_KernelAllocator, path, sz_path);
+    
+    return status;
+}
 
 #define set_foreach(set, size) \
 for (size_t _i = 0; _i < size; _i++)\
@@ -1377,5 +1455,93 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     out2:
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+    return status;
+}
+
+obos_status Sys_SymLink(const char* target, const char* link)
+{
+    return Sys_SymLinkAt(target, AT_FDCWD, link);
+}
+
+obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    char* target = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    target = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(utarget, target, nullptr);
+    
+    char* link = nullptr;
+    size_t sz_path2 = 0;
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path2);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, target, sz_path2);
+        return status;
+    }
+    link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(ulink, link, nullptr);
+
+    dirent* parent = nullptr;
+    const char* link_name = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            goto fail;
+        }
+        parent = desc->un.dirent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(link, '/') != strlen(link))
+        {
+            size_t last_slash = strrfind(link, '/');
+            char ch = link[last_slash];
+            link[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(link, parent);
+            link[last_slash] = ch;
+            link_name = link+last_slash+1;
+        }
+        else
+            link_name = link;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(link, '/') != strlen(link))
+        {
+            size_t last_slash = strrfind(link, '/');
+            char ch = link[last_slash];
+            link[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(link, parent);
+            link[last_slash] = ch;
+            link_name = link+last_slash+1;
+        }
+        else
+            link_name = link;
+    }
+
+    if (!parent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+
+    file_perm perm = {.mode=0777};
+    status = Vfs_CreateNode(parent, link_name, VNODE_TYPE_LNK, perm);
+    dirent* node = VfsH_DirentLookupFrom(link_name, parent);
+    node->vnode->un.linked = target;
+
+    fail:
+    Free(OBOS_KernelAllocator, link, sz_path2);
+    if (obos_is_error(status))
+        Free(OBOS_KernelAllocator, target, sz_path);
     return status;
 }

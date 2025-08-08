@@ -493,8 +493,10 @@ obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t p
 		flags |= BIT_TYPE(0, UL);
 	if (page->prot.is_swap_phys)
 		flags |= BIT_TYPE(9, UL); /* Available bit */
-	if (page->prot.uc)
+	if (page->prot.uc && !page->prot.uc)
 		flags |= BIT_TYPE(4, UL);
+	if (page->prot.fb)
+	    flags |= BIT_TYPE(4, UL)|BIT_TYPE(7, UL) /* write-Combining */;
 	// printf("%s %p->%p (%s page)\n", __func__, page->virt, phys, page->prot.huge_page ? "huge" : "normal");
 	return !page->prot.huge_page ? 
 		Arch_MapPage(pt, (void*)(page->virt & ~0xfff), phys, flags, free_pte) : 

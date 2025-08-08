@@ -33,7 +33,7 @@
 
 handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, size_t stack_size, handle vmm_context)
 {
-    if (!stack || !stack_size)
+    if (!stack)
         return HANDLE_INVALID;
 
     context* vmm_ctx =
@@ -172,13 +172,16 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
         Core_PushlockRelease(&ctx->un.thread_ctx->lock, false);
     }
 
+    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+
     handle_desc* desc = nullptr;
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD, &desc);
     desc->un.thread = thr;
     thr->references++;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+    memcpy(thr->signal_info->signals, Core_GetCurrentThread()->signal_info->signals, sizeof(thr->signal_info->signals));
+    thr->signal_info->mask = Core_GetCurrentThread()->signal_info->mask;
 
     return hnd;
 }
@@ -390,7 +393,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         // Clone current file handles, as well as dirent handles.
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
 
-	OBOS_ExpandHandleTable(&new->handles, OBOS_CurrentHandleTable()->size);
+    	OBOS_ExpandHandleTable(&new->handles, OBOS_CurrentHandleTable()->size);
         for (size_t i = 0; i < OBOS_CurrentHandleTable()->size; i++)
         {
             handle_desc* hnd = OBOS_CurrentHandleTable()->arr + i;

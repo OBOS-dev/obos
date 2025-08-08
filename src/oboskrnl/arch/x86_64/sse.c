@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/sse.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -16,7 +16,10 @@ bool Arch_HasXSAVE = false;
 
 void* Arch_AllocateXSAVERegion()
 {
-    return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size, nullptr);
+    void* base = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size, nullptr);
+    uint32_t* base32 = base;
+    base32[0x18/4] = 0x1f80; // mxcsr
+    return base;
 }
 
 void Arch_FreeXSAVERegion(void* buf)

@@ -82,12 +82,6 @@ static void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
 }
 
 OBOS_NORETURN void Arch_GotoUser(uintptr_t rip, uintptr_t cr3, uintptr_t rsp);
-uintptr_t Arch_GotoUserBootstrap(uintptr_t udata)
-{
-    uintptr_t* user = (void*)udata;
-    Arch_GotoUser(user[0], user[1], user[2]);
-    return -1;
-}
 
 static __attribute__((target("xsave"))) __attribute__((target("avx"))) void reset_extended_state()
 {
@@ -99,6 +93,14 @@ static __attribute__((target("xsave"))) __attribute__((target("avx"))) void rese
         __builtin_ia32_fxrstor(Core_GetCurrentThread()->context.extended_ctx_ptr);
     static const uint32_t mxcsr = 0x1f80;
     asm volatile ("ldmxcsr (%0)" : :"r"(&mxcsr));
+}
+
+uintptr_t Arch_GotoUserBootstrap(uintptr_t udata)
+{
+    reset_extended_state();
+    uintptr_t* user = (void*)udata;
+    Arch_GotoUser(user[0], user[1], user[2]);
+    return -1;
 }
 
 OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
@@ -158,8 +160,6 @@ OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_valu
 
     OBOS_Debug("Handing off control to user program.\n");
     OBOS_Debug("NOTE: RSP=0x%p.\n", Core_GetCurrentThread()->context.frame.rsp);
-
-    reset_extended_state();
 
     Core_GetCurrentThread()->context.frame.rbp = 0;
     uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };

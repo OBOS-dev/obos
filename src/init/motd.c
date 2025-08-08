@@ -29,4 +29,5 @@ int print_motd()
     write(STDOUT_FILENO, "\n", 1);
     close(motd_fd);
     munmap(motd, st.st_size);
+    return 0;
 }

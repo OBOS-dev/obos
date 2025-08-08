@@ -32,12 +32,13 @@
 #define threadCanRunThread(thr) ((thr->status == THREAD_STATUS_RUNNING || thr->status == THREAD_STATUS_READY) && verifyAffinity(thr, CoreS_GetCPULocalPtr()->id))
 
 size_t Core_ReadyThreadCount;
-const uint8_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
+const uint64_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1] = {
 	2, // THREAD_PRIORITY_IDLE
 	4, // THREAD_PRIORITY_LOW
 	8, // THREAD_PRIORITY_NORMAL
 	12, // THREAD_PRIORITY_HIGH
 	12, // THREAD_PRIORITY_URGENT
+	UINT64_MAX, // THREAD_PRIORITY_REAL_TIME
 };
 
 __attribute__((no_instrument_function)) OBOS_WEAK thread* Core_GetCurrentThread() { if (!CoreS_GetCPULocalPtr()) return nullptr; return getCurrentThread; }
@@ -147,6 +148,8 @@ struct irq* Core_SchedulerIRQ;
 uint64_t Core_SchedulerTimerFrequency = 1000;
 void Core_Yield()
 {
+	if (getCurrentThread && getCurrentThread->kill)
+		Core_ExitCurrentThread();
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() <= IRQL_DISPATCH)
 	{

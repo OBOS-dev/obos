@@ -158,7 +158,7 @@ void WaitForTranscations()
     {
         Port* port = Ports + i;
         for (size_t j = 0; j < 32; j++)
-            if (port->CommandBitmask & BIT(j))
+            if (port->CommandBitmask & BIT(j) && port->PendingCommands[j])
                 Core_WaitOnObject(WAITABLE_OBJECT(port->PendingCommands[j]->completionEvent));
     }
 }

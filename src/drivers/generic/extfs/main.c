@@ -102,6 +102,14 @@ OBOS_WEAK obos_status finalize_irp(void* request);
 OBOS_WEAK obos_status ext_mount(void* vn, void* at);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 OBOS_WEAK obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn);
+obos_status get_file_inode(dev_desc desc, uint32_t *out)
+{
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *out = hnd->ino;
+    return OBOS_STATUS_SUCCESS;
+}
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
@@ -128,6 +136,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
         .get_file_type = get_file_type,
+        .get_file_inode = get_file_inode,
         .list_dir = list_dir,
         .vnode_search = vnode_search,
         .stat_fs_info = stat_fs_info,

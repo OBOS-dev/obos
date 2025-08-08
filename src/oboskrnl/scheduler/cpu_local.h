@@ -39,6 +39,8 @@ typedef struct cpu_local
 	dpc_queue dpcs;
 	spinlock dpc_queue_lock;
 	void* currentKernelStack; // size: 0x10000
+	size_t nReadyThreads;
+	size_t nMSIRoutedIRQs;
 
 	struct cpu_local* curr;
 } cpu_local;

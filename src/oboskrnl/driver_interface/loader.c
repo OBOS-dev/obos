@@ -336,7 +336,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);
         return status;
     }
-    status = CoreH_ThreadInitialize(thr, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    status = CoreH_ThreadInitialize(thr, THREAD_PRIORITY_HIGH, !driver->header.mainThreadAffinity ? Core_DefaultThreadAffinity : driver->header.mainThreadAffinity, &ctx);
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, stack, stackSize);

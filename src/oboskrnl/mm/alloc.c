@@ -290,7 +290,9 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
         rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
         rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
-        rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+        rng->prot.fb = flags & VMA_FLAGS_FRAMEBUFFER;
+        if (!rng->prot.fb)
+            rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
         rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
         rng->size = size;
         rng->virt = base;

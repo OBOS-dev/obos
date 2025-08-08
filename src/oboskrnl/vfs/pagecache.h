@@ -25,6 +25,8 @@
 
 static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
 {
+    if (vn->flags & VFLAGS_FB)
+        return nullptr;
     vn->refs++;
     page* phys = MmH_PgAllocatePhysical(false, false);
     phys->backing_vn = vn;
@@ -34,6 +36,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
     driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
         driver = &vn->un.device->driver->header;
+    if (!driver) return nullptr;
     if (!vn->blkSize)
     {
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
@@ -71,6 +74,7 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
         driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
         if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
             driver = &vn->un.device->driver->header;
+        if (!driver) return nullptr;
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
         OBOS_ASSERT(vn->blkSize);
     }
@@ -82,6 +86,8 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
     if (!phys)
     {
         phys = VfsH_PageCacheCreateEntry(vn, offset);
+        if (!phys)
+            return nullptr;
         if (ent)
             *ent = phys;
         return MmS_MapVirtFromPhys(phys->phys) + pg_offset;
