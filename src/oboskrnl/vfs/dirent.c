@@ -14,7 +14,6 @@
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
 #include <vfs/vnode.h>
-#include <vfs/namecache.h>
 #include <vfs/limits.h>
 
 #include <allocators/base.h>

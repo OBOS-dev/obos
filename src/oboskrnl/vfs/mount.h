@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/mount.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -11,7 +11,6 @@
 
 #include <utils/list.h>
 
-#include <vfs/namecache.h>
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
 
@@ -27,7 +26,6 @@ typedef struct mount
     vdev* fs_driver;
     vnode* device; // the block device the filesystem is situated on.
     vnode* mounted_on;
-    namecache nc;
     dirent_list dirent_list;
     atomic_size_t nWaiting;
     bool awaitingFree;

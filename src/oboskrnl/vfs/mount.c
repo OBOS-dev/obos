@@ -13,7 +13,6 @@
 
 #include <vfs/pagecache.h>
 #include <vfs/fd.h>
-#include <vfs/namecache.h>
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 #include <vfs/mount.h>
@@ -303,15 +302,6 @@ obos_status Vfs_Unmount(mount* what)
     what->mounted_on->un.mounted = nullptr;
     what->mounted_on->flags &= ~VFLAGS_MOUNTPOINT;
     foreach_dirent(what, stage_one, nullptr);
-    namecache_ent* curr;
-    for (curr = RB_MIN(namecache, &what->nc); curr;)
-    {
-        namecache_ent* next = RB_RIGHT(curr, rb_cache);
-        deref_vnode(curr->ref);
-        OBOS_FreeString(&curr->path);
-        Vfs_Free(curr);
-        curr = next;
-    }
     what->root->d_children.head = nullptr;
     what->root->d_children.tail = nullptr;
     what->root->d_children.nChildren = 0;
@@ -342,7 +332,6 @@ obos_status Vfs_UnmountP(const char* at)
     return Vfs_Unmount(resolved->vnode->un.mounted);
 }
 
-RB_GENERATE(namecache, namecache_ent, rb_cache, cmp_namecache_ent);
 LIST_GENERATE(mount_list, mount, node);
 
 obos_status Vfs_StatFSInfo(struct vnode* vn, struct drv_fs_info* out)
