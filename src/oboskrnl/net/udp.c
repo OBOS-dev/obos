@@ -33,8 +33,6 @@ PacketProcessSignature(UDP, ip_header*)
     OBOS_UNUSED(nic && depth && buf && size && userdata);
     udp_header* hdr = ptr;
     ip_header* ip_hdr = userdata;
-    if (hdr->chksum)
-        NetUnimplemented(UDP Checksums);
     void* udp_pckt_data = hdr+1;
     size_t udp_pckt_sz = size-sizeof(udp_header);
     udp_port key = {.port=be16_to_host(hdr->dest_port)};
