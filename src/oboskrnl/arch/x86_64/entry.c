@@ -86,8 +86,9 @@
 #include <uacpi/utilities.h>
 #include <uacpi_libc.h>
 
-#if 0
+#if 1
 #include "gdbstub/connection.h"
+#include "gdbstub/gdb_udp_backend.h"
 #include "gdbstub/packet_dispatcher.h"
 #include "gdbstub/debug.h"
 #include "gdbstub/general_query.h"
@@ -1024,6 +1025,12 @@ void Arch_KernelMainBootstrap()
         nic->vnode->net_tables->default_gateway->dest = (ip_addr){{192,168,100,1}};
         LIST_APPEND(ip_table, &nic->vnode->net_tables->table, ent);
         LIST_APPEND(gateway_list, &nic->vnode->net_tables->gateways, nic->vnode->net_tables->default_gateway);
+        static gdb_connection s_gdbCon = {};
+        Kdbg_ConnectionInitializeUDP(&s_gdbCon, 1234, nic->vnode);
+        Kdbg_CurrentConnection = &s_gdbCon;
+        Kdbg_CurrentConnection->connection_active = true;
+        Kdbg_InitializeHandlers();
+        Kdbg_Break();
     }
 
     OBOS_Log("%s: Done early boot.\n", __func__);

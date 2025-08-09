@@ -21,7 +21,7 @@
 static void pckt_onDeref(struct shared_ptr* ptr)
 {
     udp_recv_packet* pckt = ptr->obj;
-    if (ptr->refs == 1)
+    if (ptr->refs == 0)
     {
 		OBOS_SharedPtrUnref(&pckt->buffer_ptr);
         LIST_REMOVE(udp_recv_packet_list, &pckt->bound_to->packets, pckt);
@@ -63,10 +63,15 @@ PacketProcessSignature(UDP, ip_header*)
     
     pckt->src.addr = ip_hdr->src_address;
     pckt->src.port = be16_to_host(hdr->src_port);
+
+    pckt->bound_to = dest;
     
     LIST_APPEND(udp_recv_packet_list, &dest->packets, pckt);
     
+    Core_EventSet(&dest->recv_event, false);
+    
     Core_PushlockRelease(&nic->net_tables->udp_ports_lock, false);
+
     ExitPacketHandler();
 }
 

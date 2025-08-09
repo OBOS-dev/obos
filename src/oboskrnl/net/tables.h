@@ -25,8 +25,8 @@
 
 typedef struct gateway {
     LIST_NODE(gateway_list, struct gateway) node;
-    ip_addr src;
-    ip_addr dest;
+    ip_addr src; // what address does this gateway handle?
+    ip_addr dest; // the gateway address
     struct address_table_entry *cache;
 } gateway;
 typedef LIST_HEAD(gateway_list, gateway) gateway_list;

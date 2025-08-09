@@ -95,7 +95,13 @@ typedef struct ip_header {
     uint16_t packet_length;
     
     // DW2
-    uint32_t id_flags_fragment;
+    union {
+        uint32_t id_flags_fragment;
+        struct {
+            uint16_t id;
+            uint16_t flags_fragment;
+        };
+    };
 
     // DW3
     uint8_t time_to_live; // in seconds
@@ -153,3 +159,4 @@ shared_ptr NetH_IPv4ReassemblePacket(vnode* nic, unassembled_ip_packet* packet);
 uint16_t NetH_OnesComplementSum(const void *buffer, size_t size);
 
 PacketProcessSignature(IPv4, ethernet2_header*);
+obos_status NetH_SendIPv4Packet(vnode *nic, void *ent /* ip_table_entry */, ip_addr dest, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data);

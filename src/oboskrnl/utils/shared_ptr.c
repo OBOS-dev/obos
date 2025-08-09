@@ -39,12 +39,13 @@ void OBOS_SharedPtrUnref(shared_ptr* ptr)
     if (!ptr)
         return;
     OBOS_ASSERT(ptr->refs);
+    --ptr->refs;
+    shared_ptr cpy = *ptr;
     if (ptr->onDeref)
         ptr->onDeref(ptr);
-    --ptr->refs;
     // printf("%p unrefed shared ptr %p (%d->%d)\n",  __builtin_return_address(0), ptr, ptr->refs+1, ptr->refs);
-    if (!ptr->refs && ptr->free)
-        ptr->free(ptr->freeUdata, ptr);
+    if (!cpy.refs && cpy.free)
+        cpy.free(cpy.freeUdata, &cpy);
 }
 
 void OBOS_SharedPtrAssertRefs(shared_ptr* ptr)

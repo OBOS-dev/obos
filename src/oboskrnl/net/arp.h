@@ -18,6 +18,7 @@
 #include <net/eth.h>
 #include <net/ip.h>
 #include <net/macros.h>
+#include <net/tables.h>
 
 #include <utils/tree.h>
 #include <utils/shared_ptr.h>
@@ -45,3 +46,4 @@ typedef struct OBOS_PACK arp_header {
 } arp_header;
 
 PacketProcessSignature(ARP, ethernet2_header*);
+obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_table_entry **address_table_ent);

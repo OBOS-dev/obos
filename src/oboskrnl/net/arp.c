@@ -29,13 +29,73 @@
 #include <utils/list.h>
 #include <utils/shared_ptr.h>
 
-struct arp_header_payload
+struct OBOS_PACK arp_header_payload
 {
     mac_address sender_mac;
     ip_addr sender_ip;
     mac_address target_mac; // set to zero if unknown
     ip_addr target_ip;
 };
+
+obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_table_entry **address_table_ent)
+{
+    if (!nic || !out)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    address_table_entry what = {.addr = addr};
+    Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+    address_table_entry* ent = RB_FIND(address_table, &nic->net_tables->arp_cache, &what);
+    Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+    
+    if (ent) 
+    {
+        memcpy(*out, ent->phys, sizeof(mac_address));
+        if (address_table_ent)
+            *address_table_ent = ent;
+        return OBOS_STATUS_SUCCESS;
+    }
+
+    ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(address_table_entry), nullptr);
+    ent->addr = addr;
+    ent->sync = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, false);
+    RB_INSERT(address_table, &nic->net_tables->arp_cache, ent);
+    Core_PushlockRelease(&nic->net_tables->arp_cache_lock, false);
+
+    size_t sz_hdr = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
+    char hdr_buf[sz_hdr];
+    arp_header* hdr = (void*)hdr_buf;
+    hdr->opcode = host_to_be16(ARP_REQUEST);
+    hdr->hw_address_space = host_to_be16(ARP_HW_ADDRESS_SPACE_ETHERNET);
+    hdr->protocol_address_space = host_to_be16(ETHERNET2_TYPE_IPv4);
+    hdr->len_protocol_address = 4;
+    hdr->len_hw_address = 6;
+
+    struct arp_header_payload* payload = (void*)hdr->data;
+    Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+    payload->sender_ip = LIST_GET_HEAD(ip_table, &nic->net_tables->table)->address;
+    Core_PushlockRelease(&nic->net_tables->table_lock, true);
+    memcpy(payload->sender_mac, nic->net_tables->mac, sizeof(mac_address));
+    payload->target_ip = addr;
+    memzero(payload->target_mac, sizeof(payload->target_mac));
+    
+    shared_ptr *eth = NetH_FormatEthernetPacket(nic, MAC_BROADCAST, hdr, sz_hdr, ETHERNET2_TYPE_ARP);
+    obos_status status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
+    if (obos_is_error(status))
+    {
+        Core_PushlockAcquire(&nic->net_tables->table_lock, false);
+        RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);    
+        Core_PushlockRelease(&nic->net_tables->table_lock, false);
+        Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+        return status; // hdr_ptr isn't leaked, as we never reference it
+    }
+
+    Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+    memcpy(*out, ent->phys, sizeof(mac_address));
+    if (address_table_ent)
+        *address_table_ent = ent;
+    return OBOS_STATUS_SUCCESS;
+}
 
 PacketProcessSignature(ARPReply, arp_header*)
 {
@@ -69,6 +129,11 @@ PacketProcessSignature(ARPRequest, arp_header*)
     Core_PushlockRelease(&nic->net_tables->table_lock, true);
     if (!ent)
         ExitPacketHandler();
+    if (~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY)
+    {
+        printf(__FILE__ ":%d (uh oh something bad has happened!!1!!)\n", __LINE__);
+        ExitPacketHandler();
+    }
     size_t real_size = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
     arp_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
     struct arp_header_payload* payload = (void*)(hdr+1);
