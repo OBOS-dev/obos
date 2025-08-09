@@ -30,6 +30,7 @@
 #include <utils/string.h>
 
 #define IOCTL_PIPE_SET_SIZE 1
+#define IOCTL_PIPE_GET_SIZE 2
 
 static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
 {
@@ -104,6 +105,13 @@ static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
                 pipe->offset = 0;
             pipe->vn->filesize = pipe->size;
             Core_PushlockRelease(&pipe->buffer_lock, false);
+            break;
+        }
+        case IOCTL_PIPE_GET_SIZE:
+        {
+            Core_PushlockAcquire(&pipe->buffer_lock, true);
+            *sargp = pipe->size;
+            Core_PushlockRelease(&pipe->buffer_lock, true);
             break;
         }
         default: return OBOS_STATUS_INVALID_IOCTL;

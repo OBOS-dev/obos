@@ -246,6 +246,11 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    if (fd->un.fd->vn->seals & F_SEAL_WRITE)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (fd->un.fd->offset + nBytes) > fd->un.fd->vn->filesize)
+        return OBOS_STATUS_ACCESS_DENIED;
+
     status = OBOS_STATUS_SUCCESS;
     void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, OBOS_PROTECTION_READ_ONLY, true, &status);
     if (obos_is_error(status))
@@ -1543,5 +1548,200 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     Free(OBOS_KernelAllocator, link, sz_path2);
     if (obos_is_error(status))
         Free(OBOS_KernelAllocator, target, sz_path);
+    return status;
+}
+
+#define F_DUPFD  0
+#define F_GETFD  1
+#define F_SETFD  2
+#define F_GETFL  3
+#define F_SETFL  4
+
+#define F_DUPFD_CLOEXEC 1030
+#define F_SETPIPE_SZ 1031
+#define F_GETPIPE_SZ 1032
+#define F_ADD_SEALS 1033
+#define F_GET_SEALS 1034
+
+#define FD_CLOEXEC 1
+
+#define O_DIRECT      040000
+
+#define O_RDONLY   00
+#define O_WRONLY   01
+#define O_RDWR     02
+
+obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, int* uret)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    uintptr_t* args = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        uargs, nullptr, 
+        nArgs*sizeof(uintptr_t), 
+        0, true, 
+        &status);
+    if (!args && nArgs)
+        return status;
+
+    int res = 0;
+    switch (request) {
+        case F_GETFD: res = fd->un.fd->flags & FD_FLAGS_NOEXEC ? FD_CLOEXEC : 0; status = OBOS_STATUS_SUCCESS; break;
+        case F_SETFD: 
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (args[0] & FD_CLOEXEC)
+                fd->un.fd->flags |= FD_FLAGS_NOEXEC;
+            else
+                fd->un.fd->flags &= ~FD_FLAGS_NOEXEC;
+            status = OBOS_STATUS_SUCCESS; 
+            break;
+        }
+        case F_GETFL:
+        {
+            if ((fd->un.fd->flags & FD_FLAGS_READ) && (~fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_RDONLY;
+            if ((fd->un.fd->flags & FD_FLAGS_READ) && (fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_RDWR;
+            if ((~fd->un.fd->flags & FD_FLAGS_READ) && (fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_WRONLY;
+            if (fd->un.fd->flags & FD_FLAGS_UNCACHED)
+                res |= O_DIRECT;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_SETFL:
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            /*
+             * "On Linux, this operation can change only the O_APPEND, O_ASYNC, O_DIRECT, O_NOATIME, and O_NONBLOCK flags.
+             * It is not possible to change the O_DSYNC and O_SYNC flags; see BUGS, below.""
+            */
+            if (args[0] & O_DIRECT)
+                fd->un.fd->flags |= FD_FLAGS_UNCACHED;
+            else
+                fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
+            break;
+        }
+        case F_DUPFD:
+        {
+            // doesn't exactly follow linux, but whatever.
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            handle_desc* desc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
+            cb(fd, desc);
+            desc->type = HANDLE_TYPE_FD;
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            status = OBOS_STATUS_SUCCESS;
+            res = new_desc;
+            break;
+        }
+        case F_DUPFD_CLOEXEC:
+        {
+            // doesn't exactly follow linux, but whatever.
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            handle_desc* desc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
+            cb(fd, desc);
+            desc->un.fd->flags |= FD_FLAGS_NOEXEC;
+            desc->type = HANDLE_TYPE_FD;
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            res = new_desc;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_SETPIPE_SZ:
+        {
+            if (fd->un.fd->vn->vtype != VNODE_TYPE_FIFO || !nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            size_t curr_size = 0;
+            status = Vfs_FdIoctl(fd->un.fd, 2, &curr_size);
+            size_t new_size = args[0];
+            if (curr_size < new_size)
+            {
+                // This is weird, but in obos' mlibc sysdep it translates to EBUSY.
+                status = OBOS_STATUS_WOULD_BLOCK;
+                break;
+            }
+            status = Vfs_FdIoctl(fd->un.fd, 1, &new_size);
+            res = (int)new_size;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_GETPIPE_SZ:
+        {
+            if (fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            size_t size = 0;
+            status = Vfs_FdIoctl(fd->un.fd, 2, &size);
+            res = (int)size;
+            break;
+        }
+        case F_ADD_SEALS:
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (args[0] & ~0xf)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (fd->un.fd->vn->seals & F_SEAL_SEAL)
+            {
+                status = OBOS_STATUS_ACCESS_DENIED;
+                break;
+            }
+            if (fd->un.fd->vn->seals & F_SEAL_WRITE && fd->un.fd->vn->nWriteableMappedRegions)
+            {
+                // This is weird, but in obos' mlibc sysdep it translates to EBUSY.
+                status = OBOS_STATUS_WOULD_BLOCK;
+                break;
+            }
+            int seal_mask = args[0] & 0xf;
+            fd->un.fd->vn->seals |= seal_mask;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_GET_SEALS:
+        {
+            res = fd->un.fd->vn->seals;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        default: res = 0; status = OBOS_STATUS_INVALID_ARGUMENT; break;
+    }
+
+    if (uret)
+        memcpy_k_to_usr(uret, &res, sizeof(int));
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, args, nArgs*sizeof(uintptr_t));
+
     return status;
 }

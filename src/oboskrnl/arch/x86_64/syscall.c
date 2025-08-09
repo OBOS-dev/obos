@@ -7,6 +7,7 @@
 #include <int.h>
 #include <error.h>
 #include <klog.h>
+#include <cmdline.h>
 #include <syscall.h>
 #include <signal.h>
 #include <handle.h>
@@ -123,7 +124,7 @@ const char* syscall_to_string[] = {
     "Sys_ThreadSetOwner",
     "Sys_ThreadGetTid", // 16
     "Sys_WaitOnObject",
-    "Invalid",
+    "Sys_Fcntl",
     "Sys_ProcessOpen",  // Unimplemented
     "Sys_ProcessStart",
     "Sys_KillProcess",  // signal-related
@@ -281,7 +282,16 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     OBOS_UNUSED(eax);
     if (eax >= sizeof(syscall_to_string)/sizeof(const char*))
         return;
-    if (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0 || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19 || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY))
+    static bool cached_opt = false, opt = false;
+    if (!cached_opt)
+    {
+        opt = OBOS_GetOPTF("disable-syscall-error-log");
+        cached_opt = true;
+    }
+    if (opt || 
+        (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0
+         || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19
+         || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
         OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
         OBOS_Log("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
