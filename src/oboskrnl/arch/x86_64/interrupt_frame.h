@@ -51,8 +51,13 @@ typedef struct __interrupt_frame
 typedef struct syscall_frame
 {
 	// ds=0x00, ss=0x1b, cs=0x23
+	uintptr_t unused;
 	uintptr_t orig_rax;
-	uintptr_t rbp, rip, r15, r14, r13, r12, r11;
+	uintptr_t rbp, rip, r15, r14, r13, r12;
+	union {
+		uintptr_t rflags;
+		uintptr_t r11;
+	};
 	union {
 		// the syscall trap handler saves user rsp in r10
 		uintptr_t rsp;
