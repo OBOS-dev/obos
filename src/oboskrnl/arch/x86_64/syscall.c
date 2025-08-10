@@ -218,6 +218,7 @@ const char* syscall_to_string[] = {
     "Sys_SymLink",
     "Sys_SymLinkAt",
     "Sys_CreateNamedPipe",
+    "Sys_PPoll",
 };
 
 const char* status_to_string[] = {

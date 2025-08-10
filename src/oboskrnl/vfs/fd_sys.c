@@ -1281,6 +1281,8 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
         return false;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+        return false;
 
     irp* req = VfsH_IRPAllocate();
     req->dryOp = true;
@@ -1423,8 +1425,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
             waitable_list[unsignaledIRPIndex] = WAITABLE_OBJECT(tm_evnt);
         }
 
-        struct waitable_header* signaled = nullptr;
-        Core_WaitOnObjects(nWaitableObjects, waitable_list, &signaled);
+        Core_WaitOnObjects(nWaitableObjects, waitable_list, nullptr);
         if (tm.mode == TIMER_EXPIRED)
         {
             CoreH_FreeDPC(&tm.handler_dpc, false);
@@ -1452,6 +1453,167 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     out2:
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+    return status;
+}
+
+#define POLLIN 0x0001
+#define POLLPRI 0x0002
+#define POLLOUT 0x0004
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
+#define POLLNVAL 0x0020
+#define POLLRDNORM 0x0040
+#define POLLRDBAND 0x0080
+#define POLLWRNORM 0x0100
+#define POLLWRBAND 0x0200
+#define POLLRDHUP 0x2000
+
+obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeout, const sigset_t* usigmask, int *nEvents)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    struct pollfd* fds = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        ufds, nullptr,
+        nFds*sizeof(struct pollfd), 
+        0, true, 
+        &status);
+    if (!fds)
+        return status;
+
+    sigset_t sigmask = 0, oldmask = 0;
+    if (usigmask)
+    {
+        status = memcpy_usr_to_k(&sigmask, usigmask, sizeof(sigset_t));
+        if (obos_is_error(status))
+        {
+            Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+            return status;
+        }
+        OBOS_SigProcMask(SIG_SETMASK, &sigmask, &oldmask);
+    }
+    
+    uintptr_t timeout = UINTPTR_MAX;
+    if (utimeout)
+    {
+        status = memcpy_usr_to_k(&timeout, utimeout, sizeof(uintptr_t));
+        if (obos_is_error(status))
+        {
+            Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+            return status;
+        }
+    }
+
+    int num_events = 0;
+
+    struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nFds + (timeout != UINTPTR_MAX), sizeof(struct waitable_header*)*2, nullptr);
+    size_t n_waitable_objects = 0;
+    up:
+    for (size_t i = 0; i < nFds; i++)
+    {
+        struct pollfd* curr = &fds[i];
+        // TODO: is this a problem with different handle types?
+        if (curr->fd < 0)
+            continue;
+        irp* read_irp = nullptr;
+        irp* write_irp = nullptr;
+        bool events_satisified = true;
+        if (curr->events & POLLIN)
+        {
+            events_satisified = events_satisified && fd_avaliable_for(IRP_READ, curr->fd, &status, &read_irp);
+            if (obos_is_error(status))
+            {
+                if (obos_is_error(status))
+                {
+                    if (status == OBOS_STATUS_PIPE_CLOSED)
+                    {
+                        curr->revents |= POLLERR;
+                        break;
+                    }
+                    else if (status == OBOS_STATUS_INVALID_ARGUMENT)
+                    {
+                        curr->revents |= POLLNVAL;
+                        break;
+                    }
+                    else
+                        break;
+                }
+            }
+            if (events_satisified)
+                num_events++;
+            curr->revents |= POLLIN;
+        }
+        if (curr->events & POLLOUT)
+        {
+            events_satisified = events_satisified && fd_avaliable_for(IRP_WRITE, curr->fd, &status, &write_irp);
+            if (obos_is_error(status))
+            {
+                if (status == OBOS_STATUS_PIPE_CLOSED)
+                {
+                    curr->revents |= POLLERR;
+                    break;
+                }
+                else if (status == OBOS_STATUS_INVALID_ARGUMENT)
+                {
+                    curr->revents |= POLLNVAL;
+                    break;
+                }
+                else
+                    break;
+            }
+            if (events_satisified)
+                num_events++;
+            curr->revents |= POLLOUT;
+        }
+        if (events_satisified)
+            continue;
+        if (read_irp)
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+        if (write_irp)
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+    }
+
+    if (n_waitable_objects == nFds && obos_is_success(status))
+    {
+        if (!timeout)
+        {
+            status = OBOS_STATUS_SUCCESS;
+            goto out;
+        }
+
+        timer tm = {};
+        event tm_evnt = {};
+        if (timeout != UINTPTR_MAX)
+        {
+            tm.handler = pselect_tm_handler;
+            tm.userdata = (void*)&tm_evnt;
+            Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, timeout);
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(tm_evnt);
+        }
+
+        struct waitable_header* signaled = nullptr;
+        Core_WaitOnObjects(n_waitable_objects, waitable_list, &signaled);
+        if (signaled == WAITABLE_OBJECT(tm_evnt))
+        {
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            status = OBOS_STATUS_SUCCESS;
+            goto out;
+        }
+        Core_CancelTimer(&tm);
+        CoreH_FreeDPC(&tm.handler_dpc, false);
+
+        n_waitable_objects = 0;
+        goto up;
+    }
+
+    out:
+
+    memcpy_k_to_usr(nEvents, &num_events, sizeof(int));
+
+    if (waitable_list)
+        Free(OBOS_KernelAllocator, waitable_list, nFds + (timeout!=UINTPTR_MAX));
+    OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+
     return status;
 }
 

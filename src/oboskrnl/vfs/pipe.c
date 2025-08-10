@@ -168,7 +168,16 @@ static obos_status unreference_device(dev_desc desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
     //OBOS_Log("thread %d: enter %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
-    if (pipe->refs == 2 && !pipe->read_event.hdr.signaled)
+    bool has_write_fd = false;
+    for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+    {
+        if (f->flags & FD_FLAGS_WRITE)
+        {
+            has_write_fd = true;
+            break;
+        }
+    }
+    if (!has_write_fd && !pipe->read_event.hdr.signaled)
         CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->read_event));
     //OBOS_Log("thread %d: ret from %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs-1, pipe->offset, pipe->size, pipe);
     if (!(--pipe->refs))
@@ -190,6 +199,22 @@ static obos_status submit_irp(void* irp_)
     if (!req || !req->desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)req->desc;
+    bool has_write_fd = false;
+    for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+    {
+        if (f->flags & FD_FLAGS_WRITE)
+        {
+            has_write_fd = true;
+            break;
+        }
+    }
+    if (!has_write_fd && !pipe->read_event.hdr.signaled)
+    {
+        req->status = OBOS_STATUS_PIPE_CLOSED;
+        req->evnt = nullptr;
+        return OBOS_STATUS_SUCCESS;
+    }
+
     req->evnt = req->op == IRP_READ ? &pipe->read_event : &pipe->write_event;
     req->on_event_set = nullptr;
     req->status = OBOS_STATUS_SUCCESS;

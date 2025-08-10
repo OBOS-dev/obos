@@ -390,6 +390,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SymLink,
     (uintptr_t)Sys_SymLinkAt,
     (uintptr_t)Sys_CreateNamedPipe,
+    (uintptr_t)Sys_PPoll,
 };
 
 // Arch syscall table is defined per-arch
