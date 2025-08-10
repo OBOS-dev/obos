@@ -1189,16 +1189,11 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
     tmp_descs[0] = OBOS_CurrentHandleTable()->arr+tmp[0];
     tmp_descs[0]->un.fd = Vfs_Malloc(sizeof(fd));
     tmp_descs[1]->un.fd = Vfs_Malloc(sizeof(fd));
-    memcpy(tmp_descs[0]->un.fd, &kfds[0], sizeof(fd));
-    memcpy(tmp_descs[1]->un.fd, &kfds[1], sizeof(fd));
+    Vfs_FdOpenVnode(tmp_descs[0]->un.fd, kfds[0].vn, FD_OFLAGS_READ);
+    Vfs_FdOpenVnode(tmp_descs[1]->un.fd, kfds[1].vn, FD_OFLAGS_WRITE);
     Vfs_FdClose(&kfds[0]);
     Vfs_FdClose(&kfds[1]);
-    memzero(&tmp_descs[0]->un.fd->node, sizeof(tmp_descs[0]->un.fd->node));
-    memzero(&tmp_descs[1]->un.fd->node, sizeof(tmp_descs[1]->un.fd->node));
-    LIST_APPEND(fd_list, &tmp_descs[0]->un.fd->vn->opened, tmp_descs[0]->un.fd);
-    LIST_APPEND(fd_list, &tmp_descs[1]->un.fd->vn->opened, tmp_descs[1]->un.fd);
-    tmp_descs[0]->un.fd->vn->refs++;
-    tmp_descs[1]->un.fd->vn->refs++;
+
     Vfs_Free(kfds);
 
     return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
@@ -1300,7 +1295,7 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
         return false;
     }
     bool res = !req->evnt;
-    if (req->evnt && req->evnt->signaled)
+    if (req->evnt && req->evnt->hdr.signaled)
         res = true;
     if (res)
         VfsH_IRPUnref(req);
@@ -1376,10 +1371,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
             else if (!num_events)
                 unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
-            {
-                printf("%d\n", status);
                 goto out;
-            }
         }
     }
     if (write_set)
@@ -1566,6 +1558,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
 #define FD_CLOEXEC 1
 
 #define O_DIRECT      040000
+#define O_NONBLOCK     04000
 
 #define O_RDONLY   00
 #define O_WRONLY   01
@@ -1637,6 +1630,10 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
                 fd->un.fd->flags |= FD_FLAGS_UNCACHED;
             else
                 fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
+            if (args[0] & O_NONBLOCK)
+                fd->un.fd->flags |= FD_FLAGS_NOBLOCK;
+            else
+                fd->un.fd->flags &= ~FD_FLAGS_NOBLOCK;
             break;
         }
         case F_DUPFD:

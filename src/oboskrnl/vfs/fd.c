@@ -157,7 +157,15 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     obos_status status = VfsH_IRPSubmit(req, &desc->desc);
     if (obos_is_success(status))
     {
-        status = VfsH_IRPWait(req);
+        if (desc->flags & FD_FLAGS_NOBLOCK)
+        {
+            if (req->evnt)
+                status = VfsH_IRPWait(req);
+            else
+                status = OBOS_STATUS_TIMED_OUT;
+        }
+        else
+            status = VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
         if (nWritten_)
             *nWritten_ = req->nBlkRead * desc->vn->blkSize;
@@ -216,7 +224,16 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     obos_status status = VfsH_IRPSubmit(req, &desc->desc);
     if (obos_is_success(status))
     {
-        obos_status status = VfsH_IRPWait(req);
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (desc->flags & FD_FLAGS_NOBLOCK)
+        {
+            if (req->evnt)
+                status = VfsH_IRPWait(req);
+            else
+                status = OBOS_STATUS_TIMED_OUT;
+        }
+        else
+            status = VfsH_IRPWait(req);
         if (nRead_)
             *nRead_ = req->nBlkRead * desc->vn->blkSize;
         VfsH_IRPUnref(req);

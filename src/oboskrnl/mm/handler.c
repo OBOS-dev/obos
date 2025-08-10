@@ -140,6 +140,7 @@ static obos_status ref_page(context* ctx, const page_info *curr)
 
 static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
 {
+    OBOS_UNUSED(addr);
     info->prot.present = true;
     info->prot.rw = false;
     info->prot.ro = true;
@@ -273,6 +274,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     done:
     if (!handled && type == INVALID_FAULT)
         type = ACCESS_FAULT;
+    if (type == ACCESS_FAULT)
+        OBOS_ASSERT(!rng);
     ctx->stat.pageFaultCount++;
     ctx->stat.pageFaultCountSinceSample++;
     switch (type) {

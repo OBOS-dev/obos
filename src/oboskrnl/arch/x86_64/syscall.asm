@@ -101,6 +101,7 @@ Arch_SyscallTrapHandler:
     cmp qword [r11+rax*8], 0
     ; Basically a call if zero
     ; Maybe we should just do something normal?
+    push rax
     push .finished
     jz Sys_InvalidSyscall
 extern Arch_LogSyscall
@@ -123,8 +124,6 @@ pop rcx
 pop rdx
 pop rsi
 pop rdi
-
-    push rax
 
     call [r11+rax*8]
 .finished:

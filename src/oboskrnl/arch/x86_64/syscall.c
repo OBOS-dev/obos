@@ -273,8 +273,8 @@ void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, 
     OBOS_UNUSED(r9);
     OBOS_UNUSED(eax);
     if (eax >= sizeof(syscall_to_string)/sizeof(const char*))
-        return;
-    OBOS_Debug("(thread %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
+        OBOS_Warning("(thread %ld, process %ld) invalid syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, eax, rdi,rsi,rdx,r8,r9);
+    OBOS_Debug("(thread %ld, process %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
 void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
 {
@@ -292,9 +292,9 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
         (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0
          || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19
          || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
-        OBOS_Debug("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+        OBOS_Debug("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
-        OBOS_Log("(thread %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+        OBOS_Log("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     if (Core_GetCurrentThread()->signal_info->pending)
         Arch_LAPICSendIPI(
             (ipi_lapic_info){.isShorthand=true,.info={.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF}},

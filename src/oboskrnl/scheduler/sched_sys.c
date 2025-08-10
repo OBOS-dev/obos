@@ -534,13 +534,23 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 
     if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
     {
-        process = Core_GetCurrentThread()->proc->children.head;
-        while (process && process->dead)
-            process = process->next;
+        struct process* iter = Core_GetCurrentThread()->proc->children.head;
+        while (iter)
+        {
+            if (iter->dead)
+                goto next;
+            if (!process || iter->times_waited < process->times_waited)
+                process = iter;
+            if (!process->waiting_threads.signaled && (options & WNOHANG))
+                process = nullptr;
+            next:
+            iter = iter->next;
+        }
         status = process ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
         if (!process)
             return status;
         process->refcount++;
+        process->times_waited++;
     }
     else
     {

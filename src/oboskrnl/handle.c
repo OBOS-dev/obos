@@ -180,10 +180,6 @@ void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handl
     unimpl_handle_clone,
 };
 
-void unimpl_handle_close(handle_desc* hnd)
-{
-    OBOS_Warning("Cannot close handle descriptor %p. Unimplemented.\n", hnd);
-}
 void fd_close(handle_desc* hnd)
 {
     Vfs_FdClose(hnd->un.fd);
@@ -191,17 +187,17 @@ void fd_close(handle_desc* hnd)
 }
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
     nullptr, // TODO: Refcount vmm contexts.
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
 };
 
 static obos_status handle_close_unlocked(handle_table* current_table, handle hnd);

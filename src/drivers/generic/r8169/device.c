@@ -607,7 +607,7 @@ obos_status r8169_buffer_poll(r8169_buffer* buff)
 {
     if (LIST_GET_NODE_COUNT(r8169_frame_list, &buff->frames))
         return OBOS_STATUS_SUCCESS;
-    while (!buff->envt.signaled)
+    while (!buff->envt.hdr.signaled)
         OBOSS_SpinlockHint();
     return OBOS_STATUS_SUCCESS;
 }

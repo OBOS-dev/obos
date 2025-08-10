@@ -15,10 +15,13 @@
 #include <vfs/mount.h>
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
+#include <vfs/irp.h>
 
 #include <locks/pushlock.h>
 #include <locks/wait.h>
 #include <locks/event.h>
+
+#include <scheduler/schedule.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
@@ -38,10 +41,21 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
-    // printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    //OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+    bool has_write_fd = false;
+    for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+    {
+        if (f->flags & FD_FLAGS_WRITE)
+        {
+            has_write_fd = true;
+            break;
+        }
+    }
+    if (!has_write_fd && !pipe->read_event.hdr.signaled)
+        return OBOS_STATUS_PIPE_CLOSED;
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->read_event))))
-        return status;
+        return status == OBOS_STATUS_ABORTED ? OBOS_STATUS_PIPE_CLOSED : status;
     Core_PushlockAcquire(&pipe->buffer_lock, true);
     memcpy(buf, pipe->buffer+pipe->offset, blkCount);
     pipe->offset = (pipe->offset + blkCount) % pipe->size;
@@ -49,7 +63,9 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (!pipe->offset)
         Core_EventClear(&pipe->read_event);
     Core_PushlockRelease(&pipe->buffer_lock, true);
-    // printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    //OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+    if (nBlkRead)
+        *nBlkRead = blkCount;
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
@@ -58,7 +74,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
-    // printf("enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    //OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_event))))
         return status;
@@ -67,7 +83,9 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     Core_EventSet(&pipe->read_event, false);
     Core_EventClear(&pipe->write_event);
     Core_PushlockRelease(&pipe->buffer_lock, true);
-    // printf("ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", __func__, blkCount, pipe->offset, pipe->size, pipe);
+    //OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+    if (nBlkWritten)
+        *nBlkWritten = blkCount;
     return OBOS_STATUS_SUCCESS;
 }
 static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
@@ -131,13 +149,62 @@ static obos_status ioctl_argp_size(uint32_t request, size_t *size)
     }
     return OBOS_STATUS_SUCCESS;
 }
+static obos_status reference_device(dev_desc* pdesc)
+{
+    if (!pdesc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    dev_desc desc = *pdesc;
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    pipe_desc* pipe = (void*)desc;
+    //OBOS_Log("thread %d: enter %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
+    pipe->refs++;
+    //OBOS_Log("thread %d: ret from %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status unreference_device(dev_desc desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    pipe_desc* pipe = (void*)desc;
+    //OBOS_Log("thread %d: enter %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
+    if (pipe->refs == 2 && !pipe->read_event.hdr.signaled)
+        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->read_event));
+    //OBOS_Log("thread %d: ret from %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs-1, pipe->offset, pipe->size, pipe);
+    if (!(--pipe->refs))
+    {
+        Vfs_Free(pipe->buffer);
+        Vfs_Free(pipe);
+    }
+    return OBOS_STATUS_SUCCESS;
+}
 static obos_status remove_file(dev_desc desc)
 {
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    pipe_desc *pipe = (void*)desc;
-    Vfs_Free(pipe->buffer);
-    Vfs_Free(pipe);
+    return unreference_device(desc);   
+}
+static obos_status submit_irp(void* irp_)
+{
+    irp* req = irp_;
+    if (!req || !req->desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    pipe_desc* pipe = (void*)req->desc;
+    req->evnt = req->op == IRP_READ ? &pipe->read_event : &pipe->write_event;
+    req->on_event_set = nullptr;
+    req->status = OBOS_STATUS_SUCCESS;
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status finalize_irp(void* irp_)
+{
+    irp* req = irp_;
+    if (!req || !req->desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (req->dryOp)
+        return OBOS_STATUS_SUCCESS;
+    req->status = req->op == IRP_READ ? 
+        read_sync(req->desc, req->buff, req->blkCount, req->blkOffset, &req->nBlkRead) :
+        write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -154,6 +221,10 @@ driver_id OBOS_FIFODriver = {
             .get_blk_size=get_blk_size,
             .get_max_blk_count=get_max_blk_count,
             .remove_file=remove_file,
+            .reference_device = reference_device,
+            .unreference_device = unreference_device,
+            .submit_irp = submit_irp,
+            .finalize_irp = finalize_irp,
         },
     }
 };
@@ -202,7 +273,7 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, di
     if (VfsH_DirentLookupFrom(name, parent))
         return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!pipesize)
-        pipesize = OBOS_PAGE_SIZE*16;
+        pipesize = OBOS_PAGE_SIZE;
     if (pipesize < PIPE_BUF)
         pipesize = PIPE_BUF;
     pipe_desc *desc = alloc_pipe_desc(pipesize);

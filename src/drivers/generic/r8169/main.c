@@ -221,7 +221,7 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
-    OBOS_UNUSED(what,request,argp);
+    OBOS_UNUSED(what && request && argp);
     return OBOS_STATUS_INVALID_IOCTL;
 }
 
