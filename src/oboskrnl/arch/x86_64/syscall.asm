@@ -15,6 +15,7 @@ extern Sys_InvalidSyscall
 push 0 ; cr3
 push rcx
 push rbx
+push rdx
 push rsi
 push rdi
 push r8
@@ -42,6 +43,7 @@ pop r9
 pop r8
 pop rdi
 pop rsi
+pop rdx
 pop rbx
 pop rcx
 pop r9 ; cr3
@@ -94,6 +96,8 @@ Arch_SyscallTrapHandler:
 
     sti
 
+    push rax
+
     mov r10, 0xffffffff
     and rax, r10
     mov rcx, r8
@@ -101,7 +105,6 @@ Arch_SyscallTrapHandler:
     cmp qword [r11+rax*8], 0
     ; Basically a call if zero
     ; Maybe we should just do something normal?
-    push rax
     push .finished
     jz Sys_InvalidSyscall
 extern Arch_LogSyscall
@@ -129,6 +132,7 @@ pop rdi
 .finished:
     cli
 
+    add rsp, 8
     pop rsi
     push rax
     push rdx
@@ -139,11 +143,10 @@ pop rdi
     pop rdx
     pop rax
 
-    add rsp, 8
 
     mov r9, gs:0x18
     mov r9, [r9]
-    mov [rsp+14*8], r9 ; old_cr3 = currentContext->pt
+    mov [rsp+15*8], r9 ; old_cr3 = currentContext->pt
     sys_popaq
 
     xor rdx,rdx
