@@ -1628,7 +1628,7 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
             */
             if (args[0] & O_DIRECT)
                 fd->un.fd->flags |= FD_FLAGS_UNCACHED;
-            else
+            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
                 fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
             if (args[0] & O_NONBLOCK)
                 fd->un.fd->flags |= FD_FLAGS_NOBLOCK;
