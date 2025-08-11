@@ -521,16 +521,18 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     switch (fsfdt) {
         case FSFDT_FD:
         {
+            if (HANDLE_TYPE(desc) != HANDLE_TYPE_FD && HANDLE_TYPE(desc) != HANDLE_TYPE_DIRENT)
+                return OBOS_STATUS_INVALID_ARGUMENT;
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
             status = OBOS_STATUS_SUCCESS;
-            handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+            handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, true, &status);
             if (!fd)
             {
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 return status;
             }
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            to_stat = fd->un.fd->vn;
+            to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->vnode;
             break;
         }
         case FSFDT_PATH:
@@ -1403,7 +1405,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     {
         if (!timeout)
         {
-            status = OBOS_STATUS_TIMED_OUT;
+            status = OBOS_STATUS_SUCCESS;
             goto timeout;
         }
 
@@ -1429,7 +1431,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         if (tm.mode == TIMER_EXPIRED)
         {
             CoreH_FreeDPC(&tm.handler_dpc, false);
-            status = OBOS_STATUS_TIMED_OUT;
+            status = OBOS_STATUS_SUCCESS;
             goto timeout;
         }
         Core_CancelTimer(&tm);
@@ -1512,7 +1514,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     {
         struct pollfd* curr = &fds[i];
         // TODO: is this a problem with different handle types?
-        if (curr->fd < 0)
+        if ((int)curr->fd < 0)
             continue;
         irp* read_irp = nullptr;
         irp* write_irp = nullptr;
