@@ -274,8 +274,9 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     done:
     if (!handled && type == INVALID_FAULT)
         type = ACCESS_FAULT;
-    if (type == ACCESS_FAULT)
-        OBOS_ASSERT(!rng);
+    if (type == ACCESS_FAULT && rng)
+        if (rng->hasGuardPage && (rng->virt==addr))
+            OBOS_Debug("Page fault happened on guard page. Stack overflow possible\n");
     ctx->stat.pageFaultCount++;
     ctx->stat.pageFaultCountSinceSample++;
     switch (type) {

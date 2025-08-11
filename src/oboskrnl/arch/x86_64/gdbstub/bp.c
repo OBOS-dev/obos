@@ -21,7 +21,9 @@
 #include <mm/alloc.h>
 #include <mm/context.h>
 
-#include <stdint.h>
+#include <scheduler/process.h>
+#include <scheduler/thread.h>
+
 #include <utils/tree.h>
 #include <utils/list.h>
 
@@ -76,7 +78,9 @@ obos_status Kdbg_GDB_Z0(gdb_connection* con, const char* arguments, size_t argum
     bp->addr = args.address;
  
     uintptr_t phys = 0;
-    MmS_QueryPageInfo(Mm_KernelContext.pt, bp->addr, nullptr, &phys);
+    MmS_QueryPageInfo(dbg_ctx->interrupted_thread && dbg_ctx->interrupted_thread->proc ? 
+        dbg_ctx->interrupted_thread->proc->ctx->pt : 
+        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, nullptr, &phys);
     if (!phys)
     {
         response = "E.Page fault";
@@ -118,7 +122,9 @@ obos_status Kdbg_GDB_z0(gdb_connection* con, const char* arguments, size_t argum
     }
 
     uintptr_t phys = 0;
-    MmS_QueryPageInfo(Mm_KernelContext.pt, bp->addr, nullptr, &phys);
+    MmS_QueryPageInfo(dbg_ctx->interrupted_thread && dbg_ctx->interrupted_thread->proc ? 
+        dbg_ctx->interrupted_thread->proc->ctx->pt : 
+        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, nullptr, &phys);
     if (!phys)
     {
         response = "E.Page fault";
