@@ -35,7 +35,7 @@ void append_to_buffer_char(buffer* buf, char what)
     if (index >= buf->nAllocated)
     {
         buf->nAllocated += 4; // Reserve 4 more bytes.
-        buf->buf = Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), index*sizeof(*buf->buf), nullptr);
+        buf->buf = Reallocate(OBOS_NonPagedPoolAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), index*sizeof(*buf->buf), nullptr);
         OBOS_ASSERT(buf->buf);
     }
     buf->buf[index+buf->offset] = what;
@@ -47,7 +47,7 @@ void append_to_buffer_str_len(buffer* buf, const char* what, size_t strlen)
     {
         size_t old_sz = buf->nAllocated;
         buf->nAllocated += ((strlen + 3) & ~3); // Reserve strlen more bytes.
-        buf->buf = Reallocate(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), old_sz*sizeof(*buf->buf), nullptr);
+        buf->buf = Reallocate(OBOS_NonPagedPoolAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf), old_sz*sizeof(*buf->buf), nullptr);
         OBOS_ASSERT(buf->buf);
     }
     char ch = what[0];
@@ -69,9 +69,9 @@ char pop_from_buffer(buffer* buf)
     {
         buf->nAllocated -= (buf->nAllocated - buf->szBuf);
         OBOS_ASSERT(buf->nAllocated == buf->szBuf);
-        char* newbuf = ZeroAllocate(OBOS_KernelAllocator, buf->nAllocated, sizeof(*buf->buf), nullptr);
+        char* newbuf = ZeroAllocate(OBOS_NonPagedPoolAllocator, buf->nAllocated, sizeof(*buf->buf), nullptr);
         memcpy(newbuf, buf->buf + buf->offset, buf->szBuf);
-        Free(OBOS_KernelAllocator, buf->buf, buf->nAllocated + 4);
+        Free(OBOS_NonPagedPoolAllocator, buf->buf, buf->nAllocated + 4);
         buf->buf = newbuf;
         buf->offset = 0;
     }
@@ -79,7 +79,7 @@ char pop_from_buffer(buffer* buf)
 }
 void free_buffer(buffer* buf)
 {
-    Free(OBOS_KernelAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf));
+    Free(OBOS_NonPagedPoolAllocator, buf->buf, buf->nAllocated*sizeof(*buf->buf));
     buf->buf = nullptr;
     buf->szBuf = buf->nAllocated = 0;
 }
@@ -174,7 +174,8 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     serial_port *port = userdata;
     dpc* com_dpc = &port->com_dpc;
     com_dpc->userdata = userdata;
-    CoreH_InitializeDPC(com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
+    dpc_handler(com_dpc, com_dpc->userdata);
+    // CoreH_InitializeDPC(com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

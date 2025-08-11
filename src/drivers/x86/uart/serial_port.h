@@ -93,7 +93,7 @@ typedef struct serial_port
 } serial_port;
 void flush_out_buffer(serial_port* port);
 
-#define IRQL_COM_IRQ IRQL_TIMER
+#define IRQL_COM_IRQ (IRQL_DISPATCH)
 
 enum
 {
