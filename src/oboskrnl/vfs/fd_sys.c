@@ -546,7 +546,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
             dirent* dent = nullptr;
-            if (FSFDT_PATH == fsfdt)
+            if (FSFDT_PATH == fsfdt || desc == AT_FDCWD)
                 dent = VfsH_DirentLookup(path);
             else
             {
