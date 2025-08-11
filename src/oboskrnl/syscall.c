@@ -60,7 +60,7 @@ obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return OBOS_PartProbeDrive(dent->un.dirent, check_checksum);
+    return OBOS_PartProbeDrive(dent->un.dirent->curr, check_checksum);
 }
 
 obos_status Sys_InvalidSyscall()

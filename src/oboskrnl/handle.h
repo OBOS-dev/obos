@@ -10,6 +10,12 @@
 
 #include <locks/mutex.h>
 
+struct dirent_handle
+{
+    struct dirent* curr;
+    struct dirent* parent;
+};
+
 typedef enum handle_type
 {
     // vfs/fd.h
@@ -52,7 +58,7 @@ typedef struct handle_desc
         struct handle_desc* next; // for the freelist.
         struct fd* fd;
         struct timer* timer;
-        struct dirent* dirent;
+        struct dirent_handle* dirent;
         struct thread* thread;
         struct process* process;
         struct context* vmm_context;

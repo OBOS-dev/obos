@@ -132,7 +132,7 @@ obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Drv_PnpLoadDriversAt(dirent->un.dirent, wait);
+    return Drv_PnpLoadDriversAt(dirent->un.dirent->parent, wait);
 }
 
 // Finds a loaded driver by its name, and returns a handle to it.

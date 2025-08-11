@@ -117,7 +117,6 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     OBOS_ASSERT(table);
     OBOS_ASSERT(desc);
     handle hnd = 0;
-    bool through_freelist = table->head;
     if (table->head)
     {
         hnd = table->head - table->arr;
@@ -185,10 +184,15 @@ void fd_close(handle_desc* hnd)
     Vfs_FdClose(hnd->un.fd);
     Vfs_Free(hnd->un.fd);
 }
+void dirent_close(handle_desc* hnd)
+{
+    Free(OBOS_KernelAllocator, hnd->un.dirent, sizeof(struct dirent_handle));
+}
+
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
     nullptr,
-    nullptr,
+    dirent_close,
     nullptr,
     nullptr,
     nullptr, // TODO: Refcount vmm contexts.

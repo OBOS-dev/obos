@@ -166,7 +166,7 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags & ~FD_OFLAGS_CREATE);
+    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent->parent, oflags & ~FD_OFLAGS_CREATE);
 }
 
 #define AT_FDCWD (handle)-100
@@ -199,7 +199,7 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
-        parent_dent = dent->un.dirent;
+        parent_dent = dent->un.dirent->parent;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
@@ -532,7 +532,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 return status;
             }
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->vnode;
+            to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->parent->vnode;
             break;
         }
         case FSFDT_PATH:
@@ -545,7 +545,22 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 return status;
             path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
-            dirent* dent = VfsH_DirentLookup(path);
+            dirent* dent = nullptr;
+            if (FSFDT_PATH == fsfdt)
+                dent = VfsH_DirentLookup(path);
+            else
+            {
+                status = OBOS_STATUS_SUCCESS;
+                handle_desc* ent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
+                if (!ent)
+                {
+                    Free(OBOS_KernelAllocator, path, sz_path);
+                    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                    return status;
+                }
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                dent = VfsH_DirentLookupFrom(path, ent->un.dirent->parent);
+            }
 //          printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
@@ -669,7 +684,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
         }
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());        
 
-        dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent);
+        dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent->parent);
         Free(OBOS_KernelAllocator, path, sz_path);
         if (!dent)
             return OBOS_STATUS_NOT_FOUND;
@@ -721,7 +736,7 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
                 vn = fd->un.fd->vn;
                 break;
             case HANDLE_TYPE_DIRENT:
-                vn = fd->un.dirent->vnode;
+                vn = fd->un.dirent->parent->vnode;
                 break;
             default:
                 OBOS_UNREACHABLE;
@@ -763,7 +778,7 @@ obos_status Sys_StatFSInfo(handle desc, drv_fs_info* info)
     if (obos_is_error(status))
         return status;
 
-    vnode* vn = dent->un.dirent->vnode;
+    vnode* vn = dent->un.dirent->parent->vnode;
     status = Vfs_StatFSInfo(vn, &out);
     if (obos_is_error(status))
         return status;
@@ -802,7 +817,9 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_DIRENT, &desc);
-    desc->un.dirent = dent->d_children.head;
+    desc->un.dirent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*desc->un.dirent), nullptr);
+    desc->un.dirent->curr = dent->d_children.head;
+    desc->un.dirent->parent = dent;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     if (statusp)
@@ -825,7 +842,7 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
     size_t k_nRead = 0;
 
-    if (dent->un.dirent == (dirent*)-1)
+    if (dent->un.dirent->curr == nullptr)
     {
         if (nRead)
             memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
@@ -838,10 +855,8 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
     memzero(kbuff, szBuf);
 
-    status = Vfs_ReadEntries(dent->un.dirent, kbuff, szBuf, &dent->un.dirent, nRead ? &k_nRead : nullptr);
+    status = Vfs_ReadEntries(dent->un.dirent->curr, kbuff, szBuf, &dent->un.dirent->curr, nRead ? &k_nRead : nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuff, szBuf);
-    if (!dent->un.dirent)
-        dent->un.dirent = (dirent*)-1;
     if (obos_is_error(status))
         return status;
 
@@ -911,7 +926,7 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
     name = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(uname, name, nullptr);
 
-    status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    status = Vfs_CreateNode(dent->un.dirent->parent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
     Free(OBOS_KernelAllocator, name, sz_path);
 
     return status;
@@ -1229,7 +1244,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
             Free(OBOS_KernelAllocator, path, sz_path);
             return status;
         }
-        parent = desc->un.dirent;
+        parent = desc->un.dirent->parent;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
         if (strchr(path, '/') != strlen(path))
@@ -1658,7 +1673,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             goto fail;
         }
-        parent = desc->un.dirent;
+        parent = desc->un.dirent->parent;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
         if (strchr(link, '/') != strlen(link))
