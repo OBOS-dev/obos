@@ -284,6 +284,7 @@ obos_status ioctl_argp_size(uint32_t request, size_t* out)
     {
         case IOCTL_OPEN_SERIAL_CONNECTION:
         {
+            status = OBOS_STATUS_SUCCESS;
             *out = sizeof(struct open_serial_con);
             break;
         }
