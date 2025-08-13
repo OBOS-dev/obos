@@ -287,15 +287,15 @@ OBOS_NO_KASAN static void nmiHandler(interrupt_frame* frame)
 	}
 	if (Arch_InvlpgIPI(frame))
 		return;
-	// if (Kdbg_Paused)
-	// {
-	// 	asm("sti");
-	// 	// TODO: Fix 
-	// 	Arch_LAPICSendEOI();
-	// 	Kdbg_CallDebugExceptionHandler(frame, false);
-	// 	asm("cli");
-	// 	return;
-	// }
+	if (Kdbg_Paused)
+	{
+		asm("sti");
+		// TODO: Fix 
+		Arch_LAPICSendEOI();
+		Kdbg_CallDebugExceptionHandler(frame, false);
+		asm("cli");
+		return;
+	}
 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unhandled NMI!\n");
 }
 OBOS_NO_KASAN static void HaltInitializedCPUs()
