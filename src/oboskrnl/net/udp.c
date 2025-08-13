@@ -18,6 +18,22 @@
 
 #include <utils/list.h>
 
+#if __x86_64__
+#   include <arch/x86_64/gdbstub/connection.h>
+#   include <arch/x86_64/gdbstub/debug.h>
+#   include <scheduler/thread.h>
+#   include <scheduler/process.h>
+#   include <mm/context.h>
+#   include <mm/alloc.h>
+static void kdbg_breaker_thread()
+{
+    Kdbg_Break();
+    Core_ExitCurrentThread();
+}
+#endif
+
+#include <scheduler/cpu_local.h>
+
 static void pckt_onDeref(struct shared_ptr* ptr)
 {
     udp_recv_packet* pckt = ptr->obj;
@@ -34,7 +50,7 @@ PacketProcessSignature(UDP, ip_header*)
     udp_header* hdr = ptr;
     ip_header* ip_hdr = userdata;
     void* udp_pckt_data = hdr+1;
-    size_t udp_pckt_sz = size-sizeof(udp_header);
+    size_t udp_pckt_sz = be16_to_host(hdr->length) - sizeof(udp_header);
     udp_port key = {.port=be16_to_host(hdr->dest_port)};
     Core_PushlockAcquire(&nic->net_tables->udp_ports_lock, false);
     udp_port* dest = RB_FIND(udp_port_tree, &nic->net_tables->udp_ports, &key);
@@ -69,6 +85,32 @@ PacketProcessSignature(UDP, ip_header*)
     Core_EventSet(&dest->recv_event, false);
     
     Core_PushlockRelease(&nic->net_tables->udp_ports_lock, false);
+    
+    #if __x86_64__
+        if (memcmp(udp_pckt_data, "\x03", 1) && udp_pckt_sz == 1)
+        {
+            // Kdbg break?
+            if (Kdbg_CurrentConnection && Kdbg_CurrentConnection->connection_active && !Kdbg_Paused)
+            {
+                // We need to do this because this thread can't be blocked without
+                // removing internet access, and because the idle thread cannot be
+                // blocked.
+                thread_ctx ctx = {};
+                void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+                CoreS_SetupThreadContext(
+                    &ctx,
+                    (uintptr_t)kdbg_breaker_thread, 0, 
+                    false, 
+                    stack, 0x4000);
+                thread* thr = CoreH_ThreadAllocate(nullptr);
+                CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+                Core_ProcessAppendThread(OBOS_KernelProcess, thr);
+                thr->stackFree = CoreH_VMAStackFree;
+                thr->stackFreeUserdata = &Mm_KernelContext;
+                CoreH_ThreadReady(thr);
+            }
+        }
+    #endif
 
     ExitPacketHandler();
 }

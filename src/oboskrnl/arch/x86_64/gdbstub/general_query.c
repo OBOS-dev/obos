@@ -1,12 +1,13 @@
 /*
  * oboskrnl/arch/x86_64/gdbstub/general_query.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <cmdline.h>
 #include <error.h>
 
 #include <scheduler/thread.h>
@@ -18,6 +19,8 @@
 #include <arch/x86_64/gdbstub/connection.h>
 #include <arch/x86_64/gdbstub/alloc.h>
 #include <arch/x86_64/gdbstub/general_query.h>
+
+#include <arch/x86_64/asm_helpers.h>
 
 #include <uacpi_libc.h>
 
@@ -165,6 +168,27 @@ obos_status Kdbg_GDB_vMustReplyEmpty(gdb_connection* con, const char* arguments,
     NO_CTX;
     return Kdbg_ConnectionSendPacket(con, "");
 }
+static char* common_io_out(const char* arguments, size_t argumentsLen, size_t commandLen, uint16_t* out_ioaddr, uint32_t* out_iodata)
+{
+    if ((commandLen+1) >= argumentsLen)
+        return "496E636F7272656374206E756D626572206F6620617267756D656E74730a"; // Incorrect number of arguments
+    const char* endptr = nullptr;
+    uint16_t io_addr = OBOSH_StrToULL(arguments+commandLen+1, &endptr, 0);
+    if (!endptr)
+        return "496E76616C696420617267756D656E740A"; // Invald argument
+    printf("endptr=%s\n", endptr);
+    endptr++;
+    printf("endptr=%s\n", endptr);
+    if (endptr >= (argumentsLen+arguments))
+        return "496E76616C696420617267756D656E740A"; // Invald argument
+    uint32_t data = OBOSH_StrToULL(endptr, &endptr, 0);
+    if (!endptr)
+        return "496E636F7272656374206E756D626572206F6620617267756D656E74730a"; // Incorrect number of arguments
+    printf("io addr = 0x%04x, data = 0x%x\n", io_addr, data);
+    *out_ioaddr = io_addr;
+    *out_iodata = data;
+    return "537563636573730A";
+}
 // void OBOS_TestLocks();
 obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t argumentsLen_, gdb_ctx* dbg_ctx, void* userdata)
 {
@@ -174,7 +198,7 @@ obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t a
     char* arguments = Kdbg_Calloc(argumentsLen + 1, sizeof(char));
     for (size_t i = 0; i < argumentsLen; i++)
         arguments[i] = KdbgH_hex2bin(arguments_ + (i*2), 2);
-    printf("%s\n%s\n", arguments, arguments_);
+    // printf("%s\n%s\n", arguments, arguments_);
     size_t commandLen = strnchr(arguments, ' ', argumentsLen);
     char* response = "556E6B6E6F776E20636F6D6D616E640A";
     if (!commandLen)
@@ -186,6 +210,103 @@ obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t a
     bool freeResponse = false;
     if (strcmp(command, "ping"))
         response = "706F6E670A";
+    else if (strcmp(command, "io8_read"))
+    {
+        if ((commandLen+1) >= argumentsLen)
+        {
+            // Incorrect number of arguments
+            response = "496E636F7272656374206E756D626572206F6620617267756D656E74730a";
+            goto down;
+        }
+        const char* endptr = nullptr;
+        uint16_t io_addr = OBOSH_StrToULL(arguments+commandLen+1, &endptr, 0);
+        if (!endptr)
+        {
+            response = "496E76616C696420617267756D656E740A";
+            goto down;
+        }
+        char* read = KdbgH_FormatResponse("%02x", inb(io_addr));
+        response = KdbgH_FormatResponse("3078%02x%02x0a", read[0], read[1]);
+        Kdbg_Free(read);
+        freeResponse = true;
+    }
+    else if (strcmp(command, "io16_read"))
+    {
+        if ((commandLen+1) >= argumentsLen)
+        {
+            // Incorrect number of arguments
+            response = "496E636F7272656374206E756D626572206F6620617267756D656E74730a";
+            goto down;
+        }
+        const char* endptr = nullptr;
+        uint16_t io_addr = OBOSH_StrToULL(arguments+commandLen+1, &endptr, 0);
+        if (!endptr)
+        {
+            response = "496E76616C696420617267756D656E740A";
+            goto down;
+        }
+        char* read = KdbgH_FormatResponse("%04x", inw(io_addr));
+        response = KdbgH_FormatResponse("3078%02x%02x%02x%02x0a", read[0], read[1], read[2], read[3]);
+        Kdbg_Free(read);
+        freeResponse = true;
+    }
+    else if (strcmp(command, "io32_read"))
+    {
+        if ((commandLen+1) >= argumentsLen)
+        {
+            // Incorrect number of arguments
+            response = "496E636F7272656374206E756D626572206F6620617267756D656E74730a";
+            goto down;
+        }
+        const char* endptr = nullptr;
+        uint16_t io_addr = OBOSH_StrToULL(arguments+commandLen+1, &endptr, 0);
+        if (!endptr)
+        {
+            response = "496E76616C696420617267756D656E740A";
+            goto down;
+        }
+        char* read = KdbgH_FormatResponse("%08x", ind(io_addr));
+        response = KdbgH_FormatResponse("3078%02x%02x%02x%02x%02x%02x%02x%02x0a", read[0], read[1], read[2], read[3], read[4], read[5], read[6], read[7]);
+        Kdbg_Free(read);
+        freeResponse = true;
+    }
+    else if (strcmp(command, "io8_write"))
+    {
+        uint16_t io_addr = 0;
+        uint32_t data = 0;
+        response = common_io_out(arguments, argumentsLen, commandLen, &io_addr, &data);
+        if (strcmp(response, "537563636573730A"))
+        {
+            printf("outb(0x%x, 0x%x)\n", io_addr, data & 0xff);
+            outb(io_addr, data & 0xff);
+        }
+        freeResponse = false;
+    }
+    else if (strcmp(command, "io16_write"))
+    {
+        uint16_t io_addr = 0;
+        uint32_t data = 0;
+        response = common_io_out(arguments, argumentsLen, commandLen, &io_addr, &data);
+        if (strcmp(response, "537563636573730A"))
+        {
+            printf("outw(0x%x, 0x%x)\n", io_addr, data & 0xffff);
+            outw(io_addr, data & 0xffff);
+        }
+        freeResponse = false;
+    }
+    else if (strcmp(command, "io32_write"))
+    {
+        uint16_t io_addr = 0;
+        uint32_t data = 0;
+        response = common_io_out(arguments, argumentsLen, commandLen, &io_addr, &data);
+        if (strcmp(response, "537563636573730A"))
+        {
+            printf("outd(0x%x, 0x%x)\n", io_addr, data & 0xff);
+            outd(io_addr, data & 0xff);
+        }
+        freeResponse = false;
+    }
+    down:
     Kdbg_Free(arguments);
     Kdbg_Free(command);
     obos_status st = Kdbg_ConnectionSendPacket(con, response);

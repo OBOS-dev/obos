@@ -1009,8 +1009,6 @@ void Arch_KernelMainBootstrap()
         Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
     }
 
-    OBOS_LoadInit();
-
     dirent* nic = VfsH_DirentLookup("/dev/r8169-eth0");
     if (nic)
     {
@@ -1032,6 +1030,8 @@ void Arch_KernelMainBootstrap()
         Kdbg_InitializeHandlers();
         Kdbg_Break();
     }
+
+    OBOS_LoadInit();
 
     OBOS_Log("%s: Done early boot.\n", __func__);
     OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 

@@ -27,6 +27,7 @@
 
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
+#include <scheduler/process.h>
 
 #include <allocators/base.h>
 
@@ -108,6 +109,7 @@ obos_status Net_Initialize(vnode* nic)
     nic->net_tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
     nic->net_tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
     CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, nic->net_tables->dispatch_thread);
     CoreH_ThreadReady(nic->net_tables->dispatch_thread);
 
     nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
@@ -137,6 +139,7 @@ obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data)
     VfsH_IRPSubmit(req, &nic->net_tables->desc);
     VfsH_IRPWait(req);
     OBOS_SharedPtrUnref(data);
+    VfsH_IRPUnref(req);
     return OBOS_STATUS_SUCCESS;
 }
 

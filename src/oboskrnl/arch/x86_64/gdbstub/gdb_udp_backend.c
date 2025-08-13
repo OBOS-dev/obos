@@ -82,6 +82,8 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
         Core_WaitOnObject(WAITABLE_OBJECT(hnd->bound_port->recv_event));
 		Core_EventClear(&hnd->bound_port->recv_event);
 		udp_recv_packet* recv_packet = LIST_GET_HEAD(frame_queue, &hnd->bound_port->packets);
+        if (!recv_packet)
+            continue;
         if (!hnd->client.addr)
             hnd->client.addr = recv_packet->src.addr.addr;
         if (hnd->client.addr != recv_packet->src.addr.addr)
