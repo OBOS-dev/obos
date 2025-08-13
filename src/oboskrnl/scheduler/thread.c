@@ -129,6 +129,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
+	OBOS_ENSURE(thr->masterCPU->idleThread != thr && "Blocking an idle thread can be fatal.");
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	thread_node* node = thr->snode;
@@ -156,7 +157,7 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (!thr->masterCPU && thr->status != THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_MAX_VALUE)
+	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_URGENT)
 		return OBOS_STATUS_SUCCESS;
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql = thr->masterCPU ? Core_SpinlockAcquire(&thr->masterCPU->schedulerLock) : IRQL_INVALID;
