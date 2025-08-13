@@ -1,5 +1,5 @@
 /*
- * drivers/generic/r8169/CMakeLists.txt
+ * drivers/generic/r8169/main.c
  *
  * Copyright (c) 2025 Omar Berrow
  */
@@ -445,7 +445,7 @@ static void search_bus(pci_bus* bus)
             Devices[nDevices-1].rx_bytes = 0;
             Devices[nDevices-1].rx_count = 0;
             Devices[nDevices-1].rx_crc_errors = 0;
-            Devices[nDevices-1].rx_errors= 0;
+            Devices[nDevices-1].rx_errors = 0;
             Devices[nDevices-1].rx_length_errors = 0;
             Devices[nDevices-1].rx_dropped = 0;
 
