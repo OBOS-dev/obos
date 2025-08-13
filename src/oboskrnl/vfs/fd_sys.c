@@ -277,6 +277,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
 
 obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
 {
+    // for (volatile bool b = (desc==0); b; )
+    //     ;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);

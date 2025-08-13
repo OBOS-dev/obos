@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <signal.h>
 
 #include <vfs/fd.h>
 #include <vfs/pipe.h>
@@ -41,6 +42,8 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
+    if (blkCount > pipe->size)
+        blkCount = pipe->size;
     //OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
     bool has_write_fd = false;
     for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
@@ -51,8 +54,13 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
             break;
         }
     }
-    if (!has_write_fd && !pipe->read_event.hdr.signaled)
-        return OBOS_STATUS_PIPE_CLOSED;
+    if (has_write_fd && !pipe->read_event.hdr.signaled)
+    {
+        //OBOS_Log("thread %d: ret from %s (no write end). blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+        if (nBlkRead)
+            *nBlkRead = 0;
+        return OBOS_STATUS_EOF;
+    }
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->read_event))))
         return status == OBOS_STATUS_ABORTED ? OBOS_STATUS_PIPE_CLOSED : status;
@@ -74,14 +82,37 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
+    if (blkCount > pipe->size)
+        blkCount = pipe->size;
     //OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+    bool has_read_fd = false;
+    for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+    {
+        if (f->flags & FD_FLAGS_READ)
+        {
+            has_read_fd = true;
+            break;
+        }
+    }
+    if (!has_read_fd)
+    {
+        //OBOS_Log("thread %d: ret from %s (pipe closed). blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
+        if (Core_GetCurrentThread()->signal_info && Core_GetCurrentThread()->signal_info->mask & BIT(SIGPIPE-1))
+            return OBOS_STATUS_PIPE_CLOSED;
+        else
+        {
+            OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
+            return OBOS_STATUS_SUCCESS;
+        }
+    }
     obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_event))))
         return status;
     Core_PushlockAcquire(&pipe->buffer_lock, true);
     memcpy(pipe->buffer+pipe->offset, buf, blkCount);
     Core_EventSet(&pipe->read_event, false);
-    Core_EventClear(&pipe->write_event);
+    if ((blkCount + pipe->offset) >= pipe->size)
+        Core_EventClear(&pipe->write_event);
     Core_PushlockRelease(&pipe->buffer_lock, true);
     //OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->offset, pipe->size, pipe);
     if (nBlkWritten)
@@ -168,17 +199,17 @@ static obos_status unreference_device(dev_desc desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
     //OBOS_Log("thread %d: enter %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
-    bool has_write_fd = false;
+    bool has_read_fd = false;
     for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
     {
-        if (f->flags & FD_FLAGS_WRITE)
+        if (f->flags & FD_FLAGS_READ)
         {
-            has_write_fd = true;
+            has_read_fd = true;
             break;
         }
     }
-    if (!has_write_fd && !pipe->read_event.hdr.signaled)
-        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->read_event));
+    if (!has_read_fd)
+        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->write_event));
     //OBOS_Log("thread %d: ret from %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs-1, pipe->offset, pipe->size, pipe);
     if (!(--pipe->refs))
     {
@@ -199,20 +230,52 @@ static obos_status submit_irp(void* irp_)
     if (!req || !req->desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)req->desc;
-    bool has_write_fd = false;
-    for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+
+    if (req->op == IRP_READ)
     {
-        if (f->flags & FD_FLAGS_WRITE)
+        bool has_write_fd = false;
+        for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
         {
-            has_write_fd = true;
-            break;
+            if (f->flags & FD_FLAGS_WRITE)
+            {
+                has_write_fd = true;
+                break;
+            }
+        }
+        if (!has_write_fd && !pipe->read_event.hdr.signaled)
+        {
+            req->nBlkRead = 0;
+            req->status = OBOS_STATUS_EOF;
+            req->on_event_set = nullptr;
+            req->evnt = nullptr;
+            return OBOS_STATUS_SUCCESS;
         }
     }
-    if (!has_write_fd && !pipe->read_event.hdr.signaled)
+    else
     {
-        req->status = OBOS_STATUS_PIPE_CLOSED;
-        req->evnt = nullptr;
-        return OBOS_STATUS_SUCCESS;
+        bool has_write_fd = false;
+        for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
+        {
+            if (f->flags & FD_FLAGS_READ)
+            {
+                has_write_fd = true;
+                break;
+            }
+        }
+        if (!has_write_fd)
+        {
+            if (Core_GetCurrentThread()->signal_info && Core_GetCurrentThread()->signal_info->mask & BIT(SIGPIPE-1))
+                req->status = OBOS_STATUS_PIPE_CLOSED;
+            else
+            {
+                OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
+                req->status = OBOS_STATUS_SUCCESS;
+            }
+            req->nBlkWritten = 0;
+            req->on_event_set = nullptr;
+            req->evnt = nullptr;
+            return OBOS_STATUS_SUCCESS;
+        }
     }
 
     req->evnt = req->op == IRP_READ ? &pipe->read_event : &pipe->write_event;

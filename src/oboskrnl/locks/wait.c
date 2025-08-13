@@ -107,7 +107,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
 
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    if (curr->hdrSignaled->interrupted)
+    if (curr->signalInterrupted || curr->hdrSignaled->interrupted)
         status = OBOS_STATUS_ABORTED;
 
     if (signaled)

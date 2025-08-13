@@ -288,7 +288,7 @@ static bool isNumber(char ch)
 	char temp = ch - '0';
 	return temp >= 0 && temp < 10;
 }
-static uint64_t strtoull(const char* str, char** endptr, int base)
+static uint64_t strtoull(const char* str, const char** endptr, int base)
 {
 	while (!isNumber(*str))
         str++;
@@ -321,6 +321,7 @@ static uint64_t strtoull(const char* str, char** endptr, int base)
 	}
 	return 0xffffffffffffffff;
 }
+__attribute__((alias("strtoull"))) uint64_t OBOSH_StrToULL(const char* str, const char** endptr, int base); 
 
 uint64_t OBOS_GetOPTD(const char* opt)
 {

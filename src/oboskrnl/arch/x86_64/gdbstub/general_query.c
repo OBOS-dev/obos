@@ -1,11 +1,12 @@
 /*
  * oboskrnl/arch/x86_64/gdbstub/general_query.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
 #include <klog.h>
+#include <cmdline.h>
 #include <memmanip.h>
 #include <error.h>
 
@@ -143,9 +144,10 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
             feature_len++;
         i += (feature_len + 1);
     }
-    size_t featureLen = snprintf(nullptr, 0, "PacketSize=%lu", packet_size);
+    const char* format = "PacketSize=%lu;qXfer:exec-file:read+;binary-upload?;error-message+";
+    size_t featureLen = snprintf(nullptr, 0, format, packet_size);
     response = Kdbg_Realloc(response, responseLen+featureLen+1);
-    snprintf(response + responseLen, featureLen+1, "PacketSize=%lu", packet_size);
+    snprintf(response + responseLen, featureLen+1, format, packet_size);
     responseLen += featureLen;
     obos_status status = Kdbg_ConnectionSendPacket(con, response);
     Kdbg_Free(response);
@@ -192,4 +194,108 @@ obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments_, size_t a
     if (freeResponse)
         Kdbg_Free(response);
     return st;
+}
+
+#define do_bounds_check(ptr, pstart, len) \
+({\
+    uintptr_t _start = (uintptr_t)pstart;\
+    uintptr_t _p = (uintptr_t)ptr;\
+    (_p >= _start) && (_p < (_start+len));\
+})
+
+obos_status Kdbg_GDB_qXfer(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
+{
+    NO_USERDATA;
+    char* resp = "E.Unrecognized operation";
+    bool free_resp = false;
+
+    const char* op = arguments;
+    size_t op_len = strnchr(arguments, ':', argumentsLen)-1;
+    
+    const char* op_type = nullptr;
+    size_t len_op_type = 0;
+    
+    uint64_t annex = 0, offset = 0, length = 0;
+    OBOS_MAYBE_UNUSED bool have_annex = false, have_offset = false, have_length = false;
+    
+    
+    const char* op_args = op + (op_len+1);
+    size_t op_args_len = argumentsLen - (op_len+1);
+    
+    const char* args_iter = op_args;
+    size_t rel_args_size = op_args_len;
+    do {
+        const char* ptr = args_iter;
+        size_t len_ptr = strnchr(op_args, ':', rel_args_size)-1;
+        if (!do_bounds_check(ptr, op_args, op_args_len))
+            return Kdbg_ConnectionSendPacket(con, "E.Not enough arguments");
+        op_type = ptr;
+        len_op_type = len_ptr;
+        rel_args_size -= len_ptr + 1;
+        args_iter += len_ptr + 1;
+    } while(0);
+    do {
+        const char* ptr = args_iter;
+        size_t len_ptr = strnchr(ptr, ':', rel_args_size)-1;
+        if (!do_bounds_check(ptr, op_args, op_args_len))
+            return Kdbg_ConnectionSendPacket(con, "E.Not enough arguments");
+        annex = OBOSH_StrToULL(ptr, nullptr, 16);
+        have_annex = len_ptr > 0;
+        rel_args_size -= len_ptr + 1;
+        args_iter += len_ptr + 1;
+    } while(0);
+    do {
+        const char* ptr = args_iter;
+        size_t len_ptr = strnchr(ptr, ',', rel_args_size)-1;
+        if (!do_bounds_check(ptr, op_args, op_args_len))
+            return Kdbg_ConnectionSendPacket(con, "E.Not enough arguments");
+        offset = OBOSH_StrToULL(ptr, nullptr, 16);
+        have_offset = len_ptr > 0;
+        rel_args_size -= len_ptr + 1;
+        args_iter += len_ptr + 1;
+    } while(0);
+    do {
+        const char* ptr = args_iter;
+        size_t len_ptr = rel_args_size;
+        if (!do_bounds_check(ptr, op_args, op_args_len))
+            return Kdbg_ConnectionSendPacket(con, "E.Not enough arguments");
+        length = OBOSH_StrToULL(ptr, nullptr, 16);
+        have_length = len_ptr > 0;
+        rel_args_size -= len_ptr + 1;
+        args_iter += len_ptr + 1;
+    } while(0);
+
+    if (uacpi_strncmp(op_type, "read", len_op_type) == 0)
+    {
+        const char* resp_buffer = nullptr;
+        size_t len_resp_buffer = 0;
+        bool resp_binary = false; 
+
+        if (uacpi_strncmp(op, "exec-file", op_len) == 0)
+        {
+            process* proc = have_annex ? Core_LookupProc(annex-1) : dbg_ctx->interrupted_thread->proc;
+            if (!proc)
+                return Kdbg_ConnectionSendPacket(con, "E.Could not find process");
+            resp_binary = false;
+            if (proc->pid != 0)
+                resp_buffer = proc->exec_file;
+            else
+                resp_buffer = "oboskrnl";
+
+            len_resp_buffer = strlen(resp_buffer);
+        }
+
+        if (!resp_binary)
+        {
+            if (offset < len_resp_buffer)
+                resp = KdbgH_FormatResponse("l%.*s", OBOS_MIN(len_resp_buffer-offset, length), resp_buffer + OBOS_MAX(offset, 0UL));
+            else
+                resp = KdbgH_FormatResponse("l");
+        }
+    }
+
+    obos_status status = Kdbg_ConnectionSendPacket(con, resp);
+    if (free_resp)
+        Kdbg_Free(resp);
+    return status;
 }

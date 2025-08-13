@@ -86,13 +86,9 @@
 #include <uacpi/utilities.h>
 #include <uacpi_libc.h>
 
-#if 0
+#if 1
 #include "gdbstub/connection.h"
-#include "gdbstub/packet_dispatcher.h"
 #include "gdbstub/debug.h"
-#include "gdbstub/general_query.h"
-#include "gdbstub/stop_reply.h"
-#include "gdbstub/bp.h"
 #endif
 
 #include <vfs/init.h>

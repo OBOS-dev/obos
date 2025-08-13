@@ -1,15 +1,16 @@
 /*
  * oboskrnl/sig_sys.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "locks/wait.h"
 #include <int.h>
 #include <error.h>
 #include <handle.h>
 #include <memmanip.h>
 #include <signal.h>
+
+#include <locks/wait.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
@@ -107,7 +108,7 @@ obos_status Sys_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset)
         return status;
 
     if (oldset)
-        status = memcpy_k_to_usr(oldset, &koldset, sizeof(user_sigaction));
+        status = memcpy_k_to_usr(oldset, &koldset, sizeof(sigset_t));
 
     return status;
 }

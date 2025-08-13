@@ -1,13 +1,14 @@
 /*
  * drivers/x86/uart/serial_port.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <cmdline.h>
 
 #include <allocators/base.h>
 
@@ -90,7 +91,7 @@ void flush_out_buffer(serial_port* port)
 }
 
 const size_t irq_rate = 1;
-obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit, dev_desc* connection)
+obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit)
 {
     if (!port || !baudRate)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -130,16 +131,15 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     port->dataBits = dataBits;
     port->parityBit = parityBit;
     Core_LowerIrql(oldIrql);
-    if (connection)
-        *connection = (dev_desc)port;
     return OBOS_STATUS_SUCCESS;
 }
 
-// static dpc kdbg_int_dpc;
-static bool should_break;
-static void dpc_handler(dpc* obj, void* userdata)
+extern __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr;
+void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql_)
 {
-    OBOS_UNUSED(obj);
+    OBOS_UNUSED(i);
+    OBOS_UNUSED(frame);
+    OBOS_UNUSED(oldIrql_);
     serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
     if (lineStatusRegister & BIT(5))
@@ -150,32 +150,30 @@ static void dpc_handler(dpc* obj, void* userdata)
         Core_SpinlockRelease(&port->out_buffer.lock, oldIrql);
     }
     // Receive all the avaliable data.
+    bool received_break = false;
     irql oldIrql = Core_SpinlockAcquireExplicit(&port->in_buffer.lock, IRQL_COM_IRQ, false);
     while (inb(port->port_base + LINE_STATUS) & BIT(0))
     {
         char ch = inb(port->port_base+IO_BUFFER);
         append_to_buffer_char(&port->in_buffer, ch);
-        // if (ch == '\x03')
-        //     should_break = Kdbg_CurrentConnection->connection_active;
+        if (ch == '\x03')
+            received_break = true;
     }
     Core_SpinlockRelease(&port->in_buffer.lock, oldIrql);
-    if (should_break)
+    bool should_break = received_break && (OBOS_GetOPTF("enable-kdbg") || Kdbg_CurrentConnection);
+    if (should_break && (!Kdbg_CurrentConnection || Kdbg_CurrentConnection->pipe == (dev_desc)port))
     {
-        // OBOS_Debug("GDB requested break.\n");
-        should_break = false;
-        // Kdbg_Break();
+        if (!Kdbg_CurrentConnection)
+        {
+            OBOS_Debug("UART: Received 0x03 break. Enabling kernel debugger.");
+            static gdb_connection con = {};
+            Kdbg_ConnectionInitialize(&con, &drv_hdr.ftable, (dev_desc)port);
+            Kdbg_CurrentConnection = &con;
+            Kdbg_InitializeHandlers();
+            Kdbg_CurrentConnection->connection_active = true;
+        }
+        Kdbg_CallDebugExceptionHandler(frame, true);
     }
-}
-void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql_)
-{
-    OBOS_UNUSED(i);
-    OBOS_UNUSED(frame);
-    OBOS_UNUSED(oldIrql_);
-    serial_port *port = userdata;
-    dpc* com_dpc = &port->com_dpc;
-    com_dpc->userdata = userdata;
-    dpc_handler(com_dpc, com_dpc->userdata);
-    // CoreH_InitializeDPC(com_dpc, dpc_handler, Core_DefaultThreadAffinity & ~(CoreS_GetCPULocalPtr()->id));
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)
 {

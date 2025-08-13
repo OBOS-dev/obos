@@ -79,19 +79,19 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
             }
         }
     }
+    if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+    {
+        asm("sti");
+        irql oldIrql = Core_GetIrql();
+        Core_LowerIrqlNoThread(IRQL_PASSIVE);
+        Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
+        Kdbg_CallDebugExceptionHandler(frame, true);
+        (void)Core_RaiseIrqlNoThread(oldIrql);
+        asm("cli");
+    }
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGSEGV (rip 0x%p, cr2 0x%p, error code 0x%08x)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2(), frame->errorCode);
-        if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
-        {
-            asm("sti");
-            irql oldIrql = Core_GetIrql();
-            Core_LowerIrqlNoThread(IRQL_PASSIVE);
-            Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
-            Kdbg_CallDebugExceptionHandler(frame, true);
-            (void)Core_RaiseIrqlNoThread(oldIrql);
-            asm("cli");
-        }
         Core_GetCurrentThread()->signal_info->signals[SIGSEGV].addr = (void*)getCR2();
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
         // OBOS_SyncPendingSignal(frame);

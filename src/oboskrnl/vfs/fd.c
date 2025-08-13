@@ -159,7 +159,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     {
         if (desc->flags & FD_FLAGS_NOBLOCK)
         {
-            if (req->evnt && req->evnt->hdr.signaled)
+            if ((req->evnt && req->evnt->hdr.signaled) || !req->evnt)
                 status = VfsH_IRPWait(req);
             else
                 status = OBOS_STATUS_TIMED_OUT;
@@ -227,7 +227,7 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
         obos_status status = OBOS_STATUS_SUCCESS;
         if (desc->flags & FD_FLAGS_NOBLOCK)
         {
-            if (req->evnt && req->evnt->hdr.signaled)
+            if ((req->evnt && req->evnt->hdr.signaled) || !req->evnt)
                 status = VfsH_IRPWait(req);
             else
                 status = OBOS_STATUS_TIMED_OUT;

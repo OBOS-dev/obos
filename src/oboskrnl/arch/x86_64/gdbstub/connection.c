@@ -22,6 +22,7 @@
 #include <arch/x86_64/gdbstub/packet_dispatcher.h>
 #include <arch/x86_64/gdbstub/debug.h>
 #include <arch/x86_64/gdbstub/general_query.h>
+#include <arch/x86_64/gdbstub/vFile.h>
 #include <arch/x86_64/gdbstub/stop_reply.h>
 #include <arch/x86_64/gdbstub/bp.h>
 
@@ -284,6 +285,8 @@ obos_status Kdbg_InitializeHandlers()
     Kdbg_AddPacketHandler("Z0", Kdbg_GDB_Z0, nullptr);
     Kdbg_AddPacketHandler("z0", Kdbg_GDB_z0, nullptr);
     Kdbg_AddPacketHandler("D", Kdbg_GDB_D, nullptr);
+    Kdbg_AddPacketHandler("vFile", Kdbg_GDB_vFile, nullptr);
+    Kdbg_AddPacketHandler("qXfer", Kdbg_GDB_qXfer, nullptr);
     Arch_RawRegisterInterrupt(0x3, (uintptr_t)(void*)Kdbg_int3_handler);
     Arch_RawRegisterInterrupt(0x1, (uintptr_t)(void*)Kdbg_int1_handler);
     initialized_handlers = true;

@@ -78,6 +78,7 @@ set(TARGET_DRIVER_LINKER_OPTIONS)
 set(gdbstub_source
     "arch/x86_64/gdbstub/connection.c" "arch/x86_64/gdbstub/alloc.c" "arch/x86_64/gdbstub/packet_dispatcher.c"
     "arch/x86_64/gdbstub/general_query.c" "arch/x86_64/gdbstub/debug.c" "arch/x86_64/gdbstub/stop_reply.c" "arch/x86_64/gdbstub/bp.c"
+    "arch/x86_64/gdbstub/vFile.c"
 )
 
 list (APPEND oboskrnl_sources 

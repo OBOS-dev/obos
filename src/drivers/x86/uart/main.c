@@ -150,14 +150,14 @@ void on_wake()
         serial_port *port = serialPorts + i;
         if (!port->opened)
             continue;
-        dev_desc discarded = 0;
-        open_serial_connection(port, port->baudRate, port->dataBits, port->stopbits, port->parityBit, &discarded);
-        OBOS_UNUSED(discarded);
+        open_serial_connection(port, port->baudRate, port->dataBits, port->stopbits, port->parityBit);
     }
 }
 
 void on_suspend()
 {}
+
+obos_status ioctl_argp_size(uint32_t request, size_t* out);
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
@@ -170,6 +170,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = cleanup,
         .ioctl = ioctl,
+        .ioctl_argp_size = ioctl_argp_size,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,
@@ -240,7 +241,7 @@ static uacpi_iteration_decision match_uart(void *user, uacpi_namespace_node *nod
     return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
-OBOS_NO_UBSAN obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
     OBOS_UNUSED(what);
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
@@ -248,50 +249,45 @@ OBOS_NO_UBSAN obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     {
         case IOCTL_OPEN_SERIAL_CONNECTION:
         {
-            /*
-            struct {
-                uint8_t id;
+            OBOS_ALIGNAS(sizeof(uintptr_t)) struct {
                 uint32_t baudRate;
                 uint32_t dataBits;
                 uint32_t stopBits;
                 uint32_t parityBit;
-                dev_desc* connection;
-            } aligned(sizeof(uintptr_t)) open_serial_connection_argp;
-            */
+            } *args = argp;
 
-            uint8_t id = (uint8_t)*(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
-            uint32_t baudRate = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
-            data_bits dataBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
-            stop_bits stopBits = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
-            parity_bit parityBit = *(uint32_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(uintptr_t));
-            dev_desc* connection = (void*)*(uintptr_t*)argp;
-            argp = (void*)((uintptr_t)argp + sizeof(dev_desc*));
-
-            if (id > nSerialPorts)
-            {
-                status = OBOS_STATUS_INVALID_ARGUMENT;
-                break;
-            }
-            serial_port* port = &serialPorts[id-1];
-            if (port->com_port != id)
-            {
-                status = OBOS_STATUS_INTERNAL_ERROR;
-                break;
-            }
+            serial_port* port = (serial_port*)what;
             status = open_serial_connection(
                 port,
-                baudRate,
-                dataBits,
-                stopBits,
-                parityBit,
-                connection);
+                args->baudRate,
+                args->dataBits,
+                args->stopBits,
+                args->parityBit);
             break;
         }
+        default: break;
+    }
+    return status;
+}
+
+OBOS_ALIGNAS(sizeof(uintptr_t)) struct open_serial_con {
+    uint32_t baudRate;
+    uint32_t dataBits;
+    uint32_t stopBits;
+    uint32_t parityBit;
+} args;
+
+obos_status ioctl_argp_size(uint32_t request, size_t* out)
+{
+    obos_status status = OBOS_STATUS_INVALID_IOCTL;
+    switch (request) 
+    {
+        case IOCTL_OPEN_SERIAL_CONNECTION:
+        {
+            *out = sizeof(struct open_serial_con);
+            break;
+        }
+        default: break;
     }
     return status;
 }

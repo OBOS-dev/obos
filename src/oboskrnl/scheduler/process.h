@@ -51,6 +51,9 @@ typedef struct process
 	dirent* cwd;
 	const char* cwd_str;
 
+	char* exec_file;
+	char* cmdline;
+
 	tty* controlling_tty;
 
 	// Relavant to Sys_WaitProcess(HANDLE_ANY, ...)
