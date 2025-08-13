@@ -288,15 +288,24 @@ static bool isNumber(char ch)
 	char temp = ch - '0';
 	return temp >= 0 && temp < 10;
 }
-static uint64_t strtoull(const char* str, char** endptr, int base)
+static uint64_t strtoull(const char* str, const char** endptr, int base)
 {
-	while (!isNumber(*str))
+	while (!isNumber(*str) && *str)
         str++;
+    if (!(*str))
+    {
+        if (endptr)
+            *endptr = nullptr;
+        return 0;
+    }
 	if (!base)
 	{
 		base = 10;
-		if (*(str - 1) == 'x' || *(str - 1) == 'X')
-			base = 16;
+		if (*(str+1) == 'x' || *(str+1) == 'X')
+		{
+            base = 16;
+            str += 2;
+        }
 		else if (*str == '0')
 		{
 			base = 8;
@@ -307,7 +316,7 @@ static uint64_t strtoull(const char* str, char** endptr, int base)
 	while (isNumber(*(str + sz)))
 		sz++;
 	if (endptr)
-		*endptr = (char*)(str + sz);
+		*endptr = (str + sz);
 	switch (base)
 	{
 	case 10:
@@ -321,6 +330,7 @@ static uint64_t strtoull(const char* str, char** endptr, int base)
 	}
 	return 0xffffffffffffffff;
 }
+__attribute__((alias("strtoull"))) uint64_t OBOSH_StrToULL(const char* str, const char** endptr, int base);
 
 uint64_t OBOS_GetOPTD(const char* opt)
 {

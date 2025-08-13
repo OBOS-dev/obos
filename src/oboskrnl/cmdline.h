@@ -16,6 +16,8 @@ extern OBOS_EXPORT size_t OBOS_argc;
 extern size_t OBOS_InitArgumentsStart; // if SIZE_MAX, assume it doesn't exist
 extern size_t OBOS_InitArgumentsCount;
 
+uint64_t OBOSH_StrToULL(const char* str, const char** endptr, int base);
+
 // Parses the command line into OBOS_argv and OBOS_argc
 void OBOS_ParseCMDLine();
 // Gets the value of a string command line option.
