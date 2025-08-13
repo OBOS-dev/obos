@@ -66,9 +66,12 @@ void ps2_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     ps2_port* port = userdata;
     if (port->suppress_irqs)
         return;
-    uint8_t read = inb(PS2_DATA);
-    if (port->data_ready)
-        port->data_ready(port, read);
+    while (inb(PS2_CMD_STATUS) & PS2_OUTPUT_BUFFER_FULL)
+    {
+        uint8_t read = inb(PS2_DATA);
+        if (port->data_ready)
+            port->data_ready(port, read);
+    }
 }
 
 obos_status PS2_InitializeController()
