@@ -139,7 +139,6 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
 {
     OBOS_UNUSED(i);
     OBOS_UNUSED(frame);
-    OBOS_UNUSED(oldIrql_);
     serial_port *port = userdata;
     uint8_t lineStatusRegister = inb(port->port_base + LINE_STATUS);
     if (lineStatusRegister & BIT(5))
@@ -163,9 +162,11 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     bool should_break = received_break && (OBOS_GetOPTF("enable-kdbg") || Kdbg_CurrentConnection);
     if (should_break && (!Kdbg_CurrentConnection || Kdbg_CurrentConnection->pipe == (dev_desc)port))
     {
+        oldIrql = Core_GetIrql();
+        Core_LowerIrqlNoDPCDispatch(oldIrql_);
         if (!Kdbg_CurrentConnection)
         {
-            OBOS_Debug("UART: Received 0x03 break. Enabling kernel debugger.");
+            OBOS_Debug("UART: Received 0x03 break. Enabling kernel debugger.\n");
             static gdb_connection con = {};
             Kdbg_ConnectionInitialize(&con, &drv_hdr.ftable, (dev_desc)port);
             Kdbg_CurrentConnection = &con;
@@ -173,6 +174,7 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
             Kdbg_CurrentConnection->connection_active = true;
         }
         Kdbg_CallDebugExceptionHandler(frame, true);
+        oldIrql = Core_RaiseIrqlNoThread(oldIrql);
     }
 }
 bool com_check_irq_callback(struct irq* i, void* userdata)

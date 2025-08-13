@@ -41,7 +41,7 @@ add_custom_command(OUTPUT ${OUTPUT_DIR}/obos.iso
 			   ${ISODIR}/obos/initrd
 			   ${ISODIR}/obos/initrd.tar
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	DEPENDS ${CMAKE_SOURCE_DIR}/config/initrd.tar ${CMAKE_SOURCE_DIR}/config/hyper.cfg oboskrnl
+	DEPENDS ${CMAKE_SOURCE_DIR}/config/initrd.tar ${CMAKE_SOURCE_DIR}/config/hyper.cfg oboskrnl initrd
 )
 add_custom_target (isogen ALL
 	DEPENDS oboskrnl initrd ${OUTPUT_DIR}/obos.iso
