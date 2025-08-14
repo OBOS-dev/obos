@@ -14,6 +14,7 @@
 #include <net/ip.h>
 #include <net/udp.h>
 #include <net/tables.h>
+#include <net/icmp.h>
 #include <net/arp.h>
 
 #include <locks/pushlock.h>
@@ -43,6 +44,46 @@ uint16_t NetH_OnesComplementSum(const void *buffer, size_t size)
     return ret;
 }
 
+obos_status NetH_ResolveExternalIP(vnode* nic, ip_addr addr, mac_address* out)
+{
+    Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
+    {
+        if ((addr.addr & ent->subnet) == (ent->address.addr & ent->subnet))
+        {
+            Core_PushlockRelease(&nic->net_tables->table_lock, true);
+            return NetH_ARPRequest(nic, addr, out, nullptr);
+        }
+
+        ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, ent);
+    }
+    Core_PushlockRelease(&nic->net_tables->table_lock, true);
+
+    // We need a gateway.
+    for (gateway* ap = LIST_GET_HEAD(gateway_list, &nic->net_tables->gateways); ap; )
+    {
+        if (ap->src.addr == addr.addr)
+        {
+            if (ap->cache)
+            {
+                memcpy(out, ap->cache->phys, sizeof(mac_address));
+                return OBOS_STATUS_SUCCESS;
+            }
+            else
+                return NetH_ARPRequest(nic, ap->dest, out, &ap->cache);
+        }
+
+        ap = LIST_GET_NEXT(gateway_list, &nic->net_tables->gateways, ap);
+    }
+    gateway *const default_gateway = nic->net_tables->default_gateway;
+    if (default_gateway->cache)
+    {
+        memcpy(out, default_gateway->cache->phys, sizeof(mac_address));
+        return OBOS_STATUS_SUCCESS;
+    }
+    return NetH_ARPRequest(nic, default_gateway->dest, out, &default_gateway->cache);
+}
+
 static void fragmented_packet_onDeref(shared_ptr* This)
 {
     unassembled_ip_packet *packet = This->obj;
@@ -51,10 +92,11 @@ static void fragmented_packet_onDeref(shared_ptr* This)
     Core_PushlockRelease(&packet->owner->fragmented_packets_lock, false);
 }
 
+DefineNetFreeSharedPtr
+
 PacketProcessSignature(IPv4, ethernet2_header*)
 {
     ethernet2_header* eth = userdata;
-    OBOS_UNUSED(eth);
     OBOS_UNUSED(depth);
 
     ip_header* hdr = ptr;
@@ -81,6 +123,71 @@ PacketProcessSignature(IPv4, ethernet2_header*)
             MAC_ADDRESS_ARGS(eth->src));
         ExitPacketHandler();
     }
+
+    bool destination_local = false;
+    Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+    ip_table_entry* forwarding_entry = nullptr;
+    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
+    {
+        if (ent->address.addr == hdr->dest_address.addr)
+        {
+            destination_local = true;
+            break;
+        }
+        if (ent->ip_entry_flags & IP_ENTRY_IPv4_FORWARDING && !forwarding_entry)
+            forwarding_entry = ent;
+
+        ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, ent);
+    }
+
+    void *data = (void*)((uintptr_t)hdr + IPv4_GET_HEADER_LENGTH(hdr));
+    size_t data_size = size - IPv4_GET_HEADER_LENGTH(hdr);
+
+    if (!destination_local)
+    {
+        if (!forwarding_entry)
+        {
+            Net_ICMPv4DestUnreachable(nic, hdr, eth, data, ICMPv4_CODE_NET_UNREACHABLE);
+            ExitPacketHandler();
+        }
+
+        if (hdr->time_to_live-- == 1)
+        {
+            Net_ICMPv4TimeExceeded(nic, hdr, eth, data, ICMPv4_CODE_TTL_EXCEEDED);
+            ExitPacketHandler();
+        }
+
+        hdr->chksum = 0;
+        hdr->chksum = be16_to_host(NetH_OnesComplementSum(hdr, IPv4_GET_HEADER_LENGTH(hdr)));
+
+        size_t sz = be16_to_host(hdr->packet_length) + sizeof(ethernet2_header);
+        char* pckt = Allocate(OBOS_KernelAllocator, sz, nullptr);
+
+        ethernet2_header* eth_hdr = (void*)pckt;
+        memcpy(eth_hdr, hdr, be16_to_host(hdr->packet_length));
+        
+        memcpy(eth_hdr->src, nic->net_tables->mac, sizeof(mac_address));
+        obos_status status = NetH_ResolveExternalIP(nic, hdr->dest_address, &eth_hdr->dest);
+        if (obos_is_error(status))
+        {
+            Net_ICMPv4DestUnreachable(nic, hdr, eth, data, ICMPv4_CODE_NET_UNREACHABLE);
+            Free(OBOS_KernelAllocator, pckt, sz);
+            ExitPacketHandler();
+        }
+        eth_hdr->type = host_to_be16(ETHERNET2_TYPE_IPv4);
+
+        shared_ptr *data_ptr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
+        OBOS_SharedPtrConstructSz(data_ptr, pckt, sz);
+        data_ptr->free = OBOS_SharedPtrDefaultFree;
+        data_ptr->freeUdata = OBOS_KernelAllocator;
+        data_ptr->onDeref = NetFreeSharedPtr;
+
+        NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(data_ptr));
+        // pckt is freed once the packet is sent
+
+        ExitPacketHandler();
+    }
+
     if (be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS || 
         IPv4_GET_FRAGMENT(hdr)
         )
@@ -131,13 +238,15 @@ PacketProcessSignature(IPv4, ethernet2_header*)
         ExitPacketHandler();
     }
 
-    void *data = (void*)((uintptr_t)hdr + IPv4_GET_HEADER_LENGTH(hdr));
-    size_t data_size = size - IPv4_GET_HEADER_LENGTH(hdr);
     switch (hdr->protocol) {
         case 0x11:
             InvokePacketHandler(UDP, data, data_size, hdr);
             break;
+        case 0x01:
+            InvokePacketHandler(ICMPv4, data, data_size, hdr);
+            break;
         default:
+            Net_ICMPv4DestUnreachable(nic, hdr, eth, data, ICMPv4_CODE_PROTOCOL_UNREACHABLE);
             NetError("%s: Unrecognized IP protocol type 0x%02x from " IP_ADDRESS_FORMAT "\n",
                 __func__,
                 hdr->protocol,
@@ -172,49 +281,7 @@ shared_ptr NetH_IPv4ReassemblePacket(vnode* nic, unassembled_ip_packet* packet)
 RB_GENERATE(unassembled_ip_packets, unassembled_ip_packet, node, ip_packet_cmp);
 LIST_GENERATE(ip_fragments, ip_fragment, node);
 
-DefineNetFreeSharedPtr
-
-obos_status get_external_destination_mac(vnode* nic, ip_addr addr, mac_address* out)
-{
-    Core_PushlockAcquire(&nic->net_tables->table_lock, true);
-    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
-    {
-        if ((addr.addr & ent->subnet) == (ent->address.addr & ent->subnet))
-        {
-            Core_PushlockRelease(&nic->net_tables->table_lock, true);
-            return NetH_ARPRequest(nic, addr, out, nullptr);
-        }
-
-        ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, ent);
-    }
-    Core_PushlockRelease(&nic->net_tables->table_lock, true);
-
-    // We need a gateway.
-    for (gateway* ap = LIST_GET_HEAD(gateway_list, &nic->net_tables->gateways); ap; )
-    {
-        if (ap->src.addr == addr.addr)
-        {
-            if (ap->cache)
-            {
-                memcpy(out, ap->cache->phys, sizeof(mac_address));
-                return OBOS_STATUS_SUCCESS;
-            }
-            else
-                return NetH_ARPRequest(nic, ap->dest, out, &ap->cache);
-        }
-
-        ap = LIST_GET_NEXT(gateway_list, &nic->net_tables->gateways, ap);
-    }
-    gateway *const default_gateway = nic->net_tables->default_gateway;
-    if (default_gateway->cache)
-    {
-        memcpy(out, default_gateway->cache->phys, sizeof(mac_address));
-        return OBOS_STATUS_SUCCESS;
-    }
-    return NetH_ARPRequest(nic, default_gateway->dest, out, &default_gateway->cache);
-}
-
-obos_status NetH_SendIPv4Packet(vnode *nic, void *ent_, ip_addr dest, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data)
+obos_status NetH_SendIPv4PacketMac(vnode *nic, void *ent_ /* ip_table_entry */, ip_addr dest, const mac_address dest_mac, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data)
 {
     if (!nic || !ent_ || !data)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -239,12 +306,7 @@ obos_status NetH_SendIPv4Packet(vnode *nic, void *ent_, ip_addr dest, uint8_t pr
 
     ethernet2_header* eth_hdr = (void*)pckt;
     memcpy(eth_hdr->src, nic->net_tables->mac, sizeof(mac_address));
-    obos_status status = get_external_destination_mac(nic, dest, &eth_hdr->dest);
-    if (obos_is_error(status))
-    {
-        Free(OBOS_KernelAllocator, pckt, sz);
-        return status;
-    }
+    memcpy(eth_hdr->dest, dest_mac, sizeof(mac_address));
     eth_hdr->type = host_to_be16(ETHERNET2_TYPE_IPv4);
 
     shared_ptr *data_ptr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
@@ -254,4 +316,14 @@ obos_status NetH_SendIPv4Packet(vnode *nic, void *ent_, ip_addr dest, uint8_t pr
     data_ptr->onDeref = NetFreeSharedPtr;
 
     return NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(data_ptr));
+}
+
+obos_status NetH_SendIPv4Packet(vnode *nic, void *ent_, ip_addr dest, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data)
+{
+    mac_address dest_mac = {};
+    obos_status status = NetH_ResolveExternalIP(nic, dest, &dest_mac);
+    if (obos_is_error(status))
+        return status;
+    
+    return NetH_SendIPv4PacketMac(nic, ent_, dest, dest_mac, protocol, ttl, service_type, data);
 }

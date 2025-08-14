@@ -13,6 +13,7 @@
 #include <net/udp.h>
 #include <net/ip.h>
 #include <net/tables.h>
+#include <net/icmp.h>
 
 #include <allocators/base.h>
 
@@ -46,7 +47,7 @@ static void pckt_onDeref(struct shared_ptr* ptr)
 
 PacketProcessSignature(UDP, ip_header*)
 {
-    OBOS_UNUSED(nic && depth && buf && size && userdata);
+    OBOS_UNUSED(depth && size);
     udp_header* hdr = ptr;
     ip_header* ip_hdr = userdata;
     void* udp_pckt_data = hdr+1;
@@ -56,6 +57,7 @@ PacketProcessSignature(UDP, ip_header*)
     udp_port* dest = RB_FIND(udp_port_tree, &nic->net_tables->udp_ports, &key);
     if (!dest)
     {
+        Net_ICMPv4DestUnreachable(nic, ip_hdr, (ethernet2_header*)buf->obj, hdr, ICMPv4_CODE_PORT_UNREACHABLE);
         NetError("%s: UDP Port %d not bound to any socket.\n", __func__, key.port); 
         Core_PushlockRelease(&nic->net_tables->udp_ports_lock, false);
         ExitPacketHandler();

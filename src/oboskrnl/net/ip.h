@@ -160,3 +160,6 @@ uint16_t NetH_OnesComplementSum(const void *buffer, size_t size);
 
 PacketProcessSignature(IPv4, ethernet2_header*);
 obos_status NetH_SendIPv4Packet(vnode *nic, void *ent /* ip_table_entry */, ip_addr dest, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data);
+obos_status NetH_SendIPv4PacketMac(vnode *nic, void *ent /* ip_table_entry */, ip_addr dest, const mac_address dest_mac, uint8_t protocol, uint8_t ttl, uint8_t service_type, shared_ptr *data);
+
+obos_status NetH_ResolveExternalIP(vnode* nic, ip_addr addr, mac_address* out);
