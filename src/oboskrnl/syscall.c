@@ -60,7 +60,7 @@ obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return OBOS_PartProbeDrive(dent->un.dirent, check_checksum);
+    return OBOS_PartProbeDrive(dent->un.dirent->curr, check_checksum);
 }
 
 obos_status Sys_InvalidSyscall()
@@ -124,7 +124,7 @@ obos_status Sys_SysConf(int num, long *ret_)
             ret = Core_CpuCount;
             break;
         case _SC_OPEN_MAX:
-            ret = INT32_MAX;
+            ret = 0x2000; // we don't really impose a limit, but a reasonable limit is returned here to prevent stuff like gdb from hanging.
             break;
         case _SC_PHYS_PAGES:
             ret = Mm_UsablePhysicalPages;
@@ -296,7 +296,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_ThreadSetOwner,
     (uintptr_t)Sys_ThreadGetTid, // 16
     (uintptr_t)Sys_WaitOnObject,
-    (uintptr_t)nullptr,
+    (uintptr_t)Sys_Fcntl,
     (uintptr_t)Sys_ProcessOpen,
     (uintptr_t)Sys_ProcessStart,
     (uintptr_t)Sys_KillProcess,  // signal-related
@@ -390,6 +390,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SymLink,
     (uintptr_t)Sys_SymLinkAt,
     (uintptr_t)Sys_CreateNamedPipe,
+    (uintptr_t)Sys_PPoll,
 };
 
 // Arch syscall table is defined per-arch

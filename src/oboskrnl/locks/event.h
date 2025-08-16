@@ -22,11 +22,10 @@ typedef enum event_type
 } event_type;
 typedef volatile struct event {
     struct waitable_header hdr;
-    atomic_bool signaled;
     event_type type;
 } event;
 
-#define EVENT_INITIALIZE(t) (event){ .hdr=WAITABLE_HEADER_INITIALIZE(false, true), .signaled=0, .type=(t) }
+#define EVENT_INITIALIZE(t) (event){ .hdr=WAITABLE_HEADER_INITIALIZE(false, true), .type=(t) }
 
 OBOS_EXPORT obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority);
 OBOS_EXPORT bool        Core_EventGetState(const event* event);

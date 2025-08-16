@@ -4,9 +4,8 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "irq/irql.h"
-#include "klog.h"
 #include <int.h>
+#include <klog.h>
 #include <error.h>
 #include <execve.h>
 #include <signal.h>
@@ -15,6 +14,8 @@
 
 #include <elf/load.h>
 #include <elf/elf.h>
+
+#include <irq/irql.h>
 
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
@@ -134,9 +135,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     OBOSH_ReadUserString(upath, path, nullptr);
     fd file = {};
     status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
-    Free(OBOS_KernelAllocator, path, sz_path+1);
+    if (Core_GetCurrentThread()->proc->exec_file)
+        Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->exec_file, strlen(Core_GetCurrentThread()->proc->exec_file)+1);
     if (obos_is_error(status))
         return status;
+    Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPath(VfsH_DirentLookup(path), nullptr);
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE, &file, nullptr);
     bool set_uid = file.vn->perm.set_uid, set_gid = file.vn->perm.set_gid;
@@ -167,6 +170,33 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
     }
+
+    do {
+        if (Core_GetCurrentThread()->proc->cmdline)
+            Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->cmdline, strlen(Core_GetCurrentThread()->proc->cmdline)+1);
+        string cmd_line = {};
+        process* proc = Core_GetCurrentThread()->proc;
+        OBOS_InitString(&cmd_line, proc->exec_file);
+        for (size_t i = 1; i < argc; i++)
+        {
+            size_t len_arg = strlen(kargv[i]);
+            if (strchr(kargv[i], ' ') == len_arg)
+            {
+                OBOS_AppendStringC(&cmd_line, " ");
+                OBOS_AppendStringC(&cmd_line, kargv[i]);
+            }
+            else
+            {
+                OBOS_AppendStringC(&cmd_line, " \"");
+                OBOS_AppendStringC(&cmd_line, kargv[i]);
+                OBOS_AppendStringC(&cmd_line, "\"");
+            }
+        }
+        proc->cmdline = memcpy(Allocate(OBOS_KernelAllocator, OBOS_GetStringSize(&cmd_line)+1, nullptr), 
+                               OBOS_GetStringCPtr(&cmd_line), 
+                              OBOS_GetStringSize(&cmd_line)+1);
+        OBOS_FreeString(&cmd_line);
+    } while(0);
 
     status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
     if (obos_is_error(status))

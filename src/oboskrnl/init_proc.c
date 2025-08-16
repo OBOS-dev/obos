@@ -62,6 +62,7 @@ void OBOS_LoadInit()
     new_ctx->owner = new;
     new_ctx->workingSet.capacity = 64*1024*1024;
     Core_ProcessStart(new, nullptr);
+    new->exec_file = VfsH_DirentPath(VfsH_DirentLookup(init_path), nullptr);
 
     obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     if (obos_is_error(status))
@@ -87,6 +88,33 @@ void OBOS_LoadInit()
     aux.argv[0] = init_path;
     for (size_t i = 1; i < (OBOS_InitArgumentsCount+1); i++)
         aux.argv[i] = OBOS_argv[OBOS_InitArgumentsStart+i-1];
+
+    do {
+        if (Core_GetCurrentThread()->proc->cmdline)
+            Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->cmdline, strlen(Core_GetCurrentThread()->proc->cmdline)+1);
+        string cmd_line = {};
+        process* proc = new;
+        OBOS_InitString(&cmd_line, init_path);
+        for (size_t i = 1; i < aux.argc; i++)
+        {
+            size_t len_arg = strlen(aux.argv[i]);
+            if (strchr(aux.argv[i], ' ') == len_arg)
+            {
+                OBOS_AppendStringC(&cmd_line, " ");
+                OBOS_AppendStringC(&cmd_line, aux.argv[i]);
+            }
+            else
+            {
+                OBOS_AppendStringC(&cmd_line, " \"");
+                OBOS_AppendStringC(&cmd_line, aux.argv[i]);
+                OBOS_AppendStringC(&cmd_line, "\"");
+            }
+        }
+        proc->cmdline = memcpy(Allocate(OBOS_KernelAllocator, OBOS_GetStringSize(&cmd_line)+1, nullptr), 
+                                OBOS_GetStringCPtr(&cmd_line), 
+                                OBOS_GetStringSize(&cmd_line)+1);
+        OBOS_FreeString(&cmd_line);
+    } while(0);
 
     aux.envp = nullptr;
     aux.envpc = 0;

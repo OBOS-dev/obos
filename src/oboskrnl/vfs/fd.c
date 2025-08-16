@@ -157,7 +157,15 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     obos_status status = VfsH_IRPSubmit(req, &desc->desc);
     if (obos_is_success(status))
     {
-        status = VfsH_IRPWait(req);
+        if (desc->flags & FD_FLAGS_NOBLOCK)
+        {
+            if ((req->evnt && req->evnt->hdr.signaled) || !req->evnt)
+                status = VfsH_IRPWait(req);
+            else
+                status = OBOS_STATUS_TIMED_OUT;
+        }
+        else
+            status = VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
         if (nWritten_)
             *nWritten_ = req->nBlkRead * desc->vn->blkSize;
@@ -216,7 +224,16 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
     obos_status status = VfsH_IRPSubmit(req, &desc->desc);
     if (obos_is_success(status))
     {
-        obos_status status = VfsH_IRPWait(req);
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (desc->flags & FD_FLAGS_NOBLOCK)
+        {
+            if ((req->evnt && req->evnt->hdr.signaled) || !req->evnt)
+                status = VfsH_IRPWait(req);
+            else
+                status = OBOS_STATUS_TIMED_OUT;
+        }
+        else
+            status = VfsH_IRPWait(req);
         if (nRead_)
             *nRead_ = req->nBlkRead * desc->vn->blkSize;
         VfsH_IRPUnref(req);
@@ -277,6 +294,8 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
     obos_status status = OBOS_STATUS_SUCCESS;
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+        OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
         // Keep it nice and simple, and just do an uncached write on the file.
@@ -345,6 +364,8 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
     if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR)
         nBytes = desc->vn->filesize - offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+        OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
         // Keep it nice and simple, and just do an uncached read on the file.

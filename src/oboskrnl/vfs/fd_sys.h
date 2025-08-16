@@ -113,7 +113,17 @@ struct pselect_extra_args
     int* num_events;
 };
 
+struct pollfd
+{
+    handle fd;
+    short events;
+    short revents;
+};
+
 obos_status Sys_PSelect(size_t nFds, uint8_t* read_set, uint8_t *write_set, uint8_t *except_set, const struct pselect_extra_args* extra);
+obos_status Sys_PPoll(struct pollfd* fds, size_t nFds, const uintptr_t* timeout, const sigset_t* sigmask, int *nEvents);
 
 obos_status Sys_CreatePipe(handle* ufds, size_t pipesize);
 obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t pipesize);
+
+obos_status Sys_Fcntl(handle fd, int request, uintptr_t* args, size_t nArgs, int* ret);

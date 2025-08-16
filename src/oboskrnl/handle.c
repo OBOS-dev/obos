@@ -117,7 +117,6 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     OBOS_ASSERT(table);
     OBOS_ASSERT(desc);
     handle hnd = 0;
-    bool through_freelist = table->head;
     if (table->head)
     {
         hnd = table->head - table->arr;
@@ -137,6 +136,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
 }
 void OBOS_HandleFree(handle_table* table, handle_desc *curr)
 {
+    curr->type = HANDLE_TYPE_INVALID;
     curr->un.next = table->head;
     table->head = curr;
     // any use of this handle past here is a use-after-free
@@ -179,28 +179,29 @@ void(*OBOS_HandleCloneCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd, handl
     unimpl_handle_clone,
 };
 
-void unimpl_handle_close(handle_desc* hnd)
-{
-    OBOS_Warning("Cannot close handle descriptor %p. Unimplemented.\n", hnd);
-}
 void fd_close(handle_desc* hnd)
 {
     Vfs_FdClose(hnd->un.fd);
     Vfs_Free(hnd->un.fd);
 }
+void dirent_close(handle_desc* hnd)
+{
+    Free(OBOS_KernelAllocator, hnd->un.dirent, sizeof(struct dirent_handle));
+}
+
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
+    nullptr,
+    dirent_close,
+    nullptr,
+    nullptr,
     nullptr, // TODO: Refcount vmm contexts.
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
-    unimpl_handle_close,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
 };
 
 static obos_status handle_close_unlocked(handle_table* current_table, handle hnd);
@@ -269,7 +270,7 @@ static obos_status handle_close_unlocked(handle_table* current_table, handle hnd
     }
 
     // Free the handle's underlying object as well as the handle itself.
-    handle_type type = HANDLE_TYPE(hnd);
+    handle_type type = desc->type;
     void(*cb)(handle_desc *hnd) = OBOS_HandleCloseCallbacks[type];
     if (cb)
         cb(desc);

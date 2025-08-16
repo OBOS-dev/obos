@@ -27,8 +27,10 @@ typedef enum vma_flags
 	VMA_FLAGS_RESERVE = BIT(8), // Registers the pages, but does not back them by anything. If this is set, the VMA ignores the 'file' parameter.
 	VMA_FLAGS_32BITPHYS = BIT(9), // 32-bit physical addresses should be allocated. Best to use with VMA_FLAGS_NON_PAGED. Ignored if file != nullptr.
 	VMA_FLAGS_NO_FORK = BIT(10),
+    VMA_FLAGS_FRAMEBUFFER = BIT(11), // Overrides OBOS_PROTECTION_CACHE_DISABLE
 	VMA_FLAGS_KERNEL_STACK = VMA_FLAGS_NON_PAGED|VMA_FLAGS_GUARD_PAGE,
 } vma_flags;
+
 typedef enum prot_flags
 {
 	/// <summary>

@@ -93,24 +93,22 @@ typedef struct serial_port
 } serial_port;
 void flush_out_buffer(serial_port* port);
 
-#define IRQL_COM_IRQ IRQL_TIMER
+#define IRQL_COM_IRQ (IRQL_DISPATCH)
 
 enum
 {
-    // Returns: obos_status
-    // Parameters:
-    // uint8_t: Port
-    // uint32_t: Baud rate
-    // data_bits: The amount of data bits.
-    // stop_bits: The amount of stop bits.
-    // parity_bit: The parity bit.
-    // dev_desc*: Device descriptor associated with the connection.
-    IOCTL_OPEN_SERIAL_CONNECTION,
-
-    IOCTL_OPEN_SERIAL_CONNECTION_PARAMETER_COUNT = 6,
+    /*
+        struct open_serial_con_args {
+            uint32_t baudRate;
+            uint32_t dataBits;
+            uint32_t stopBits;
+            uint32_t parityBit;
+        };
+    */
+    IOCTL_OPEN_SERIAL_CONNECTION = 0x5e01,
 };
 
-obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit, dev_desc* connection);
+obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit);
 
 void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
 bool com_check_irq_callback(struct irq* i, void* userdata);

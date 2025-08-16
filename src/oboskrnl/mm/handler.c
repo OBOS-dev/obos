@@ -52,6 +52,11 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     }
     else
         *type = SOFT_FAULT;
+    if (!phys)
+    {
+        *type = ACCESS_FAULT;
+        return;
+    }
     MmH_RefPage(phys);
     if (ec & PF_EC_RW)
         Mm_MarkAsDirtyPhys(phys);
@@ -135,6 +140,7 @@ static obos_status ref_page(context* ctx, const page_info *curr)
 
 static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
 {
+    OBOS_UNUSED(addr);
     info->prot.present = true;
     info->prot.rw = false;
     info->prot.ro = true;
@@ -268,6 +274,9 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     done:
     if (!handled && type == INVALID_FAULT)
         type = ACCESS_FAULT;
+    if (type == ACCESS_FAULT && rng)
+        if (rng->hasGuardPage && (rng->virt==addr))
+            OBOS_Debug("Page fault happened on guard page. Stack overflow possible\n");
     ctx->stat.pageFaultCount++;
     ctx->stat.pageFaultCountSinceSample++;
     switch (type) {

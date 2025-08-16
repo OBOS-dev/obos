@@ -197,6 +197,7 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
+static int panic_max_depth = 5; 
 OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	static const char ascii_art[] =
@@ -209,6 +210,10 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
         "  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n"
         "  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n"
         "                                    |_|\r\n";
+
+	if (!(--panic_max_depth))
+		while(1)
+	        asm volatile("");
 #ifndef OBOS_UP
 	if (OBOSS_HaltCPUs)
 		OBOSS_HaltCPUs();

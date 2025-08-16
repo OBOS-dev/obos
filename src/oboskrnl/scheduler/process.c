@@ -133,43 +133,10 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessAppendThread(process* proc, threa
 	return OBOS_STATUS_SUCCESS;
 }
 
-uintptr_t ExitCurrentProcess(uintptr_t code_)
+uintptr_t ExitCurrentProcess(uintptr_t unused)
 {
-	uint32_t code = code_;
+	OBOS_UNUSED(unused);
 	process* proc = Core_GetCurrentThread()->proc;
-	if (proc->pid == 0)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Attempt to exit current process in the kernel process\n");
-
-	proc->exitCode = code;
-
-	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
-		proc->controlling_tty->fg_job = proc->parent;
-
-	// Kill all threads.
-	for (thread_node* node = proc->threads.head; node; )
-	{
-		thread* const thr = node->data;
-		node = node->next;
-		if (thr == Core_GetCurrentThread())
-			continue;
-
-		thr->references++;
-
-		// OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
-		thr->kill = true;
-		thr->interrupted = true;
-		thr->signalInterrupted = true;
-		CoreH_ThreadReady(thr);
-
-		// NOTE: This loop should not take too long.
-		while (~thr->flags & THREAD_FLAGS_DIED)
-			OBOSS_SpinlockHint();
-
-		if (!(--thr->references) && thr->free)
-			thr->free(thr);
-	}
-	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
-	(void)oldIrql;
 	// Disown all children.
 	for (process* child = proc->children.head; child; )
 	{
@@ -292,8 +259,41 @@ uintptr_t ExitCurrentProcess(uintptr_t code_)
 
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 {
-	// CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
-	ExitCurrentProcess(code);
+	process* proc = Core_GetCurrentThread()->proc;
+	if (proc->pid == 0)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Attempt to exit current process in the kernel process\n");
+
+	proc->exitCode = code;
+
+	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
+		proc->controlling_tty->fg_job = proc->parent;
+
+	// Kill all threads.
+	for (thread_node* node = proc->threads.head; node; )
+	{
+		thread* const thr = node->data;
+		node = node->next;
+		if (thr == Core_GetCurrentThread())
+			continue;
+
+		thr->references++;
+
+		// OBOS_Kill(Core_GetCurrentThread(), thr, SIGKILL);
+		thr->kill = true;
+		thr->interrupted = true;
+		thr->signalInterrupted = true;
+		CoreH_ThreadReady(thr);
+
+		// NOTE: This loop should not take too long.
+		while (~thr->flags & THREAD_FLAGS_DIED)
+			OBOSS_SpinlockHint();
+
+		if (!(--thr->references) && thr->free)
+			thr->free(thr);
+	}
+	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
+	(void)oldIrql;
+	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
 	while (1)
 		;
 }

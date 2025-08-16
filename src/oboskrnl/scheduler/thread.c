@@ -208,7 +208,10 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 		cur = cur->next;
 	}
 	if (!cur)
+	{
+		Core_SpinlockRelease(&list->lock, oldIrql);
 		return OBOS_STATUS_INVALID_ARGUMENT;
+	}
 #endif
 	if (node->next)
 		node->next->prev = node->prev;

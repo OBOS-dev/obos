@@ -10,43 +10,8 @@ extern Core_RaiseIrql
 extern Core_LowerIrql
 extern Arch_KernelCR3
 extern Sys_InvalidSyscall
-
-%macro sys_pushaq 0
-push 0 ; cr3
-push rcx
-push rbx
-push rsi
-push rdi
-push r8
-push r9
-push r10
-push r11
-push r12
-push r13
-push r14
-push r15
-push rcx ; rip
-push rbp
-%endmacro
-
-%macro sys_popaq 0
-pop rbp
-add rsp, 8
-pop r15
-pop r14
-pop r13
-pop r12
-pop r11
-pop r10
-pop r9
-pop r8
-pop rdi
-pop rsi
-pop rbx
-pop rcx
-pop r9 ; cr3
-mov cr3, r9
-%endmacro
+extern Arch_LogSyscall
+extern Arch_LogSyscallRet
 
 section .data
 global Arch_cpu_local_currentKernelStack_offset
@@ -56,98 +21,90 @@ section .text
 
 global Arch_SyscallTrapHandler
 
-; NOTE: Clobbers r10,rcx,r11,rdx
+; NOTE: Clobbers r10, rcx, and r11
 ; Return value in rax
 ; Parameter registers (in order):
 ; rdi, rsi, rdx, r8, r9
 ; Syscall number is in eax.
 Arch_SyscallTrapHandler:
     swapgs
+    
+    mov r10, [Arch_KernelCR3]
+    mov cr3, r10
+
     mov r10, rsp
-    ; Switch to a temporary stack
-    mov rsp, [gs:0xc8]
-    add rsp, 0x20000
-
-    push rdx
-    mov rdx, [Arch_KernelCR3]
-    mov cr3, rdx
-    pop rdx
-
-    ; Switch to the thread's 'proper' stack
-    mov rsp, [Arch_cpu_local_currentKernelStack_offset] ; hacky, but works
+    mov rsp, [Arch_cpu_local_currentKernelStack_offset]
     mov rsp, [gs:rsp]
     add rsp, 0x10000
-    sys_pushaq
 
-    ; eax has the syscall number.
+; Only save SysV callee-saved registers, rcx (return address), r10 (return stack), and r11 (return eflags)
+    push rcx
+    push r10
+    push r11
+    push rbp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
 
+    ; Use r11 as the syscall table address
     mov r11, OBOS_SyscallTable
-
     cmp eax, 0x80000000
     jb .not_arch_syscall
 
-; An arch-specific syscall.
     mov r11, OBOS_ArchSyscallTable
     sub eax, 0x80000000
 
 .not_arch_syscall:
 
-    sti
+    ; Conserve caller-saved "scratch" registers before logging the syscall
+    push rax
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    push r8
+    push r9
 
-    mov r10, 0xffffffff
-    and rax, r10
     mov rcx, r8
     mov r8, r9
-    cmp qword [r11+rax*8], 0
-    ; Basically a call if zero
-    ; Maybe we should just do something normal?
-    push .finished
-    jz Sys_InvalidSyscall
-extern Arch_LogSyscall
-extern Arch_LogSyscallRet
-push rdi
-push rsi
-push rdx
-push rcx
-push r8
-push r9
-push rax
-push r11
     mov r9, rax
     call Arch_LogSyscall
-pop r11
-pop rax
-pop r9
-pop r8
-pop rcx
-pop rdx
-pop rsi
-pop rdi
 
-    push rax
-
-    call [r11+rax*8]
-.finished:
-    cli
-
-    pop rsi
-    push rax
-    push rdx
-
-    mov rdi, rax
-    call Arch_LogSyscallRet
-
+    pop r9
+    pop r8
+    pop rcx
     pop rdx
+    pop rsi
+    pop rdi
     pop rax
 
-    add rsp, 8
+    push rax
+
+    mov rcx, r8
+    mov r8, r9
+    call [r11+rax*8]
+    
+    pop rsi
+    push rax
+    mov rdi, rax
+    call Arch_LogSyscallRet
+    pop rax
 
     mov r9, gs:0x18
-    mov r9, [r9]
-    mov [rsp+14*8], r9 ; old_cr3 = currentContext->pt
-    sys_popaq
+    mov r9, [r9] ; currentContext->pt
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    pop r11
+    pop r10
+    pop rcx
+    mov cr3, r9
 
-    xor rdx,rdx
     mov rsp, r10
     swapgs
     o64 sysret

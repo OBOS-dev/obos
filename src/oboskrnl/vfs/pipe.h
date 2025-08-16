@@ -42,4 +42,5 @@ typedef struct pipe_desc
     // those variables, so they can take this
     // as a reader.
     pushlock buffer_lock;
+    size_t refs;
 } pipe_desc;

@@ -48,14 +48,17 @@ typedef _Bool bool;
 #	ifndef IS_UACPI_BUILD
 #		undef NULL
 #	endif
+#	define OBOS_MAYBE_UNUSED [[maybe_unused]]
 // Do all this to make sure intellisense is happy.
 #	if __STDC_VERSION__ >= 201112L && __STDC_VERSION__ < 202311L
 #		define OBOS_ALIGNAS(x) _Alignas(x)
 #	elif __STDC_VERSION__ < 201112L
 #		ifdef __GNUC__
 #			define OBOS_ALIGNAS(x) __attribute__((alignas(x))) 
+#			define OBOS_MAYBE_UNUSED __attribute__((maybe_unused))
 #		elif defined(_MSC_VER)
 #			define OBOS_ALIGNAS(x) __declspec(align(x))
+#			define OBOS_MAYBE_UNUSED
 #		endif
 #	else
 #		define OBOS_ALIGNAS(x) alignas(x)

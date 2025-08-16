@@ -37,6 +37,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         goto down;
     if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
         virt &= ~0x1fffff;
+    if (Core_GetIrql() > IRQL_DISPATCH)
+        OBOS_Error("Page fault at > IRQL_DISPATCH\n");
     if (Mm_IsInitialized() && Core_GetIrql() <= IRQL_DISPATCH)
     {
         CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
@@ -77,6 +79,16 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
             }
         }
     }
+    if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+    {
+        asm("sti");
+        irql oldIrql = Core_GetIrql();
+        Core_LowerIrqlNoThread(IRQL_PASSIVE);
+        Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
+        Kdbg_CallDebugExceptionHandler(frame, true);
+        (void)Core_RaiseIrqlNoThread(oldIrql);
+        asm("cli");
+    }
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGSEGV (rip 0x%p, cr2 0x%p, error code 0x%08x)\n", Core_GetCurrentThread()->tid, frame->rip, getCR2(), frame->errorCode);
@@ -86,16 +98,6 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         OBOS_RunSignal(SIGSEGV, frame); // Ensure SIGSEGV runs.
         return;
     }
-    // if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
-    // {
-    //     asm("sti");
-    //     irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrqlNoThread(IRQL_DISPATCH) : IRQL_INVALID;
-    //     Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
-    //     Kdbg_CallDebugExceptionHandler(frame, true);
-    //     if (oldIrql != IRQL_INVALID)
-    //         Core_LowerIrqlNoThread(oldIrql);
-    //     asm("cli");
-    // }
     down:
     asm("cli");
     OBOS_Panic(OBOS_PANIC_EXCEPTION, 
@@ -160,6 +162,16 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASA
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGSEGV\n", Core_GetCurrentThread()->tid);
+        if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+        {
+            asm("sti");
+            irql oldIrql = Core_GetIrql();
+            Core_LowerIrqlNoThread(IRQL_PASSIVE);
+            Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
+            Kdbg_CallDebugExceptionHandler(frame, true);
+            (void)Core_RaiseIrqlNoThread(oldIrql);
+            asm("cli");
+        }
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
         OBOS_SyncPendingSignal(frame);
         OBOS_RunSignal(SIGSEGV, frame); // Ensure SIGSEGV runs.
@@ -230,6 +242,16 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FP
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGFPE (rip 0x%p)\n", Core_GetCurrentThread()->tid, frame->rip);
+        if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+        {
+            asm("sti");
+            irql oldIrql = Core_GetIrql();
+            Core_LowerIrqlNoThread(IRQL_PASSIVE);
+            Kdbg_NotifyGDB(Kdbg_CurrentConnection, SIGFPE);
+            Kdbg_CallDebugExceptionHandler(frame, true);
+            (void)Core_RaiseIrqlNoThread(oldIrql);
+            asm("cli");
+        }
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGFPE);
         // OBOS_SyncPendingSignal(frame);
         OBOS_RunSignal(SIGFPE, frame); // Ensure SIGFPE runs.
@@ -279,6 +301,17 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASA
     if (frame->cs & 3)
     {
         OBOS_Log("User thread %d SIGTRAP\n", Core_GetCurrentThread()->tid);
+        // Doesn't really apply.
+        // if (Kdbg_CurrentConnection && !Kdbg_Paused && Kdbg_CurrentConnection->connection_active)
+        // {
+        //     asm("sti");
+        //     irql oldIrql = Core_GetIrql();
+        //     Core_LowerIrqlNoThread(IRQL_PASSIVE);
+        //     Kdbg_NotifyGDB(Kdbg_CurrentConnection, SIGTRAP);
+        //     Kdbg_CallDebugExceptionHandler(frame, true);
+        //     (void)Core_RaiseIrqlNoThread(oldIrql);
+        //     asm("cli");
+        // }
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTRAP);
         // OBOS_SyncPendingSignal(frame);
         OBOS_RunSignal(SIGTRAP, frame); // Ensure SIGTRAP runs.

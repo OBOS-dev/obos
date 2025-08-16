@@ -99,7 +99,7 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 }
 obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
 {
-    if (!(signum >= 0 && signum <= SIGMAX))
+    if (!(signum >= 0 && signum < SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (oldact)
         *oldact = Core_GetCurrentThread()->signal_info->signals[signum];

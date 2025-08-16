@@ -228,6 +228,14 @@ static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
         return ioctl_fb0(request, argp);
     return OBOS_STATUS_INVALID_IOCTL; 
 }
+obos_status ioctl_argp_size(uint32_t request, size_t* ret)
+{
+    if (request == 1)
+        *ret = sizeof(struct fb_mode);
+    else
+        return OBOS_STATUS_INVALID_IOCTL;
+    return OBOS_STATUS_SUCCESS;
+}
 
 driver_id OBOS_DummyDriver = {
     .id=0,
@@ -240,6 +248,7 @@ driver_id OBOS_DummyDriver = {
             .write_sync = write_sync,
             .read_sync = read_sync,
             .ioctl = ioctl,
+            .ioctl_argp_size = ioctl_argp_size,
             .driver_cleanup_callback = driver_cleanup_callback,
         },
         .driverName = "Dummy Device Driver"

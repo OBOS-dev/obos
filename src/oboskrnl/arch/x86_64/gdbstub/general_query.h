@@ -17,4 +17,5 @@ obos_status Kdbg_GDB_QStartNoAckMode(gdb_connection* con, const char* arguments,
 obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata);
 obos_status Kdbg_GDB_qAttached(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata);
 obos_status Kdbg_GDB_qRcmd(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata);
+obos_status Kdbg_GDB_qXfer(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata);
 obos_status Kdbg_GDB_vMustReplyEmpty(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* ctx, void* userdata);

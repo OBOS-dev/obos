@@ -19,7 +19,7 @@ extern bool Kdbg_Paused;
 
 OBOS_EXPORT void Kdbg_Break();
 
-void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource);
+OBOS_EXPORT void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource);
 void Kdbg_NotifyGDB(gdb_connection* con, uint8_t signal);
 
 void Kdbg_int3_handler(interrupt_frame* frame);

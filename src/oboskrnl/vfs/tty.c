@@ -376,7 +376,7 @@ static obos_status tty_submit_irp(void* request)
     }
 
     req->drvData = req->buff;
-    if ((!tty->termios.cc[VTIME] && !tty->termios.cc[VMIN]) && ~tty->termios.lflag & ICANON && !tty->data_ready_evnt.signaled)
+    if ((!tty->termios.cc[VTIME] && !tty->termios.cc[VMIN]) && ~tty->termios.lflag & ICANON && !tty->data_ready_evnt.hdr.signaled)
     {
         req->evnt = nullptr;
         req->status = OBOS_STATUS_TIMED_OUT;

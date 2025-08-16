@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/disk_swap.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 // Defines the interface for setting up a swap device to swap out to disk (vnodes)

@@ -704,7 +704,8 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
         inode->data = new_data;
         inode->persistent = false;
     }
-    inode->data = Reallocate(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize, inode->filesize-nToExpand, nullptr);
+    else
+        inode->data = Reallocate(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize, inode->filesize-nToExpand, nullptr);
     memcpy(inode->data+blkOffset, buf, blkCount);
     if (nBlkWritten)
         *nBlkWritten = blkCount;

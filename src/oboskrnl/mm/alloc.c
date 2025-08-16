@@ -167,6 +167,14 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         return nullptr;
     }
     if (file)
+    {
+        if ((file->vn->seals & F_SEAL_WRITE) && (~prot & OBOS_PROTECTION_READ_ONLY) && ctx != &Mm_KernelContext)
+        {
+            set_statusp(ustatus, OBOS_STATUS_ACCESS_DENIED);
+            return nullptr;   
+        }
+    }
+    if (file)
         flags &= ~VMA_FLAGS_HUGE_PAGE; // you see, page caches don't really use huge pages, so we have to force huge pages off.
     uintptr_t base = (uintptr_t)base_;
     const size_t pgSize = (flags & VMA_FLAGS_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
@@ -200,6 +208,9 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         }
         if (!(file->flags & FD_FLAGS_WRITE) && !(flags & VMA_FLAGS_PRIVATE))
             prot |= OBOS_PROTECTION_READ_ONLY;
+        file->vn->nMappedRegions++;
+        if (~prot & OBOS_PROTECTION_READ_ONLY)
+            file->vn->nWriteableMappedRegions++;
     }
     if (size % pgSize)
         size += (pgSize-(size%pgSize));
@@ -290,7 +301,9 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
         rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
         rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
-        rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+        rng->prot.fb = flags & VMA_FLAGS_FRAMEBUFFER;
+        if (!rng->prot.fb)
+            rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
         rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
         rng->size = size;
         rng->virt = base;

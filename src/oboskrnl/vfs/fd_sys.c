@@ -166,7 +166,7 @@ obos_status Sys_FdOpenDirent(handle desc, handle ent, uint32_t oflags)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent, oflags & ~FD_OFLAGS_CREATE);
+    return Vfs_FdOpenDirent(fd->un.fd, dent->un.dirent->parent, oflags & ~FD_OFLAGS_CREATE);
 }
 
 #define AT_FDCWD (handle)-100
@@ -199,7 +199,7 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
-        parent_dent = dent->un.dirent;
+        parent_dent = dent->un.dirent->parent;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
@@ -246,6 +246,11 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    if (fd->un.fd->vn->seals & F_SEAL_WRITE)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (fd->un.fd->offset + nBytes) > fd->un.fd->vn->filesize)
+        return OBOS_STATUS_ACCESS_DENIED;
+
     status = OBOS_STATUS_SUCCESS;
     void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, OBOS_PROTECTION_READ_ONLY, true, &status);
     if (obos_is_error(status))
@@ -265,11 +270,15 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
 obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
 {
+    // for (volatile bool b = (desc==0); b; )
+    //     ;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
@@ -297,6 +306,8 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+    
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -331,6 +342,8 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
         return status;
     }
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -362,6 +375,8 @@ obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, si
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
         return status;
     }
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -508,16 +523,18 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     switch (fsfdt) {
         case FSFDT_FD:
         {
+            if (HANDLE_TYPE(desc) != HANDLE_TYPE_FD && HANDLE_TYPE(desc) != HANDLE_TYPE_DIRENT)
+                return OBOS_STATUS_INVALID_ARGUMENT;
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
             status = OBOS_STATUS_SUCCESS;
-            handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+            handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, true, &status);
             if (!fd)
             {
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 return status;
             }
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            to_stat = fd->un.fd->vn;
+            to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->parent->vnode;
             break;
         }
         case FSFDT_PATH:
@@ -530,7 +547,22 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 return status;
             path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
             OBOSH_ReadUserString(upath, path, nullptr);
-            dirent* dent = VfsH_DirentLookup(path);
+            dirent* dent = nullptr;
+            if (FSFDT_PATH == fsfdt || desc == AT_FDCWD)
+                dent = VfsH_DirentLookup(path);
+            else
+            {
+                status = OBOS_STATUS_SUCCESS;
+                handle_desc* ent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
+                if (!ent)
+                {
+                    Free(OBOS_KernelAllocator, path, sz_path);
+                    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                    return status;
+                }
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                dent = VfsH_DirentLookupFrom(path, ent->un.dirent->parent);
+            }
 //          printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
@@ -654,7 +686,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
         }
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());        
 
-        dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent);
+        dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent->parent);
         Free(OBOS_KernelAllocator, path, sz_path);
         if (!dent)
             return OBOS_STATUS_NOT_FOUND;
@@ -706,7 +738,7 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
                 vn = fd->un.fd->vn;
                 break;
             case HANDLE_TYPE_DIRENT:
-                vn = fd->un.dirent->vnode;
+                vn = fd->un.dirent->parent->vnode;
                 break;
             default:
                 OBOS_UNREACHABLE;
@@ -748,7 +780,7 @@ obos_status Sys_StatFSInfo(handle desc, drv_fs_info* info)
     if (obos_is_error(status))
         return status;
 
-    vnode* vn = dent->un.dirent->vnode;
+    vnode* vn = dent->un.dirent->parent->vnode;
     status = Vfs_StatFSInfo(vn, &out);
     if (obos_is_error(status))
         return status;
@@ -787,7 +819,9 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_DIRENT, &desc);
-    desc->un.dirent = dent->d_children.head;
+    desc->un.dirent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*desc->un.dirent), nullptr);
+    desc->un.dirent->curr = dent->d_children.head;
+    desc->un.dirent->parent = dent;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     if (statusp)
@@ -810,7 +844,7 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
     size_t k_nRead = 0;
 
-    if (dent->un.dirent == (dirent*)-1)
+    if (dent->un.dirent->curr == nullptr)
     {
         if (nRead)
             memcpy_k_to_usr(nRead, &k_nRead, sizeof(size_t));
@@ -823,10 +857,8 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
     memzero(kbuff, szBuf);
 
-    status = Vfs_ReadEntries(dent->un.dirent, kbuff, szBuf, &dent->un.dirent, nRead ? &k_nRead : nullptr);
+    status = Vfs_ReadEntries(dent->un.dirent->curr, kbuff, szBuf, &dent->un.dirent->curr, nRead ? &k_nRead : nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuff, szBuf);
-    if (!dent->un.dirent)
-        dent->un.dirent = (dirent*)-1;
     if (obos_is_error(status))
         return status;
 
@@ -896,7 +928,7 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
     name = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(uname, name, nullptr);
 
-    status = Vfs_CreateNode(dent->un.dirent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    status = Vfs_CreateNode(dent->un.dirent->parent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
     Free(OBOS_KernelAllocator, name, sz_path);
 
     return status;
@@ -1176,16 +1208,11 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize)
     tmp_descs[0] = OBOS_CurrentHandleTable()->arr+tmp[0];
     tmp_descs[0]->un.fd = Vfs_Malloc(sizeof(fd));
     tmp_descs[1]->un.fd = Vfs_Malloc(sizeof(fd));
-    memcpy(tmp_descs[0]->un.fd, &kfds[0], sizeof(fd));
-    memcpy(tmp_descs[1]->un.fd, &kfds[1], sizeof(fd));
+    Vfs_FdOpenVnode(tmp_descs[0]->un.fd, kfds[0].vn, FD_OFLAGS_READ);
+    Vfs_FdOpenVnode(tmp_descs[1]->un.fd, kfds[1].vn, FD_OFLAGS_WRITE);
     Vfs_FdClose(&kfds[0]);
     Vfs_FdClose(&kfds[1]);
-    memzero(&tmp_descs[0]->un.fd->node, sizeof(tmp_descs[0]->un.fd->node));
-    memzero(&tmp_descs[1]->un.fd->node, sizeof(tmp_descs[1]->un.fd->node));
-    LIST_APPEND(fd_list, &tmp_descs[0]->un.fd->vn->opened, tmp_descs[0]->un.fd);
-    LIST_APPEND(fd_list, &tmp_descs[1]->un.fd->vn->opened, tmp_descs[1]->un.fd);
-    tmp_descs[0]->un.fd->vn->refs++;
-    tmp_descs[1]->un.fd->vn->refs++;
+
     Vfs_Free(kfds);
 
     return memcpy_k_to_usr(ufds, tmp, sizeof(handle)*2);
@@ -1219,7 +1246,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
             Free(OBOS_KernelAllocator, path, sz_path);
             return status;
         }
-        parent = desc->un.dirent;
+        parent = desc->un.dirent->parent;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
         if (strchr(path, '/') != strlen(path))
@@ -1273,6 +1300,8 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
         return false;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+        return false;
 
     irp* req = VfsH_IRPAllocate();
     req->dryOp = true;
@@ -1287,7 +1316,7 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
         return false;
     }
     bool res = !req->evnt;
-    if (req->evnt && req->evnt->signaled)
+    if (req->evnt && req->evnt->hdr.signaled)
         res = true;
     if (res)
         VfsH_IRPUnref(req);
@@ -1363,10 +1392,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
             else if (!num_events)
                 unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
-            {
-                printf("%d\n", status);
                 goto out;
-            }
         }
     }
     if (write_set)
@@ -1396,7 +1422,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     {
         if (!timeout)
         {
-            status = OBOS_STATUS_TIMED_OUT;
+            status = OBOS_STATUS_SUCCESS;
             goto timeout;
         }
 
@@ -1418,12 +1444,11 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
             waitable_list[unsignaledIRPIndex] = WAITABLE_OBJECT(tm_evnt);
         }
 
-        struct waitable_header* signaled = nullptr;
-        Core_WaitOnObjects(nWaitableObjects, waitable_list, &signaled);
+        Core_WaitOnObjects(nWaitableObjects, waitable_list, nullptr);
         if (tm.mode == TIMER_EXPIRED)
         {
             CoreH_FreeDPC(&tm.handler_dpc, false);
-            status = OBOS_STATUS_TIMED_OUT;
+            status = OBOS_STATUS_SUCCESS;
             goto timeout;
         }
         Core_CancelTimer(&tm);
@@ -1447,6 +1472,167 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     out2:
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+    return status;
+}
+
+#define POLLIN 0x0001
+#define POLLPRI 0x0002
+#define POLLOUT 0x0004
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
+#define POLLNVAL 0x0020
+#define POLLRDNORM 0x0040
+#define POLLRDBAND 0x0080
+#define POLLWRNORM 0x0100
+#define POLLWRBAND 0x0200
+#define POLLRDHUP 0x2000
+
+obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeout, const sigset_t* usigmask, int *nEvents)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    struct pollfd* fds = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        ufds, nullptr,
+        nFds*sizeof(struct pollfd), 
+        0, true, 
+        &status);
+    if (!fds)
+        return status;
+
+    sigset_t sigmask = 0, oldmask = 0;
+    if (usigmask)
+    {
+        status = memcpy_usr_to_k(&sigmask, usigmask, sizeof(sigset_t));
+        if (obos_is_error(status))
+        {
+            Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+            return status;
+        }
+        OBOS_SigProcMask(SIG_SETMASK, &sigmask, &oldmask);
+    }
+    
+    uintptr_t timeout = UINTPTR_MAX;
+    if (utimeout)
+    {
+        status = memcpy_usr_to_k(&timeout, utimeout, sizeof(uintptr_t));
+        if (obos_is_error(status))
+        {
+            Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+            return status;
+        }
+    }
+
+    int num_events = 0;
+
+    struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nFds + (timeout != UINTPTR_MAX), sizeof(struct waitable_header*)*2, nullptr);
+    size_t n_waitable_objects = 0;
+    up:
+    for (size_t i = 0; i < nFds; i++)
+    {
+        struct pollfd* curr = &fds[i];
+        // TODO: is this a problem with different handle types?
+        if ((int)curr->fd < 0)
+            continue;
+        irp* read_irp = nullptr;
+        irp* write_irp = nullptr;
+        bool events_satisified = true;
+        if (curr->events & POLLIN)
+        {
+            events_satisified = events_satisified && fd_avaliable_for(IRP_READ, curr->fd, &status, &read_irp);
+            if (obos_is_error(status))
+            {
+                if (obos_is_error(status))
+                {
+                    if (status == OBOS_STATUS_PIPE_CLOSED)
+                    {
+                        curr->revents |= POLLERR;
+                        break;
+                    }
+                    else if (status == OBOS_STATUS_INVALID_ARGUMENT)
+                    {
+                        curr->revents |= POLLNVAL;
+                        break;
+                    }
+                    else
+                        break;
+                }
+            }
+            if (events_satisified)
+                num_events++;
+            curr->revents |= POLLIN;
+        }
+        if (curr->events & POLLOUT)
+        {
+            events_satisified = events_satisified && fd_avaliable_for(IRP_WRITE, curr->fd, &status, &write_irp);
+            if (obos_is_error(status))
+            {
+                if (status == OBOS_STATUS_PIPE_CLOSED)
+                {
+                    curr->revents |= POLLERR;
+                    break;
+                }
+                else if (status == OBOS_STATUS_INVALID_ARGUMENT)
+                {
+                    curr->revents |= POLLNVAL;
+                    break;
+                }
+                else
+                    break;
+            }
+            if (events_satisified)
+                num_events++;
+            curr->revents |= POLLOUT;
+        }
+        if (events_satisified)
+            continue;
+        if (read_irp)
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+        if (write_irp)
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+    }
+
+    if (n_waitable_objects == nFds && obos_is_success(status))
+    {
+        if (!timeout)
+        {
+            status = OBOS_STATUS_SUCCESS;
+            goto out;
+        }
+
+        timer tm = {};
+        event tm_evnt = {};
+        if (timeout != UINTPTR_MAX)
+        {
+            tm.handler = pselect_tm_handler;
+            tm.userdata = (void*)&tm_evnt;
+            Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, timeout);
+            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(tm_evnt);
+        }
+
+        struct waitable_header* signaled = nullptr;
+        Core_WaitOnObjects(n_waitable_objects, waitable_list, &signaled);
+        if (signaled == WAITABLE_OBJECT(tm_evnt))
+        {
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            status = OBOS_STATUS_SUCCESS;
+            goto out;
+        }
+        Core_CancelTimer(&tm);
+        CoreH_FreeDPC(&tm.handler_dpc, false);
+
+        n_waitable_objects = 0;
+        goto up;
+    }
+
+    out:
+
+    memcpy_k_to_usr(nEvents, &num_events, sizeof(int));
+
+    if (waitable_list)
+        Free(OBOS_KernelAllocator, waitable_list, nFds + (timeout!=UINTPTR_MAX));
+    OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+
     return status;
 }
 
@@ -1489,7 +1675,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             goto fail;
         }
-        parent = desc->un.dirent;
+        parent = desc->un.dirent->parent;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
         if (strchr(link, '/') != strlen(link))
@@ -1535,5 +1721,205 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     Free(OBOS_KernelAllocator, link, sz_path2);
     if (obos_is_error(status))
         Free(OBOS_KernelAllocator, target, sz_path);
+    return status;
+}
+
+#define F_DUPFD  0
+#define F_GETFD  1
+#define F_SETFD  2
+#define F_GETFL  3
+#define F_SETFL  4
+
+#define F_DUPFD_CLOEXEC 1030
+#define F_SETPIPE_SZ 1031
+#define F_GETPIPE_SZ 1032
+#define F_ADD_SEALS 1033
+#define F_GET_SEALS 1034
+
+#define FD_CLOEXEC 1
+
+#define O_DIRECT      040000
+#define O_NONBLOCK     04000
+
+#define O_RDONLY   00
+#define O_WRONLY   01
+#define O_RDWR     02
+
+obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, int* uret)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    uintptr_t* args = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        uargs, nullptr, 
+        nArgs*sizeof(uintptr_t), 
+        0, true, 
+        &status);
+    if (!args && nArgs)
+        return status;
+
+    int res = 0;
+    switch (request) {
+        case F_GETFD: res = fd->un.fd->flags & FD_FLAGS_NOEXEC ? FD_CLOEXEC : 0; status = OBOS_STATUS_SUCCESS; break;
+        case F_SETFD: 
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (args[0] & FD_CLOEXEC)
+                fd->un.fd->flags |= FD_FLAGS_NOEXEC;
+            else
+                fd->un.fd->flags &= ~FD_FLAGS_NOEXEC;
+            status = OBOS_STATUS_SUCCESS; 
+            break;
+        }
+        case F_GETFL:
+        {
+            if ((fd->un.fd->flags & FD_FLAGS_READ) && (~fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_RDONLY;
+            if ((fd->un.fd->flags & FD_FLAGS_READ) && (fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_RDWR;
+            if ((~fd->un.fd->flags & FD_FLAGS_READ) && (fd->un.fd->flags & FD_FLAGS_WRITE))
+                res = O_WRONLY;
+            if (fd->un.fd->flags & FD_FLAGS_UNCACHED)
+                res |= O_DIRECT;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_SETFL:
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            /*
+             * "On Linux, this operation can change only the O_APPEND, O_ASYNC, O_DIRECT, O_NOATIME, and O_NONBLOCK flags.
+             * It is not possible to change the O_DSYNC and O_SYNC flags; see BUGS, below.""
+            */
+            if (args[0] & O_DIRECT)
+                fd->un.fd->flags |= FD_FLAGS_UNCACHED;
+            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
+                fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
+            if (args[0] & O_NONBLOCK)
+                fd->un.fd->flags |= FD_FLAGS_NOBLOCK;
+            else
+                fd->un.fd->flags &= ~FD_FLAGS_NOBLOCK;
+            break;
+        }
+        case F_DUPFD:
+        {
+            // doesn't exactly follow linux, but whatever.
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            handle_desc* desc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
+            cb(fd, desc);
+            desc->type = HANDLE_TYPE_FD;
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            status = OBOS_STATUS_SUCCESS;
+            res = new_desc;
+            break;
+        }
+        case F_DUPFD_CLOEXEC:
+        {
+            // doesn't exactly follow linux, but whatever.
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            handle_desc* desc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
+            cb(fd, desc);
+            desc->un.fd->flags |= FD_FLAGS_NOEXEC;
+            desc->type = HANDLE_TYPE_FD;
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            res = new_desc;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_SETPIPE_SZ:
+        {
+            if (fd->un.fd->vn->vtype != VNODE_TYPE_FIFO || !nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            size_t curr_size = 0;
+            status = Vfs_FdIoctl(fd->un.fd, 2, &curr_size);
+            size_t new_size = args[0];
+            if (curr_size < new_size)
+            {
+                // This is weird, but in obos' mlibc sysdep it translates to EBUSY.
+                status = OBOS_STATUS_WOULD_BLOCK;
+                break;
+            }
+            status = Vfs_FdIoctl(fd->un.fd, 1, &new_size);
+            res = (int)new_size;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_GETPIPE_SZ:
+        {
+            if (fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            size_t size = 0;
+            status = Vfs_FdIoctl(fd->un.fd, 2, &size);
+            res = (int)size;
+            break;
+        }
+        case F_ADD_SEALS:
+        {
+            if (!nArgs)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (args[0] & ~0xf)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
+                break;
+            }
+            if (fd->un.fd->vn->seals & F_SEAL_SEAL)
+            {
+                status = OBOS_STATUS_ACCESS_DENIED;
+                break;
+            }
+            if (fd->un.fd->vn->seals & F_SEAL_WRITE && fd->un.fd->vn->nWriteableMappedRegions)
+            {
+                // This is weird, but in obos' mlibc sysdep it translates to EBUSY.
+                status = OBOS_STATUS_WOULD_BLOCK;
+                break;
+            }
+            int seal_mask = args[0] & 0xf;
+            fd->un.fd->vn->seals |= seal_mask;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case F_GET_SEALS:
+        {
+            res = fd->un.fd->vn->seals;
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        default: res = 0; status = OBOS_STATUS_INVALID_ARGUMENT; break;
+    }
+
+    if (uret)
+        memcpy_k_to_usr(uret, &res, sizeof(int));
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, args, nArgs*sizeof(uintptr_t));
+
     return status;
 }

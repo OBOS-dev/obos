@@ -54,10 +54,10 @@ extern OBOS_EXPORT gdb_connection* Kdbg_CurrentConnection;
 
 uintptr_t KdbgH_hex2bin(const char* str, unsigned size);
 
-obos_status Kdbg_InitializeHandlers();
+OBOS_EXPORT obos_status Kdbg_InitializeHandlers();
 
 // Must be a pipe-style driver, or stuff will go wrong.
-obos_status Kdbg_ConnectionInitialize(gdb_connection* conn, const driver_ftable* pipe_interface, dev_desc pipe);
+OBOS_EXPORT obos_status Kdbg_ConnectionInitialize(gdb_connection* conn, const driver_ftable* pipe_interface, dev_desc pipe);
 obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet);
 // *packet is guaranteed to be nul-terminated.
 obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_t* szPacket);

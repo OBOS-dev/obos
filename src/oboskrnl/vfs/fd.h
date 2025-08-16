@@ -27,6 +27,7 @@ enum
     FD_FLAGS_WRITE = 4,
     FD_FLAGS_UNCACHED = 8,
     FD_FLAGS_NOEXEC = 16,
+    FD_FLAGS_NOBLOCK = 32,
 };
 enum
 {

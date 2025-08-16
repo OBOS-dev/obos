@@ -271,7 +271,7 @@ obos_status Kdbg_GDB_D(gdb_connection* con, const char* arguments, size_t argume
 OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
     NO_USERDATA;
-    NO_CTX;
+    dbg_ctx = &CoreS_GetCPULocalPtr()->arch_specific.dbg_ctx;
     size_t addrLen = strnchr(arguments, ',', argumentsLen)-1;
     if (addrLen > 16)
         return Kdbg_ConnectionSendPacket(con, "");
@@ -292,7 +292,7 @@ OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments,
     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++)
     {
         if ((addr & ~0xfff) != last_virt)
-            MmS_QueryPageInfo(Mm_KernelContext.pt, addr & ~0xfff, nullptr, &curr_phys);
+            MmS_QueryPageInfo(dbg_ctx->interrupt_ctx.cr3, addr & ~0xfff, nullptr, &curr_phys);
         if (!curr_phys)
             break;
         uint8_t byte = *(uint8_t*)Arch_MapToHHDM(curr_phys + (addr & 0xfff));
@@ -308,9 +308,8 @@ OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments,
 // Write Memory
 obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argumentsLen, gdb_ctx* dbg_ctx, void* userdata)
 {
-    NO_USERDATA;
-    NO_CTX;
-    OBOS_UNUSED(argumentsLen);
+    NO_USERDATA;    
+    dbg_ctx = &CoreS_GetCPULocalPtr()->arch_specific.dbg_ctx;
     size_t addrLen = strnchr(arguments, ',', argumentsLen)-1;
     if (addrLen > 16)
         return Kdbg_ConnectionSendPacket(con, "E.Invalid address.");
@@ -330,7 +329,7 @@ obos_status Kdbg_GDB_M(gdb_connection* con, const char* arguments, size_t argume
     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++, iter += 2)
     {
         if ((addr & ~0xfff) != last_virt)
-            MmS_QueryPageInfo(Mm_KernelContext.pt, addr & ~0xfff, nullptr, &curr_phys);
+            MmS_QueryPageInfo(dbg_ctx->interrupt_ctx.cr3, addr & ~0xfff, nullptr, &curr_phys);
         if (!curr_phys)
         {
             // TODO: Check this before hand?

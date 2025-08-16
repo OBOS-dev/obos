@@ -66,9 +66,12 @@ obos_status Kdbg_DispatchPacket(gdb_connection* con, const char* packet, size_t 
             nameLen = strnchr(packet, ';', packetLen) == packetLen ? 
                 strnchr(packet, '?', packetLen) : 
                 strnchr(packet, ';', packetLen);
+            if (nameLen == packetLen)
+                nameLen = strnchr(packet, ':', packetLen);
             if (nameLen != packetLen)
                 nameLen--;
             name = packet;
+            argsOffset = nameLen + (nameLen!=packetLen);
             break;
         }
         case 'Q':

@@ -91,9 +91,6 @@
 #include "gdbstub/gdb_udp_backend.h"
 #include "gdbstub/packet_dispatcher.h"
 #include "gdbstub/debug.h"
-#include "gdbstub/general_query.h"
-#include "gdbstub/stop_reply.h"
-#include "gdbstub/bp.h"
 #endif
 
 #include <net/tables.h>
@@ -1008,29 +1005,6 @@ void Arch_KernelMainBootstrap()
         Vfs_RegisterTTY(&i, &tty, false);
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
         Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
-    }
-
-    dirent* nic = VfsH_DirentLookup("/dev/r8169-eth0");
-    if (nic)
-    {
-        Net_Initialize(nic->vnode);
-        ip_table_entry *ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
-        ent->ip_entry_flags = IP_ENTRY_ENABLE_ARP_REPLY|IP_ENTRY_ENABLE_ICMP_ECHO_REPLY;
-        ent->broadcast = (ip_addr){{192,168,100,255}};
-        ent->address = (ip_addr){{192,168,100,2}};
-        ent->subnet = 0xffffff00; // 255.255.255.0
-        nic->vnode->net_tables->default_gateway = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
-        nic->vnode->net_tables->default_gateway->src = (ip_addr){{0,0,0,0}};
-        nic->vnode->net_tables->default_gateway->dest = (ip_addr){{192,168,100,1}};
-        LIST_APPEND(ip_table, &nic->vnode->net_tables->table, ent);
-        LIST_APPEND(gateway_list, &nic->vnode->net_tables->gateways, nic->vnode->net_tables->default_gateway);
-        // static gdb_connection s_gdbCon = {};
-        // Kdbg_ConnectionInitializeUDP(&s_gdbCon, 1234, nic->vnode);
-        // Kdbg_CurrentConnection = &s_gdbCon;
-        // Kdbg_CurrentConnection->connection_active = true;
-        // Kdbg_InitializeHandlers();
-        // Kdbg_Break();
-        NetH_TestTCP(nic->vnode, ent);
     }
 
     OBOS_LoadInit();

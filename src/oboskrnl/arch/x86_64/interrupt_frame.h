@@ -8,27 +8,25 @@
 
 #include <int.h>
 
-#define BITFIELD_FROM_BIT(n) (1<<n)
-
 enum
 {
-	RFLAGS_CARRY = BITFIELD_FROM_BIT(0),
-	RFLAGS_PARITY = BITFIELD_FROM_BIT(2),
-	RFLAGS_AUXILLARY_CARRY = BITFIELD_FROM_BIT(4),
-	RFLAGS_ZERO = BITFIELD_FROM_BIT(6),
-	RFLAGS_SIGN = BITFIELD_FROM_BIT(7),
-	RFLAGS_TRAP = BITFIELD_FROM_BIT(8),
-	RFLAGS_INTERRUPT_ENABLE = BITFIELD_FROM_BIT(9),
-	RFLAGS_DIRECTION = BITFIELD_FROM_BIT(10),
-	RFLAGS_OVERFLOW = BITFIELD_FROM_BIT(11),
-	RFLAGS_IOPL_3 = BITFIELD_FROM_BIT(12) | BITFIELD_FROM_BIT(13),
-	RFLAGS_NESTED_TASK = BITFIELD_FROM_BIT(14),
-	RFLAGS_RESUME = BITFIELD_FROM_BIT(16),
-	RFLAGS_VIRTUAL8086 = BITFIELD_FROM_BIT(17),
-	RFLAGS_ALIGN_CHECK = BITFIELD_FROM_BIT(18),
-	RFLAGS_VINTERRUPT_FLAG = BITFIELD_FROM_BIT(19),
-	RFLAGS_VINTERRUPT_PENDING = BITFIELD_FROM_BIT(20),
-	RFLAGS_CPUID = BITFIELD_FROM_BIT(21),
+	RFLAGS_CARRY = BIT(0),
+	RFLAGS_PARITY = BIT(2),
+	RFLAGS_AUXILLARY_CARRY = BIT(4),
+	RFLAGS_ZERO = BIT(6),
+	RFLAGS_SIGN = BIT(7),
+	RFLAGS_TRAP = BIT(8),
+	RFLAGS_INTERRUPT_ENABLE = BIT(9),
+	RFLAGS_DIRECTION = BIT(10),
+	RFLAGS_OVERFLOW = BIT(11),
+	RFLAGS_IOPL_3 = BIT(12) | BIT(13),
+	RFLAGS_NESTED_TASK = BIT(14),
+	RFLAGS_RESUME = BIT(16),
+	RFLAGS_VIRTUAL8086 = BIT(17),
+	RFLAGS_ALIGN_CHECK = BIT(18),
+	RFLAGS_VINTERRUPT_FLAG = BIT(19),
+	RFLAGS_VINTERRUPT_PENDING = BIT(20),
+	RFLAGS_CPUID = BIT(21),
 };
 typedef struct __interrupt_frame
 {
@@ -49,4 +47,21 @@ typedef struct __interrupt_frame
 	// 0xC8, 0xD0
 	uintptr_t rsp, ss;
 } interrupt_frame;
-#undef BITFIELD_FROM_BIT
+
+typedef struct syscall_frame
+{
+	// ds=0x00, ss=0x1b, cs=0x23
+	uintptr_t unused;
+	uintptr_t orig_rax;
+	uintptr_t rbp, rip, r15, r14, r13, r12;
+	union {
+		uintptr_t rflags;
+		uintptr_t r11;
+	};
+	union {
+		// the syscall trap handler saves user rsp in r10
+		uintptr_t rsp;
+		uintptr_t r10;
+	};
+	uintptr_t r9, r8, rdi, rsi, rbx, rdx, rcx, cr3;
+} syscall_frame;

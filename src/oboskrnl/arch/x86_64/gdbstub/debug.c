@@ -57,11 +57,11 @@ void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource)
     }
     get_dbg_ctx().interrupted_thread = Core_GetCurrentThread();
     get_dbg_ctx().interrupted_thread->flags |= THREAD_FLAGS_DEBUGGER_BLOCKED;
-    get_dbg_ctx().interrupt_ctx.cr3 = getCR3();
-    get_dbg_ctx().interrupt_ctx.irql = Core_GetIrql();
+    get_dbg_ctx().interrupt_ctx.cr3 = frame->cr3;
+    get_dbg_ctx().interrupt_ctx.irql = 0;
     memcpy(&get_dbg_ctx().interrupt_ctx.frame, frame, sizeof(*frame));
-    get_dbg_ctx().interrupt_ctx.gs_base = (uintptr_t)CoreS_GetCPULocalPtr();
-    get_dbg_ctx().interrupt_ctx.fs_base = 0;
+    get_dbg_ctx().interrupt_ctx.gs_base = frame->cs & 0x3 ? rdmsr(0xc0000102) : (uintptr_t)CoreS_GetCPULocalPtr();
+    get_dbg_ctx().interrupt_ctx.fs_base = rdmsr(0xc0000100);
     Kdbg_GeneralDebugExceptionHandler(Kdbg_CurrentConnection, &get_dbg_ctx(), isSource);
     memcpy(frame, &get_dbg_ctx().interrupt_ctx.frame, sizeof(*frame));
 }

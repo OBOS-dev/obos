@@ -14,7 +14,6 @@
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
 #include <vfs/vnode.h>
-#include <vfs/namecache.h>
 #include <vfs/limits.h>
 
 #include <allocators/base.h>
@@ -695,5 +694,5 @@ obos_status Sys_ChdirEnt(handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return VfsH_ChdirEnt(Core_GetCurrentThread()->proc, dent->un.dirent);
+    return VfsH_ChdirEnt(Core_GetCurrentThread()->proc, dent->un.dirent->curr);
 }

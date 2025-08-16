@@ -322,26 +322,39 @@ obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */)
 }
 // scheduler/process.h
 
+static process* lookup_proc(uint64_t pid, process* curr)
+{
+    if (curr->pid == pid)
+        return curr;
+    for (curr = curr->children.head; curr; curr = curr->next)
+    {
+        process* res = lookup_proc(pid, curr);
+        if (res)
+            return res;
+    }
+    return nullptr;
+}
 process* Core_LookupProc(uint64_t pid)
 {
     process* root = OBOS_KernelProcess;
-    while(root)
-    {
-        process* curr = root;
-        if (root->pid == pid)
-            return root;
-        for (curr = root->children.head; curr;)
-        {
-            if (curr->pid == pid)
-                return curr;
+    return lookup_proc(pid, root);
+    // while(root)
+    // {
+    //     process* curr = root;
+    //     if (root->pid == pid)
+    //         return root;
+    //     for (curr = root->children.head; curr;)
+    //     {
+    //         if (curr->pid == pid)
+    //             return curr;
 
-            root = curr->children.head ? curr->children.head : root;
-            curr = curr->next;
-        }
-        if (!curr)
-            root = root->parent;
-    }
-    return nullptr;
+    //         root = curr->children.head ? curr->children.head : root;
+    //         curr = curr->next;
+    //     }
+    //     if (!curr)
+    //         root = root->parent;
+    // }
+    // return nullptr;
 }
 
 handle Sys_ProcessOpen(uint64_t pid)
@@ -441,6 +454,11 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         new->handles.last_handle = new->handles.size;
 
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        size_t len_exec_file = strlen(Core_GetCurrentThread()->proc->exec_file), 
+               len_cmdline = strlen(Core_GetCurrentThread()->proc->cmdline);
+        new->exec_file = memcpy(Allocate(OBOS_KernelAllocator, len_exec_file+1, nullptr), Core_GetCurrentThread()->proc->exec_file, len_exec_file+1);
+        new->cmdline = memcpy(Allocate(OBOS_KernelAllocator, len_cmdline+1, nullptr), Core_GetCurrentThread()->proc->cmdline, len_cmdline+1);
     }
     Core_ProcessStart(new, main);
 
@@ -534,13 +552,23 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 
     if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
     {
-        process = Core_GetCurrentThread()->proc->children.head;
-        while (process && process->dead)
-            process = process->next;
+        struct process* iter = Core_GetCurrentThread()->proc->children.head;
+        while (iter)
+        {
+            if (iter->dead)
+                goto next;
+            if (!process || iter->times_waited < process->times_waited)
+                process = iter;
+            if (!process->waiting_threads.signaled && (options & WNOHANG))
+                process = nullptr;
+            next:
+            iter = iter->next;
+        }
         status = process ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
         if (!process)
             return status;
         process->refcount++;
+        process->times_waited++;
     }
     else
     {
