@@ -9,6 +9,10 @@ bool NetH_NetworkErrorLogsEnabled();
 if (!NetH_NetworkErrorLogsEnabled())\
     OBOS_Error(__VA_ARGS__);\
 } while(0)
+#define NetDebug(...) do {\
+if (!NetH_NetworkErrorLogsEnabled())\
+    OBOS_Debug(__VA_ARGS__);\
+} while(0)
 #define NetUnimplemented(what) do {\
     if (!NetH_NetworkErrorLogsEnabled())\
         OBOS_Warning("net: Unimplemented: " #what "\n");\

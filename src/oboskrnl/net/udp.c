@@ -75,6 +75,8 @@ PacketProcessSignature(UDP, ip_header*)
         &pckt->buffer_ptr, 
         memcpy(Allocate(OBOS_KernelAllocator, udp_pckt_sz, nullptr), udp_pckt_data, udp_pckt_sz), 
         udp_pckt_sz);
+    pckt->buffer_ptr.free = OBOS_SharedPtrDefaultFree;
+    pckt->buffer_ptr.freeUdata = OBOS_KernelAllocator;
     OBOS_SharedPtrRef(&pckt->buffer_ptr);
     
     pckt->src.addr = ip_hdr->src_address;

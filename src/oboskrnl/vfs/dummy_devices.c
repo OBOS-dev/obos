@@ -76,7 +76,7 @@ static void twist(void)
     index = 0;
 }
 
-static uintptr_t mt_random(void)
+uintptr_t mt_random(void)
 {
     if (index >= STATE_SIZE)
     {

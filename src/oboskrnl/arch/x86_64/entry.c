@@ -97,6 +97,7 @@
 #endif
 
 #include <net/tables.h>
+#include <net/tcp.h>
 
 #include <vfs/dirent.h>
 #include <vfs/init.h>
@@ -1029,6 +1030,7 @@ void Arch_KernelMainBootstrap()
         // Kdbg_CurrentConnection->connection_active = true;
         // Kdbg_InitializeHandlers();
         // Kdbg_Break();
+        NetH_TestTCP(nic->vnode, ent);
     }
 
     OBOS_LoadInit();

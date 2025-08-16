@@ -116,6 +116,8 @@ obos_status Net_Initialize(vnode* nic)
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->tcp_connections_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->tcp_ports_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->interface = nic;
     nic->net_tables->magic = IP_TABLES_MAGIC;
 

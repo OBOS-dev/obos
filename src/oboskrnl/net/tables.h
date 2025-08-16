@@ -18,6 +18,7 @@
 #include <net/eth.h>
 #include <net/ip.h>
 #include <net/udp.h>
+#include <net/tcp.h>
 
 #include <locks/pushlock.h>
 
@@ -81,6 +82,17 @@ typedef struct net_tables {
 
     udp_port_tree udp_ports;
     pushlock udp_ports_lock;
+
+    tcp_port_tree tcp_ports;
+    pushlock tcp_ports_lock;
+    
+    // Connections made by bind()ing
+    // then connect()ing are put here;
+    // tcp_port contains connections 
+    // established by listen()ing on
+    // a bound port.
+    tcp_connection_tree tcp_outgoing_connections;
+    pushlock tcp_connections_lock;
 
     vnode* interface;
     mac_address mac;

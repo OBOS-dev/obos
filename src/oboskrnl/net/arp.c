@@ -99,7 +99,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
 
 PacketProcessSignature(ARPReply, arp_header*)
 {
-    OBOS_UNUSED(depth && buf && size);
+    OBOS_UNUSED(depth && buf && size && ptr);
     struct arp_header_payload* data = (void*)(userdata+1);
     address_table_entry what = {.addr = data->sender_ip};
     Core_PushlockAcquire(&nic->net_tables->table_lock, true);

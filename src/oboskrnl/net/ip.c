@@ -16,6 +16,7 @@
 #include <net/tables.h>
 #include <net/icmp.h>
 #include <net/arp.h>
+#include <net/tcp.h>
 
 #include <locks/pushlock.h>
 
@@ -244,6 +245,9 @@ PacketProcessSignature(IPv4, ethernet2_header*)
             break;
         case 0x01:
             InvokePacketHandler(ICMPv4, data, data_size, hdr);
+            break;
+        case 0x06:
+            InvokePacketHandler(TCP, data, data_size, hdr);
             break;
         default:
             Net_ICMPv4DestUnreachable(nic, hdr, eth, data, ICMPv4_CODE_PROTOCOL_UNREACHABLE);
