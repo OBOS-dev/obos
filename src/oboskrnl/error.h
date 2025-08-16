@@ -179,4 +179,12 @@ typedef enum
 	/// The IRP operation has not completed, and the caller should wait on the event again.
 	/// </summary>
 	OBOS_STATUS_IRP_RETRY,
+	/// <summary>
+	/// The port is in use.
+	/// </summary>
+	OBOS_STATUS_PORT_IN_USE,
+	/// <summary>
+	/// The address is in use.
+	/// </summary>
+	OBOS_STATUS_ADDRESS_IN_USE,
 } obos_status;

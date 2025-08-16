@@ -22,7 +22,7 @@ attrib struct name##_list_node \
     type *next, *prev;\
 }
 
-#define LIST_INIT(name) ({ nullptr, nullptr, 0 })
+#define LIST_INIT(name) (name)({ nullptr, nullptr, 0 })
 
 // TODO: add more functions here
 

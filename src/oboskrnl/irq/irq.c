@@ -60,45 +60,41 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	irql oldIrql2 = Core_RaiseIrqlNoThread(irql_);
 #endif
 	// irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, irql_, false);
-	irq* irq_obj = nullptr;
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
-		irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
-		// Core_SpinlockRelease(&s_lock, oldIrql);
-	}
-	else
-	{
-		irq_vector* vector = &s_irqVectors[frame->vector];
-		for (irq_node* node = vector->irqObjects.head; node && !irq_obj; )
-		{
-			irq* cur = node->data;
-			OBOS_ASSERT(cur->irqChecker); // to make sure the developer doesn't mess up; compiled out in release mode
-			if (cur->irqChecker)
-				if (cur->irqChecker(cur, cur->irqCheckerUserdata))
-					irq_obj = cur;
-
-			node = node->next;
-		}
-		// Core_SpinlockRelease(&s_lock, oldIrql);
-	}
-	if (!irq_obj)
-	{
-		//if (frame->vector == 0x60)
-			//printf("could not resolve irq object\n");
-		// Spooky actions from a distance...
-		Core_LowerIrqlNoDPCDispatch(oldIrql2);
-		CoreS_ExitIRQHandler(frame);
-		return;
-	}
-	if (irq_obj->handler)
-	{
-		//if (frame->vector == 0x60)
-			//printf("handling sci\n");
+		irq* irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
 		irq_obj->handler(
 			irq_obj,
 			frame,
 			irq_obj->handlerUserdata,
 			oldIrql2);
+		// Core_SpinlockRelease(&s_lock, oldIrql);
+	}
+	else
+	{
+		irq_vector* vector = &s_irqVectors[frame->vector];
+		for (irq_node* node = vector->irqObjects.head; node; )
+		{
+			irq* cur = node->data;
+			OBOS_ASSERT(cur->irqChecker); // to make sure the developer doesn't mess up; compiled out in release mode
+			if (cur->irqChecker)
+			{
+				irq* irq_obj = nullptr;
+				if (cur->irqChecker(cur, cur->irqCheckerUserdata))
+				{
+					irq_obj = cur;
+					OBOS_ASSERT(irq_obj->handler);
+					irq_obj->handler(
+						irq_obj,
+						frame,
+						irq_obj->handlerUserdata,
+						oldIrql2);
+				}
+			}
+
+			node = node->next;
+		}
+		// Core_SpinlockRelease(&s_lock, oldIrql);
 	}
 	CoreS_ExitIRQHandler(frame);
 	Core_LowerIrqlNoThread(oldIrql2);

@@ -43,27 +43,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
         OBOS_ASSERT(vn->blkSize);
     }
     const size_t base_offset = vn->flags & VFLAGS_PARTITION ? (vn->partitions[0].off/vn->blkSize) : 0;
-    // Make an IRP, then try read_sync.
-    irp* req = VfsH_IRPAllocate();
-    req->blkCount = OBOS_PAGE_SIZE / vn->blkSize;
-    req->blkOffset = base_offset+offset;
-    req->op = IRP_READ;
-    req->buff = MmS_MapVirtFromPhys(phys->phys);
-    req->dryOp = false;
-    req->nBlkRead = 0;
-    req->desc = vn->desc;
-    req->status = OBOS_STATUS_SUCCESS;
-    req->vn = vn;
-    if (driver->ftable.submit_irp)
-    {
-        obos_status status = driver->ftable.submit_irp(req);
-        OBOS_ENSURE(obos_is_success(status) && "driver->ftable.submit_irp(req)");
-        VfsH_IRPWait(req);
-        OBOS_ENSURE(obos_is_success(req->status) && "Read IRP failed.");
-    }
-    else
-        OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
-    VfsH_IRPUnref(req);
+    OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
     return phys;
 }
 static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)

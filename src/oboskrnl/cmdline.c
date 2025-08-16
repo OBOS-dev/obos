@@ -40,6 +40,8 @@ static const char* const help_message =
 "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
 "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
 "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
+"--disable-libc-log: Disables logs from the C library when log level <= 1\n"
+"--disable-network-error-logs: Disable error logs from the network stack\n"
 "--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
 "--init-args: Special argument, makes the kernel assume all following arguments are to be passed to the init process.\n"
 "--no-init: Disables loading the init process.\n"
@@ -290,13 +292,22 @@ static bool isNumber(char ch)
 }
 static uint64_t strtoull(const char* str, const char** endptr, int base)
 {
-	while (!isNumber(*str))
+	while (!isNumber(*str) && *str)
         str++;
+    if (!(*str))
+    {
+        if (endptr)
+            *endptr = nullptr;
+        return 0;
+    }
 	if (!base)
 	{
 		base = 10;
-		if (*(str - 1) == 'x' || *(str - 1) == 'X')
-			base = 16;
+		if (*(str+1) == 'x' || *(str+1) == 'X')
+		{
+            base = 16;
+            str += 2;
+        }
 		else if (*str == '0')
 		{
 			base = 8;
@@ -307,7 +318,7 @@ static uint64_t strtoull(const char* str, const char** endptr, int base)
 	while (isNumber(*(str + sz)))
 		sz++;
 	if (endptr)
-		*endptr = (char*)(str + sz);
+		*endptr = (str + sz);
 	switch (base)
 	{
 	case 10:
@@ -321,7 +332,7 @@ static uint64_t strtoull(const char* str, const char** endptr, int base)
 	}
 	return 0xffffffffffffffff;
 }
-__attribute__((alias("strtoull"))) uint64_t OBOSH_StrToULL(const char* str, const char** endptr, int base); 
+__attribute__((alias("strtoull"))) uint64_t OBOSH_StrToULL(const char* str, const char** endptr, int base);
 
 uint64_t OBOS_GetOPTD(const char* opt)
 {

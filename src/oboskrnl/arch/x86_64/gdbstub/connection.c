@@ -116,11 +116,13 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
     snprintf(buf, szBuf+1, format, packet, checksum);
     if (!(conn->flags & FLAGS_ENABLE_ACK))
     {
-        return conn->pipe_interface->write_sync(
+        obos_status status = conn->pipe_interface->write_sync(
             conn->pipe,
             buf, szBuf,
             0,nullptr
         );
+        Kdbg_Free(buf);
+        return status;
     }
     for (size_t i = 0; i < 5; i++)
     {
@@ -130,7 +132,10 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
             0,nullptr
         );
         if (obos_is_error(status))
+        {
+            Kdbg_Free(buf);
             return status;
+        }
         size_t nRead = 0;
         char ack = 0;
         size_t spin = 0;
@@ -141,18 +146,31 @@ obos_status Kdbg_ConnectionSendPacket(gdb_connection* conn, const char* packet)
             0,&nRead
         );
         if ((spin++) >= 1000)
+        {
+            Kdbg_Free(buf);
             return OBOS_STATUS_SUCCESS;
+        }
         if (nRead != 1)
             goto try_again;
-        if (obos_is_error(status))
+        if (obos_is_error(status))   
+        {
+            Kdbg_Free(buf);
             return status;
+        }
         if (ack == '+')
+        {
+            Kdbg_Free(buf);
             return OBOS_STATUS_SUCCESS;
+        }
         else if (ack == '-')
             continue;
         else
+        {
+            Kdbg_Free(buf);
             return OBOS_STATUS_INTERNAL_ERROR; // something stupid has happened. the gdb stub's ack enabled value and gdb's ack enabled value are probably out of sync
+        }
     }
+    Kdbg_Free(buf);
     return OBOS_STATUS_RETRY;
 }
 static char recv_char(gdb_connection* conn)
@@ -199,14 +217,12 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
                 isEscaped = false;
                 ch ^= 0x20; // unescape the character.
             }
-            size_t oldSize = rawPacketLen;
             rawPacketLen++;
-            rawPacket = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen, oldSize, nullptr);
+            rawPacket = Kdbg_Realloc(rawPacket, rawPacketLen);
             rawPacket[rawPacketLen - 1] = ch;
         }
     }
-    size_t oldSize = rawPacketLen;
-    rawPacket = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen+1, oldSize, nullptr);
+    rawPacket = Kdbg_Realloc(rawPacket, rawPacketLen+1);
     rawPacket[rawPacketLen] = 0;
     checksum[0] = recv_char(conn);
     checksum[1] = recv_char(conn);
@@ -218,7 +234,7 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
     conn->pipe_interface->write_sync(conn->pipe, &ackCh, 1, 0, nullptr);
     if (!ack)
     {
-        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, rawPacket, rawPacketLen);
+        Kdbg_Free(rawPacket);
         goto retry;
     }
     *packet = rawPacket;

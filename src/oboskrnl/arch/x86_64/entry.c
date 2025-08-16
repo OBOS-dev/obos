@@ -88,9 +88,15 @@
 
 #if 1
 #include "gdbstub/connection.h"
+#include "gdbstub/gdb_udp_backend.h"
+#include "gdbstub/packet_dispatcher.h"
 #include "gdbstub/debug.h"
 #endif
 
+#include <net/tables.h>
+#include <net/tcp.h>
+
+#include <vfs/dirent.h>
 #include <vfs/init.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
@@ -109,6 +115,8 @@
 #include <elf/load.h>
 
 #include <asan.h>
+
+#include <utils/list.h>
 
 extern void Arch_InitBootGDT();
 

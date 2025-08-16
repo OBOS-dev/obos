@@ -144,7 +144,7 @@ void Kdbg_GeneralDebugExceptionHandler(gdb_connection* conn, gdb_ctx* dbg_ctx, b
 		obos_status st = Kdbg_DispatchPacket(conn, packet, packetLen, dbg_ctx);
 		if (obos_is_error(st))
             OBOS_Debug("Kdbg: While dispatching packet: Got status %d\n", st);
-        OBOS_NonPagedPoolAllocator->Free(OBOS_NonPagedPoolAllocator, packet, packetLen);
+        Kdbg_Free(packet);
     }
     Kdbg_Paused = false;
 }
