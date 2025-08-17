@@ -21,12 +21,21 @@
 #include <utils/list.h>
 
 typedef union ip_addr {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     struct {
         uint8_t comp1;
         uint8_t comp2;
         uint8_t comp3;
         uint8_t comp4;
     };
+#else
+    struct {
+        uint8_t comp4;
+        uint8_t comp3;
+        uint8_t comp2;
+        uint8_t comp1;
+    };
+#endif
     uint32_t addr;
 } OBOS_PACK ip_addr;
 #define IP_ADDRESS_FORMAT "%d.%d.%d.%d"

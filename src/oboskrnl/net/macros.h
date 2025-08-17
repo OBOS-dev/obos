@@ -26,7 +26,7 @@ static inline void NetFreeSharedPtr(shared_ptr *ptr) \
     Free(OBOS_KernelAllocator, ptr, sizeof(*ptr));\
 }
     
-#if defined(__x86_64__)
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #   define host_to_be16(val) __builtin_bswap16(val)
 #   define host_to_be32(val) __builtin_bswap32(val)
 #   define host_to_be64(val) __builtin_bswap64(val)
@@ -39,7 +39,7 @@ static inline void NetFreeSharedPtr(shared_ptr *ptr) \
 #   define le16_to_host(val) (uint16_t)(val)
 #   define le32_to_host(val) (uint32_t)(val)
 #   define le64_to_host(val) (uint64_t)(val)
-#elif defined(__m68k__)
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #   define host_to_be16(val) (uint16_t)(val)
 #   define host_to_be32(val) (uint32_t)(val)
 #   define host_to_be64(val) (uint32_t)(val)
@@ -53,5 +53,5 @@ static inline void NetFreeSharedPtr(shared_ptr *ptr) \
 #   define le32_to_host(val) __builtin_bswap32(val)
 #   define le64_to_host(val) __builtin_bswap64(val)
 #else
-#   error Define required macros.
+#   error wha..
 #endif
