@@ -51,7 +51,7 @@ obos_status Net_Socket(int domain, int type, int protocol, fd* out);
 obos_status Net_Accept(fd* socket, sockaddr* addr, size_t* addr_len, int flags, fd* out);
 obos_status Net_Bind(fd* socket, sockaddr* addr, size_t* addr_len);
 obos_status Net_Connect(fd* socket, sockaddr* addr, size_t* addr_len);
-obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, void* optval, size_t optlen);
+obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, void* optval, size_t *optlen);
 obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, const void* optval, size_t optlen);
 obos_status Net_GetPeerName(fd* socket, sockaddr* addr, size_t* addr_len);
 obos_status Net_GetSockName(fd* socket, sockaddr* addr, size_t* addr_len);

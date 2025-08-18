@@ -391,6 +391,17 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SymLinkAt,
     (uintptr_t)Sys_CreateNamedPipe,
     (uintptr_t)Sys_PPoll,
+    (uintptr_t)Sys_Socket,
+    (uintptr_t)Sys_SendTo,
+    (uintptr_t)Sys_RecvFrom,
+    (uintptr_t)Sys_Listen,
+    (uintptr_t)Sys_Accept,
+    (uintptr_t)Sys_Bind,
+    (uintptr_t)Sys_Connect,
+    (uintptr_t)Sys_SockName,
+    (uintptr_t)Sys_PeerName,
+    (uintptr_t)Sys_GetSockOpt,
+    (uintptr_t)Sys_SetSockOpt,
 };
 
 // Arch syscall table is defined per-arch

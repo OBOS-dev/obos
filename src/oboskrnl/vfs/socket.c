@@ -252,21 +252,23 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
     }
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, void* optval, size_t optlen)
+obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, void* optval, size_t *optlen)
 {
     validate_fd_status(socket);
     OBOS_UNUSED(level);
     socket_desc* desc = (void*)socket->vn->desc;
     switch (optname) {
         case IP_TTL:
-            if (optlen < sizeof(uint8_t))
+            if (*optlen < sizeof(uint8_t))
                 return OBOS_STATUS_INVALID_ARGUMENT;
             *(uint8_t*)optval = desc->opts.ttl;
+            *optlen = sizeof(uint8_t);
             break;
         case IP_HDRINCL:
-            if (optlen < sizeof(bool))
+            if (*optlen < sizeof(bool))
                 return OBOS_STATUS_INVALID_ARGUMENT;
             *(bool*)optval = desc->opts.hdrincl;
+            *optlen = sizeof(bool);
             break;
         default: return OBOS_STATUS_INVALID_ARGUMENT;
     }

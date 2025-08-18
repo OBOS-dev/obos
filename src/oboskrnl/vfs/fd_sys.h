@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd_sys.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #pragma once
@@ -13,6 +13,7 @@
 
 #include <vfs/limits.h>
 #include <vfs/irp.h>
+#include <vfs/socket.h>
 
 #include <driver_interface/header.h>
 
@@ -127,3 +128,22 @@ obos_status Sys_CreatePipe(handle* ufds, size_t pipesize);
 obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t pipesize);
 
 obos_status Sys_Fcntl(handle fd, int request, uintptr_t* args, size_t nArgs, int* ret);
+
+obos_status Sys_Socket(handle fd, int family, int type, int protocol);
+struct sys_socket_io_params {
+    sockaddr* sock_addr;
+    // Untouched in sendto, modified in recvfrom
+    size_t addr_length;
+    // Only valid in recvfrom
+    size_t nRead;
+};
+obos_status Sys_SendTo(handle fd, const void* buffer, size_t size, int flags, struct sys_socket_io_params *params);
+obos_status Sys_RecvFrom(handle fd, void* buffer, size_t size, int flags, struct sys_socket_io_params *params);
+obos_status Sys_Listen(handle fd, int backlog);
+obos_status Sys_Accept(handle fd, handle new_fd, sockaddr* addr_ptr, size_t *addr_length, int flags);
+obos_status Sys_Bind(handle fd, const sockaddr *addr, size_t addr_length);
+obos_status Sys_Connect(handle fd, const sockaddr *addr, size_t addr_length);
+obos_status Sys_SockName(handle fd, sockaddr* addr, size_t addr_length, size_t* actual_addr_length);
+obos_status Sys_PeerName(handle fd, sockaddr* addr, size_t addr_length, size_t* actual_addr_length);
+obos_status Sys_GetSockOpt(handle fd, int layer, int number, void *buffer, size_t *size);
+obos_status Sys_SetSockOpt(handle fd, int layer, int number, const void *buffer, size_t size);
