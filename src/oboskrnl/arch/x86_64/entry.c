@@ -93,8 +93,7 @@
 #include "gdbstub/debug.h"
 #endif
 
-#include <net/tables.h>
-#include <net/tcp.h>
+#include <net/lo.h>
 
 #include <vfs/dirent.h>
 #include <vfs/init.h>
@@ -1006,6 +1005,8 @@ void Arch_KernelMainBootstrap()
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
         Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
     }
+
+    Net_InitializeLoopbackDevice();
 
     OBOS_LoadInit();
 

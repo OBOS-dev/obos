@@ -396,6 +396,9 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             new_ent->address = ent->address;
             new_ent->subnet = ent->subnet;
             new_ent->broadcast = ent->broadcast;
+            Core_PushlockAcquire(&nic->net_tables->table_lock, false);
+            LIST_APPEND(ip_table, &nic->net_tables->table, new_ent);
+            Core_PushlockRelease(&nic->net_tables->table_lock, false);
             break;
         }
         case IOCTL_IFACE_REMOVE_IP_TABLE_ENTRY:
@@ -458,6 +461,7 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             new_ent->src = ent->src;
             new_ent->dest_ent = dest_ent;
             NetH_ARPRequest(nic, new_ent->dest, nullptr, &new_ent->cache);
+            LIST_APPEND(gateway_list, &nic->net_tables->gateways, new_ent);
             break;
         }
         case IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY:
