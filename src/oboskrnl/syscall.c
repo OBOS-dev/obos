@@ -402,6 +402,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_PeerName,
     (uintptr_t)Sys_GetSockOpt,
     (uintptr_t)Sys_SetSockOpt,
+    (uintptr_t)Sys_ShutdownSocket,
 };
 
 // Arch syscall table is defined per-arch

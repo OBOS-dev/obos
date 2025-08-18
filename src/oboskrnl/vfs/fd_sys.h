@@ -147,3 +147,4 @@ obos_status Sys_SockName(handle fd, sockaddr* addr, size_t addr_length, size_t* 
 obos_status Sys_PeerName(handle fd, sockaddr* addr, size_t addr_length, size_t* actual_addr_length);
 obos_status Sys_GetSockOpt(handle fd, int layer, int number, void *buffer, size_t *size);
 obos_status Sys_SetSockOpt(handle fd, int layer, int number, const void *buffer, size_t size);
+obos_status Sys_ShutdownSocket(handle fd, int how);

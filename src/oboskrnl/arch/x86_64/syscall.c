@@ -230,6 +230,7 @@ const char* syscall_to_string[] = {
     "Sys_PeerName",
     "Sys_GetSockOpt",
     "Sys_SetSockOpt",
+    "Sys_ShutdownSocket",
 };
 
 const char* status_to_string[] = {

@@ -2253,3 +2253,18 @@ obos_status Sys_SetSockOpt(handle desc, int layer, int number, const void *ubuff
 
     return status;
 }
+
+obos_status Sys_ShutdownSocket(handle desc, int how)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return Net_Shutdown(fd->un.fd, how);
+}
