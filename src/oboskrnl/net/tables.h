@@ -25,7 +25,6 @@
 #include <utils/list.h>
 
 typedef struct gateway {
-    LIST_NODE(gateway_list, struct gateway) node;
     // The address the gateway handles
     ip_addr src; 
     // The gateway address
@@ -33,9 +32,15 @@ typedef struct gateway {
     // The IP table entry that would be used to comunicate with dest
     struct ip_table_entry* dest_ent; 
     struct address_table_entry *cache;
+    LIST_NODE(gateway_list, struct gateway) node;
 } gateway;
 typedef LIST_HEAD(gateway_list, gateway) gateway_list;
 LIST_PROTOTYPE(gateway_list, gateway, node);
+
+typedef struct gateway_user {
+    ip_addr src;
+    ip_addr dest;
+} gateway_user;
 
 enum {
     IP_ENTRY_ENABLE_ICMP_ECHO_REPLY = BIT(0),
@@ -43,13 +48,21 @@ enum {
     IP_ENTRY_IPv4_FORWARDING = BIT(2),
 };
 
-typedef struct ip_table_entry {
-    LIST_NODE(ip_table, struct ip_table_entry) node;
+typedef struct ip_table_entry_user {
     ip_addr address;
     ip_addr broadcast;
     uint32_t subnet;
     uint32_t ip_entry_flags;
+} ip_table_entry_user;
+
+typedef struct ip_table_entry {
+    ip_addr address;
+    ip_addr broadcast;
+    uint32_t subnet;
+    uint32_t ip_entry_flags;
+    LIST_NODE(ip_table, struct ip_table_entry) node;
 } ip_table_entry;
+
 typedef LIST_HEAD(ip_table, ip_table_entry) ip_table;
 LIST_PROTOTYPE(ip_table, ip_table_entry, node);
 
@@ -145,3 +158,6 @@ extern network_interface_list Net_Interfaces;
 obos_status Net_Initialize(vnode* nic);
 obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data);
 obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_entry, uint8_t *ttl, ip_addr destination);
+
+obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp);
+obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz);

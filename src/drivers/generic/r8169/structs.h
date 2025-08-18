@@ -75,6 +75,8 @@ typedef struct r8169_device
 {
     uint32_t magic;
 
+    vnode* vn;
+
     pci_device *dev;
     pci_resource* bar; // BAR0
     pci_resource* irq_res;
@@ -100,7 +102,6 @@ typedef struct r8169_device
     uint16_t isr;
 
     char* interface_name;
-
 
     // Total number of received packets (both dropped, and undropped)
     size_t rx_count;

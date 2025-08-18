@@ -826,7 +826,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
 
     irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
 
-    irql oldIrql2 = Core_SpinlockAcquire(&user_context->lock);
+    irql oldIrql2 = user_context == &Mm_KernelContext ? IRQL_INVALID : Core_SpinlockAcquire(&user_context->lock);
     if (!pages_exist(user_context, (void*)ubase, size, respectUserProtection, prot))
     {
         Core_SpinlockRelease(&user_context->lock, oldIrql2);
@@ -928,7 +928,8 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
     }
 
-    Core_SpinlockRelease(&user_context->lock, oldIrql2);
+    if (user_context != &Mm_KernelContext)
+        Core_SpinlockRelease(&user_context->lock, oldIrql2);
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
 
     Mm_KernelContext.stat.committedMemory += size;

@@ -49,7 +49,8 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     
     if (ent) 
     {
-        memcpy(*out, ent->phys, sizeof(mac_address));
+        if (out)
+            memcpy(*out, ent->phys, sizeof(mac_address));
         if (address_table_ent)
             *address_table_ent = ent;
         return OBOS_STATUS_SUCCESS;
@@ -91,7 +92,8 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     }
 
     Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
-    memcpy(*out, ent->phys, sizeof(mac_address));
+    if (out)
+        memcpy(*out, ent->phys, sizeof(mac_address));
     if (address_table_ent)
         *address_table_ent = ent;
     return OBOS_STATUS_SUCCESS;

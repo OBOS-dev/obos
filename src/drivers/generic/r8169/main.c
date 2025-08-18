@@ -31,6 +31,7 @@
 #include <locks/event.h>
 
 #include <net/eth.h>
+#include <net/tables.h>
 
 #include "structs.h"
 
@@ -225,11 +226,11 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 obos_status ioctl_argp_size(uint32_t request, size_t *ret)
 {
     switch (request) {
-        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+        case IOCTL_IFACE_MAC_REQUEST:
             *ret = sizeof(mac_address);
             return OBOS_STATUS_SUCCESS;
         default:
-            break;
+            return Net_InterfaceIoctlArgpSize(request, ret);
     }
     return OBOS_STATUS_INVALID_IOCTL;
 }
@@ -245,11 +246,11 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     else
         return OBOS_STATUS_INVALID_ARGUMENT;
     switch (request) {
-        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+        case IOCTL_IFACE_MAC_REQUEST:
             memcpy(argp, dev->mac, sizeof(mac_address));
             return OBOS_STATUS_SUCCESS;
         default:
-            break;
+            return Net_InterfaceIoctl(dev->vn, request, argp);
     }
     return OBOS_STATUS_INVALID_IOCTL;
 }
@@ -477,6 +478,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         const char* dev_name = Devices[i].interface_name;
         OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
+        Devices[0].vn = vn;
     }
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS};

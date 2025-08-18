@@ -20,6 +20,7 @@
 #include <net/macros.h>
 #include <net/icmp.h>
 #include <net/ip.h>
+#include <net/arp.h>
 
 #include <locks/pushlock.h>
 
@@ -30,6 +31,7 @@
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
 #include <scheduler/process.h>
+#include <scheduler/cpu_local.h>
 
 #include <allocators/base.h>
 
@@ -102,7 +104,7 @@ obos_status Net_Initialize(vnode* nic)
     if (driver->ftable.reference_device)
         driver->ftable.reference_device(&nic->net_tables->desc);
 
-    driver->ftable.ioctl(nic->net_tables->desc, IOCTL_ETHERNET_INTERFACE_MAC_REQUEST, &nic->net_tables->mac);
+    driver->ftable.ioctl(nic->net_tables->desc, IOCTL_IFACE_MAC_REQUEST, &nic->net_tables->mac);
 
     nic->net_tables->dispatch_thread = CoreH_ThreadAllocate(nullptr);
     thread_ctx ctx = {};
@@ -343,4 +345,291 @@ bool NetH_NetworkErrorLogsEnabled()
         initialized_opt = true;
     }
     return opt_val;
+}
+
+static ip_table_entry* get_ip_table_entry(vnode* nic, ip_table_entry_user key)
+{
+    Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
+    {
+        if (ent->address.addr == key.address.addr && ent->subnet == key.subnet)
+        {
+            Core_PushlockRelease(&nic->net_tables->table_lock, true);
+            return ent;
+        }
+
+        ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, ent);
+    }
+    Core_PushlockRelease(&nic->net_tables->table_lock, true);
+    return nullptr;
+}
+static gateway* get_gateway(vnode* nic, gateway_user key)
+{
+    for (gateway* ent = LIST_GET_HEAD(gateway_list, &nic->net_tables->gateways); ent; )
+    {
+        if (ent->dest.addr == key.dest.addr || ent->src.addr == key.src.addr)
+            return ent;
+
+        ent = LIST_GET_NEXT(gateway_list, &nic->net_tables->gateways, ent);
+    }
+    return nullptr;
+}
+
+obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
+{
+    if (!nic)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    switch (request) {
+        case IOCTL_IFACE_ADD_IP_TABLE_ENTRY:
+        {
+            ip_table_entry_user* ent = argp;
+            if (get_ip_table_entry(nic, *ent))
+            {
+                status = OBOS_STATUS_ALREADY_INITIALIZED;
+                break;
+            }
+            ip_table_entry* new_ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(ip_table_entry), nullptr);
+            new_ent->ip_entry_flags = ent->ip_entry_flags;
+            new_ent->address = ent->address;
+            new_ent->subnet = ent->subnet;
+            new_ent->broadcast = ent->broadcast;
+            break;
+        }
+        case IOCTL_IFACE_REMOVE_IP_TABLE_ENTRY:
+        {
+            ip_table_entry_user* key = argp;
+            ip_table_entry* ent = get_ip_table_entry(nic, *key);
+            if (!ent)
+            {
+                status = OBOS_STATUS_NOT_FOUND;
+                break;
+            }
+            Core_PushlockAcquire(&nic->net_tables->table_lock, false);
+            LIST_REMOVE(ip_table, &nic->net_tables->table, ent);
+            Core_PushlockRelease(&nic->net_tables->table_lock, false);
+            break;
+        }
+        case IOCTL_IFACE_SET_IP_TABLE_ENTRY:
+        {
+            ip_table_entry_user* ent = argp;
+            ip_table_entry* found = nullptr;
+            if (!(found = get_ip_table_entry(nic, *ent)))
+            {
+                status = OBOS_STATUS_ALREADY_INITIALIZED;
+                break;
+            }
+            found->ip_entry_flags = ent->ip_entry_flags;
+            found->address = ent->address;
+            found->subnet = ent->subnet;
+            found->broadcast = ent->broadcast;
+            break;
+        }
+        case IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY:
+        {
+            gateway_user *ent = argp;
+            if (get_gateway(nic, *ent))
+            {
+                status = OBOS_STATUS_ALREADY_INITIALIZED;
+                break;
+            }
+            Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+            ip_table_entry* dest_ent = nullptr;
+            for (ip_table_entry* curr_ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); curr_ent; )
+            {
+                if ((curr_ent->address.addr & curr_ent->subnet) == (ent->dest.addr & curr_ent->subnet))
+                {
+                    dest_ent = curr_ent;
+                    break;
+                }
+
+                curr_ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, curr_ent);
+            }
+            Core_PushlockRelease(&nic->net_tables->table_lock, true);
+            if (!dest_ent)
+            {
+                status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+                break;
+            }
+            gateway* new_ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
+            new_ent->dest = ent->dest;
+            new_ent->src = ent->src;
+            new_ent->dest_ent = dest_ent;
+            NetH_ARPRequest(nic, new_ent->dest, nullptr, &new_ent->cache);
+            break;
+        }
+        case IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY:
+        {
+            gateway_user* key = argp;
+            gateway* ent = get_gateway(nic, *key);
+            if (!ent)
+            {
+                status = OBOS_STATUS_NOT_FOUND;
+                break;
+            }
+            LIST_REMOVE(gateway_list, &nic->net_tables->gateways, ent);
+            break;
+        }
+        case IOCTL_IFACE_SET_DEFAULT_GATEWAY:
+        {
+            ip_table_entry* dest_ent = nullptr;
+            Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+            for (ip_table_entry* curr_ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); curr_ent; )
+            {
+                if ((curr_ent->address.addr & curr_ent->subnet) == (((ip_addr*)argp)->addr & curr_ent->subnet))
+                {
+                    dest_ent = curr_ent;
+                    break;
+                }
+
+                curr_ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, curr_ent);
+            }
+            Core_PushlockRelease(&nic->net_tables->table_lock, true);
+            if (!dest_ent)
+            {
+                status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+                break;
+            }
+
+            if (!nic->net_tables->default_gateway)
+            {
+                nic->net_tables->default_gateway = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
+                LIST_APPEND(gateway_list, &nic->net_tables->gateways, nic->net_tables->default_gateway);
+            }
+            nic->net_tables->default_gateway->src = (ip_addr){.addr=0};
+            nic->net_tables->default_gateway->dest = *(ip_addr*)argp;
+            nic->net_tables->default_gateway->dest_ent = dest_ent;
+            NetH_ARPRequest(nic, nic->net_tables->default_gateway->dest, nullptr, &nic->net_tables->default_gateway->cache);
+            break;
+        }
+        case IOCTL_IFACE_UNSET_DEFAULT_GATEWAY:
+        {
+            if (nic->net_tables->default_gateway)
+            {
+                LIST_REMOVE(gateway_list, &nic->net_tables->gateways, nic->net_tables->default_gateway);
+                nic->net_tables->default_gateway = nullptr;
+                Free(OBOS_KernelAllocator, nic->net_tables->default_gateway, sizeof(*nic->net_tables->default_gateway));
+            }
+            status = OBOS_STATUS_SUCCESS;
+            break;
+        }
+        case IOCTL_IFACE_CLEAR_ARP_CACHE:
+        {
+            address_table_entry *ent = nullptr, *next = nullptr;
+            Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, false);
+            RB_FOREACH_SAFE(ent, address_table, &nic->net_tables->arp_cache, next)
+            {
+                RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+                Core_EventSet(&ent->sync, false);
+                Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            }
+            Core_PushlockRelease(&nic->net_tables->arp_cache_lock, false);
+            break;
+        }
+        case IOCTL_IFACE_CLEAR_ROUTE_CACHE:
+        {
+            struct route *ent = nullptr, *next = nullptr;
+            Core_PushlockAcquire(&nic->net_tables->cached_routes_lock, false);
+            RB_FOREACH_SAFE(ent, route_tree, &nic->net_tables->cached_routes, next)
+            {
+                RB_REMOVE(route_tree, &nic->net_tables->cached_routes, ent);
+                Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            }
+            Core_PushlockRelease(&nic->net_tables->cached_routes_lock, false);
+            break;
+        }
+        case IOCTL_IFACE_GET_IP_TABLE:
+        {
+            struct {
+                void* buf;
+                size_t sz;
+            } *buffer = argp;
+            
+            Core_PushlockAcquire(&nic->net_tables->table_lock, true);
+            size_t bytesCopied = 0, bytesToCopy = LIST_GET_NODE_COUNT(ip_table, &nic->net_tables->table)*sizeof(ip_table_entry_user);
+            if (buffer->buf && buffer->sz >= sizeof(ip_table_entry_user))
+            {
+                char* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer->buf, nullptr, buffer->sz, 0, true, &status);
+                if (obos_is_error(status))
+                    break;
+                for (ip_table_entry* curr_ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); curr_ent && bytesCopied < buffer->sz; )
+                {
+                    ip_table_entry_user user_ent = {};
+                    user_ent.ip_entry_flags = curr_ent->ip_entry_flags;
+                    user_ent.address = curr_ent->address;
+                    user_ent.subnet = curr_ent->subnet;
+                    user_ent.broadcast = curr_ent->broadcast;
+                    memcpy(kbuf+bytesCopied, &user_ent, sizeof(user_ent));
+                    bytesCopied += sizeof(user_ent);
+    
+                    curr_ent = LIST_GET_NEXT(ip_table, &nic->net_tables->table, curr_ent);
+                }
+                Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, buffer->sz);
+            }
+            buffer->sz = bytesToCopy;
+            Core_PushlockRelease(&nic->net_tables->table_lock, true);
+            break;
+        }
+        case IOCTL_IFACE_GET_ROUTING_TABLE:
+        {
+            struct {
+                void* buf;
+                size_t sz;
+            } *buffer = argp;
+            
+            size_t bytesCopied = 0, bytesToCopy = LIST_GET_NODE_COUNT(gateway_list, &nic->net_tables->gateways)*sizeof(gateway_user);
+            if (buffer->buf && buffer->sz >= sizeof(ip_table_entry_user))
+            {
+                char* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer->buf, nullptr, buffer->sz, 0, true, &status);
+                if (obos_is_error(status))
+                    break;
+                for (gateway* curr_ent = LIST_GET_HEAD(gateway_list, &nic->net_tables->gateways); curr_ent && bytesCopied < buffer->sz; )
+                {
+                    gateway_user user_ent = {};
+                    user_ent.dest = curr_ent->dest;
+                    user_ent.src = curr_ent->src;
+                    memcpy(kbuf+bytesCopied, &user_ent, sizeof(user_ent));
+                    bytesCopied += sizeof(user_ent);
+    
+                    curr_ent = LIST_GET_NEXT(gateway_list, &nic->net_tables->gateways, curr_ent);
+                }
+                Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, buffer->sz);
+            }
+            buffer->sz = bytesToCopy;
+
+            break;
+        }
+        default:
+            return OBOS_STATUS_INVALID_IOCTL;
+    }
+    return status;
+}
+
+obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz)
+{
+    switch (request) {
+        case IOCTL_IFACE_ADD_IP_TABLE_ENTRY:
+        case IOCTL_IFACE_REMOVE_IP_TABLE_ENTRY:
+        case IOCTL_IFACE_SET_IP_TABLE_ENTRY:
+            *argp_sz = sizeof(ip_table_entry_user);
+            break;
+        case IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY:
+        case IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY:
+            *argp_sz = sizeof(gateway_user);
+            break;
+        case IOCTL_IFACE_CLEAR_ARP_CACHE:
+        case IOCTL_IFACE_CLEAR_ROUTE_CACHE:
+        case IOCTL_IFACE_UNSET_DEFAULT_GATEWAY:
+            *argp_sz = 0;
+            break;
+        case IOCTL_IFACE_SET_DEFAULT_GATEWAY:
+            *argp_sz = sizeof(ip_addr);
+            break;
+        case IOCTL_IFACE_GET_IP_TABLE:
+        case IOCTL_IFACE_GET_ROUTING_TABLE:
+            *argp_sz = sizeof(struct {void* buf; size_t sz;});
+            break;
+        default: *argp_sz = 0; return OBOS_STATUS_INVALID_IOCTL;
+    }
+    return OBOS_STATUS_SUCCESS;
 }
