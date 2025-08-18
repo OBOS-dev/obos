@@ -379,6 +379,8 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
 {
     if (!nic)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!nic->net_tables && request != IOCTL_IFACE_INITIALIZE)
+        return OBOS_STATUS_UNINITIALIZED;
     obos_status status = OBOS_STATUS_SUCCESS;
     switch (request) {
         case IOCTL_IFACE_ADD_IP_TABLE_ENTRY:
@@ -599,6 +601,11 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
 
             break;
         }
+        case IOCTL_IFACE_INITIALIZE:
+        {
+            status = Net_Initialize(nic);
+            break;
+        }
         default:
             return OBOS_STATUS_INVALID_IOCTL;
     }
@@ -620,6 +627,7 @@ obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz)
         case IOCTL_IFACE_CLEAR_ARP_CACHE:
         case IOCTL_IFACE_CLEAR_ROUTE_CACHE:
         case IOCTL_IFACE_UNSET_DEFAULT_GATEWAY:
+        case IOCTL_IFACE_INITIALIZE:
             *argp_sz = 0;
             break;
         case IOCTL_IFACE_SET_DEFAULT_GATEWAY:
