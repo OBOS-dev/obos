@@ -44,6 +44,9 @@ typedef struct udp_port {
     uint16_t port;
     udp_recv_packet_list packets;
     event recv_event;
+    bool got_icmp_msg : 1;
+    shared_ptr *icmp_header_ptr;
+    struct icmp_header* icmp_header;
     RB_ENTRY(udp_port) node;
 } udp_port;
 typedef RB_HEAD(udp_port_tree, udp_port) udp_port_tree;
@@ -56,3 +59,5 @@ static inline int udp_port_cmp(const udp_port* lhs, const udp_port* rhs)
 RB_PROTOTYPE(udp_port_tree, udp_port, node, udp_port_cmp);
 
 PacketProcessSignature(UDP, ip_header*);
+
+extern struct socket_ops Net_UDPSocketBackend;

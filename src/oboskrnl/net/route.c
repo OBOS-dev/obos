@@ -18,6 +18,8 @@
 #include <net/eth.h>
 #include <net/tables.h>
 #include <net/macros.h>
+#include <net/icmp.h>
+#include <net/ip.h>
 
 #include <locks/pushlock.h>
 
@@ -94,7 +96,7 @@ obos_status Net_Initialize(vnode* nic)
 
     mount* const point = nic->mount_point ? nic->mount_point : nic->un.mounted;
     const driver_header* driver = nic->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (nic->vtype == VNODE_TYPE_CHR || nic->vtype == VNODE_TYPE_BLK || nic->vtype == VNODE_TYPE_FIFO)
+    if (nic->vtype == VNODE_TYPE_CHR || nic->vtype == VNODE_TYPE_BLK || nic->vtype == VNODE_TYPE_FIFO || nic->vtype == VNODE_TYPE_SOCK)
         driver = &nic->un.device->driver->header;
     nic->net_tables->desc = nic->desc;
     if (driver->ftable.reference_device)
@@ -118,8 +120,11 @@ obos_status Net_Initialize(vnode* nic)
     nic->net_tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->tcp_connections_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->tcp_ports_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->cached_routes_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->interface = nic;
     nic->net_tables->magic = IP_TABLES_MAGIC;
+
+    LIST_APPEND(network_interface_list, &Net_Interfaces, nic->net_tables);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -145,8 +150,188 @@ obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data)
     return OBOS_STATUS_SUCCESS;
 }
 
+LIST_GENERATE(route_list, struct route, node);
+RB_GENERATE(route_tree, route, rb_node, route_cmp);
+
+obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_entry, uint8_t* ttl, ip_addr destination)
+{
+    // Check local ip table entries and cached routes.
+    for (net_tables* curr_iface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); curr_iface; )
+    {
+        Core_PushlockAcquire(&curr_iface->table_lock, true);
+        for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &curr_iface->table); ent; )
+        {
+            if ((ent->address.addr & ent->subnet) == (destination.addr & ent->subnet))
+            {
+                *interface = curr_iface;
+                *routing_entry = ent;
+                *ttl = 1;
+                Core_PushlockRelease(&curr_iface->table_lock, true);
+                return OBOS_STATUS_SUCCESS;
+            }
+            
+            ent = LIST_GET_NEXT(ip_table, &curr_iface->table, ent);
+        }
+        Core_PushlockRelease(&curr_iface->table_lock, true);
+
+        Core_PushlockAcquire(&curr_iface->cached_routes_lock, true);
+        struct route key = {.destination=destination,.iface=curr_iface};
+        struct route* r = RB_FIND(route_tree, &curr_iface->cached_routes, &key);
+        Core_PushlockRelease(&curr_iface->cached_routes_lock, true);
+        if (r)
+        {
+            *interface = r->iface;
+            *routing_entry = r->ent;
+            *ttl = r->ttl;
+            return OBOS_STATUS_SUCCESS;
+        }
+
+        curr_iface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, curr_iface);
+    }
+    
+    route_list possible_routes = {};
+
+    // Check routing table entries, adding possible routes to the list.
+    for (net_tables* curr_iface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); curr_iface; )
+    {
+        for (gateway* ent = LIST_GET_HEAD(gateway_list, &curr_iface->gateways); ent; )
+        {
+            if (ent == curr_iface->default_gateway)
+                goto end;
+            if (ent->src.addr == destination.addr)
+            {
+                struct route* r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*r), nullptr);
+                r->iface = curr_iface;
+                r->ent = ent->dest_ent;
+                r->route = ent;
+                r->ttl = 60; /* initial TTL */
+                LIST_APPEND(route_list, &possible_routes, r);
+            }
+
+            end:
+            ent = LIST_GET_NEXT(gateway_list, &curr_iface->gateways, ent);
+        }
+        struct route* r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*r), nullptr);
+        r->iface = curr_iface;
+        r->ent = curr_iface->default_gateway->dest_ent;
+        r->route = curr_iface->default_gateway;
+        r->ttl = 60; /* initial TTL */
+        LIST_APPEND(route_list, &possible_routes, r);
+
+        curr_iface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, curr_iface);
+    }
+
+    struct route* optimal_route = nullptr;
+    uint8_t optimal_route_hops = 0;
+
+    // Try each route, 
+    for (struct route* curr = LIST_GET_HEAD(route_list, &possible_routes); curr; )
+    {
+        bool tried_again = false;
+        again:
+        (void)0;
+        udp_port* port = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(udp_port), nullptr);
+        port->port = 33435;
+        port->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+        Core_PushlockAcquire(&curr->iface->udp_ports_lock, false);
+        RB_INSERT(udp_port_tree, &curr->iface->udp_ports, port);
+        Core_PushlockRelease(&curr->iface->udp_ports_lock, false);
+        udp_header hdr = {};
+        hdr.dest_port = host_to_be16(33434);
+        hdr.src_port = host_to_be16(port->port);
+        hdr.length = host_to_be16(8);
+        hdr.chksum = 0;
+        shared_ptr data = {};
+        OBOS_SharedPtrConstruct(&data, &hdr);
+        NetH_SendIPv4Packet(curr->iface->interface, curr->ent, destination, 0x11, curr->ttl, 0, OBOS_SharedPtrCopy(&data));
+        Core_WaitOnObject(WAITABLE_OBJECT(port->recv_event));
+
+        icmp_header* icmp_hdr = port->icmp_header;
+        shared_ptr* icmp_hdr_ptr = port->icmp_header_ptr;
+        port->icmp_header_ptr = nullptr;
+
+        Core_PushlockAcquire(&curr->iface->udp_ports_lock, false);
+        RB_REMOVE(udp_port_tree, &curr->iface->udp_ports, port);
+        Core_PushlockRelease(&curr->iface->udp_ports_lock, false);
+        Free(OBOS_KernelAllocator, port, sizeof(*port));
+
+        bool error = false;
+        
+        if (icmp_hdr)
+        {
+            if (icmp_hdr->type == ICMPv4_TYPE_TIME_EXCEEDED)
+                error = true;
+            else if (icmp_hdr->type == ICMPv4_TYPE_DEST_UNREACHABLE)
+            {
+                if (icmp_hdr->code == ICMPv4_CODE_PORT_UNREACHABLE || icmp_hdr->code == ICMPv4_CODE_PROTOCOL_UNREACHABLE)
+                {
+                    ip_header* ip_hdr = (void*)icmp_hdr->data;
+                    uint8_t hops = curr->ttl - ip_hdr->time_to_live;
+                    if (!optimal_route || optimal_route_hops < hops)
+                    {
+                        optimal_route = curr;
+                        optimal_route_hops = hops;
+                    }
+                }
+                else
+                    error = true;
+            }
+            
+        }
+        if (error)
+        {
+            if (!tried_again)
+            {
+                tried_again = true;
+                curr->ttl *= 2;
+                goto again;
+            }
+            else
+            {
+                struct route* next = LIST_GET_NEXT(route_list, &possible_routes, curr);
+                LIST_REMOVE(route_list, &possible_routes, curr);
+                Free(OBOS_KernelAllocator, curr, sizeof(*curr));
+                curr = next;
+                OBOS_SharedPtrUnref(icmp_hdr_ptr);
+                continue;
+            }
+        }
+        OBOS_SharedPtrUnref(icmp_hdr_ptr);
+        
+        curr = LIST_GET_NEXT(route_list, &possible_routes, curr);
+    }
+
+    if (optimal_route)
+    {
+        *interface = optimal_route->iface;
+        *routing_entry = optimal_route->ent;
+        *ttl = optimal_route->ttl;
+        optimal_route->hops = optimal_route_hops;
+        Core_PushlockAcquire(&optimal_route->iface->cached_routes_lock, false);
+        RB_FIND(route_tree, &optimal_route->iface->cached_routes, optimal_route);
+        Core_PushlockRelease(&optimal_route->iface->cached_routes_lock, false);
+    }
+
+    for (struct route* curr = LIST_GET_HEAD(route_list, &possible_routes); curr; )
+    {
+        struct route* next = LIST_GET_NEXT(route_list, &possible_routes, curr);
+        LIST_REMOVE(route_list, &possible_routes, curr);
+        if (optimal_route != curr)
+            Free(OBOS_KernelAllocator, curr, sizeof(*curr));
+        curr = next;
+    }
+
+    if (optimal_route)
+        return OBOS_STATUS_SUCCESS;
+    else
+        return OBOS_STATUS_NO_ROUTE_TO_HOST;
+}
+
+network_interface_list Net_Interfaces;
+
 LIST_GENERATE(gateway_list, gateway, node);
 LIST_GENERATE(ip_table, ip_table_entry, node);
+LIST_GENERATE(network_interface_list, net_tables, node);
 RB_GENERATE(address_table, address_table_entry, node, cmp_address_table_entry);
 
 bool NetH_NetworkErrorLogsEnabled()

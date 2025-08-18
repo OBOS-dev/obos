@@ -49,6 +49,11 @@ typedef struct irp {
         void *buff;
         const void* cbuff;
     };
+    // if vnode is not a socket, flags does not apply
+    uint32_t socket_flags;
+    void* socket_data;
+    size_t sz_socket_data;
+
     void* drvData;
     size_t refs;
     uoff_t blkOffset;

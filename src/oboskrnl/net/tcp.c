@@ -424,6 +424,13 @@ PacketProcessSignature(TCP, ip_header*)
     tcp_connection* current_connection = RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &conn_key);
     Core_PushlockRelease(&nic->net_tables->tcp_connections_lock, true);
 
+    if (port)
+    {
+        Core_PushlockAcquire(&port->connection_list_lock, true);
+        current_connection = RB_FIND(tcp_connection_tree, &port->connections, &conn_key);
+        Core_PushlockRelease(&port->connection_list_lock, true);
+    }
+    
     if (!current_connection && !port)
     {
         // Net_ICMPv4DestUnreachable(nic, ip_hdr, (ethernet2_header*)buf->obj, hdr, ICMPv4_CODE_PORT_UNREACHABLE);
@@ -446,11 +453,11 @@ PacketProcessSignature(TCP, ip_header*)
     resp.dest_port = be16_to_host(hdr->src_port);
     resp.src_port = be16_to_host(hdr->dest_port);
     resp.ttl = 64;
-    resp.window = current_connection->rx_window;
+    resp.window = current_connection ? 0 : current_connection->rx_window;
 
     if (hdr->flags & TCP_SYN)
     {
-        if (current_connection->is_client)
+        if (current_connection && current_connection->is_client)
             current_connection->state = TCP_STATE_ESTABLISHED;
         else
         {
@@ -473,6 +480,8 @@ PacketProcessSignature(TCP, ip_header*)
             new_con->ip_ent = ent;
             new_con->is_client = false;
             resp.flags |= TCP_SYN;
+            current_connection = new_con;
+            resp.window = current_connection ? 0 : current_connection->rx_window;
             Core_PushlockAcquire(&port->connection_list_lock, false);
             RB_INSERT(tcp_connection_tree, &port->connections, new_con);
             Core_PushlockRelease(&port->connection_list_lock, false);

@@ -120,7 +120,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_UNCACHED;
     if (oflags & FD_OFLAGS_NOEXEC)
         desc->flags |= FD_FLAGS_NOEXEC;
-    if (vnode->vtype == VNODE_TYPE_CHR || vnode->vtype == VNODE_TYPE_FIFO)
+    if (vnode->vtype == VNODE_TYPE_CHR || vnode->vtype == VNODE_TYPE_FIFO || vnode->vtype == VNODE_TYPE_SOCK)
         desc->flags |= FD_FLAGS_UNCACHED;
     if (vnode->flags & VFLAGS_EVENT_DEV)
         desc->flags &= ~(FD_FLAGS_READ|FD_FLAGS_WRITE);
@@ -130,7 +130,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     {
         mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
         const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-        if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+        if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         {
             point = nullptr;
             driver = &desc->vn->un.device->driver->header;
@@ -177,7 +177,7 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
 
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -245,7 +245,7 @@ static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t*
 
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -294,7 +294,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
@@ -364,7 +364,7 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
     if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR)
         nBytes = desc->vn->filesize - offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
@@ -426,12 +426,12 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
     OBOS_ENSURE(desc->vn);
-    if (desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         return OBOS_STATUS_SUCCESS; // act like it worked
     size_t finalOff = 0;
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -458,7 +458,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
             finalOff -= finalOff % blkSize;
             break;
     }
-    if (is_eof(desc->vn, finalOff) && desc->vn->vtype != VNODE_TYPE_FIFO)
+    if (is_eof(desc->vn, finalOff) && desc->vn->vtype != VNODE_TYPE_FIFO && desc->vn->vtype != VNODE_TYPE_SOCK)
         return OBOS_STATUS_EOF;
     desc->offset = finalOff;
     return OBOS_STATUS_SUCCESS;
@@ -475,7 +475,7 @@ size_t Vfs_FdGetBlkSz(const fd* desc)
         return (size_t)-1;
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -506,7 +506,7 @@ obos_status Vfs_FdIoctl(fd* desc, uint64_t request, void* argp)
     //     return OBOS_STATUS_INVALID_IOCTL;
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -541,7 +541,7 @@ obos_status Vfs_FdClose(fd* desc)
     Vfs_FdFlush(desc);
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     const driver_header* driver = desc->vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_BLK || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         driver = &desc->vn->un.device->driver->header;
@@ -576,7 +576,7 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
     }
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         driver = &vn->un.device->driver->header;
     if (!vn->blkSize)
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
@@ -596,7 +596,7 @@ obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         driver = &vn->un.device->driver->header;
     OBOS_ENSURE(driver);
     if (!vn->blkSize)
@@ -638,7 +638,7 @@ obos_status VfsH_IRPWait(irp* request)
     // If request-evnt == nullptr, there is data available immediately.
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         driver = &vn->un.device->driver->header;
     if (driver->ftable.finalize_irp)
         driver->ftable.finalize_irp(request);

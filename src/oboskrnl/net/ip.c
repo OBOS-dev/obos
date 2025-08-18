@@ -128,10 +128,12 @@ PacketProcessSignature(IPv4, ethernet2_header*)
     bool destination_local = false;
     Core_PushlockAcquire(&nic->net_tables->table_lock, true);
     ip_table_entry* forwarding_entry = nullptr;
+    ip_table_entry* local_entry = nullptr;
     for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
     {
         if (ent->address.addr == hdr->dest_address.addr)
         {
+            local_entry = ent;
             destination_local = true;
             break;
         }
@@ -188,6 +190,23 @@ PacketProcessSignature(IPv4, ethernet2_header*)
 
         ExitPacketHandler();
     }
+
+    Core_PushlockAcquire(&nic->net_tables->cached_routes_lock, false);
+    struct route route_key = {.destination = hdr->src_address,.iface=nic->net_tables};
+    struct route *found_route = RB_FIND(route_tree, &nic->net_tables->cached_routes, &route_key);
+    if (!found_route)
+    {
+        // Cache the route for future use (like responding to a packet from this host).
+        struct route *r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct route), nullptr);
+        r->destination = hdr->src_address;
+        r->ttl = hdr->time_to_live*2;
+        r->iface = nic->net_tables;
+        r->ent = local_entry;
+        r->hops = 0 /* undefined */;
+        r->route = nullptr /* undefined */;
+        RB_INSERT(route_tree, &r->iface->cached_routes, r);
+    }
+    Core_PushlockRelease(&nic->net_tables->cached_routes_lock, false);
 
     if (be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS || 
         IPv4_GET_FRAGMENT(hdr)

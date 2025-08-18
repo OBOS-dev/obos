@@ -156,7 +156,7 @@ void MmH_DerefPage(page* buf)
 			RB_REMOVE(pagecache_tree, &Mm_Pagecache, buf);
 			if (!(--buf->backing_vn->refs))
 			{
-				if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO)
+				if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO || buf->backing_vn->vtype == VNODE_TYPE_SOCK)
 					if (!(buf->backing_vn->un.device->refs--))
 						Vfs_Free(buf->backing_vn->un.device);
 				Vfs_Free(buf->backing_vn);

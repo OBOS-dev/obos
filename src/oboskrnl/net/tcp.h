@@ -92,6 +92,9 @@ typedef struct tcp_connection {
         size_t ptr;
     } recv_buffer;
     event sig;
+    bool got_icmp_msg : 1;
+    shared_ptr *icmp_header_ptr;
+    struct icmp_header* icmp_header;
     // Remote "ACK" signal
     event ack_sig;
     

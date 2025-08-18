@@ -623,7 +623,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && (~to_stat->flags & VFLAGS_EVENT_DEV))
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && to_stat->vtype != VNODE_TYPE_SOCK && (~to_stat->flags & VFLAGS_EVENT_DEV))
     {
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
@@ -638,7 +638,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         goto done;
     mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
     const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
+    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO || to_stat->vtype == VNODE_TYPE_SOCK)
         driver = &to_stat->un.device->driver->header;
     size_t blkSize = 0;
     size_t blocks = 0;
@@ -1809,7 +1809,7 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
             */
             if (args[0] & O_DIRECT)
                 fd->un.fd->flags |= FD_FLAGS_UNCACHED;
-            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
+            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO && fd->un.fd->vn->vtype != VNODE_TYPE_SOCK)
                 fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
             if (args[0] & O_NONBLOCK)
                 fd->un.fd->flags |= FD_FLAGS_NOBLOCK;

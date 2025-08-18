@@ -49,6 +49,8 @@ typedef struct icmp_header {
 // ent points to struct ip_table_entry
 PacketProcessSignature(ICMPv4, ip_header*);
 
+obos_status NetH_ICMPv4ResponseToStatus(icmp_header* hdr);
+
 // Sends a Destination Unreachable ICMPv4 message to hdr->src_address.
 obos_status Net_ICMPv4DestUnreachable(vnode* nic, const ip_header* ip_hdr, const ethernet2_header* eth_hdr, void* pckt_data, dest_unreachable_ec code);
 obos_status Net_ICMPv4TimeExceeded(vnode* nic, const ip_header* ip_hdr, const ethernet2_header* eth_hdr, void* pckt_data, time_exceeded_ec code);

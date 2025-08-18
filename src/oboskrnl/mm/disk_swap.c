@@ -54,7 +54,7 @@ static const driver_header* get_driver(vnode* vn)
 {
     mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
     const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         driver = &vn->un.device->driver->header;
     return driver;
 }

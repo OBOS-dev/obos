@@ -187,4 +187,21 @@ typedef enum
 	/// The address is in use.
 	/// </summary>
 	OBOS_STATUS_ADDRESS_IN_USE,
+	/// <summary>
+	/// The address is not a local address.
+	/// </summary>
+	OBOS_STATUS_ADDRESS_NOT_AVAILABLE,
+	/// <summary>
+	/// There was no possible route to the host.
+	/// </summary>
+	OBOS_STATUS_NO_ROUTE_TO_HOST,
+	/// <summary>
+	/// The message that was to be sent couldn't fit in one single packet.
+	/// </summary>
+	OBOS_STATUS_MESSAGE_TOO_BIG,
+	/// <summary>
+	/// Connection from the peer was refused. Usually caused by ICMPv4 destination
+	/// unreachable (port unreachable)
+	/// </summary>
+	OBOS_STATUS_CONNECTION_REFUSED,
 } obos_status;

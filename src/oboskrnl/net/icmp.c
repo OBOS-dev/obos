@@ -63,6 +63,77 @@ PacketProcessSignature(ICMPv4, ip_header*)
             
             break;
         }
+        case ICMPv4_TYPE_TIME_EXCEEDED:
+        case ICMPv4_TYPE_PARAMETER_PROBLEM:
+        case ICMPv4_TYPE_DEST_UNREACHABLE:
+        {
+            ip_header* ip_hdr_2 = (void*)(hdr+1);
+            switch (ip_hdr_2->protocol) {
+                case 0x11 /* UDP */:
+                {
+                    udp_header* udp_hdr = (udp_header*)(ip_hdr_2 + 1);
+                    udp_port key = {.port=be16_to_host(udp_hdr->dest_port)};
+                    Core_PushlockAcquire(&nic->net_tables->udp_ports_lock, true);
+                    udp_port* bound = RB_FIND(udp_port_tree, &nic->net_tables->udp_ports, &key);
+                    Core_PushlockRelease(&nic->net_tables->udp_ports_lock, true);
+                    if (!bound)
+                        break;
+                    bound->got_icmp_msg = true;
+                    bound->icmp_header = hdr;
+                    bound->icmp_header_ptr = OBOS_SharedPtrCopy(buf);
+                    if (bound->icmp_header_ptr)
+                        OBOS_SharedPtrUnref(bound->icmp_header_ptr);
+                    Core_EventSet(&bound->recv_event, false);
+                    break;
+                }
+                case 0x6 /* TCP */:
+                {
+                    tcp_header* tcp_hdr = (tcp_header*)(ip_hdr_2 + 1);
+
+                    tcp_port key = {.port=be16_to_host(tcp_hdr->dest_port)};
+                    Core_PushlockAcquire(&nic->net_tables->tcp_ports_lock, true);
+                    tcp_port* port = RB_FIND(tcp_port_tree, &nic->net_tables->tcp_ports, &key);
+                    Core_PushlockRelease(&nic->net_tables->tcp_ports_lock, true);
+
+                    tcp_connection conn_key = {
+                        .dest= {
+                            .addr=ip_hdr->src_address,
+                            .port=be16_to_host(tcp_hdr->src_port),
+                        },
+                        .src= {
+                            .addr=ip_hdr->dest_address,
+                            .port=be16_to_host(tcp_hdr->dest_port),
+                        },
+                        .is_client = true,
+                    };
+
+                    Core_PushlockAcquire(&nic->net_tables->tcp_connections_lock, true);
+                    tcp_connection* current_connection = RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &conn_key);
+                    Core_PushlockRelease(&nic->net_tables->tcp_connections_lock, true);
+
+                    if (port)
+                    {
+                        Core_PushlockAcquire(&port->connection_list_lock, true);
+                        current_connection = RB_FIND(tcp_connection_tree, &port->connections, &conn_key);
+                        Core_PushlockRelease(&port->connection_list_lock, true);
+                    }
+
+                    if (!current_connection)
+                        break; // .....
+
+                    current_connection->got_icmp_msg = true;
+                    current_connection->icmp_header = hdr;
+                    if (current_connection->icmp_header_ptr)
+                        OBOS_SharedPtrUnref(current_connection->icmp_header_ptr);
+                    current_connection->icmp_header_ptr = OBOS_SharedPtrCopy(buf);
+                    Core_EventSet(&current_connection->sig, false);
+                    break;
+                }
+                default: break;
+
+            }
+            break;
+        }
         default:
             break;
     }
@@ -110,3 +181,32 @@ ICMP_FUNC_BODY(ICMPv4_TYPE_TIME_EXCEEDED, code, 0, pckt_data, eth_hdr->src)
 
 obos_status Net_ICMPv4ParameterProblem(vnode* nic, const ip_header* ip_hdr, const ethernet2_header* eth_hdr, void* pckt_data, uint8_t offset)
 ICMP_FUNC_BODY(ICMPv4_TYPE_TIME_EXCEEDED, 0, offset, pckt_data, eth_hdr->src)
+
+obos_status NetH_ICMPv4ResponseToStatus(icmp_header* hdr)
+{
+    obos_status status = OBOS_STATUS_INTERNAL_ERROR;
+    switch (hdr->type) {
+        case ICMPv4_TYPE_DEST_UNREACHABLE:
+        {
+            switch (hdr->code) {
+                case ICMPv4_CODE_PORT_UNREACHABLE:
+                case ICMPv4_CODE_PROTOCOL_UNREACHABLE:
+                    status = OBOS_STATUS_CONNECTION_REFUSED;
+                    break;
+                case ICMPv4_CODE_NET_UNREACHABLE:
+                case ICMPv4_CODE_HOST_UNREACHABLE:
+                case ICMPv4_CODE_SOURCE_ROUTE_FAILED:
+                    status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+                    break;
+                default: status = OBOS_STATUS_INTERNAL_ERROR;
+            }
+            break;
+        }
+        case ICMPv4_TYPE_TIME_EXCEEDED:
+            status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+            break;
+        case ICMPv4_TYPE_PARAMETER_PROBLEM:
+        default: status = OBOS_STATUS_INTERNAL_ERROR; break;
+    }
+    return status;
+}
