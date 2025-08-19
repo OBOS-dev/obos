@@ -329,9 +329,27 @@ obos_status submit_irp(void* req_)
     else if (!req->dryOp)
     {
         r8169_frame frame = {};
-        r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
-        r8169_buffer_add_frame(&dev->tx_buffer, &frame);
-        r8169_tx_queue_flush(dev, true);
+        /*
+            "Padding: The RTL8169S/RTL8110S will automatically pad any packets less than 64 bytes (including 4 bytes CRC) to 64-byte
+            long (including 4-byte CRC) before transmitting that packet onto network medium. The padded data are all 0x00"
+            Because of this, we need to pad the packets ourselves so that the FCS doesn't appear as 0x00 for the peer.
+        */
+        if (req->blkCount < 60)
+        {
+            uint8_t *copied_buffer = ZeroAllocate(OBOS_NonPagedPoolAllocator, 64, sizeof(char), nullptr);
+            memcpy(copied_buffer, req->cbuff, req->blkCount-4);
+            *(uint32_t*)(copied_buffer+60) = NetH_CRC32Bytes(copied_buffer, 60);
+            r8169_frame_generate(dev, &frame, copied_buffer, 64, FRAME_PURPOSE_TX);
+            r8169_buffer_add_frame(&dev->tx_buffer, &frame);
+            r8169_tx_queue_flush(dev, true);
+            Free(OBOS_NonPagedPoolAllocator, copied_buffer, 64);
+        }
+        else
+        {
+            r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
+            r8169_buffer_add_frame(&dev->tx_buffer, &frame);
+            r8169_tx_queue_flush(dev, true);
+        }
         req->evnt = nullptr;
     }
     return OBOS_STATUS_SUCCESS;

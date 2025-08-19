@@ -178,6 +178,8 @@ bool nm_initialize_interface(cJSON* top_level)
     }
     if (default_gateway.addr)
         ioctl(fd, IOCTL_IFACE_SET_DEFAULT_GATEWAY, &default_gateway);
+    else
+        fprintf(stderr, "NM: %s: Skipping default gateway\n", interface_name);
 
     free(gateways);
     free(ip_table);
@@ -196,7 +198,7 @@ void nm_initialize_interfaces(const char* config_file)
     struct stat st = {};
     fstat(fd, &st);
     char* buf = mmap(NULL, st.st_size, PROT_READ, 0, fd, 0);
-    cJSON* top_level = cJSON_Parse(buf);
+    cJSON* top_level = cJSON_ParseWithLength(buf, st.st_size);
     if (!top_level)
     {
         const char* errptr = cJSON_GetErrorPtr();

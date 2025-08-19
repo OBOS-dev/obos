@@ -167,7 +167,7 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
             {
                 *interface = curr_iface;
                 *routing_entry = ent;
-                *ttl = 1;
+                *ttl = 2;
                 Core_PushlockRelease(&curr_iface->table_lock, true);
                 return OBOS_STATUS_SUCCESS;
             }
@@ -213,18 +213,29 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
             end:
             ent = LIST_GET_NEXT(gateway_list, &curr_iface->gateways, ent);
         }
-        struct route* r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*r), nullptr);
-        r->iface = curr_iface;
-        r->ent = curr_iface->default_gateway->dest_ent;
-        r->route = curr_iface->default_gateway;
-        r->ttl = 60; /* initial TTL */
-        LIST_APPEND(route_list, &possible_routes, r);
+        if (curr_iface->default_gateway)
+        {
+            struct route* r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*r), nullptr);
+            r->iface = curr_iface;
+            r->ent = curr_iface->default_gateway->dest_ent;
+            r->route = curr_iface->default_gateway;
+            r->ttl = 60; /* initial TTL */
+            LIST_APPEND(route_list, &possible_routes, r);
+        }
 
         curr_iface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, curr_iface);
     }
 
     struct route* optimal_route = nullptr;
     uint8_t optimal_route_hops = 0;
+
+    if (!LIST_GET_NODE_COUNT(route_list, &possible_routes))
+        goto done;
+    else if (LIST_GET_NODE_COUNT(route_list, &possible_routes) == 1)
+    {
+        optimal_route = LIST_GET_HEAD(route_list, &possible_routes);
+        goto done;
+    }
 
     // Try each route, 
     for (struct route* curr = LIST_GET_HEAD(route_list, &possible_routes); curr; )
@@ -265,7 +276,8 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
                 error = true;
             else if (icmp_hdr->type == ICMPv4_TYPE_DEST_UNREACHABLE)
             {
-                if (icmp_hdr->code == ICMPv4_CODE_PORT_UNREACHABLE || icmp_hdr->code == ICMPv4_CODE_PROTOCOL_UNREACHABLE)
+                if (icmp_hdr->code == ICMPv4_CODE_PORT_UNREACHABLE || icmp_hdr->code == ICMPv4_CODE_PROTOCOL_UNREACHABLE || 
+                    icmp_hdr->code == ICMPv4_CODE_COMMUNICATION_ADMINISTRATIVELY_FILTERED)
                 {
                     ip_header* ip_hdr = (void*)icmp_hdr->data;
                     uint8_t hops = curr->ttl - ip_hdr->time_to_live;
@@ -294,14 +306,20 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
                 LIST_REMOVE(route_list, &possible_routes, curr);
                 Free(OBOS_KernelAllocator, curr, sizeof(*curr));
                 curr = next;
-                OBOS_SharedPtrUnref(icmp_hdr_ptr);
+                if (icmp_hdr_ptr)
+                    OBOS_SharedPtrUnref(icmp_hdr_ptr);
+                icmp_hdr_ptr = nullptr;
                 continue;
             }
         }
-        OBOS_SharedPtrUnref(icmp_hdr_ptr);
+        if (icmp_hdr_ptr)
+            OBOS_SharedPtrUnref(icmp_hdr_ptr);
+        icmp_hdr_ptr = nullptr;
         
         curr = LIST_GET_NEXT(route_list, &possible_routes, curr);
     }
+
+    done:
 
     if (optimal_route)
     {

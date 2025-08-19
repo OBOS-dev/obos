@@ -22,9 +22,6 @@
 static bool initialized_crc32 = false;
 static uint32_t crctab[256];
 
-// For future reference, we cannot hardware-accelerate the crc32 algorithm as
-// x86-64's crc32 uses a different polynomial than that of GPT.
-
 static OBOS_NO_UBSAN void crcInit()
 {
     uint32_t crc = 0;
@@ -45,17 +42,7 @@ static OBOS_NO_UBSAN uint32_t crc(const char *data, size_t len, uint32_t result)
         result = (result >> 8) ^ crctab[(result ^ data[i]) & 0xFF];
     return ~result;
 }
-static OBOS_NO_UBSAN uint32_t crc32_bytes_from_previous(void *data, size_t sz,
-                                   uint32_t previousChecksum)
-{
-    if (!initialized_crc32)
-    {
-        crcInit();
-        initialized_crc32 = true;
-    }
-    return crc((char *)data, sz, ~previousChecksum);
-}
-static OBOS_NO_UBSAN uint32_t crc32_bytes(void *data, size_t sz)
+static OBOS_NO_UBSAN uint32_t crc32_bytes(const void *data, size_t sz)
 {
     if (!initialized_crc32)
     {
@@ -64,6 +51,7 @@ static OBOS_NO_UBSAN uint32_t crc32_bytes(void *data, size_t sz)
     }
     return crc((char *)data, sz, ~0U);
 }
+__attribute__((alias("crc32_bytes"))) uint32_t NetH_CRC32Bytes(const void* data, size_t sz);
 
 OBOS_NO_UBSAN 
 PacketProcessSignature(Ethernet, void*)
@@ -71,7 +59,7 @@ PacketProcessSignature(Ethernet, void*)
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(depth);
     ethernet2_header* hdr = ptr;
-    uint32_t remote_checksum = *(uint32_t*)((uintptr_t)ptr + size - 4);
+    uint32_t remote_checksum = le32_to_host(*(uint32_t*)((uintptr_t)ptr + size - 4));
     uint32_t our_checksum = crc32_bytes(ptr, size-4);
     if (remote_checksum != our_checksum)
     {
@@ -107,7 +95,7 @@ PacketProcessSignature(Ethernet, void*)
 
 DefineNetFreeSharedPtr
 
-OBOS_NO_UBSAN shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type)
+OBOS_NO_UBSAN shared_ptr* NetH_FormatEthernetPacket(vnode* nic, const mac_address dest, const void* data, size_t size, uint16_t type)
 {
     if (!nic->net_tables)
         return nullptr;
@@ -126,6 +114,8 @@ OBOS_NO_UBSAN shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest
     hdr->type = host_to_be16(type);
     memcpy(hdr+1, data, size);
     uint32_t* checksum = (uint32_t*)((uintptr_t)hdr + real_size - 4);
-    *checksum = host_to_be32(crc32_bytes(hdr, real_size-4));
+    // this seems counterintuitive, that's because it is
+    // but it's the only thing that works
+    *checksum = host_to_le32(crc32_bytes(hdr, real_size-4)); 
     return buf;
 }

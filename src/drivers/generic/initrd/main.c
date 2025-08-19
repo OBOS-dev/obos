@@ -413,7 +413,7 @@ OBOS_PAGEABLE_FUNCTION obos_status read_sync(dev_desc desc, void* buf, size_t bl
         return OBOS_STATUS_NOT_A_FILE;
     if (blkOffset >= inode->filesize)
     {
-        *nBlkRead = 0;
+        if (nBlkRead) *nBlkRead = 0;
         return OBOS_STATUS_SUCCESS;
     }
     size_t nToRead = blkCount;

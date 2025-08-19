@@ -275,6 +275,12 @@ const char* status_to_string[] = {
     "OBOS_STATUS_WOULD_BLOCK",
     "OBOS_STATUS_NOT_A_TTY",
     "OBOS_STATUS_IRP_RETRY",
+    "OBOS_STATUS_PORT_IN_USE",
+	"OBOS_STATUS_ADDRESS_IN_USE",
+    "OBOS_STATUS_ADDRESS_NOT_AVAILABLE",
+	"OBOS_STATUS_NO_ROUTE_TO_HOST",
+	"OBOS_STATUS_MESSAGE_TOO_BIG",
+	"OBOS_STATUS_CONNECTION_REFUSED",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
@@ -307,7 +313,7 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
     if (opt || 
         (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0
          || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19
-         || eax == 2 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
+         || eax == 2 || eax == 54 || (eax == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
         OBOS_Debug("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
         OBOS_Log("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");

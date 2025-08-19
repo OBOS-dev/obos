@@ -132,10 +132,7 @@ PacketProcessSignature(ARPRequest, arp_header*)
     if (!ent)
         ExitPacketHandler();
     if (~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY)
-    {
-        printf(__FILE__ ":%d (uh oh something bad has happened!!1!!)\n", __LINE__);
         ExitPacketHandler();
-    }
     size_t real_size = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
     arp_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
     struct arp_header_payload* payload = (void*)(hdr+1);

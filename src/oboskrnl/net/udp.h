@@ -47,6 +47,7 @@ typedef struct udp_port {
     bool got_icmp_msg : 1;
     shared_ptr *icmp_header_ptr;
     struct icmp_header* icmp_header;
+    struct net_tables* iface;
     RB_ENTRY(udp_port) node;
 } udp_port;
 typedef RB_HEAD(udp_port_tree, udp_port) udp_port_tree;

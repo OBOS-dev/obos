@@ -176,9 +176,9 @@ static void udp_free(socket_desc* socket)
         udp_port* const port = ports->ports[i];
         if (port)
         {
-            Core_PushlockAcquire(&socket->nic->net_tables->udp_ports_lock, false);
-            RB_REMOVE(udp_port_tree, &socket->nic->net_tables->udp_ports, port);
-            Core_PushlockRelease(&socket->nic->net_tables->udp_ports_lock, false);
+            Core_PushlockAcquire(&port->iface->udp_ports_lock, false);
+            RB_REMOVE(udp_port_tree, &port->iface->udp_ports, port);
+            Core_PushlockRelease(&port->iface->udp_ports_lock, false);
             for (udp_recv_packet* curr = LIST_GET_HEAD(udp_recv_packet_list, &port->packets); curr; )
             {
                 udp_recv_packet* const next = LIST_GET_NEXT(udp_recv_packet_list, &port->packets, curr);
@@ -206,6 +206,7 @@ static obos_status bind_interface(uint16_t port, net_tables* interface, udp_port
     bport = Vfs_Calloc(1, sizeof(udp_port));
     bport->port = port;
     bport->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    bport->iface = interface;
     RB_INSERT(udp_port_tree, &interface->udp_ports, bport);
     Core_PushlockRelease(&interface->udp_ports_lock, false);
     *out = bport;
@@ -345,8 +346,8 @@ obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
 {
     if (socket->protocol_data)
         return OBOS_STATUS_ALREADY_INITIALIZED;
-    
-    struct udp_bound_ports* ports = socket->protocol_data;
+
+    struct udp_bound_ports* ports = socket->protocol_data = Vfs_Calloc(1, sizeof(struct udp_bound_ports));
     ports->nPorts = 1;
     ports->default_peer.addr = addr->addr;
     ports->default_peer.port = be16_to_host(addr->port);
@@ -362,6 +363,7 @@ obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
 
     ports->ports[0] = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(udp_port), nullptr);
     ports->ports[0]->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    ports->ports[0]->iface = source_interface;
     ports->read_event = &ports->ports[0]->recv_event;
     Core_PushlockAcquire(&source_interface->udp_ports_lock, false);
     udp_port* found = nullptr;
@@ -370,6 +372,7 @@ obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
         ports->ports[0]->port = mt_random() % 0x10000 + 1;
         found = RB_FIND(udp_port_tree, &source_interface->udp_ports,ports->ports[0]);
     } while(found && i++ < 0x10000);
+    ports->read_event = &ports->ports[0]->recv_event;
 
     RB_INSERT(udp_port_tree, &source_interface->udp_ports, ports->ports[0]);
 
@@ -382,6 +385,15 @@ obos_status udp_irp_write(irp *req)
 {
     socket_desc* socket = (void*)req->desc;
     struct udp_bound_ports *ports = socket->protocol_data;
+    if (!req->socket_data && !ports)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!ports && req->socket_data)
+    {
+        obos_status status = udp_connect(socket, req->socket_data);
+        if (obos_is_error(status))
+            return status;
+        ports = socket->protocol_data;
+    }
     uint16_t dest_port_be16 = 0;
     ip_addr dest_addr = {};
     if (req->socket_data)
@@ -447,6 +459,7 @@ static void irp_event_set(irp* req)
         OBOS_SharedPtrUnref(&pckt->packet_ptr);
         Core_EventClear(req->evnt);
     }
+    req->nBlkRead = OBOS_MIN(req->blkCount, pckt->buffer_ptr.szObj);
     ports->signaled_port = nullptr;
     req->status = OBOS_STATUS_SUCCESS;
 }
@@ -455,6 +468,9 @@ obos_status udp_irp_read(irp *req)
 {
     socket_desc* socket = (void*)req->desc;
     struct udp_bound_ports *ports = socket->protocol_data;
+    if (!ports)
+        return OBOS_STATUS_UNINITIALIZED;
+    OBOS_ENSURE(ports->read_event);
     req->on_event_set = irp_event_set;
     req->evnt = ports->read_event;
     return OBOS_STATUS_SUCCESS;
@@ -463,9 +479,6 @@ obos_status udp_irp_read(irp *req)
 obos_status udp_submit_irp(irp* req)
 {
     socket_desc* socket = (void*)req->desc;
-    struct udp_bound_ports *ports = socket->protocol_data;
-    if (!ports)
-        return OBOS_STATUS_UNINITIALIZED;
     if (req->blkCount > 0x10000-8-sizeof(ip_header))
     {
         req->status = OBOS_STATUS_MESSAGE_TOO_BIG;
@@ -482,6 +495,9 @@ obos_status udp_submit_irp(irp* req)
         }
         else
         {
+            struct udp_bound_ports *ports = socket->protocol_data;
+            if (!ports)
+                return OBOS_STATUS_UNINITIALIZED;
             req->evnt = ports->read_event;
             req->on_event_set = nullptr;
             return OBOS_STATUS_SUCCESS;

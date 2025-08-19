@@ -72,7 +72,7 @@ PacketProcessSignature(ICMPv4, ip_header*)
                 case 0x11 /* UDP */:
                 {
                     udp_header* udp_hdr = (udp_header*)(ip_hdr_2 + 1);
-                    udp_port key = {.port=be16_to_host(udp_hdr->dest_port)};
+                    udp_port key = {.port=be16_to_host(udp_hdr->src_port)};
                     Core_PushlockAcquire(&nic->net_tables->udp_ports_lock, true);
                     udp_port* bound = RB_FIND(udp_port_tree, &nic->net_tables->udp_ports, &key);
                     Core_PushlockRelease(&nic->net_tables->udp_ports_lock, true);
@@ -80,9 +80,9 @@ PacketProcessSignature(ICMPv4, ip_header*)
                         break;
                     bound->got_icmp_msg = true;
                     bound->icmp_header = hdr;
-                    bound->icmp_header_ptr = OBOS_SharedPtrCopy(buf);
                     if (bound->icmp_header_ptr)
                         OBOS_SharedPtrUnref(bound->icmp_header_ptr);
+                    bound->icmp_header_ptr = OBOS_SharedPtrCopy(buf);
                     Core_EventSet(&bound->recv_event, false);
                     break;
                 }

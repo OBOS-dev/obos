@@ -92,13 +92,20 @@ static obos_status finalize_irp(void* req_)
         if (!hnd->curr)
         {
             Core_MutexAcquire(&hnd->dev->lock);
-            hnd->curr = LIST_GET_HEAD(lo_packet_queue, &hnd->dev->recv);
+            hnd->curr = LIST_GET_TAIL(lo_packet_queue, &hnd->dev->recv);
             Core_MutexRelease(&hnd->dev->lock);
         }
         req->status = OBOS_STATUS_SUCCESS;
         if (req->dryOp)
         {
-            req->nBlkRead = hnd->curr->size;
+            if (hnd->curr)
+                req->nBlkRead = hnd->curr->size;
+            return OBOS_STATUS_SUCCESS;
+        }
+        Core_EventClear(req->evnt);
+        if (!hnd->curr)
+        {
+            req->nBlkRead = 0;
             return OBOS_STATUS_SUCCESS;
         }
         size_t szRead = OBOS_MIN(req->blkCount, hnd->curr->size - hnd->curr_offset);
@@ -106,17 +113,17 @@ static obos_status finalize_irp(void* req_)
         hnd->curr_offset += szRead;
         if (hnd->curr_offset == hnd->curr->size)
         {
-            if (!(--hnd->curr->refs))
+            lo_packet* prev = hnd->curr;
+            hnd->curr = LIST_GET_NEXT(lo_packet_queue, &hnd->dev->recv, hnd->curr);
+            hnd->curr_offset = 0;
+            if (!(--prev->refs))
             {
-                lo_packet* del = hnd->curr;
-                hnd->curr = LIST_GET_NEXT(lo_packet_queue, &hnd->dev->recv, hnd->curr);
-                
                 Core_MutexAcquire(&hnd->dev->lock);
-                LIST_REMOVE(lo_packet_queue, &hnd->dev->recv, del);
+                LIST_REMOVE(lo_packet_queue, &hnd->dev->recv, prev);
                 Core_MutexRelease(&hnd->dev->lock);
 
-                Free(OBOS_KernelAllocator, del->buffer, del->size);
-                Free(OBOS_KernelAllocator, del, sizeof(*del));
+                Free(OBOS_KernelAllocator, prev->buffer, prev->size);
+                Free(OBOS_KernelAllocator, prev, sizeof(*prev));
             }
         }
         
@@ -125,6 +132,7 @@ static obos_status finalize_irp(void* req_)
     else
     {
         req->status = OBOS_STATUS_SUCCESS;
+        if (req->dryOp) return OBOS_STATUS_SUCCESS;
         lo_packet* pckt = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(lo_packet), nullptr);
         pckt->buffer = Allocate(OBOS_KernelAllocator, req->blkCount, nullptr);
         memcpy(pckt->buffer, req->cbuff, req->blkCount);

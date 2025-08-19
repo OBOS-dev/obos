@@ -320,7 +320,7 @@ obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t 
     req->socket_flags = flags;
     req->op = IRP_READ;
     req->dryOp = false;
-    req->sz_socket_data = *len_addr;
+    req->sz_socket_data = len_addr ? *len_addr : 0;
     req->socket_data = addr;
     req->vn = socket->vn;
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -330,7 +330,8 @@ obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t 
         return status;
     }
     status = VfsH_IRPWait(req);
-    *len_addr = sizeof(struct sockaddr_in);
+    if (len_addr)
+        *len_addr = sizeof(struct sockaddr_in);
     if (nRead)
         *nRead = req->nBlkRead;
     VfsH_IRPUnref(req);

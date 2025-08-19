@@ -272,7 +272,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
 {
     if (!desc || !desc->vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (nBytes > (desc->vn->filesize - (desc ? desc->offset : SIZE_MAX)) && desc->vn->vtype != VNODE_TYPE_CHR)
+    if (nBytes > (desc->vn->filesize - (desc ? desc->offset : SIZE_MAX)) && desc->vn->vtype != VNODE_TYPE_CHR && desc->vn->vtype != VNODE_TYPE_SOCK)
         nBytes = desc->vn->filesize - (desc ? desc->offset : SIZE_MAX);
     obos_status status = Vfs_FdPRead(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nRead);
     if (obos_expect(obos_is_success(status), 1))
@@ -361,7 +361,7 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR)
+    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR && desc->vn->vtype != VNODE_TYPE_SOCK)
         nBytes = desc->vn->filesize - offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
     if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)

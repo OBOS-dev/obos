@@ -1969,7 +1969,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
 
     void* buf = Allocate(OBOS_KernelAllocator, params->addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, params->sock_addr, params->addr_length);
+    status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
     if (obos_is_error(status))
         goto fail3;
 
@@ -2001,7 +2001,7 @@ obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, stru
         Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), 0, true, &status);
     if (obos_is_error(status))
         return status;
-    if (!params->addr_length || params->addr_length > 32)
+    if ((!params->addr_length && params->sock_addr) || params->addr_length > 32)
     {
         status = OBOS_STATUS_INVALID_ARGUMENT;
         goto fail1;
@@ -2014,11 +2014,16 @@ obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, stru
 
     void* buf = Allocate(OBOS_KernelAllocator, params->addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, params->sock_addr, params->addr_length);
-    if (obos_is_error(status))
+    status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
+    if (obos_is_error(status) && params->sock_addr)
         goto fail3;
+    if (!params->sock_addr)
+    {
+        Free(OBOS_KernelAllocator, buf, params->addr_length);
+        addr = nullptr;
+    }
 
-    status = Net_RecvFrom(fd->un.fd, kbuf, size, flags, &params->nRead, addr, &params->addr_length);
+    status = Net_RecvFrom(fd->un.fd, kbuf, size, flags, &params->nRead, addr, params->addr_length ? &params->addr_length : nullptr);
 
     OBOS_MAYBE_UNUSED fail3:
     Free(OBOS_KernelAllocator, buf, params->addr_length);
@@ -2072,7 +2077,7 @@ obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, uaddr_ptr, addr_length);
+    status = memcpy_usr_to_k(addr, uaddr_ptr, addr_length);
     if (obos_is_error(status))
         goto fail1;
 
@@ -2100,7 +2105,7 @@ obos_status Sys_Bind(handle desc, const sockaddr *uaddr, size_t addr_length)
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, uaddr, addr_length);
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
     if (obos_is_error(status))
         goto fail1;
 
@@ -2126,7 +2131,7 @@ obos_status Sys_Connect(handle desc, const sockaddr *uaddr, size_t addr_length)
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, uaddr, addr_length);
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
     if (obos_is_error(status))
         goto fail1;
 
@@ -2152,7 +2157,7 @@ obos_status Sys_SockName(handle desc, sockaddr* uaddr, size_t addr_length, size_
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, uaddr, addr_length);
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
     if (obos_is_error(status))
         goto fail1;
 
@@ -2181,7 +2186,7 @@ obos_status Sys_PeerName(handle desc, sockaddr* uaddr, size_t addr_length, size_
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(&addr, uaddr, addr_length);
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
     if (obos_is_error(status))
         goto fail1;
 
