@@ -46,6 +46,7 @@ enum
     VFLAGS_FB = 8,
     // A file that only provides events, and cannot be read/written.
     VFLAGS_EVENT_DEV = 16,
+    VFLAGS_NIC_NO_FCS = 32,
 };
 
 // basically a struct specinfo, but renamed.

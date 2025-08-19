@@ -47,7 +47,7 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 project(
 	OBOS
 	LANGUAGES C CXX ASM
-	DESCRIPTION "Hybrid Kernel with advanced driver loading."
+	DESCRIPTION "Hybrid Kernel with driver loading."
 	HOMEPAGE_URL https://github.com/OBOS-dev/obos
 	)
 
@@ -93,7 +93,10 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	if (OBOS_ENABLE_UHDA)
 		message("Fetching uHDA.")
 		include ("dependencies/uhda.cmake")
-	endif()
+		endif()
+	message("Fetching e1000 driver.")
+	include ("dependencies/freebsd-e1000.cmake")
+
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -106,6 +109,7 @@ else()
 	endif()
 	include("dependencies/flanterm.cmake")
 	include("dependencies/uhda.cmake")
+	include("dependencies/freebsd-e1000.cmake")
 endif()
 
 if (OBOS_UP)
@@ -267,6 +271,7 @@ add_subdirectory("src/drivers/generic/extfs")
 add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/generic/r8169")
+add_subdirectory("src/drivers/generic/freebsd-e1000")
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86/bochs_vbe")
 	add_subdirectory("src/drivers/x86/uart")

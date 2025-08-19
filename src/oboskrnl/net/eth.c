@@ -59,17 +59,20 @@ PacketProcessSignature(Ethernet, void*)
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(depth);
     ethernet2_header* hdr = ptr;
-    uint32_t remote_checksum = le32_to_host(*(uint32_t*)((uintptr_t)ptr + size - 4));
-    uint32_t our_checksum = crc32_bytes(ptr, size-4);
-    if (remote_checksum != our_checksum)
+    if (~nic->flags & VFLAGS_NIC_NO_FCS)
     {
-        NetError("%s: Wrong checksum in packet from " MAC_ADDRESS_FORMAT ". Expected checksum is 0x%08x, remote checksum is 0x%08x\n",
-            __func__,
-            MAC_ADDRESS_ARGS(hdr->src),
-            our_checksum,
-            remote_checksum
-        );
-        ExitPacketHandler();
+        uint32_t remote_checksum = le32_to_host(*(uint32_t*)((uintptr_t)ptr + size - 4));
+        uint32_t our_checksum = crc32_bytes(ptr, size-4);
+        if (remote_checksum != our_checksum)
+        {
+            NetError("%s: Wrong checksum in packet from " MAC_ADDRESS_FORMAT ". Expected checksum is 0x%08x, remote checksum is 0x%08x\n",
+                __func__,
+                MAC_ADDRESS_ARGS(hdr->src),
+                our_checksum,
+                remote_checksum
+            );
+            ExitPacketHandler();
+        }
     }
     
     switch (be16_to_host(hdr->type)) {
