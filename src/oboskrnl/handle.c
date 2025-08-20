@@ -188,13 +188,18 @@ void dirent_close(handle_desc* hnd)
 {
     Free(OBOS_KernelAllocator, hnd->un.dirent, sizeof(struct dirent_handle));
 }
+void process_close(handle_desc* hnd)
+{
+    if (!(--hnd->un.process->refcount))
+        Free(OBOS_NonPagedPoolAllocator, hnd->un.process, sizeof(process));
+}
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
     nullptr,
     dirent_close,
     nullptr,
-    nullptr,
+    process_close,
     nullptr, // TODO: Refcount vmm contexts.
     nullptr,
     nullptr,
