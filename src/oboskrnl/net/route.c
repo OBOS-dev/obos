@@ -8,6 +8,7 @@
 #include <error.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <syscall.h>
 
 #include <vfs/irp.h>
 #include <vfs/mount.h>
@@ -678,10 +679,12 @@ obos_status Sys_SetHostname(const char* uname, size_t len)
 {
     if (len >= 64)
         return OBOS_STATUS_INVALID_ARGUMENT; // because of the obos dhcp client's theoeretical limits
-    OBOS_FreeString(&Net_Hostname);
     char name[65];
     memzero(name, sizeof(name));
-    memcpy_usr_to_k(name, uname, len);
+    obos_status status = OBOSH_ReadUserString(uname, name, &len);
+    if (obos_is_error(status))
+        return status;
+    OBOS_FreeString(&Net_Hostname);
     OBOS_InitStringLen(&Net_Hostname, name, len);
     OBOS_Log("NET: Changed hostname to %.*s\n", OBOS_GetStringSize(&Net_Hostname), OBOS_GetStringCPtr(&Net_Hostname));
     return OBOS_STATUS_SUCCESS;
