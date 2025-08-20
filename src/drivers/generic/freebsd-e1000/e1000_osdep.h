@@ -54,10 +54,11 @@
 // #define usec_delay_irq(x) usleep(x)
 // #define msec_delay(x) usleep(x * 1000)
 // #define msec_delay_irq(x) usleep(x * 1000)
-#define usec_delay(x)
-#define usec_delay_irq(x)
-#define msec_delay(x)
-#define msec_delay_irq(x)
+extern void e1000_sleep_us(uint64_t us);
+#define usec_delay(x) e1000_sleep_us(x)
+#define usec_delay_irq(x) e1000_sleep_us(x)
+#define msec_delay(x) e1000_sleep_us(x*1000)
+#define msec_delay_irq(x) e1000_sleep_us(x*1000)
 
 #define DEBUGOUT(format, ...) printf("driver/freebsd-e1000: %s %d: " format, __FUNCTION__, __LINE__, ##__VA_ARGS__)
 #define DEBUGOUT1(...) DEBUGOUT(__VA_ARGS__)

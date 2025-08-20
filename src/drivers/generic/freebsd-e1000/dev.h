@@ -18,8 +18,8 @@
 
 #include <utils/list.h>
 
-#define RX_QUEUE_SIZE (OBOS_PAGE_SIZE / sizeof(union e1000_rx_desc_extended))
-#define TX_QUEUE_SIZE (32)
+#define RX_QUEUE_SIZE (32)
+#define TX_QUEUE_SIZE (8)
 
 typedef struct e1000_frame {
     void* buff;

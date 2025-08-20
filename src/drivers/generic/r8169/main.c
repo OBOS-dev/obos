@@ -261,6 +261,11 @@ void irp_on_rx_event_set(irp* req)
     r8169_device* dev = hnd->dev;
     if (!hnd->rx_curr)
         r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
+    if (!hnd->rx_curr)
+    {
+        req->status = OBOS_STATUS_IRP_RETRY;
+        return;
+    }
     req->status = OBOS_STATUS_SUCCESS;
     if (req->dryOp)
     {

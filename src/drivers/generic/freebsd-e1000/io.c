@@ -196,7 +196,7 @@ void e1000_init_tx(e1000_device* dev)
     {
         desc[i].buffer_addr = 0;
         desc[i].lower.data = 0;
-        desc[i].upper.data = 0;
+        desc[i].upper.fields.status = E1000_TXD_STAT_DD;
     }
 
     // Copied from managarm
@@ -205,7 +205,7 @@ void e1000_init_tx(e1000_device* dev)
     E1000_WRITE_REG(&dev->hw, E1000_TDBAL(0), (u32)dev->tx_ring);
 
     /* Init the HEAD/TAIL indices */
-    E1000_WRITE_REG(&dev->hw, E1000_TDT(0), TX_QUEUE_SIZE * sizeof(struct e1000_tx_desc));
+    E1000_WRITE_REG(&dev->hw, E1000_TDT(0), 0);
     E1000_WRITE_REG(&dev->hw, E1000_TDH(0), 0);
 
     u32 txdctl = 0; /* clear txdctl */
@@ -254,8 +254,7 @@ void e1000_init_tx(e1000_device* dev)
 
     if ((dev->hw.mac.type == e1000_82571) || (dev->hw.mac.type == e1000_82572)) {
         tarc = E1000_READ_REG(&dev->hw, E1000_TARC(0));
-        // Uncomment when PCIe is supported.
-        // tarc |= TARC_SPEED_MODE_BIT;
+        tarc |= TARC_SPEED_MODE_BIT;
         E1000_WRITE_REG(&dev->hw, E1000_TARC(0), tarc);
     } else if (dev->hw.mac.type == e1000_80003es2lan) {
         /* errata: program both queues to unweighted RR */
@@ -306,20 +305,19 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
         return nullptr;
     irql oldIrql = Core_RaiseIrql(IRQL_E1000);
     
-    // uint32_t tctl = E1000_READ_REG(&dev->hw, E1000_TCTL);
-    // tctl &= ~E1000_TCTL_EN;
-    // E1000_WRITE_REG(&dev->hw, E1000_TCTL, tctl);
-    
     size_t nPages = size / OBOS_PAGE_SIZE;
     if (size % OBOS_PAGE_SIZE)
         nPages++;
-    desc->buffer_addr = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
-    memcpy(MmS_MapVirtFromPhys(desc->buffer_addr), buffer, size);
-    desc->lower.data = size | E1000_TXD_CMD_EOP;
-    // E1000_WRITE_REG(&dev->hw, E1000_TDT(0), dev->tx_index + sizeof(struct e1000_tx_desc));
+    uintptr_t buff = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
+    memcpy(MmS_MapVirtFromPhys(buff), buffer, size);
+    desc->buffer_addr = buff;
+    desc->upper.data = 0;
+    desc->lower.data = size | E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+    E1000_WRITE_REG(&dev->hw, E1000_TDT(0), ++dev->tx_index % TX_QUEUE_SIZE);
     
-    // tctl |= E1000_TCTL_EN;
-    // E1000_WRITE_REG(&dev->hw, E1000_TCTL, tctl);
+    while (~desc->upper.data & E1000_TXD_STAT_DD)
+        continue;
+    // printf("ret from %s, upper.data=0x%x, lower.data=0x%x, buffer=0x%p\n", __func__, desc->upper.data, desc->lower.data, desc->buffer_addr);
 
     Core_LowerIrql(oldIrql);
 
@@ -384,6 +382,8 @@ void e1000_tx_reap(e1000_device* dev)
         if (~desc[i].upper.fields.status & E1000_TXD_STAT_DD)
             break;
         desc[i].upper.fields.status = 0;   
+        desc[i].lower.data = 0;   
+        desc[i].buffer_addr = 0;   
     }
     dev->tx_index = i;
 }

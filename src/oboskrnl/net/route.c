@@ -53,7 +53,7 @@ static void dispatcher(vnode* nic)
         VfsH_IRPSubmit(req, &tables->desc);
         if (obos_is_error(status = VfsH_IRPWait(req)))
         {
-            OBOS_Error("%s@%02x:%02x:%02x:%02x:%02x:%02x:, VfsH_IRPWait: Status %d\n", 
+            OBOS_Error("%s@%02x:%02x:%02x:%02x:%02x:%02x: VfsH_IRPWait: Status %d\n", 
                 __func__,
                 tables->mac[0], tables->mac[1], tables->mac[2], 
                 tables->mac[3], tables->mac[4], tables->mac[5],

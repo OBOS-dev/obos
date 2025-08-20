@@ -58,6 +58,8 @@ PacketProcessSignature(Ethernet, void*)
 {
     OBOS_UNUSED(userdata);
     OBOS_UNUSED(depth);
+    if (!size || !ptr)
+        ExitPacketHandler();
     ethernet2_header* hdr = ptr;
     if (~nic->flags & VFLAGS_NIC_NO_FCS)
     {
@@ -107,7 +109,11 @@ OBOS_NO_UBSAN shared_ptr* NetH_FormatEthernetPacket(vnode* nic, const mac_addres
 
     shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
     size_t real_size = size+4+sizeof(ethernet2_header);
+    if (real_size < 64)
+        real_size = 64;
     struct ethernet2_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
+    if (real_size == 64)
+        memzero(hdr, real_size);
     OBOS_SharedPtrConstructSz(buf, hdr, real_size);
     buf->onDeref = NetFreeSharedPtr;
     buf->free = OBOS_SharedPtrDefaultFree;
