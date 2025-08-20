@@ -242,3 +242,23 @@ void nm_initialize_interfaces(const char* config_file)
 
     cJSON_Delete(top_level);
 }
+
+void nm_initialize_hostname()
+{
+    int fd = open("/etc/hostname", O_RDONLY);
+    if (fd < 0)
+    {
+        perror("open(\"/etc/hostname\", O_RDONLY)");
+        return;
+    }
+    struct stat st = {};
+    fstat(fd, &st);
+
+    char* buf = mmap(NULL, st.st_size, PROT_READ, 0, fd, 0);
+
+    if (sethostname(buf, st.st_size) != 0)
+        perror("sethostname");
+
+    munmap(buf, st.st_size);
+    close(fd);
+}

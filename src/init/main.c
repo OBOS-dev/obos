@@ -134,6 +134,7 @@ int main(int argc, char** argv)
     if (ret != 0)
         return ret;
 
+    nm_initialize_hostname();
     nm_initialize_interfaces("/etc/interfaces.json");
 
     // Start a shell, I guess.

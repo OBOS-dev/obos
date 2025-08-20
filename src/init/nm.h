@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 void nm_initialize_interfaces(const char* config_file);
+void nm_initialize_hostname();
 
 typedef union ip_addr {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
