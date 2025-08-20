@@ -23,6 +23,7 @@
 #include <locks/pushlock.h>
 
 #include <utils/list.h>
+#include <utils/string.h>
 
 typedef struct gateway {
     // The address the gateway handles
@@ -161,3 +162,8 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
 
 OBOS_EXPORT obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp);
 OBOS_EXPORT obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz);
+
+extern string Net_Hostname;
+
+obos_status Sys_GetHostname(char* name, size_t len);
+obos_status Sys_SetHostname(const char* name, size_t len);

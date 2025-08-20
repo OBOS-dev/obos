@@ -39,6 +39,8 @@
 #include <mm/fork.h>
 #include <mm/pmm.h>
 
+#include <net/tables.h>
+
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
@@ -403,6 +405,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_GetSockOpt,
     (uintptr_t)Sys_SetSockOpt,
     (uintptr_t)Sys_ShutdownSocket,
+    (uintptr_t)Sys_GetHostname,
+    (uintptr_t)Sys_SetHostname,
 };
 
 // Arch syscall table is defined per-arch

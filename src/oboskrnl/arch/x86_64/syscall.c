@@ -231,6 +231,8 @@ const char* syscall_to_string[] = {
     "Sys_GetSockOpt",
     "Sys_SetSockOpt",
     "Sys_ShutdownSocket",
+    "Sys_GetHostname",
+    "Sys_SetHostname",
 };
 
 const char* status_to_string[] = {

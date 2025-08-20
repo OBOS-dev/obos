@@ -663,3 +663,26 @@ obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz)
     }
     return OBOS_STATUS_SUCCESS;
 }
+
+string Net_Hostname;
+
+obos_status Sys_GetHostname(char* name, size_t len)
+{
+    obos_status status = memcpy_k_to_usr(name, OBOS_GetStringCPtr(&Net_Hostname), OBOS_MIN(OBOS_GetStringSize(&Net_Hostname), len));
+    if (obos_is_error(status))
+        return status;
+    return len < OBOS_GetStringSize(&Net_Hostname) ? OBOS_STATUS_INVALID_ARGUMENT : OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_SetHostname(const char* uname, size_t len)
+{
+    if (len >= 64)
+        return OBOS_STATUS_INVALID_ARGUMENT; // because of the obos dhcp client's theoeretical limits
+    OBOS_FreeString(&Net_Hostname);
+    char name[65];
+    memzero(name, sizeof(name));
+    memcpy_usr_to_k(name, uname, len);
+    OBOS_InitStringLen(&Net_Hostname, name, len);
+    OBOS_Log("NET: Changed hostname to %.*s\n", OBOS_GetStringSize(&Net_Hostname), OBOS_GetStringCPtr(&Net_Hostname));
+    return OBOS_STATUS_SUCCESS;
+}
