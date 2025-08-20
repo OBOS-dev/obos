@@ -61,6 +61,8 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     // if (!(frame->cs & 0x3))
     //     return;
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval-1];
+    if (sig->un.handler == SIG_IGN)
+        return;
     ucontext_t ctx = { .frame=*frame,.gs_base=rdmsr(!(frame->cs & 0x3) ? GS_BASE : KERNEL_GS_BASE),.fs_base=rdmsr(FS_BASE),.cr3=frame->cr3 };
     if (!Core_GetCurrentThread()->context.signal_extended_ctx_ptr)
         Core_GetCurrentThread()->context.signal_extended_ctx_ptr = Arch_AllocateXSAVERegion();
