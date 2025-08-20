@@ -36,7 +36,10 @@ obos_status  Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, s
 
 // obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
 // obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
-handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* status);
+// *file on entry is the file descriptor of the file to make an IRP for
+// *file on exit is the handle to the irp
+// if buffer is nullptr, the irp->dryOp is set to true
+obos_status Sys_IRPCreate(handle *file, size_t offset, size_t size, enum irp_op operation, void* buffer);
 obos_status Sys_IRPSubmit(handle irp);
 // If close is true, the IRP is closed after waiting for it.
 obos_status Sys_IRPWait(handle irp, obos_status* irp_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */, bool close);

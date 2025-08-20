@@ -1041,7 +1041,7 @@ obos_status Sys_Unmount(const char* uat)
     return status;
 }
 
-handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* ustatus)
+obos_status Sys_IRPCreate(handle *ufile, size_t offset, size_t size, enum irp_op operation, void* buffer)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
@@ -1051,48 +1051,61 @@ handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp
             break;
         default:
             status = OBOS_STATUS_INVALID_ARGUMENT;
-            if (ustatus) memcpy_k_to_usr(ustatus, &status, sizeof(obos_status));
-            return HANDLE_INVALID;
+            return status;
     }
+
+    handle file = 0;
+    status = memcpy_usr_to_k(&file, ufile, sizeof(handle));
+    if (obos_is_error(status))
+        return status;
 
     vnode* vn = nullptr;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), file, HANDLE_TYPE_FD, false, &status);
     if (!fd)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-        if (ustatus) memcpy_k_to_usr(ustatus, &status, sizeof(obos_status));
-        return HANDLE_INVALID;
+        return status;
     }
     vn = fd->un.fd->vn;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     if (!vn)
         return OBOS_STATUS_UNINITIALIZED;
 
+    bool dry = !buffer;
     void* buff = dry ? nullptr : Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer, nullptr, size, operation == IRP_READ ? 0 : OBOS_PROTECTION_READ_ONLY, true, &status);
 
     user_irp* obj = nullptr;
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-    handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+    handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_IRP, &desc);
     desc->un.irp = obj = Vfs_Calloc(1, sizeof(user_irp));
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     obj->obj = VfsH_IRPAllocate();
-
+    obj->buff_size = size;
+    
     VfsH_IRPBytesToBlockCount(vn, size, &obj->obj->blkCount);
     VfsH_IRPBytesToBlockCount(vn, offset, &obj->obj->blkOffset);
     obj->obj->op = operation;
-    obj->obj->dryOp = !!dry;
+    obj->obj->dryOp = dry;
     obj->obj->buff = buff;
     obj->obj->vn = vn;
     obj->obj->status = OBOS_STATUS_SUCCESS;
     
-    return ret;
+    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
+        driver = &vn->un.device->driver->header;
+    obj->desc = vn->desc;
+    if (driver->ftable.reference_device)
+        driver->ftable.reference_device(&obj->desc);
+
+    return memcpy_k_to_usr(ufile, &ret, sizeof(ret));
 }
 obos_status Sys_IRPSubmit(handle desc)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1100,7 +1113,7 @@ obos_status Sys_IRPSubmit(handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return VfsH_IRPSubmit(irph->un.irp->obj, nullptr);
+    return VfsH_IRPSubmit(irph->un.irp->obj, &irph->un.irp->desc);
 }
 
 obos_status Sys_IRPWait(handle desc, obos_status* out_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */, bool close)
@@ -1110,7 +1123,7 @@ obos_status Sys_IRPWait(handle desc, obos_status* out_status, size_t* nCompleted
     if (!out_status && !nCompleted)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1136,7 +1149,7 @@ obos_status Sys_IRPQueryState(handle desc)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1156,7 +1169,7 @@ obos_status Sys_IRPGetBuffer(handle desc, void** ubuffp)
     if (!ubuffp)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1173,7 +1186,7 @@ obos_status Sys_IRPGetStatus(handle desc, obos_status* out_status, size_t* nComp
     if (!out_status && !nCompleted)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());

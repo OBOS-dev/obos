@@ -20,6 +20,14 @@
 
 #include <vfs/alloc.h>
 #include <vfs/fd.h>
+#include <vfs/irp.h>
+#include <vfs/mount.h>
+
+#include <mm/context.h>
+#include <mm/alloc.h>
+
+#include <driver_interface/driverId.h>
+#include <driver_interface/header.h>
 
 #include <allocators/base.h>
 
@@ -193,6 +201,23 @@ void process_close(handle_desc* hnd)
     if (!(--hnd->un.process->refcount))
         Free(OBOS_NonPagedPoolAllocator, hnd->un.process, sizeof(process));
 }
+void irp_close(handle_desc* hnd)
+{
+    user_irp* req = hnd->un.irp;
+    if (req->obj->evnt)
+        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(*req->obj->evnt));
+    vnode* vn = req->obj->vn;
+    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
+    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
+        driver = &vn->un.device->driver->header;
+    if (driver->ftable.unreference_device)
+        driver->ftable.unreference_device(req->desc);
+    if (req->obj->buff)
+        Mm_VirtualMemoryFree(&Mm_KernelContext, req->obj->buff, req->buff_size);
+    VfsH_IRPUnref(req->obj);
+    Vfs_Free(req);
+}
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
@@ -207,6 +232,7 @@ void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     nullptr,
     nullptr,
     nullptr,
+    irp_close,
 };
 
 static obos_status handle_close_unlocked(handle_table* current_table, handle hnd);

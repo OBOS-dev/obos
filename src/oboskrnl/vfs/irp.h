@@ -73,6 +73,8 @@ typedef struct irp {
 
 typedef struct user_irp {
     irp* obj;
+    dev_desc desc;
+    size_t buff_size;
     void* ubuffer;
 } user_irp;
 
