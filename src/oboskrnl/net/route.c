@@ -669,10 +669,10 @@ string Net_Hostname;
 
 obos_status Sys_GetHostname(char* name, size_t len)
 {
-    obos_status status = memcpy_k_to_usr(name, OBOS_GetStringCPtr(&Net_Hostname), OBOS_MIN(OBOS_GetStringSize(&Net_Hostname), len));
+    obos_status status = memcpy_k_to_usr(name, OBOS_GetStringCPtr(&Net_Hostname), OBOS_MIN(OBOS_GetStringSize(&Net_Hostname)+1, len));
     if (obos_is_error(status))
         return status;
-    return len < OBOS_GetStringSize(&Net_Hostname) ? OBOS_STATUS_INVALID_ARGUMENT : OBOS_STATUS_SUCCESS;
+    return len < OBOS_GetStringSize(&Net_Hostname)+1 ? OBOS_STATUS_INVALID_ARGUMENT : OBOS_STATUS_SUCCESS;
 }
 
 obos_status Sys_SetHostname(const char* uname, size_t len)
