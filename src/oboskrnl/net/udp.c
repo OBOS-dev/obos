@@ -337,6 +337,8 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
         CoreH_ThreadReady(ports->internal_read_thread);
     }
 
+    socket->protocol_data = ports;
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -454,6 +456,15 @@ static void irp_event_set(irp* req)
     }
     udp_recv_packet* pckt = LIST_GET_HEAD(udp_recv_packet_list, &port->packets);
     memcpy(req->buff, pckt->buffer_ptr.obj, OBOS_MIN(req->blkCount, pckt->buffer_ptr.szObj));
+    if (req->socket_data)
+    {
+        struct sockaddr_in addr = {};
+        addr.family = AF_INET; 
+        addr.addr = pckt->src.addr; 
+        addr.port = host_to_be16(pckt->src.port); 
+        memzero(addr.sin_zero, sizeof(addr.sin_zero));
+        memcpy(req->socket_data, &addr, OBOS_MIN(req->sz_socket_data, sizeof(addr)));
+    }
     if (~req->socket_flags & MSG_PEEK)
     {
         OBOS_SharedPtrUnref(&pckt->packet_ptr);

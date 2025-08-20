@@ -2001,7 +2001,7 @@ obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, stru
         Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), 0, true, &status);
     if (obos_is_error(status))
         return status;
-    if ((!params->addr_length && params->sock_addr) || params->addr_length > 32)
+    if (!params->addr_length && params->sock_addr)
     {
         status = OBOS_STATUS_INVALID_ARGUMENT;
         goto fail1;
@@ -2024,6 +2024,8 @@ obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, stru
     }
 
     status = Net_RecvFrom(fd->un.fd, kbuf, size, flags, &params->nRead, addr, params->addr_length ? &params->addr_length : nullptr);
+
+    memcpy_k_to_usr(params->sock_addr, addr, params->addr_length);
 
     OBOS_MAYBE_UNUSED fail3:
     Free(OBOS_KernelAllocator, buf, params->addr_length);
