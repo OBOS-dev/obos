@@ -37,6 +37,8 @@ Arch_SyscallTrapHandler:
     mov rsp, [gs:rsp]
     add rsp, 0x10000
 
+    sti
+
 ; Only save SysV callee-saved registers, rcx (return address), r10 (return stack), and r11 (return eflags)
     push rcx
     push r10

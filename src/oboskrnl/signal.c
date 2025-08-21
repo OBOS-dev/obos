@@ -278,7 +278,7 @@ OBOS_NO_UBSAN bool OBOS_SyncPendingSignal(interrupt_frame* frame)
     sigval += 1;
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
     OBOS_RunSignal(sigval, frame);
-    return true;
+    return Core_GetCurrentThread()->signal_info->signals[sigval-1].un.handler != SIG_IGN;
 }
 
 #define T SIGNAL_DEFAULT_TERMINATE_PROC,

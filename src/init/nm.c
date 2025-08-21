@@ -184,6 +184,8 @@ bool nm_initialize_interface(cJSON* top_level)
     free(gateways);
     free(ip_table);
 
+    close(fd);
+
     return true;
 }
 

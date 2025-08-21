@@ -143,6 +143,8 @@ struct udp_bound_ports {
         ip_addr addr;
         uint16_t port;
     } default_peer;
+    // for the internal read thread
+    bool assume_free : 1;
     bool read_closed : 1;
     bool write_closed : 1;
 };
@@ -166,8 +168,6 @@ static void udp_free(socket_desc* socket)
     ports->write_closed = true;
     if (ports->internal_read_thread)
     {
-        while (~ports->internal_read_thread->flags & THREAD_FLAGS_DIED)
-            OBOSS_SpinlockHint();
         if (!(--ports->internal_read_thread->references) && ports->internal_read_thread->free)
             ports->internal_read_thread->free(ports->internal_read_thread);
     }
@@ -186,12 +186,17 @@ static void udp_free(socket_desc* socket)
                 curr = next;
             }
             CoreH_AbortWaitingThreads(WAITABLE_OBJECT(port->recv_event));
-            Free(OBOS_KernelAllocator, port, sizeof(*port));
+            Vfs_Free(port);
             ports->ports[i] = nullptr;
         }
     }
-    Vfs_Free(ports->ports);
-    Vfs_Free(ports);
+    if (!ports->internal_read_thread)
+    {
+        Vfs_Free(ports->ports);
+        Vfs_Free(ports);
+    }
+    else
+        ports->assume_free = true;
     uninit:
     Vfs_Free(socket);
 }
@@ -248,6 +253,7 @@ static void internal_read_thread(void* userdata)
             if (WAITABLE_OBJECT(ports->ports[i]->recv_event) == signaled)
             {
                 ports->signaled_port = ports->ports[i];
+                Core_EventClear(&ports->ports[i]->recv_event);
                 Core_EventSet(&ports->internal_read_event, false);
                 break;
             }
@@ -256,6 +262,11 @@ static void internal_read_thread(void* userdata)
         }
     }
     Free(OBOS_KernelAllocator, events, 1+ports->nPorts);
+    if (ports->assume_free)
+    {
+        Vfs_Free(ports->ports);
+        Vfs_Free(ports);
+    }
     Core_ExitCurrentThread();
 }
 
@@ -363,7 +374,7 @@ obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
     if (obos_is_error(status))
         return status;
 
-    ports->ports[0] = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(udp_port), nullptr);
+    ports->ports[0] = Vfs_Calloc(1, sizeof(udp_port));
     ports->ports[0]->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     ports->ports[0]->iface = source_interface;
     ports->read_event = &ports->ports[0]->recv_event;
@@ -452,6 +463,8 @@ static void irp_event_set(irp* req)
         req->status = NetH_ICMPv4ResponseToStatus(port->icmp_header);
         OBOS_SharedPtrUnref(port->icmp_header_ptr);
         port->icmp_header_ptr = nullptr;
+        port->got_icmp_msg = false;
+        port->icmp_header = false;
         return;
     }
     udp_recv_packet* pckt = LIST_GET_HEAD(udp_recv_packet_list, &port->packets);
@@ -465,12 +478,12 @@ static void irp_event_set(irp* req)
         memzero(addr.sin_zero, sizeof(addr.sin_zero));
         memcpy(req->socket_data, &addr, OBOS_MIN(req->sz_socket_data, sizeof(addr)));
     }
+    req->nBlkRead = OBOS_MIN(req->blkCount, pckt->buffer_ptr.szObj);
     if (~req->socket_flags & MSG_PEEK)
     {
         OBOS_SharedPtrUnref(&pckt->packet_ptr);
         Core_EventClear(req->evnt);
     }
-    req->nBlkRead = OBOS_MIN(req->blkCount, pckt->buffer_ptr.szObj);
     ports->signaled_port = nullptr;
     req->status = OBOS_STATUS_SUCCESS;
 }

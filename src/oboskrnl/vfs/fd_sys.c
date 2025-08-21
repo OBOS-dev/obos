@@ -1090,14 +1090,7 @@ obos_status Sys_IRPCreate(handle *ufile, size_t offset, size_t size, enum irp_op
     obj->obj->buff = buff;
     obj->obj->vn = vn;
     obj->obj->status = OBOS_STATUS_SUCCESS;
-    
-    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
-        driver = &vn->un.device->driver->header;
-    obj->desc = vn->desc;
-    if (driver->ftable.reference_device)
-        driver->ftable.reference_device(&obj->desc);
+    obj->desc = fd->un.fd->desc;
 
     return memcpy_k_to_usr(ufile, &ret, sizeof(ret));
 }

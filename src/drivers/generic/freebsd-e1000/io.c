@@ -325,15 +325,10 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
 }
 
 
-static void rx_event_set_dpc(dpc* d, void* udata)
+static void rx_dpc(dpc* d, void* udata)
 {
     OBOS_UNUSED(d);
     e1000_device* dev = udata;
-    Core_EventSet(&dev->rx_evnt, false);
-}
-void e1000_rx(e1000_device* dev)
-{
-    bool rx_packet = false;
     for (size_t i = 0; i < RX_QUEUE_SIZE; i++)
     {
         uint32_t length = 0;
@@ -344,6 +339,7 @@ void e1000_rx(e1000_device* dev)
                 continue;
             length = desc->wb.upper.length;
             desc->wb.upper.status_error = 0;
+            memzero(desc, sizeof(*desc));
             desc->read.buffer_addr = dev->rx_ring_buffers[i];
         }
         else
@@ -360,11 +356,13 @@ void e1000_rx(e1000_device* dev)
         frame->refs = dev->refs;
         memcpy(frame->buff, MmS_MapVirtFromPhys(dev->rx_ring_buffers[i]), length);
         LIST_APPEND(e1000_frame_list, &dev->rx_frames, frame);
-        rx_packet = true;
     }
+    Core_EventSet(&dev->rx_evnt, false);
+}
+void e1000_rx(e1000_device* dev)
+{
     dev->dpc.userdata = dev;
-    if (rx_packet)
-        CoreH_InitializeDPC(&dev->dpc, rx_event_set_dpc, Core_DefaultThreadAffinity);
+    CoreH_InitializeDPC(&dev->dpc, rx_dpc, Core_DefaultThreadAffinity);
 }
 
 static void tx_event_set_dpc(dpc* d, void* udata)

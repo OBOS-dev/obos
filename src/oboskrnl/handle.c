@@ -204,15 +204,8 @@ void process_close(handle_desc* hnd)
 void irp_close(handle_desc* hnd)
 {
     user_irp* req = hnd->un.irp;
-    if (req->obj->evnt)
-        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(*req->obj->evnt));
-    vnode* vn = req->obj->vn;
-    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
-        driver = &vn->un.device->driver->header;
-    if (driver->ftable.unreference_device)
-        driver->ftable.unreference_device(req->desc);
+    // if (req->obj->evnt)
+    //     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(*req->obj->evnt));
     if (req->obj->buff)
         Mm_VirtualMemoryFree(&Mm_KernelContext, req->obj->buff, req->buff_size);
     VfsH_IRPUnref(req->obj);

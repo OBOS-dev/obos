@@ -51,17 +51,23 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     }
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
     CoreH_ThreadBlock(curr, true);
-    Core_LowerIrql(oldIrql);
     if (curr->interrupted)
     {
         if (curr->signalInterrupted)
         {
             curr->signalInterrupted = false;
             CoreH_ThreadListRemove(&obj->waiting, &curr->lock_node);
+#ifdef __x86_64__
+            asm volatile("hlt" :::"memory");
+#endif
         }
         curr->interrupted = false;
+        Core_LowerIrql(oldIrql);
+        Core_Yield();
         return OBOS_STATUS_ABORTED;
     }
+    Core_LowerIrql(oldIrql);
+    Core_Yield();
     if (obj->interrupted)
         return OBOS_STATUS_ABORTED;
     return OBOS_STATUS_SUCCESS;

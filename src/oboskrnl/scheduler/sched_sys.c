@@ -561,7 +561,10 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         waitees = ZeroAllocate(OBOS_KernelAllocator, nWaitees, sizeof(struct waitable_header*), nullptr);
         process* iter = Core_GetCurrentThread()->proc->children.head;
         for (size_t i = 0; i < nWaitees; i++, iter = iter->next)
+        {
             waitees[i] = WAITABLE_OBJECT(*iter);
+            iter->refcount++;
+        }
     }
     else
     {
@@ -635,13 +638,18 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
     if (obos_expect(wstatus != nullptr, true))
         memcpy_k_to_usr(wstatus, &process->exitCode, sizeof(uint32_t));
 
-    if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
-        if (!(--process->refcount))
-			Free(OBOS_NonPagedPoolAllocator, process, sizeof(*process));
 
     done:
     if (waitees != &single_waitee)
+    {
+        for (size_t i = 0; i < nWaitees; i++)
+        {
+            struct process* tmp = (struct process*)waitees[i];
+            if (!(--tmp->refcount))
+    			Free(OBOS_NonPagedPoolAllocator, tmp, sizeof(*tmp));
+        }
         Free(OBOS_KernelAllocator, waitees, sizeof(struct waitable_header*)*nWaitees);
+    }
 
     return status;
 }

@@ -148,7 +148,7 @@ struct irq* Core_SchedulerIRQ;
 uint64_t Core_SchedulerTimerFrequency = 1000;
 void Core_Yield()
 {
-	if (getCurrentThread && getCurrentThread->kill)
+	if (getCurrentThread && getCurrentThread->kill && (getCurrentThread->yield_count_since_kill++ != 1 /* give the code a chance to remove itself from existance */))
 		Core_ExitCurrentThread();
 	irql oldIrql = IRQL_INVALID;
 	if (Core_GetIrql() <= IRQL_DISPATCH)

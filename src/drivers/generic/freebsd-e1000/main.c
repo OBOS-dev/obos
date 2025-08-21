@@ -85,7 +85,7 @@ static void irp_on_rx_event_set(irp* req)
     if (req->evnt)
         Core_EventClear(req->evnt);
     if (!hnd->rx_curr)
-        hnd->rx_curr = LIST_GET_HEAD(e1000_frame_list, &hnd->dev->rx_frames);
+        hnd->rx_curr = LIST_GET_TAIL(e1000_frame_list, &hnd->dev->rx_frames);
     if (!hnd->rx_curr)
     {
         req->status = OBOS_STATUS_IRP_RETRY;
@@ -105,15 +105,18 @@ static void irp_on_rx_event_set(irp* req)
     if (hnd->rx_off >= hnd->rx_curr->size)
     {
         e1000_frame* next = LIST_GET_NEXT(e1000_frame_list, &dev->rx_frames, hnd->rx_curr);
-        LIST_REMOVE(e1000_frame_list, &dev->rx_frames, hnd->rx_curr);
+        hnd->last_rx = hnd->rx_curr;
         if (!(--hnd->rx_curr->refs))
         {
+            hnd->last_rx = nullptr;
+            LIST_REMOVE(e1000_frame_list, &dev->rx_frames, hnd->rx_curr);
             Free(OBOS_NonPagedPoolAllocator, hnd->rx_curr->buff, hnd->rx_curr->size);
             Free(OBOS_NonPagedPoolAllocator, hnd->rx_curr, sizeof(*hnd->rx_curr));
         }
         hnd->rx_curr = next;
         hnd->rx_off = 0;
     }
+    req->nBlkRead = szRead;
 }
 
 static void irp_on_tx_event_set(irp* req)
@@ -138,8 +141,9 @@ obos_status submit_irp(void* request)
     {
         if (!hnd->rx_curr)
             hnd->rx_curr = LIST_GET_HEAD(e1000_frame_list, &hnd->dev->rx_frames);
-        if (!hnd->rx_curr)
+        if (!hnd->rx_curr || hnd->last_rx == hnd->rx_curr)
         {
+            hnd->rx_curr = nullptr;
             req->evnt = &hnd->dev->rx_evnt;
             req->on_event_set = irp_on_rx_event_set;
         }

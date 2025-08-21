@@ -62,6 +62,7 @@ typedef struct e1000_handle {
     uint32_t magic;
     e1000_device* dev;
     e1000_frame* rx_curr;
+    e1000_frame* last_rx;
     size_t rx_off;
 } e1000_handle;
 

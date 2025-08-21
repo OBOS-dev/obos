@@ -108,6 +108,7 @@ typedef struct thread
 	bool signalInterrupted : 1; // if interrupted is true because of a signal.
 	bool inWaitProcess : 1;
 	bool kill : 1;
+	int yield_count_since_kill : 2;
 	
 	struct signal_header* signal_info;
 
