@@ -538,10 +538,12 @@ uint64_t Sys_ProcessGetPPID(handle process)
 void OBOS_ThreadHandleFree(handle_desc *hnd)
 {
     thread* thr = hnd->un.thread;
-    if (thr->snode->free)
-        thr->snode->free(thr->snode);
     if (!(--thr->references) && thr->free)
+    {
+        if (thr->snode->free)
+            thr->snode->free(thr->snode);
         thr->free(thr);
+    }
 }
 
 obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pid)
@@ -563,7 +565,7 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         for (size_t i = 0; i < nWaitees; i++, iter = iter->next)
         {
             waitees[i] = WAITABLE_OBJECT(*iter);
-            iter->refcount++;
+		    iter->refcount++;
         }
     }
     else
@@ -603,7 +605,7 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
     status = Core_WaitOnObjects(nWaitees, waitees, &signaled);
     Core_GetCurrentThread()->inWaitProcess = false;
     if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
-        return status;
+        goto done;
 
     process* process = (struct process*)signaled;
     
@@ -629,6 +631,8 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         if (process->parent->children.tail == process)
             process->parent->children.tail = process->prev;
         process->parent->children.nChildren--;
+        if (!(--process->parent->refcount))
+    		Free(OBOS_NonPagedPoolAllocator, process->parent, sizeof(*process->parent));
     }
     
     CoreH_ClearSignaledState(WAITABLE_OBJECT(*process));
@@ -637,7 +641,6 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
         memcpy_k_to_usr(pid, &process->pid, sizeof(uint32_t));
     if (obos_expect(wstatus != nullptr, true))
         memcpy_k_to_usr(wstatus, &process->exitCode, sizeof(uint32_t));
-
 
     done:
     if (waitees != &single_waitee)

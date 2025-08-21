@@ -14,6 +14,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/wait.h>
 
 #include <cjson/cJSON.h>
 
@@ -133,16 +135,38 @@ gateway_user* nm_get_gateways(cJSON* top_level, size_t* size_array)
 
 bool nm_initialize_interface(cJSON* top_level)
 {
-    if (get_boolean_field(top_level, "dynamic-config", false))
-    {
-        fprintf(stderr, "NM: Dynamic interface configuration unsupported");
-        return false;
-    }
     const char* interface_name = get_str_field(top_level, "interface");
     if (!interface_name)
     {
         fprintf(stderr, "NM: No interface name specified\n");
         return false;
+    }
+    if (get_boolean_field(top_level, "dynamic-config", false))
+    {
+        pid_t pid = 0;
+        if ((pid = fork()) == 0)
+        {
+            char *argv[3] = {
+                "obos_dhcpc",
+                (char*)interface_name,
+                NULL
+            };
+            execvp("/usr/sbin/obos_dhcpc", argv);
+            exit(-errno);
+        }
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (status < 0)
+        {
+            fprintf(stderr, "executing obos_dhcpc: %s\n", strerror(-status));
+            return false;
+        }
+        if (status > 0)
+        {
+            fprintf(stderr, "obos_dhcpc returned status %d\n", status);
+            return false;
+        }
+        return true;
     }
     char* interface_path = malloc(strlen(interface_name)+sizeof("/dev/"));
     snprintf(interface_path, strlen(interface_name)+sizeof("/dev/"), "/dev/%s", interface_name);

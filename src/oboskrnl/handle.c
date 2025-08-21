@@ -211,12 +211,13 @@ void irp_close(handle_desc* hnd)
     VfsH_IRPUnref(req->obj);
     Vfs_Free(req);
 }
+extern void OBOS_ThreadHandleFree(handle_desc* hnd);
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
     nullptr,
     dirent_close,
-    nullptr,
+    OBOS_ThreadHandleFree,
     process_close,
     nullptr, // TODO: Refcount vmm contexts.
     nullptr,

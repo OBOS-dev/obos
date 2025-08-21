@@ -176,8 +176,6 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	{
 		// Our parent is the kernel process, since we won't get reaped,
 		// remove ourselves from the children list here.
-		proc->refcount--;
-		OBOS_ENSURE(proc->refcount);
 		irql oldIrql = Core_SpinlockAcquire(&OBOS_KernelProcess->children_lock);
 		if (proc->next)
 			proc->next->prev = proc->prev;
@@ -189,6 +187,7 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 			OBOS_KernelProcess->children.tail = proc->prev;
 		OBOS_KernelProcess->children.nChildren--;
 		Core_SpinlockRelease(&OBOS_KernelProcess->children_lock, oldIrql);
+		proc->refcount--;
 	}
 
 	// Close all handles.
@@ -248,7 +247,7 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*proc), true, false);
 
 	proc->dead = true;
-
+	
 	if (!(--proc->refcount))
 		Free(OBOS_NonPagedPoolAllocator, proc, sizeof(*proc));
 

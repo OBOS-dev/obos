@@ -130,6 +130,8 @@ int main(int argc, char** argv)
     }
     handoff_process = argv[optind];
 
+    setenv("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", 1);
+
     int ret = print_motd();
     if (ret != 0)
         return ret;

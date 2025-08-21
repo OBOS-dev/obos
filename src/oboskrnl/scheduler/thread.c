@@ -66,6 +66,7 @@ obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread
 	thr->affinity = affinity;
 	thr->masterCPU = nullptr;
 	thr->quantum = 0;
+	thr->references++;
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_ThreadReady(thread* thr)
@@ -186,6 +187,7 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(threa
 	if(!list->head)
 		list->head = node;
 	node->prev = list->tail;
+	node->data->references++;
 	list->tail = node;
 	list->nNodes++;
 	Core_SpinlockRelease(&list->lock, oldIrql);
@@ -222,6 +224,7 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 	if (list->tail == node)
 		list->tail = node->prev;
 	list->nNodes--;
+	node->data->references--;
 	node->next = nullptr;
 	node->prev = nullptr;
 	Core_SpinlockRelease(&list->lock, oldIrql);
