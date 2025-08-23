@@ -33,6 +33,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
+#include <scheduler/schedule.h>
 
 #include <allocators/base.h>
 
@@ -40,6 +41,7 @@ DefineNetFreeSharedPtr
 
 static void dispatcher(vnode* nic)
 {
+    OBOS_Log("Entered network packet dispatcher in thread %d.%d\n", Core_GetCurrentThread()->proc->pid, Core_GetCurrentThread()->tid);
     net_tables* tables = nic->net_tables;
     obos_status status = OBOS_STATUS_SUCCESS;
     while (!tables->kill_dispatch)
@@ -479,8 +481,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             new_ent->dest = ent->dest;
             new_ent->src = ent->src;
             new_ent->dest_ent = dest_ent;
-            NetH_ARPRequest(nic, new_ent->dest, nullptr, &new_ent->cache);
-            LIST_APPEND(gateway_list, &nic->net_tables->gateways, new_ent);
+            if (obos_is_success(status = NetH_ARPRequest(nic, new_ent->dest, nullptr, &new_ent->cache)))
+                LIST_APPEND(gateway_list, &nic->net_tables->gateways, new_ent);
+            else
+                Free(OBOS_KernelAllocator, new_ent, sizeof(gateway));
             break;
         }
         case IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY:
@@ -516,15 +520,18 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
                 break;
             }
 
+            gateway new_gateway = {};
+            new_gateway.src = (ip_addr){.addr=0};
+            new_gateway.dest = *(ip_addr*)argp;
+            new_gateway.dest_ent = dest_ent;
+            mac_address tmp = {};
             if (!nic->net_tables->default_gateway)
             {
                 nic->net_tables->default_gateway = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
                 LIST_APPEND(gateway_list, &nic->net_tables->gateways, nic->net_tables->default_gateway);
             }
-            nic->net_tables->default_gateway->src = (ip_addr){.addr=0};
-            nic->net_tables->default_gateway->dest = *(ip_addr*)argp;
-            nic->net_tables->default_gateway->dest_ent = dest_ent;
-            NetH_ARPRequest(nic, nic->net_tables->default_gateway->dest, nullptr, &nic->net_tables->default_gateway->cache);
+            if (obos_is_success(status = NetH_ARPRequest(nic, new_gateway.dest, &tmp, &new_gateway.cache)))
+                *nic->net_tables->default_gateway = new_gateway;
             break;
         }
         case IOCTL_IFACE_UNSET_DEFAULT_GATEWAY:

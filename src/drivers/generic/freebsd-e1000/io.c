@@ -391,12 +391,13 @@ void e1000_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
     OBOS_UNUSED(i && frame && oldIrql);
     e1000_device* dev = userdata;
     e1000_rx(dev);
+    dev->icr = 0;
 }
 
 bool e1000_check_irq_callback(struct irq* i, void* userdata)
 {
     OBOS_UNUSED(i);
     e1000_device* dev = userdata;
-    dev->icr = E1000_READ_REG(&dev->hw, E1000_ICR);
+    dev->icr |= E1000_READ_REG(&dev->hw, E1000_ICR);
     return dev->icr != 0;
 }

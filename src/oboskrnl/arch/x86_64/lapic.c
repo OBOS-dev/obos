@@ -64,7 +64,7 @@ void Arch_LAPICSendEOI()
 	if (Arch_LAPICAddress)
 		Arch_LAPICAddress->eoi = 0;
 }
-OBOS_NO_KASAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
+OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector)
 {
 	if (!Arch_LAPICAddress)
 		return OBOS_STATUS_INVALID_INIT_PHASE;

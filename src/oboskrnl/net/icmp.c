@@ -113,9 +113,9 @@ PacketProcessSignature(ICMPv4, ip_header*)
 
                     if (port)
                     {
-                        Core_PushlockAcquire(&port->connection_list_lock, true);
+                        Core_PushlockAcquire(&port->connection_tree_lock, true);
                         current_connection = RB_FIND(tcp_connection_tree, &port->connections, &conn_key);
-                        Core_PushlockRelease(&port->connection_list_lock, true);
+                        Core_PushlockRelease(&port->connection_tree_lock, true);
                     }
 
                     if (!current_connection)

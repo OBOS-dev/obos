@@ -30,12 +30,12 @@
 #	include <arch/m68k/pmm.h>
 #endif
 
-static OBOS_NO_KASAN uintptr_t round_up(uintptr_t x, size_t to)
-{
-	if (x % to)
-		return x + (to - (x % to));
-	return x;
-}
+// static OBOS_NO_KASAN uintptr_t round_up(uintptr_t x, size_t to)
+// {
+// 	if (x % to)
+// 		return x + (to - (x % to));
+// 	return x;
+// }
 
 static OBOS_NO_KASAN  void set_status(obos_status* p, obos_status to)
 {
@@ -219,6 +219,10 @@ OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* 
 {
 	basic_allocator* This = (basic_allocator*)This_;
 
+#if OBOS_KASAN_ENABLED
+	nBytes += 32;
+#endif
+
 	if (nBytes <= 16)
 		nBytes = 16;
 	else
@@ -252,7 +256,16 @@ OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* 
 	remove_node(c->free, c->free.tail);
 
 	unlock((cache*)c, oldIrql);
+
+#if OBOS_KASAN_ENABLED
+	memset((void*)((uintptr_t)ret+nBytes-32), OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], 32);
+#endif
+
+#if !OBOS_KASAN_ENABLED
 	return ret;
+#else
+	return memzero(ret, nBytes);
+#endif
 }
 OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
@@ -285,7 +298,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void* blk, s
 	}
 	void* newblk = Allocate(This_, new_size, status);
 	if (!newblk)
-		return blk;
+		return newblk;
 	memcpy(newblk, blk, old_size);
 	This_->Free(This_, blk, old_size);
 	return newblk;
@@ -298,6 +311,10 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 
 	if (!blk || !nBytes)
 		return OBOS_STATUS_SUCCESS;
+
+#if OBOS_KASAN_ENABLED
+	nBytes += 32;
+#endif
 
 	if (nBytes <= 16)
 		nBytes = 16;
@@ -320,8 +337,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	{
 		irql oldIrql = lock(c);
 		append_node(c->free, (freelist_node*)blk);
-		// oops this has been here too long
-		memset(((freelist_node*)blk)+1, 0xff, nBytes-sizeof(freelist_node));
+#if OBOS_KASAN_ENABLED
+		memset(((freelist_node*)blk)+1, OBOS_ASANPoisonValues[ASAN_POISON_FREED], nBytes-sizeof(freelist_node));
+#endif
 		unlock(c, oldIrql);
 	}
 	return OBOS_STATUS_SUCCESS;

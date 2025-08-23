@@ -262,6 +262,24 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	currentThread->kernelStack = nullptr;
+	if (currentThread->waiting_objects.nObjs)
+	{
+		if (currentThread->waiting_objects.is_array)
+		{
+			for (size_t i = 0; i < currentThread->waiting_objects.nObjs; i++)
+			{
+				waiting_array_node* obj = &currentThread->waiting_objects.waitingObjects[i];
+				CoreH_ThreadListRemove(&obj->obj->waiting, &obj->node);
+			}
+			if (currentThread->waiting_objects.free_array)
+				currentThread->waiting_objects.free_array(
+					currentThread->waiting_objects.free_userdata,
+					currentThread->waiting_objects.waitingObjects,
+					currentThread->waiting_objects.nObjs);
+		}
+		else
+			CoreH_ThreadListRemove(&currentThread->waiting_objects.waitingObject->waiting, &currentThread->lock_node);
+	}
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
 	CoreS_SetKernelStack(nullptr);

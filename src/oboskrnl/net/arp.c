@@ -49,6 +49,15 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     
     if (ent) 
     {
+        Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+        if (memcmp_b(ent->phys, 0, sizeof(mac_address)))
+        {
+            Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+            RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+            Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+            ent = nullptr;
+            goto down;
+        }
         if (out)
             memcpy(*out, ent->phys, sizeof(mac_address));
         if (address_table_ent)
@@ -56,6 +65,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         return OBOS_STATUS_SUCCESS;
     }
 
+    down:
     ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(address_table_entry), nullptr);
     ent->addr = addr;
     ent->sync = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -91,7 +101,14 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         return status; // hdr_ptr isn't leaked, as we never reference it
     }
 
-    Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+    status = Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+    if (obos_is_error(status))
+    {
+        Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+        RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+        Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+        return status;
+    }
     if (out)
         memcpy(*out, ent->phys, sizeof(mac_address));
     if (address_table_ent)

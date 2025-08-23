@@ -205,6 +205,7 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 
 	for ((rng) = RB_MIN(page_tree, &proc->ctx->pages); (rng) != nullptr; )
 	{
+		OBOS_ENSURE(rng);
 		next = RB_NEXT(page_tree, &ctx->pages, rng);
 		uintptr_t virt = rng->virt;
 		if (rng->hasGuardPage)
@@ -292,7 +293,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	}
 	irql oldIrql = Core_GetIrql() < IRQL_DISPATCH ? Core_RaiseIrql(IRQL_DISPATCH) : 0;
 	(void)oldIrql;
-	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
+	ExitCurrentProcess(code);
 	while (1)
 		;
 }

@@ -178,14 +178,6 @@ endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
 
 #list (APPEND oboskrnl_sources "sanitizers/asan.c")
-if (OBOS_ENABLE_KASAN)
-	add_compile_options(
-		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
-	)
-	set (OBOS_ENABLE_KASAN "1")
-else()
-	set (OBOS_ENABLE_KASAN "0")
-endif()
 if (OBOS_ENABLE_UHDA)
 	set (OBOS_ENABLE_UHDA "1")
 else()
@@ -249,6 +241,15 @@ if (OBOS_USE_OBOS_GCC)
 endif()
 if (OBOS_COMPILE_USER_EXAMPLES)
 	add_subdirectory("src/user_examples")
+endif()
+
+if (OBOS_ENABLE_KASAN)
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
+	)
+	set (OBOS_ENABLE_KASAN "1")
+else()
+	set (OBOS_ENABLE_KASAN "0")
 endif()
 
 # Include the kernel

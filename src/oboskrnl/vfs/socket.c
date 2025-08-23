@@ -207,6 +207,10 @@ obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags,
     memcpy(oaddr, &addr, OBOS_MIN(*addr_len, sizeof(struct sockaddr_in)));
     *addr_len = sizeof(struct sockaddr_in);
     make_fd(out, AF_INET, desc->ops->protocol, new_desc);
+    if (flags & SOCK_NONBLOCK)
+        out->flags |= FD_FLAGS_NOBLOCK;
+    if (flags & SOCK_CLOEXEC)
+        out->flags |= FD_FLAGS_NOEXEC;
     return status;
 }
 
@@ -393,4 +397,5 @@ obos_status NetH_AddSocketBackend(socket_ops* ops)
 void VfsH_InitializeSocketInterface()
 {
     NetH_AddSocketBackend(&Net_UDPSocketBackend);
+    NetH_AddSocketBackend(&Net_TCPSocketBackend);
 }

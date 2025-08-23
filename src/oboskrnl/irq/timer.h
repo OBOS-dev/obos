@@ -42,7 +42,6 @@ typedef struct timer {
     timer_handler handler;
     void* userdata;
     dpc handler_dpc;
-    uintptr_t dpc_udata;
     struct timer* next;
     struct timer* prev;
 } timer;

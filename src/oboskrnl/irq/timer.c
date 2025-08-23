@@ -57,9 +57,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
 static void notify_timer_dpc(dpc* dpc, void* userdata)
 {
     OBOS_UNUSED(dpc);
-    uintptr_t *udata = userdata;
-    timer* timer = (void*)udata[0];
-    timer->handler(timer->userdata);
+    timer* timer = (void*)userdata;
+    if (timer)
+        timer->handler(timer->userdata);
 }
 static void notify_timer(timer* timer)
 {
@@ -67,9 +67,8 @@ static void notify_timer(timer* timer)
     timer->lastTimeTicked = CoreS_GetTimerTick();
     if (timer->mode == TIMER_MODE_DEADLINE)
         Core_CancelTimer(timer);
-    timer->handler_dpc.userdata = &timer->dpc_udata;
+    timer->handler_dpc.userdata = timer;
     CoreH_InitializeDPC(&timer->handler_dpc, notify_timer_dpc, Core_DefaultThreadAffinity);
-    timer->dpc_udata = (uintptr_t)timer;
     // timer->handler(timer->userdata);
 }
 static void timer_dispatcher(dpc* obj, void* userdata)
@@ -147,6 +146,7 @@ obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     timer_tick ticks = CoreH_TimeFrameToTick(us);
+    obj->lastTimeTicked = CoreS_GetTimerTick();
     switch (mode) 
     {
         case TIMER_MODE_DEADLINE:
@@ -159,7 +159,6 @@ obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
             Core_LowerIrql(oldIrql);
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
-    obj->lastTimeTicked = CoreS_GetTimerTick();
     obj->mode = mode;
     irql oldIrql2 = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER, false);
     if (timer_list.tail)

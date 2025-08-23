@@ -145,6 +145,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags pr
 }
 
 page* Mm_AnonPage = nullptr;
+page* Mm_UserAnonPage = nullptr;
 void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -335,7 +336,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     {
         OBOS_ASSERT(Mm_AnonPage);
         // Use the anon physical page.
-        phys = Mm_AnonPage;
+        phys = prot & OBOS_PROTECTION_USER_PAGE ? Mm_UserAnonPage : Mm_AnonPage;
     }
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
     {

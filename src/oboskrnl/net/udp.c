@@ -207,7 +207,10 @@ static obos_status bind_interface(uint16_t port, net_tables* interface, udp_port
     udp_port *bport = nullptr;
     Core_PushlockAcquire(&interface->udp_ports_lock, false);
     if (RB_FIND(udp_port_tree, &interface->udp_ports, &key))
+    {
+        Core_PushlockRelease(&interface->udp_ports_lock, false);
         return OBOS_STATUS_ADDRESS_IN_USE;
+    }
     bport = Vfs_Calloc(1, sizeof(udp_port));
     bport->port = port;
     bport->recv_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -298,7 +301,6 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
             }
             interface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, interface);
         }
-        
     }
     else
     {

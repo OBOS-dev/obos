@@ -160,7 +160,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not find empty I/O APIC IRQ for the HPET. irqRouting=0x%08x\n", irqRouting);
     OBOS_ASSERT(gsi <= 32);
     timer->timerConfigAndCapabilities |= (1<6)|(1<<3)|((uint8_t)gsi<<9); // Edge-triggered IRQs, set GSI, Periodic timer
-    CoreS_TimerFrequency = 2000;
+    CoreS_TimerFrequency = 1000;
     OBOS_Debug("HPET frequency: %ld, configured HPET frequency: %ld\n", Arch_HPETFrequency, CoreS_TimerFrequency);
     const uint64_t value = Arch_HPETFrequency/CoreS_TimerFrequency;
     timer->timerComparatorValue = Arch_HPETAddress->mainCounterValue + value;

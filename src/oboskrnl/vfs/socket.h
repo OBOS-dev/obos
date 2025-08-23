@@ -44,6 +44,9 @@ struct sockaddr_in {
 #define SHUT_WR 1
 #define SHUT_RDWR 2
 
+#define SOCK_CLOEXEC   02000000
+#define SOCK_NONBLOCK  04000
+
 // All flags are defined in linux headers for abi compatibility in mlibc
 // If you need a flag, steal it from linux headers
 

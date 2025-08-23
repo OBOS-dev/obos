@@ -60,7 +60,7 @@ enum {
     AT_EXECFN = 31,
 };
 
-static void allocate_string_vector_on_stack(char** vec, size_t cnt)
+static OBOS_NO_KASAN void allocate_string_vector_on_stack(char** vec, size_t cnt)
 {
     for (size_t i = 0; i < cnt; i++)
     {
@@ -74,7 +74,7 @@ static void allocate_string_vector_on_stack(char** vec, size_t cnt)
     }
 }
 
-static void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
+static OBOS_NO_KASAN void write_vector_to_stack(char** vec, char** stck_buf, size_t cnt)
 {
     for (size_t i = 0; i < cnt; i++)
         stck_buf[i] = vec[i];
@@ -103,7 +103,7 @@ uintptr_t Arch_GotoUserBootstrap(uintptr_t udata)
     return -1;
 }
 
-OBOS_NORETURN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
+OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux)
 {
     if (Core_GetIrql() < IRQL_DISPATCH)
     {
