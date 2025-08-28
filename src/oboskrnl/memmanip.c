@@ -151,6 +151,17 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool strcmp(const char* str1, const char* 
 }
 #endif
 
+#if !OBOS_ARCH_HAS_STRNCMP
+OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool strncmp(const char* str1, const char* str2, size_t len)
+{
+    size_t sz1 = strnlen(str1, len);
+    size_t sz2 = strnlen(str2, len);
+    if (sz1 != sz2)
+        return false;
+    return memcmp(str1, str2, sz1);
+}
+#endif
+
 #if !OBOS_ARCH_HAS_STRLEN
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strlen(const char* str)
 {

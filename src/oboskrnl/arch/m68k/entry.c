@@ -1,11 +1,12 @@
 /*
  * oboskrnl/arch/m68k/entry.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
 #include <error.h>
+#include <kinit.h>
 #include <cmdline.h>
 #include <text.h>
 #include <klog.h>
@@ -181,7 +182,6 @@ void Arch_KernelEntryBootstrap()
     Core_Yield();
 }
 void Arch_InitializePageTables();
-obos_status Arch_MapPage(uint32_t pt_root, uintptr_t virt, uintptr_t phys, uintptr_t ptFlags);
 void Arch_PageFaultHandler(interrupt_frame* frame);
 static basic_allocator kalloc;
 extern BootDeviceBase Arch_RTCBase;
@@ -259,14 +259,8 @@ void tty_reset_color(void *udata)
 }
 static log_backend tty_backend = { .write=tty_print, .set_color=tty_set_color, .reset_color=tty_reset_color };
 
-void Arch_KernelEntry()
+void OBOSS_KernelPostPMMInit()
 {
-    Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
-    Arch_RawRegisterInterrupt(24, (uintptr_t)Arch_PICHandleSpurious);
-    for (uint8_t vec = 25; vec < 32; vec++)
-        Arch_RawRegisterInterrupt(vec, (uintptr_t)Arch_PICHandleIRQ);
-    OBOS_Debug("%s: Initializing PMM.\n", __func__);
-    Mm_InitializePMM();
     OBOS_Debug("%s: Initializing page tables.\n", __func__);
     Arch_InitializePageTables();
     Arch_TTYBase = Arch_BootInfo.response->uart_phys_base;
@@ -282,124 +276,61 @@ void Arch_KernelEntry()
         tty_region.mmioRange = true;
         OBOS_AddLogSource(&tty_backend);
     }
-    OBOS_Debug("%s: Initializing allocator.\n", __func__);
-    obos_status status = OBOS_STATUS_SUCCESS;
-    if (obos_is_error(status = OBOSH_ConstructBasicAllocator(&kalloc)))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize allocator. Status: %d.\n", status);
-    OBOS_KernelAllocator = (allocator_info*)&kalloc;
-    OBOS_Debug("%s: Initialize kernel process.\n", __func__);
-    OBOS_KernelProcess = Core_ProcessAllocate(&status);
-	if (obos_is_error(status))
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
-	OBOS_KernelProcess->pid = Core_NextPID++;
+}
+
+void OBOSS_GetModule(struct boot_module *module, const char* name)
+{
+    OBOSS_GetModuleLen(module, name, strlen(name));
+}
+
+void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t name_len)
+{
+    if (strncmp(name, "initrd-driver", name_len))
+    {
+        module->address = (void*)Arch_ModuleStart;
+        module->size = (uintptr_t)Arch_ModuleEnd - (uintptr_t)Arch_ModuleStart;
+        module->is_kernel = false;
+        module->is_memory = false;
+        module->name = "initrd-driver";
+    }
+    else if (strncmp(name, "initrd", name_len))
+    {
+        module->address = (void*)Arch_InitrdRequest.response->modules[0]->address;
+        module->size = Arch_InitrdRequest.response->modules[0]->size;
+        module->is_kernel = false;
+        module->is_memory = false;
+        module->name = "initrd";
+    }
+    else if (strncmp(name, "__KERNEL__", name_len))
+    {
+        module->address = (void*)Arch_KernelFile.response->kernel_file->address;
+        module->size = Arch_KernelFile.response->kernel_file->size;
+        module->is_kernel = true;
+        module->is_memory = false;
+        module->name = "__KERNEL__";
+    }
+}
+
+void OBOSS_GetKernelModule(struct boot_module *module)
+{
+    OBOSS_GetModuleLen(module, "__KERNEL__", sizeof("__KERNEL__"));
+}
+
+void OBOSS_KernelPostKProcInit()
+{
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kmain_thread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &idle_thread);
-    OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
-Core_InitializeIRQInterface();
-    OBOS_Debug("%s: Initializing VMM.\n", __func__);
-    static swap_dev swap;
-    size_t swap_size = OBOS_GetOPTD("initial-swap-size");
-    if (!swap_size)
-        swap_size = 16*1024*1024 /* 16 MiB */;
-    Mm_InitializeInitialSwapDevice(&swap, swap_size);
-	Mm_SwapProvider = &swap;
-	Mm_Initialize();
-    OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-    Core_InitializeTimerInterface();
-    OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
-    static timer sched_timer;
-    sched_timer.handler = sched_timer_hnd;
-    sched_timer.userdata = nullptr;
-    Core_TimerObjectInitialize(&sched_timer, TIMER_MODE_INTERVAL, 4000);
-    OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
-	Elf32_Ehdr* ehdr = (Elf32_Ehdr*)Arch_KernelFile.response->kernel_file->address;
-	Elf32_Shdr* sectionTable = (Elf32_Shdr*)(Arch_KernelFile.response->kernel_file->address + ehdr->e_shoff);
-	if (!sectionTable)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the section table from oboskrnl.\n");
-	const char* shstr_table = (const char*)(Arch_KernelFile.response->kernel_file->address + (sectionTable + ehdr->e_shstrndx)->sh_offset);
-	// Look for .symtab
-	Elf32_Shdr* symtab = nullptr;
-	const char* strtable = nullptr;
-	for (size_t i = 0; i < ehdr->e_shnum; i++)
-	{
-		const char* section = shstr_table + sectionTable[i].sh_name;
-		if (strcmp(section, ".symtab"))
-			symtab = &sectionTable[i];
-		if (strcmp(section, ".strtab"))
-			strtable = (const char*)(Arch_KernelFile.response->kernel_file->address + sectionTable[i].sh_offset);
-		if (strtable && symtab)
-			break;
-	}
-	if (!symtab)
-		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the symbol table from oboskrnl.\n");
-	Elf32_Sym* symbolTable = (Elf32_Sym*)(Arch_KernelFile.response->kernel_file->address + symtab->sh_offset);
-	for (size_t i = 0; i < symtab->sh_size/sizeof(Elf32_Sym); i++)
-	{
-		Elf32_Sym* esymbol = &symbolTable[i];
-		int symbolType = -1;
-		switch (ELF32_ST_TYPE(esymbol->st_info)) 
-		{
-			case STT_FUNC:
-				symbolType = SYMBOL_TYPE_FUNCTION;
-				break;
-			case STT_FILE:
-				symbolType = SYMBOL_TYPE_FILE;
-				break;
-			case STT_OBJECT:
-				symbolType = SYMBOL_TYPE_VARIABLE;
-				break;
-			default:
-				continue;
-		}
-		driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
-		const char* name = strtable + esymbol->st_name;
-		size_t szName = strlen(name);
-		symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
-		symbol->address = esymbol->st_value;
-		symbol->size = esymbol->st_size;
-		symbol->type = symbolType;
-		switch (esymbol->st_other)
-		{
-			case STV_DEFAULT:
-			case STV_EXPORTED:
-			// since this is the kernel, everyone already gets the same object
-			case STV_SINGLETON: 
-				symbol->visibility = SYMBOL_VISIBILITY_DEFAULT;
-				break;
-			case STV_PROTECTED:
-			case STV_HIDDEN:
-				symbol->visibility = SYMBOL_VISIBILITY_HIDDEN;
-				break;
-			default:
-				OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unrecognized visibility %d.\n", esymbol->st_other);
-		}
-		RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
-	}
-    OBOS_Debug("%s: Loading InitRD driver.\n", __func__);
-    status = OBOS_STATUS_SUCCESS;
-    const void* file = Arch_ModuleStart;
-    size_t filesize = (uintptr_t)Arch_ModuleEnd-(uintptr_t)Arch_ModuleStart;
-    driver_id* id = 
-        Drv_LoadDriver(file, filesize, &status);
-    if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load driver! Status: %d.\n", status);
-    Drv_StartDriver(id, nullptr);
-    OBOS_Debug("%s: Initializing VFS.\n", __func__);
-    OBOS_InitrdBinary = Arch_InitrdRequest.response->modules[0]->address;
-    OBOS_InitrdSize = Arch_InitrdRequest.response->modules[0]->size;
-    Vfs_Initialize();
-    OBOS_Log("%s: Done early boot.\n", __func__);
-    OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
-		Mm_KernelContext.stat.committedMemory/0x400,
-		Mm_KernelContext.stat.pageable/0x400,
-		Mm_KernelContext.stat.paged/0x400,
-		Mm_KernelContext.stat.nonPaged/0x400,
-		Mm_KernelContext.stat.reserved/0x400,
-		Mm_PhysicalMemoryUsage/0x400,
-		Mm_KernelContext.stat.pageFaultCount,
-		Mm_KernelContext.stat.hardPageFaultCount,
-		Mm_KernelContext.stat.softPageFaultCount
-    );
+}
+
+void Arch_KernelEntry()
+{
+    Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
+    Arch_RawRegisterInterrupt(24, (uintptr_t)Arch_PICHandleSpurious);
+    for (uint8_t vec = 25; vec < 32; vec++)
+        Arch_RawRegisterInterrupt(vec, (uintptr_t)Arch_PICHandleIRQ);
+
+    OBOS_KernelInit();
+    
     Core_ExitCurrentThread();
 }
 
