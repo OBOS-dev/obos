@@ -21,7 +21,7 @@ list (APPEND oboskrnl_sources
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
-	"net/icmp.c" "net/tcp.c"
+	"net/icmp.c" "net/tcp.c" "kinit.c"
 )
 
 add_executable(oboskrnl)

@@ -84,7 +84,16 @@ Arch_SyscallTrapHandler:
 
     mov rcx, r8
     mov r8, r9
-    call [r11+rax*8]
+    
+    cmp qword [r11+rax*8], 0
+    jz .invalid_syscall
+
+    push .finished
+    jmp [r11+rax*8]
+    
+.invalid_syscall:
+    call Sys_InvalidSyscall
+.finished:
     
     pop rsi
     push rax

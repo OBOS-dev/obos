@@ -5,28 +5,30 @@
 */
 
 #include <int.h>
+#include <kinit.h>
 #include <error.h>
-#include <signal.h>
-#include <cmdline.h>
-#include <syscall.h>
-#include <init_proc.h>
 #include <klog.h>
-#include <stdint.h>
-#include <struct_packing.h>
-#include <memmanip.h>
-#include <text.h>
+#include <cmdline.h>
 #include <font.h>
-#include <partition.h>
+#include <text.h>
 
 #define FLANTERM_IN_FLANTERM
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 
-#include <UltraProtocol/ultra_protocol.h>
+#include <asan.h>
 
-#include <arch/x86_64/idt.h>
-#include <arch/x86_64/cmos.h>
-#include <arch/x86_64/interrupt_frame.h>
+#include <vfs/tty.h>
+#include <vfs/dirent.h>
+
+#include <scheduler/schedule.h>
+#include <scheduler/process.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
+#include <mm/pmm.h>
+
+#include <UltraProtocol/ultra_protocol.h>
 
 #include <irq/irql.h>
 
@@ -36,87 +38,16 @@
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 
-#include <irq/timer.h>
-
 #include <arch/x86_64/asm_helpers.h>
-
-#include <driver_interface/driverId.h>
-#include <driver_interface/loader.h>
-#include <driver_interface/header.h>
-#include <driver_interface/pnp.h>
-
-#include <allocators/basic_allocator.h>
-#include <allocators/base.h>
-
 #include <arch/x86_64/boot_info.h>
-
 #include <arch/x86_64/lapic.h>
 #include <arch/x86_64/ioapic.h>
 #include <arch/x86_64/timer.h>
+#include <arch/x86_64/idt.h>
+#include <arch/x86_64/cmos.h>
+#include <arch/x86_64/interrupt_frame.h>
 
-#include <irq/irq.h>
-
-#include <mm/pmm.h>
-#include <mm/bare_map.h>
-#include <mm/init.h>
-#include <mm/swap.h>
-#include <mm/context.h>
-#include <mm/handler.h>
-#include <mm/alloc.h>
-#include <mm/pmm.h>
-#include <mm/disk_swap.h>
-#include <mm/initial_swap.h>
-#include <mm/page.h>
-
-#include <scheduler/process.h>
-#include <scheduler/thread_context_info.h>
-
-#include <stdatomic.h>
-
-#include <utils/tree.h>
-
-#include <external/fixedptc.h>
-
-#include <uacpi/uacpi.h>
-#include <uacpi/namespace.h>
-#include <uacpi/sleep.h>
-#include <uacpi/event.h>
-#include <uacpi/context.h>
-#include <uacpi/kernel_api.h>
-#include <uacpi/utilities.h>
 #include <uacpi_libc.h>
-
-#if 1
-#include "gdbstub/connection.h"
-#include "gdbstub/gdb_udp_backend.h"
-#include "gdbstub/packet_dispatcher.h"
-#include "gdbstub/debug.h"
-#endif
-
-#include <net/tables.h>
-#include <net/tcp.h>
-
-#include <vfs/dirent.h>
-#include <vfs/init.h>
-#include <vfs/alloc.h>
-#include <vfs/mount.h>
-#include <vfs/fd.h>
-#include <vfs/limits.h>
-#include <vfs/tty.h>
-
-#include <locks/mutex.h>
-#include <locks/wait.h>
-#include <locks/semaphore.h>
-#include <locks/event.h>
-
-#include <power/suspend.h>
-#include <power/init.h>
-
-#include <elf/load.h>
-
-#include <asan.h>
-
-#include <utils/list.h>
 
 extern void Arch_InitBootGDT();
 
@@ -125,7 +56,6 @@ static char kmain_thr_stack[0x40000];
 extern char Arch_InitialISTStack[0x20000];
 static thread bsp_idleThread;
 static thread_node bsp_idleThreadNode;
-static swap_dev swap;
 
 static thread kernelMainThread;
 static thread_node kernelMainThreadNode;
@@ -144,6 +74,25 @@ struct stack_frame
 {
     struct stack_frame* down;
     uintptr_t rip;
+};
+
+static const char* color_to_ansi[] = {
+    "\x1b[30m",
+    "\x1b[34m",
+    "\x1b[32m",
+    "\x1b[36m",
+    "\x1b[31m",
+    "\x1b[35m",
+    "\x1b[38;5;52m",
+    "\x1b[38;5;7m",
+    "\x1b[38;5;8m",
+    "\x1b[38;5;12m",
+    "\x1b[38;5;10m",
+    "\x1b[38;5;14m",
+    "\x1b[38;5;9m",
+    "\x1b[38;5;13m",
+    "\x1b[38;5;11m",
+    "\x1b[38;5;15m",
 };
 
 OBOS_NO_UBSAN stack_frame OBOSS_StackFrameNext(stack_frame curr)
@@ -179,24 +128,6 @@ static void e9_out(const char *str, size_t sz, void* userdata)
         outb(0xe9, str[i]);
 }
 
-static const char* color_to_ansi[] = {
-    "\x1b[30m",
-    "\x1b[34m",
-    "\x1b[32m",
-    "\x1b[36m",
-    "\x1b[31m",
-    "\x1b[35m",
-    "\x1b[38;5;52m",
-    "\x1b[38;5;7m",
-    "\x1b[38;5;8m",
-    "\x1b[38;5;12m",
-    "\x1b[38;5;10m",
-    "\x1b[38;5;14m",
-    "\x1b[38;5;9m",
-    "\x1b[38;5;13m",
-    "\x1b[38;5;11m",
-    "\x1b[38;5;15m",
-};
 static void e9_set_color(color c, void* unused)
 {
     e9_out(color_to_ansi[c], strlen(color_to_ansi[c]), unused);
@@ -204,50 +135,6 @@ static void e9_set_color(color c, void* unused)
 static void e9_reset_color(void* unused)
 {
     e9_out("\x1b[0m", 4, unused);
-}
-
-static void serial_out(const char *str, size_t sz, void* userdata)
-{
-    OBOS_UNUSED(userdata);
-    for (size_t i = 0; i < sz; i++)
-        outb(0x3f8, str[i]);
-}
-
-static void serial_set_color(color c, void* unused)
-{
-    serial_out(color_to_ansi[c], strlen(color_to_ansi[c]), unused);
-}
-
-static void serial_reset_color(void* unused)
-{
-    serial_out("\x1b[0m", 4, unused);
-}
-
-// Shamelessly stolen from osdev wiki.
-static void init_serial_log_backend()
-{
-    const uint16_t PORT = 0x3f8;
-
-    outb(PORT + 1, 0x00);    // Disable all interrupts
-    outb(PORT + 3, 0x80);    // Enable DLAB (set baud rate divisor)
-    outb(PORT + 0, 0x03);    // Set divisor to 3 (lo byte) 38400 baud
-    outb(PORT + 1, 0x00);    //                  (hi byte)
-    outb(PORT + 3, 0x03);    // 8 bits, no parity, one stop bit
-    outb(PORT + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
-    outb(PORT + 4, 0x0B);    // IRQs enabled, RTS/DSR set
-    outb(PORT + 4, 0x1E);    // Set in loopback mode, test the serial chip
-    outb(PORT + 0, 0xAE);    // Test serial chip (send byte 0xAE and check if serial returns same byte)
-
-    // Check if serial is faulty (i.e: not same byte as sent)
-    if(inb(PORT + 0) != 0xAE)
-        return;
-
-    // If serial is not faulty set it in normal operation mode
-    // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
-    outb(PORT + 4, 0x0F);
-
-    log_backend serial_out_cb = {.write=serial_out,.set_color=serial_set_color,.reset_color=serial_reset_color};
-    OBOS_AddLogSource(&serial_out_cb);
 }
 
 const uintptr_t Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
@@ -571,106 +458,30 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
 
 extern obos_status Arch_InitializeKernelPageTable();
 
-uint64_t random_number();
-uint8_t random_number8();
-__asm__(
-    "random_number:; rdrand %rax; ret; "
-    "random_number8:; rdrand %ax; mov $0, %ah; ret; "
-);
+// uint64_t random_number();
+// uint8_t random_number8();
+// __asm__(
+//     "random_number:; rdrand %rax; ret; "
+//     "random_number8:; rdrand %ax; mov $0, %ah; ret; "
+// );
 
-allocator_info* OBOS_KernelAllocator;
-static basic_allocator kalloc;
 void Arch_SMPStartup();
-extern bool Arch_MakeIdleTaskSleep;
-static void test_allocator(allocator_info* alloc)
-{
-    void* to_free = nullptr;
-    while (true)
-    {
-        size_t sz = random_number() % 4096 + 256;
-        char* ret = alloc->ZeroAllocate(alloc, sz, 1, nullptr);
-        ret[0] = random_number8();
-        ret[sz-1] = random_number8();
-        if (random_number() % 2)
-        {
-            alloc->Free(alloc, to_free, 0);
-            to_free = ret;
-        }
-    }
-}
 
-void Arch_KernelMainBootstrap()
+void OBOSS_KernelPostIRQInit()
 {
-    //Core_Yield();
-    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
-    OBOS_Debug("%s: Initializing PMM.\n", __func__);
-    Mm_InitializePMM();
-    OBOS_Debug("%s: Initializing page tables.\n", __func__);
-    obos_status status = Arch_InitializeKernelPageTable();
-    if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
-    bsp_idleThread.context.cr3 = getCR3();
-#if OBOS_ENABLE_PROFILING
-    prof_start();
-#endif
-    OBOS_Debug("%s: Initializing allocator...\n", __func__);
-    OBOSH_ConstructBasicAllocator(&kalloc);
-    OBOS_KernelAllocator = (allocator_info*)&kalloc;
-    {
-        char* initrd_module_name = OBOS_GetOPTS("initrd-module");
-        char* initrd_driver_module_name = OBOS_GetOPTS("initrd-driver-module");
-        if (initrd_module_name && initrd_driver_module_name)
-        {
-            OBOS_Debug("InitRD module name: %s, InitRD driver name: %s.\n", initrd_module_name, initrd_driver_module_name);
-            struct ultra_module_info_attribute* initrd = FindBootModule(Arch_BootContext, initrd_module_name, 0);
-            Arch_InitRDDriver = FindBootModule(Arch_BootContext, initrd_driver_module_name, 0);
-            if (!Arch_InitRDDriver)
-                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find module %s.\n", initrd_driver_module_name);
-            if (!initrd)
-                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find module %s.\n", initrd_module_name);
-            OBOS_InitrdBinary = (const char*)initrd->address;
-            OBOS_InitrdSize = initrd->size;
-            OBOS_Debug("InitRD is at %p (size: %d)\n", OBOS_InitrdBinary, OBOS_InitrdSize);
-        }
-        else
-            OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
-        if (initrd_module_name)
-            Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
-        if (initrd_driver_module_name)
-            Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
-    }
-    OBOS_Debug("%s: Setting up uACPI early table access\n", __func__);
-    OBOS_SetupEarlyTableAccess();
-    OBOS_Debug("%s: Initializing kernel process.\n", __func__);
-    OBOS_KernelProcess = Core_ProcessAllocate(&status);
-    if (obos_is_error(status))
-            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not allocate a process object. Status: %d.\n", status);
-    OBOS_KernelProcess->pid = Core_NextPID++;
-    Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
-    Core_ProcessAppendThread(OBOS_KernelProcess, &bsp_idleThread);
-    OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
-    Arch_LAPICInitialize(true);
-    OBOS_Debug("%s: Initializing SMP.\n", __func__);
-    Arch_SMPStartup();
-    bsp_idleThread.context.gs_base = rdmsr(0xC0000101 /* GS_BASE */);
-    bsp_idleThread.masterCPU = CoreS_GetCPULocalPtr();
-    Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
-    OBOS_Debug("%s: Initializing IRQ interface.\n", __func__);
-    if (obos_is_error(status = Core_InitializeIRQInterface()))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize irq interface. Status: %d.\n", status);
+    obos_status status = OBOS_STATUS_SUCCESS;
+
     OBOS_Debug("%s: Initializing CMOS RTC\n", __func__);
     Arch_CMOSInitialize();
     OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
     Arch_InitializeSchedulerTimer();
-    Core_LowerIrql(oldIrql);
     OBOS_Debug("%s: Initializing IOAPICs.\n", __func__);
     if (obos_is_error(status = Arch_InitializeIOAPICs()))
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Could not initialize I/O APICs. Status: %d\n", status);
-    OBOS_Debug("%s: Initializing VMM.\n", __func__);
-    Mm_InitializeInitialSwapDevice(&swap, OBOS_GetOPTD("initial-swap-size"));
-    // We can reclaim the memory used.
-    Mm_SwapProvider = &swap;
-    Mm_Initialize();
+}
+
+void OBOSS_KernelPostVMMInit()
+{
     if (Arch_Framebuffer->physical_address)
     {
         OBOS_Debug("Mapping framebuffer as Write-Combining.\n");
@@ -703,299 +514,61 @@ void Arch_KernelMainBootstrap()
         OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
         OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
     }
-    OBOS_Debug("%s: Initializing timer interface.\n", __func__);
-    Core_InitializeTimerInterface();
-    OBOS_Debug("%s: Initializing PCI bus 0\n\n", __func__);
-    Drv_EarlyPCIInitialize();
-    OBOS_Log("%s: Initializing uACPI\n", __func__);
-    OBOS_InitializeUACPI();
-    OBOS_Debug("%s: Initializing other PCI buses\n\n", __func__);
-    Drv_PCIInitialize();
+}
 
-    // Set the interrupt model.
-    uacpi_set_interrupt_model(UACPI_INTERRUPT_MODEL_IOAPIC);
+void OBOSS_KernelPostPMMInit()
+{
+    OBOS_Debug("%s: Initializing page tables.\n", __func__);
+    obos_status status = Arch_InitializeKernelPageTable();
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not initialize page tables. Status: %d.\n", status);
+    bsp_idleThread.context.cr3 = getCR3();
+}
 
-    // TODO: Unmask the IRQ where it should be unmasked (in uacpi_kernel_install_interrupt_handler)
-    // Arch_IOAPICMaskIRQ(9, false);
+void OBOSS_KernelPostKProcInit()
+{
+    Core_ProcessAppendThread(OBOS_KernelProcess, &kernelMainThread);
+    Core_ProcessAppendThread(OBOS_KernelProcess, &bsp_idleThread);
+}
 
-    // allocator_info* alloc = OBOS_KernelAllocator;
-    // for (size_t i = 0; i < (Core_CpuCount-1); i++)
-    // {
-    // 	thread* thr = CoreH_ThreadAllocate(nullptr);
-    // 	thread_ctx ctx = {};
-    // 	void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x10000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
-    // 	CoreS_SetupThreadContext(&ctx, (uintptr_t)test_allocator, (uintptr_t)alloc, false, stack, 0x10000);
-    // 	CoreH_ThreadInitialize(thr, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
-    // 	thr->stackFree = CoreH_VMAStackFree;
-    // 	thr->stackFreeUserdata = &Mm_KernelContext;
-    // 	CoreH_ThreadReady(thr);
-    // }
-    // test_allocator(alloc);
+void OBOSS_InitializeSMP()
+{
+    OBOS_Debug("%s: Initializing LAPIC.\n", __func__);
+    Arch_LAPICInitialize(true);
+    OBOS_Debug("%s: Initializing SMP.\n", __func__);
+    Arch_SMPStartup();
+    bsp_idleThread.context.gs_base = rdmsr(0xC0000101 /* GS_BASE */);
+    bsp_idleThread.masterCPU = CoreS_GetCPULocalPtr();
+    Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
+}
 
-    OBOS_Debug("%s: Loading kernel symbol table.\n", __func__);
-    Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
-    Elf64_Shdr* sectionTable = (Elf64_Shdr*)(Arch_KernelBinary->address + ehdr->e_shoff);
-    if (!sectionTable)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the section table from oboskrnl.\n");
-    const char* shstr_table = (const char*)(Arch_KernelBinary->address + (sectionTable + ehdr->e_shstrndx)->sh_offset);
-    // Look for .symtab
-    Elf64_Shdr* symtab = nullptr;
-    const char* strtable = nullptr;
-    for (size_t i = 0; i < ehdr->e_shnum; i++)
-    {
-        const char* section = shstr_table + sectionTable[i].sh_name;
-        if (strcmp(section, ".symtab"))
-            symtab = &sectionTable[i];
-        if (strcmp(section, ".strtab"))
-            strtable = (const char*)(Arch_KernelBinary->address + sectionTable[i].sh_offset);
-        if (strtable && symtab)
-            break;
-    }
-    if (!symtab)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Do not strip the symbol table from oboskrnl.\n");
-    Elf64_Sym* symbolTable = (Elf64_Sym*)(Arch_KernelBinary->address + symtab->sh_offset);
-    for (size_t i = 0; i < symtab->sh_size/sizeof(Elf64_Sym); i++)
-    {
-        Elf64_Sym* esymbol = &symbolTable[i];
-        int symbolType = -1;
-        switch (ELF64_ST_TYPE(esymbol->st_info)) 
-        {
-            case STT_FUNC:
-                symbolType = SYMBOL_TYPE_FUNCTION;
-                break;
-            case STT_FILE:
-                symbolType = SYMBOL_TYPE_FILE;
-                break;
-            case STT_OBJECT:
-                symbolType = SYMBOL_TYPE_VARIABLE;
-                break;
-            default:
-                continue;
-        }
-        driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
-        const char* name = strtable + esymbol->st_name;
-        size_t szName = strlen(name);
-        symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
-        symbol->address = esymbol->st_value;
-        symbol->size = esymbol->st_size;
-        symbol->type = symbolType;
-        switch (esymbol->st_other)
-        {
-            case STV_DEFAULT:
-            case STV_EXPORTED:
-            // since this is the kernel, everyone already gets the same object
-            case STV_SINGLETON: 
-                symbol->visibility = SYMBOL_VISIBILITY_DEFAULT;
-                break;
-            case STV_PROTECTED:
-            case STV_HIDDEN:
-                symbol->visibility = SYMBOL_VISIBILITY_HIDDEN;
-                break;
-            default:
-                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unrecognized visibility %d.\n", esymbol->st_other);
-        }
-        RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
-    }
-    // OBOS_SetLogLevel(LOG_LEVEL_DEBUG);
-    if (Arch_InitRDDriver)
-    {
-        OBOS_Log("Loading InitRD driver.\n");
-        // Load the InitRD driver.
-        status = OBOS_STATUS_SUCCESS;
-        driver_id* drv = 
-            Drv_LoadDriver((void*)Arch_InitRDDriver->address, Arch_InitRDDriver->size, &status);
-        if (obos_is_error(status))
-            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load the InitRD driver passed in module %s.\nStatus: %d.\n", Arch_InitRDDriver->name, status);
-        thread* main = nullptr;
-        status = Drv_StartDriver(drv, &main);
-        if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
-            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not start the InitRD driver passed in module %s.\nStatus: %d.\nNote: This is a bug, please report it.\n", Arch_InitRDDriver->name, status);
-        if (status != OBOS_STATUS_NO_ENTRY_POINT)
-        {
-            while (drv->main_thread)
-                OBOSS_SpinlockHint();
-        }
-        OBOS_Log("Loaded InitRD driver.\n");
-        OBOS_Debug("%s: Initializing VFS.\n", __func__);
-        Vfs_Initialize();
-    }
-    else 
-    {
-        OBOS_Debug("%s: Initializing VFS.\n", __func__);
-        Vfs_Initialize();
-        OBOS_Debug("No InitRD driver!\n");
-        OBOS_Debug("Scanning command line...\n");
-        char* modules_to_load = OBOS_GetOPTS("load-modules");
-        if (!modules_to_load)
-            OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No initrd, and no drivers passed via the command line. Further boot is impossible.\n");
-        size_t len = strlen(modules_to_load);
-        size_t left = len;
-        char* iter = modules_to_load;
-        while(iter < (modules_to_load + len))
-        {
-            status = OBOS_STATUS_SUCCESS;
-            size_t namelen = strchr(iter, ',');
-            if (namelen != left)
-                namelen--;
-            OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
-            if (uacpi_strncmp(iter, "__KERNEL__", namelen) == 0)
-            {
-                OBOS_Error("Cannot load the kernel (__KERNEL__) as a driver.\n");
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                continue;
-            }
-            struct ultra_module_info_attribute* module = FindBootModule(Arch_BootContext, iter, namelen);
-            if (!module)
-            {
-                OBOS_Warning("Could not load bootloader module %.*s. Status: %d\n", namelen, iter, OBOS_STATUS_NOT_FOUND);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                continue;
-            }
-            driver_id* drv = 
-                Drv_LoadDriver((void*)module->address, module->size, &status);
-            if (obos_is_error(status))
-            {
-                OBOS_Warning("Could not load driver %s. Status: %d\n", module->name, status);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                continue;
-            }
-            status = Drv_StartDriver(drv, nullptr);
-            if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
-            {
-                OBOS_Warning("Could not start driver %s. Status: %d\n", module->name, status);
-                status = Drv_UnloadDriver(drv);
-                if (obos_is_error(status))
-                    OBOS_Warning("Could not unload driver %s. Status: %d\n", module->name, status);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                continue;
-            }
-            if (status != OBOS_STATUS_NO_ENTRY_POINT)
-            {
-                while (drv->main_thread)
-                    OBOSS_SpinlockHint();
-            }
-            if (namelen != len)
-                namelen++;
-            iter += namelen;
-        }
-    }
-    // fd file1 = {}, file2 = {};
-    // Vfs_FdOpen(&file1, "/test.txt", 0);
-    // Vfs_FdOpen(&file2, "/test2.txt", 0);
-    // char* mem1 = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, file1.vn->filesize, 0, VMA_FLAGS_PRIVATE, &file1, nullptr);
-    // char* mem2 = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, file2.vn->filesize, 0, VMA_FLAGS_PRIVATE, &file2, nullptr);
-    // mem2[0] = mem1[0];
-    // mem1[0x1000] = mem2[0x1000];
-    // OBOS_Debug("%s\n", mem2[0] == mem1[0] ? "true" : "false");
-    // OBOS_Debug("%s\n", mem1[0x1000] == mem2[0x1000] ? "true" : "false");
-    // Mm_VirtualMemoryFree(&Mm_KernelContext, mem1, file1.vn->filesize);
-    // Mm_VirtualMemoryFree(&Mm_KernelContext, mem2, file2.vn->filesize);
-    // while(1);
-    OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
-    Drv_PnpLoadDriversAt(Vfs_Root, true);
-    do {
-        if (!Arch_InitRDDriver)
-            break;
-        char* modules_to_load = OBOS_GetOPTS("load-modules");
-        if (!modules_to_load)
-            break;
-        size_t len = strlen(modules_to_load);
-        size_t left = len;
-        char* iter = modules_to_load;
-        while(iter < (modules_to_load + len))
-        {
-            status = OBOS_STATUS_SUCCESS;
-            size_t namelen = strchr(iter, ',');
-            if (namelen != left)
-                namelen--;
-            OBOS_Debug("Loading driver %.*s.\n", namelen, iter);
-            char* path = memcpy(
-                ZeroAllocate(OBOS_KernelAllocator, namelen+1, sizeof(char), nullptr),
-                iter,
-                namelen
-            );
-            fd file = {};
-            status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ);
-            Free(OBOS_KernelAllocator, path, namelen+1);
-            if (obos_is_error(status))
-            {
-                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                continue;
-            }
-            size_t filesize = file.vn->filesize;
-            void *buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, filesize, 0, VMA_FLAGS_PRIVATE, &file, &status);
-            if (obos_is_error(status))
-            {
-                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
-                Vfs_FdClose(&file);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                left -= namelen;
-                continue;
-            }
-            driver_id* drv = 
-                Drv_LoadDriver(buff, filesize, &status);
-            Mm_VirtualMemoryFree(&Mm_KernelContext, buff, filesize);
-            Vfs_FdClose(&file);
-            if (obos_is_error(status))
-            {
-                OBOS_Warning("Could not load driver %.*s. Status: %d\n", namelen, iter, status);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                left -= namelen;
-                continue;
-            }
-            thread* main = nullptr;
-            status = Drv_StartDriver(drv, &main);
-            if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
-            {
-                OBOS_Warning("Could not start driver %*s. Status: %d\n", namelen, iter, status);
-                status = Drv_UnloadDriver(drv);
-                if (obos_is_error(status))
-                    OBOS_Warning("Could not unload driver %*s. Status: %d\n", namelen, iter, status);
-                if (namelen != len)
-                    namelen++;
-                iter += namelen;
-                left -= namelen;
-                continue;
-            }
-            if (status != OBOS_STATUS_NO_ENTRY_POINT)
-            {
-                while (drv->main_thread)
-                    OBOSS_SpinlockHint();
-            }
-            if (namelen != len)
-                namelen++;
-            iter += namelen;
-            left -= namelen;
-        }
-    } while(0);
-    if (Drv_PnpLoad_uHDA() == OBOS_STATUS_SUCCESS)
-        OBOS_Log("Initialized HDA devices via %s\n", OBOS_ENABLE_UHDA ? "uHDA" : nullptr /* should be impossible */);
+static void ultra_module_to_boot_module(const struct ultra_module_info_attribute *ultra_module, struct boot_module* out_module)
+{
+    if (!ultra_module || !out_module)
+        return;
+    out_module->address = (void*)ultra_module->address;
+    out_module->size = ultra_module->size;
+    out_module->name = ultra_module->name;
+    out_module->is_memory = ultra_module->type == ULTRA_MODULE_TYPE_MEMORY;
+    out_module->is_kernel = strcmp(ultra_module->name, "__KERNEL__");
+    return;
+}
 
-    OBOS_Log("%s: Probing partitions.\n", __func__);
-    OBOS_PartProbeAllDrives(true);
-    // uint32_t ecx = 0;
-    // __cpuid__(1, 0, nullptr, nullptr, &ecx, nullptr);
-    // bool isHypervisor = ecx & BIT_TYPE(31, UL) /* Hypervisor bit: Always 0 on physical CPUs. */;
-    // if (!isHypervisor)
-    // 	OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "no, just no.\n");
-    OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
-    Vfs_FinalizeInitialization();
+void OBOSS_GetModule(struct boot_module *module, const char* name)
+{
+    ultra_module_to_boot_module(FindBootModule(Arch_BootContext, name, strlen(name)), module);
+}
+void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t name_len)
+{
+    ultra_module_to_boot_module(FindBootModule(Arch_BootContext, name, name_len), module);
+}
+void OBOSS_GetKernelModule(struct boot_module *module)
+{
+    ultra_module_to_boot_module((void*)Arch_KernelBinary, module);
+}
 
+void OBOSS_MakeTTY()
+{
     dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
     if (ps2k1)
     {
@@ -1006,29 +579,10 @@ void Arch_KernelMainBootstrap()
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
         Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
     }
+}
 
-    OBOS_LoadInit();
-
-    OBOS_Log("%s: Done early boot.\n", __func__);
-    OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
-        Mm_KernelContext.stat.committedMemory/0x400,
-        Mm_KernelContext.stat.pageable/0x400,
-        Mm_KernelContext.stat.paged/0x400,
-        Mm_KernelContext.stat.nonPaged/0x400,
-        Mm_KernelContext.stat.reserved/0x400,
-        Mm_PhysicalMemoryUsage/0x400,
-        Mm_KernelContext.stat.pageFaultCount,
-        Mm_KernelContext.stat.hardPageFaultCount,
-        Mm_KernelContext.stat.softPageFaultCount
-    );
-#if OBOS_ENABLE_PROFILING
-    prof_stop();
-    prof_show("oboskrnl");
-#endif
-
-    // OBOS_Log("Mm_Allocator: %d KiB in-use\n", ((basic_allocator*)Mm_Allocator)->totalMemoryAllocated/1024);
-    // OBOS_Log("OBOS_KernelAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_KernelAllocator)->totalMemoryAllocated/1024);
-    // OBOS_Log("OBOS_NonPagedPoolAllocator: %d KiB in-use\n", ((basic_allocator*)OBOS_NonPagedPoolAllocator)->totalMemoryAllocated/1024);
-    // OBOS_Log("Vfs_Allocator: %d KiB in-use\n", ((basic_allocator*)Vfs_Allocator)->totalMemoryAllocated/1024);
+void Arch_KernelMainBootstrap()
+{
+    OBOS_KernelInit();
     Core_ExitCurrentThread();
 }
