@@ -24,11 +24,10 @@
 
 #include <driver_interface/header.h>
 
-#include "locks/mutex.h"
+#include <locks/mutex.h>
+
 #include "structs.h"
 #include "alloc.h"
-
-#include <uacpi_libc.h>
 
 static char lfn_at(const lfn_dirent* lfn, size_t i)
 {

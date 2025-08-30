@@ -51,7 +51,7 @@ typedef struct irp {
     };
     void* drvData;
     size_t refs;
-    uoff_t blkOffset;
+    size_t blkOffset;
     size_t blkCount;
     union {
         size_t nBlkRead;

@@ -120,8 +120,8 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN void* memcpy(void* blk1_, const void* blk2
 #if !OBOS_ARCH_HAS_MEMCMP
 OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN bool memcmp(const void* blk1_, const void* blk2_, size_t count)
 {
-    const char *blk1 = (const char*)blk1_;
-    const char *blk2 = (const char*)blk2_;
+    const uint8_t *blk1 = (const uint8_t*)blk1_;
+    const uint8_t *blk2 = (const uint8_t*)blk2_;
     for (size_t i = 0; i < count; i++)
         if (blk1[i] != blk2[i])
             return false;
@@ -205,3 +205,30 @@ OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN size_t strnchr(const char* str, char ch, s
     return i + (str[i] == ch ? 1 : 0);
 }
 #endif
+
+OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN int memcmp_std(const void* blk1_, const void* blk2_, size_t count)
+{
+    const uint8_t *blk1 = (const uint8_t*)blk1_;
+    const uint8_t *blk2 = (const uint8_t*)blk2_;
+    for (size_t i = 0; i < count; i++)
+    {
+        if (blk1[i] < blk2[i])
+            return -1;
+        else if (blk1[i] > blk2[i])
+            return 1;
+        else
+            continue;
+    } 
+    return 0;
+}
+
+OBOS_WEAK OBOS_NO_KASAN OBOS_NO_UBSAN int strcmp_std(const char* src1, const char* src2)
+{
+    size_t len1 = strlen(src1);
+    size_t len2 = strlen(src2);
+    if (len1 < len2)
+        return -1;
+    else if (len1 > len2)
+        return 1;
+    return memcmp_std(src1, src2, len1);
+}

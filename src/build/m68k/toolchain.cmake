@@ -88,3 +88,4 @@ set (OBOS_ARCHITECTURE_HAS_ACPI 0)
 set (OBOS_ARCHITECTURE_HAS_PCI 0)
 set (OBOS_IRQL_COUNT 8)
 set (OBOS_UP 1) # The m68k doesn't support SMP, so we disable it as a [POSSIBLE] optimization
+set (OBOS_ENABLE_UHDA 0)

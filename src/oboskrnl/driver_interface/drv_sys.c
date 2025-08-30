@@ -13,8 +13,6 @@
 #include <driver_interface/loader.h>
 #include <driver_interface/pnp.h>
 
-#include <uacpi_libc.h>
-
 #include <mm/alloc.h>
 
 #include <scheduler/cpu_local.h>
@@ -143,7 +141,7 @@ handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */
     driver_id *id = nullptr;
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
     {
-        if (uacpi_strncmp(name, curr->data->header.driverName, 64) == 0)
+        if (strncmp(name, curr->data->header.driverName, 64))
         {
             id = curr->data;
             break;

@@ -195,7 +195,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         memcpy(dev_name, port->str_id, 5);
         dev_name[4] = i == 0 ? '1' : '2';
         dev_name[5] = 0;
-        OBOS_Debug("%*s: Registering PS/2 Device at %s%c%s\n", uacpi_strnlen(this->header.driverName, 64), this->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
+        OBOS_Debug("%*s: Registering PS/2 Device at %s%c%s\n", strnlen(this->header.driverName, 64), this->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};

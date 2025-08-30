@@ -48,7 +48,6 @@
 
 #include <asan.h>
 
-allocator_info* OBOS_KernelAllocator;
 timer_frequency CoreS_TimerFrequency;
 
 OBOS_ALIGNAS(0x10) volatile struct limine_memmap_request Arch_MemmapRequest = {
@@ -183,7 +182,6 @@ void Arch_KernelEntryBootstrap()
 }
 void Arch_InitializePageTables();
 void Arch_PageFaultHandler(interrupt_frame* frame);
-static basic_allocator kalloc;
 extern BootDeviceBase Arch_RTCBase;
 void timer_yield(dpc* on, void* udata)
 {
@@ -259,6 +257,14 @@ void tty_reset_color(void *udata)
 }
 static log_backend tty_backend = { .write=tty_print, .set_color=tty_set_color, .reset_color=tty_reset_color };
 
+void OBOSS_KernelPostTmInit()
+{
+    OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
+    static timer sched_timer;
+    sched_timer.handler = sched_timer_hnd;
+    sched_timer.userdata = nullptr;
+    Core_TimerObjectInitialize(&sched_timer, TIMER_MODE_INTERVAL, 4000);
+}
 void OBOSS_KernelPostPMMInit()
 {
     OBOS_Debug("%s: Initializing page tables.\n", __func__);
@@ -285,15 +291,7 @@ void OBOSS_GetModule(struct boot_module *module, const char* name)
 
 void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t name_len)
 {
-    if (strncmp(name, "initrd-driver", name_len))
-    {
-        module->address = (void*)Arch_ModuleStart;
-        module->size = (uintptr_t)Arch_ModuleEnd - (uintptr_t)Arch_ModuleStart;
-        module->is_kernel = false;
-        module->is_memory = false;
-        module->name = "initrd-driver";
-    }
-    else if (strncmp(name, "initrd", name_len))
+    if (strncmp(name, "initrd", name_len))
     {
         module->address = (void*)Arch_InitrdRequest.response->modules[0]->address;
         module->size = Arch_InitrdRequest.response->modules[0]->size;
@@ -308,6 +306,14 @@ void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t nam
         module->is_kernel = true;
         module->is_memory = false;
         module->name = "__KERNEL__";
+    }
+    else if (strncmp(name, "initrd_driver", name_len))
+    {
+        module->address = (void*)Arch_ModuleStart;
+        module->size = (uintptr_t)Arch_ModuleEnd - (uintptr_t)Arch_ModuleStart;
+        module->is_kernel = false;
+        module->is_memory = false;
+        module->name = "initrd_driver";
     }
 }
 

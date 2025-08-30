@@ -145,7 +145,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags pr
 }
 
 page* Mm_AnonPage = nullptr;
-void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
+void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, uoff_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     set_statusp(ustatus, status);

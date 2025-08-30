@@ -13,8 +13,6 @@
 
 #include <mm/bare_map.h>
 
-#include <uacpi_libc.h>
-
 OBOS_PAGEABLE_VARIABLE const char* OBOS_KernelCmdLine;
 OBOS_PAGEABLE_VARIABLE const char* volatile OBOS_InitrdBinary;
 OBOS_PAGEABLE_VARIABLE size_t volatile OBOS_InitrdSize;
@@ -174,7 +172,7 @@ void OBOS_ParseCMDLine()
         size_t optlen = strchr(arg, '=');
         if (arglen != optlen || arg[arglen - 1] == '=')
             continue;
-        if (uacpi_strncmp("init-args", arg, optlen) == 0)
+        if (strncmp("init-args", arg, optlen))
         {
             if ((i + 1) == OBOS_argc)
                 break;
@@ -204,7 +202,7 @@ char* OBOS_GetOPTS(const char* opt)
         // Wut?
         // if (arglen == optlen && arg[arglen - 1] != '=')
         //     continue;
-        if (uacpi_strncmp(arg, opt, optlen) == 0)
+        if (strncmp(arg, opt, optlen))
         {
             if (i == (OBOS_argc - 1) && optlen == arglen)
                 return nullptr;
@@ -362,7 +360,7 @@ bool OBOS_GetOPTF(const char* opt)
         size_t optlen = strchr(arg, '=');
         if (arglen != optlen || arg[arglen - 1] == '=')
             continue;
-        if (uacpi_strncmp(opt, arg, optlen) == 0)
+        if (strncmp(opt, arg, optlen))
             return true;
     }
     return false;

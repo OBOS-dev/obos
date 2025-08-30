@@ -42,19 +42,19 @@ void Arch_PageFaultHandler(interrupt_frame* frame)
                 break;
             default:
             {
-                static const char format[] = "Handling page fault with error code 0x%x on address %p failed.\n";
+                static const char format[] = "Handling page fault with error code 0x%x on address %08x failed.\n";
                 OBOS_Warning(format, mm_ec, frame->format_7.fa);
                 break;
             }
         }
     }
     OBOS_Panic(OBOS_PANIC_EXCEPTION,
-        "Access fault in %s-mode at 0x%p while trying to %s the %spresent page at 0x%p.\nRegister dump:\n"
-        "d0: 0x%p, d1: 0x%p, d2: 0x%p, d3: 0x%p\n"
-        "d1: 0x%p, d5: 0x%p, d6: 0x%p, d7: 0x%p\n"
-        "a0: 0x%p, a1: 0x%p, a2: 0x%p, a3: 0x%p\n"
-        "a4: 0x%p, a5: 0x%p, a6: 0x%p, sp: 0x%p\n"
-        "pc: 0x%p, sr: 0x%p\n",
+        "Access fault in %s-mode at 0x%08x while trying to %s the %spresent page at 0x%08x.\nRegister dump:\n"
+        "d0: 0x%08x, d1: 0x%08x, d2: 0x%08x, d3: 0x%08x\n"
+        "d1: 0x%08x, d5: 0x%08x, d6: 0x%08x, d7: 0x%08x\n"
+        "a0: 0x%08x, a1: 0x%08x, a2: 0x%08x, a3: 0x%08x\n"
+        "a4: 0x%08x, a5: 0x%08x, a6: 0x%08x, sp: 0x%08x\n"
+        "pc: 0x%08x, sr: 0x%08x\n",
         (mm_ec & PF_EC_UM) ? "user" : "kernel",
         frame->pc,
         (mm_ec & PF_EC_RW) ? "write" : "read",

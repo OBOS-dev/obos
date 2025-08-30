@@ -236,7 +236,7 @@ void OBOS_KernelInit()
     Core_LowerIrql(oldIrql);
 
     OBOS_Debug("%s: Initializing VMM.\n", __func__);
-    Mm_InitializeInitialSwapDevice(&swap, OBOS_GetOPTD("initial-swap-size"));
+    Mm_InitializeInitialSwapDevice(&swap, OBOS_GetOPTD_Ex("initial-swap-size", 8*1024*1024));
     // We can reclaim the memory used.
     Mm_SwapProvider = &swap;
     Mm_Initialize();
@@ -245,6 +245,9 @@ void OBOS_KernelInit()
 
     OBOS_Debug("%s: Initializing timer interface.\n", __func__);
     Core_InitializeTimerInterface();
+    if (OBOSS_KernelPostTmInit)
+        OBOSS_KernelPostTmInit();
+
     OBOS_Debug("%s: Initializing PCI bus 0\n\n", __func__);
     Drv_EarlyPCIInitialize();
     OBOS_Log("%s: Initializing uACPI\n", __func__);
@@ -318,6 +321,7 @@ void OBOS_KernelInit()
     OBOS_LoadInit();
 
     OBOS_Log("%s: Done early boot.\n", __func__);
+#if OBOS_ARCHITECTURE_BITS == 64
     OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
         Mm_KernelContext.stat.committedMemory/0x400,
         Mm_KernelContext.stat.pageable/0x400,
@@ -329,6 +333,20 @@ void OBOS_KernelInit()
         Mm_KernelContext.stat.hardPageFaultCount,
         Mm_KernelContext.stat.softPageFaultCount
     );
+#else
+    OBOS_Log("Currently at %d KiB of committed memory (%d KiB pageable), %d KiB paged out, %d KiB non-paged, and %d KiB uncommitted. %d KiB of physical memory in use. Page faulted %d times (%d hard, %d soft).\n", 
+        Mm_KernelContext.stat.committedMemory/0x400,
+        Mm_KernelContext.stat.pageable/0x400,
+        Mm_KernelContext.stat.paged/0x400,
+        Mm_KernelContext.stat.nonPaged/0x400,
+        Mm_KernelContext.stat.reserved/0x400,
+        Mm_PhysicalMemoryUsage/0x400,
+        Mm_KernelContext.stat.pageFaultCount,
+        Mm_KernelContext.stat.hardPageFaultCount,
+        Mm_KernelContext.stat.softPageFaultCount
+    );
+
+#endif
 #if OBOS_ENABLE_PROFILING
     prof_stop();
     prof_show("oboskrnl");
@@ -399,6 +417,7 @@ void OBOS_LoadSymbolTable()
             default:
                 OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Unrecognized visibility %d.\n", esymbol->st_other);
         }
+        // printf("Found symbol %s at %p-%p (symbol has visibility '%s')\n", symbol->name, symbol->address, symbol->address+symbol->size, symbol->visibility == SYMBOL_VISIBILITY_DEFAULT ? "default" : "hidden");
         RB_INSERT(symbol_table, &OBOS_KernelSymbolTable, symbol);
     }
 }

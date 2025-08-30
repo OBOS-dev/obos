@@ -258,6 +258,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
     }
     page.virt = addr;
     page.prot.present = entry & PT_FLAGS_RESIDENT;
+    page.prot.is_swap_phys = entry & PT_FLAGS_U0;
     page.prot.huge_page = false;
     page.prot.rw = !(entry & PT_FLAGS_READONLY);
     page.prot.executable = true;
@@ -273,7 +274,10 @@ OBOS_NO_UBSAN OBOS_NO_KASAN obos_status MmS_QueryPageInfo(page_table pt, uintptr
         entry &= ~(PT_FLAGS_USED | PT_FLAGS_MODIFIED);
         Arch_MapPage(pt, addr, MASK_PTE(entry), entry & ~0xffffff00, false);
     }
-    OBOS_ENSURE(MASK_PTE(entry) != 0);
+    if (page.prot.present)
+        OBOS_ENSURE(MASK_PTE(entry) != 0);
+    else if (!entry)
+        page.prot.user = false;
     if (phys)
         *phys = MASK_PTE(entry);
     if (ppage)

@@ -19,8 +19,6 @@
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
 
-#include <uacpi_libc.h>
-
 #include <driver_interface/driverId.h>
 
 #include <allocators/base.h>
@@ -185,7 +183,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->name = Allocate(OBOS_KernelAllocator, ino->name_len+1, nullptr);
     memcpy(ino->name, ino->path+index, ino->name_len);
     ino->name[ino->name_len] = 0;
-    ino->filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+    ino->filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
     ino->data = (char*)hdr + 512;
     // ino->data = Allocate(OBOS_NonPagedPoolAllocator, ino->filesize, nullptr);
     // if (!ino->data)
@@ -212,7 +210,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
         default:
             OBOS_ENSURE(!"Unrecognized header type");
     }
-    uint16_t filemode = oct2bin(hdr->filemode, uacpi_strnlen(hdr->filemode, 8));
+    uint16_t filemode = oct2bin(hdr->filemode, strnlen(hdr->filemode, 8));
     ino->perm.group_read = filemode & FILEMODE_GROUP_READ;
     ino->perm.owner_read = filemode & FILEMODE_OWNER_READ;
     ino->perm.other_read = filemode & FILEMODE_OTHER_READ;
@@ -284,10 +282,13 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
     InitrdRoot->ino = CurrentInodeNumber++;
 
     const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
+    if (OBOS_InitrdSize < sizeof(ustar_hdr))
+        return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false};
+
     while (memcmp(hdr->magic, USTAR_MAGIC, 6))
     {
         size_t filename_len = strlen(hdr->filename);
-        size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+        size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
         if (strchr(hdr->filename, '/') != filename_len)
             goto down;
 
@@ -306,84 +307,6 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
     }
-
-    // const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
-    // while (memcmp(hdr->magic, USTAR_MAGIC, 6))
-    // {
-    //     if (hdr->type == DIRTYPE)
-    //     {
-    //         // Check if it exists first.
-    //         initrd_inode* us = DirentLookupFrom(hdr->filename, InitrdRoot);
-    //         if (us)
-    //             continue;
-    //     }
-    //     initrd_inode* ino = create_inode_boot(hdr);
-    //     if (!ino)
-    //         goto out;
-
-    //     // Get our parent.
-    //     int64_t index = strrfind(ino->path, '/');
-    //     if (index == -1)
-    //         index = 0;
-    //     char presv = ino->path[index];
-    //     ino->path[index] = 0;
-    //     ino->parent = DirentLookupFrom(ino->path /* really the 'dirname' */, InitrdRoot);
-    //     ino->path[index] = presv;
-
-    //     if (!ino->parent)
-    //     {
-    //         ino->parent = InitrdRoot;
-    //         // Create all parent directories
-    //         char* iter = ino->path;
-    //         char* end = ino->path + ino->path_len;
-    //         while (iter < end)
-    //         {
-    //             size_t off = strchr(iter, '/');
-    //             presv = iter[off];
-    //             iter[off] = 0;
-    //             initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
-    //             if (found)
-    //             {
-    //                 ino->parent = found;
-    //                 goto down;
-    //             }
-
-    //             const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
-    //             OBOS_ASSERT(sub_hdr);
-                
-    //             initrd_inode* sub_ino = create_inode_boot(sub_hdr);
-    //             sub_ino->parent = ino->parent;
-    //             // printf("%s %s\n", iter, sub_ino->parent->name);
-    //             if (!sub_ino->parent->children.head)
-    //                 sub_ino->parent->children.head = sub_ino;
-    //             if (sub_ino->parent->children.tail)
-    //                 sub_ino->parent->children.tail->next = sub_ino;
-    //             sub_ino->prev = sub_ino->parent->children.tail;
-    //             sub_ino->parent->children.tail = sub_ino;
-    //             sub_ino->parent->children.nChildren++;
-                
-    //             ino->parent = sub_ino;
-
-    //             down:
-    //             iter[off] = presv;
-    //             iter += off;
-    //         }
-    //     }
-    //     if (!ino->parent)
-    //         ino->parent = InitrdRoot;
-    //     if (!ino->parent->children.head)
-    //         ino->parent->children.head = ino;
-    //     if (ino->parent->children.tail)
-    //         ino->parent->children.tail->next = ino;
-    //     ino->prev = ino->parent->children.tail;
-    //     ino->parent->children.tail = ino;
-    //     ino->parent->children.nChildren++;
-
-    //     out:
-    //     (void)0;
-    //     size_t filesize_rounded = (ino->filesize + 0x1ff) & ~0x1ff;
-    //     hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
-    // }
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false};
 }
@@ -575,11 +498,11 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     {
         while (memcmp(hdr->magic, USTAR_MAGIC, 6))
         {
-            size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
-            size_t filename_len = uacpi_strnlen(hdr->filename, 100);
+            size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
+            size_t filename_len = strnlen(hdr->filename, 100);
             if (hdr == dir->hdr)
                 goto down;
-            if (!dir->path_len || (uacpi_strncmp(dir->path, hdr->filename, dir->path_len) == 0  && dir->path_len != filename_len))
+            if (!dir->path_len || (strncmp(dir->path, hdr->filename, dir->path_len) && dir->path_len != filename_len))
             {
                 int addend = 0;
                 if (dir->path_len)
