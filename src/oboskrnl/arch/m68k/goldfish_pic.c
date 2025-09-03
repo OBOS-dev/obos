@@ -82,11 +82,17 @@ uint8_t Arch_PICGetPendingCount(pic* on)
 }
 void Arch_PICDisable(pic* on, uint32_t line)
 {
-    write_register(on, DISABLE, 1<<line);
+    irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
+    write_register(on, DISABLE, 1U<<line);
+    on->irqs[line].masked = true;
+    Core_LowerIrql(oldIrql);
 }
 void Arch_PICEnable(pic* on, uint32_t line)
 {
-    write_register(on, ENABLE, 1<<line);
+    irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
+    write_register(on, ENABLE, 1U<<line);
+    on->irqs[line].masked = false;
+    Core_LowerIrql(oldIrql);
 }
 uint32_t Arch_PICGetPending(pic* on)
 {
@@ -97,15 +103,24 @@ void Arch_PICRegisterIRQ(uint32_t line_number, uint8_t irq)
     if (!Arch_PICBases)
         initialize();
     uint8_t pic_index = line_number/32; // see qemu/hw/m68k/virt.c:58
-    uint8_t line = line_number%32-8;
+    uint8_t line = line_number%32;
     Arch_PICBases[pic_index].irqs[line].vector = irq;
+}
+void Arch_PICUnregisterIRQ(uint32_t line_number)
+{
+    if (!Arch_PICBases)
+        initialize();
+    uint8_t pic_index = line_number/32; // see qemu/hw/m68k/virt.c:58
+    uint8_t line = line_number%32;
+    Arch_PICBases[pic_index].irqs[line].vector = 0;
+    Arch_PICDisable(&Arch_PICBases[pic_index], line);
 }
 void Arch_PICMaskIRQ(uint32_t line_number, bool mask)
 {
     if (!Arch_PICBases)
         initialize();
     uint8_t pic_index = line_number/32; // see qemu/hw/m68k/virt.c:58
-    uint8_t line = line_number%32-8;
+    uint8_t line = line_number%32;
     Arch_PICBases[pic_index].irqs[line].masked = mask;
     if (!mask)
         Arch_PICEnable(&Arch_PICBases[pic_index], line);
@@ -117,26 +132,27 @@ static void on_defer_1(void* udata)
 {
     uint32_t line_number = (uint32_t)udata;
     uint8_t pic_index = line_number/32; // see qemu/hw/m68k/virt.c:58
-    uint8_t line = line_number%32-8;
+    uint8_t line = line_number%32;
     Arch_PICBases[pic_index].irqs[line].masked = false;
     Arch_PICEnable(&Arch_PICBases[pic_index], line);
 }
 void CoreS_SendEOI(interrupt_frame* frame)
 {
     OBOS_UNUSED(frame);
-	for (size_t i = 0; i < Arch_PICCount; i++)
-		Arch_PICClearPending(&Arch_PICBases[i]);
+	// for (size_t i = 0; i < Arch_PICCount; i++)
+	// 	Arch_PICClearPending(&Arch_PICBases[i]);
 }
+void Arch_SetHardwareIPL(uint8_t to);
 void Arch_PICHandleIRQ(interrupt_frame* frame)
 {
     pic* cur = Arch_PICBases;
     for (size_t i = 0; i < Arch_PICCount && cur; i++, cur++)
     {
-        uint32_t pending = Arch_PICGetPendingCount(cur);
+        int32_t pending = Arch_PICGetPendingCount(cur);
         uint32_t line = 0;
-        for(; pending; pending &= ~(1<<line))
+        while (--pending >= 0)
         {
-            line = __builtin_ctz(pending);
+            line = __builtin_ctz(Arch_PICGetPending(cur));
             if (!cur->irqs[line].masked)
             {
                 interrupt_frame iframe = {};
@@ -145,10 +161,12 @@ void Arch_PICHandleIRQ(interrupt_frame* frame)
                 iframe.vector = cur->irqs[line].vector - 0x40;
                 cur->irqs[line].masked = true;
                 Arch_PICDisable(cur, line);
-                ((void(*)(interrupt_frame*))Arch_IRQHandlers[cur->irqs[line].vector])(&iframe);
+                if (Arch_IRQHandlers[cur->irqs[line].vector])
+                    ((void(*)(interrupt_frame*))Arch_IRQHandlers[cur->irqs[line].vector])(&iframe);
+                Arch_SetHardwareIPL(7);
                 if (CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].nDefers)
                 {
-                    uint32_t line_pic = ((8 + i * 32)) + line;
+                    uint32_t line_pic = ((i * 32)) + line;
                     CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].on_defer_callback = on_defer_1;
                     CoreS_GetCPULocalPtr()->arch_specific.irqs[cur->irqs[line].vector].udata = (void*)line_pic;
                 }

@@ -11,7 +11,7 @@ qemu-system-m68k \
 -m 512M \
 -d int \
 -D qemu_log.txt \
--serial file:/dev/stdout \
+-serial tcp:0.0.0.0:1534,server,nowait \
 -append "--root-fs-uuid=initrd --log-level=0 --initrd-module=initrd --initrd-driver-module=initrd_driver --working-set-cap=8388608 --no-init" \
 -initrd "config/initrd.tar"
 

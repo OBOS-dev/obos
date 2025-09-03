@@ -122,10 +122,10 @@ uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
 // Format=XRGB8888
 char Arch_Framebuffer[1024*768*4];
 void Arch_KernelEntry();
+uintptr_t Arch_TTYBase = 0;
 static char idle_task_stack[0x10000];
 static char kernel_main_stack[0x10000];
 void Arch_IdleTask();
-uintptr_t Arch_TTYBase = 0;
 obos_status Arch_MapPage(page_table pt_root, uintptr_t virt, uintptr_t to, uintptr_t ptFlags);
 void Arch_KernelEntryBootstrap()
 {    
@@ -241,11 +241,11 @@ typedef struct log_backend {
 } log_backend;
 */
 
-void tty_print(const char* buf, size_t sz, void *data)
+OBOS_NO_UBSAN void tty_print(const char* buf, size_t sz, void *data)
 {
     OBOS_UNUSED(data);
     for (size_t i = 0; i < sz; i++)
-        ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
+        ((volatile uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
 }
 void tty_set_color(color c, void* udata)
 {

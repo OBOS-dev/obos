@@ -96,6 +96,7 @@ void rtc_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_ve
     OBOS_UNUSED(from);
     OBOS_UNUSED(to);
     OBOS_UNUSED(userdata);
+    Arch_PICRegisterIRQ(Arch_RTCBase.irq, to->id + 0x40);
 }
 
 void rtc_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
@@ -122,7 +123,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
         return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!handler)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-    obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, false);
+    obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, true);
 	if (obos_is_error(status))
 		return status;
 	Core_TimerIRQ->moveCallback  = rtc_irq_move_callback;
@@ -130,6 +131,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	Core_TimerIRQ->handler = rtc_irq_handler;
 	Core_TimerIRQ->handlerUserdata = handler;
     Arch_RTCBase = *(BootDeviceBase*)(Arch_GetBootInfo(BootInfoType_GoldfishRtcBase) + 1);
+    Arch_RTCBase.irq -= 8; // weirdness
     // Map it.
     uintptr_t virt_base =
         (uintptr_t)Mm_VirtualMemoryAlloc(
