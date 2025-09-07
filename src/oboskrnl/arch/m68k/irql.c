@@ -137,7 +137,7 @@ void Arch_CallDeferredIrq(m68k_dirq* irq, m68k_dirq* table)
 void CoreS_SetIRQL(uint8_t to, uint8_t old)
 {
     if (to == IRQL_MASKED)
-        Arch_SetHardwareIPL(7); // avoid a lot of nexedless deferring.
+        Arch_SetHardwareIPL(7); // avoid a lot of needless deferring.
     else
         Arch_SetHardwareIPL(0);
     if (to >= old)

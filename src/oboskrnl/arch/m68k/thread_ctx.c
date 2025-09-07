@@ -4,8 +4,9 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
-#include "error.h"
 #include <int.h>
+#include <error.h>
+#include <memmanip.h>
 
 #include <scheduler/thread_context_info.h>
 #include <stdint.h>
@@ -34,12 +35,28 @@ obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t
         return OBOS_STATUS_INVALID_ARGUMENT;
     ctx->pc = entry;
     if (!makeUserMode)
+    {
         ctx->sr |= (1<<13);
-    ctx->sp = (uintptr_t)stackBase+stackSize;
-    ctx->sp -= 4;
-    *(uintptr_t*)ctx->sp = arg1;
-    ctx->sp -= 4;
-    *(uintptr_t*)ctx->sp = 0;
+        ctx->sp = (uintptr_t)stackBase+stackSize;
+        ctx->sp -= 4;
+        *(uintptr_t*)ctx->sp = arg1;
+        ctx->sp -= 4;
+        *(uintptr_t*)ctx->sp = 0;
+    }
+    else 
+    {
+        ctx->usp = (uintptr_t)stackBase+stackSize;
+        uint32_t stack_frame[2] = {
+            0,
+            arg1,
+        };
+        ctx->usp -= 8;
+        memcpy_k_to_usr((void*)ctx->usp, stack_frame, sizeof(stack_frame));
+        // ctx->usp -= 4;
+        // *(uintptr_t*)ctx->usp = arg1;
+        // ctx->usp -= 4;
+        // *(uintptr_t*)ctx->usp = 0;
+    }
     ctx->stackBase = stackBase;
     ctx->stackSize = stackSize;
     return OBOS_STATUS_SUCCESS;

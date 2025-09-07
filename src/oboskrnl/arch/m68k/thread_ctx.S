@@ -24,7 +24,7 @@ CoreS_SwitchToThreadContext:
     sub.l %d2, %d2
     move.b (%d0), %d2
     move.l (+4,%sp), %a0
-    move.b (+0x4e,%a0), (%d0)
+    move.b (+0x52,%a0), (%d0)
 
     move.l (+4,%sp), %a0
     move.l %d2, %sp@-
@@ -41,6 +41,9 @@ CoreS_SwitchToThreadContext:
 
     move.l %a0@+, %a1
     move.l %a1, %sp
+
+    move.l %a0@+, %a1
+    move.l %a1, %usp
     
     movem.l %a0@+, %d0-%d7/%a0-%a6
     
@@ -62,6 +65,8 @@ CoreS_SaveRegisterContextAndYield:
     move.l %d0, %a0@+
     // Save SP
     move.l %sp, %a1
+	move.l %a1, %a0@+
+    move.l %usp, %a1
 	move.l %a1, %a0@+
     // movem.l %d0-%d7/%a0-%a6, %a0@+
     // Save GPRs
