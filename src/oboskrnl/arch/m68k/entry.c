@@ -8,6 +8,7 @@
 #include <error.h>
 #include <kinit.h>
 #include <cmdline.h>
+#include <syscall.h>
 #include <text.h>
 #include <klog.h>
 #include <font.h>
@@ -326,6 +327,10 @@ void OBOSS_KernelPostKProcInit()
 {
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kmain_thread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &idle_thread);
+}
+void OBOSS_KernelPostIRQInit()
+{
+    OBOSS_InitializeSyscallInterface();
 }
 
 void Arch_KernelEntry()

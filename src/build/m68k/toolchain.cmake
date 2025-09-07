@@ -52,7 +52,7 @@ list (APPEND oboskrnl_sources
 	"arch/m68k/entry.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c" "arch/m68k/driver_loader.c"
 	"arch/m68k/irq.c" "arch/m68k/isr.S" "arch/m68k/thread_ctx.S" "arch/m68k/thread_ctx.c"
 	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/goldfish_rtc.c"
-	"arch/m68k/goldfish_pic.c" "arch/m68k/gf_tty.c"
+	"arch/m68k/goldfish_pic.c" "arch/m68k/gf_tty.c" "arch/m68k/syscall.c"
 )
 
 add_compile_definitions(

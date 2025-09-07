@@ -117,7 +117,7 @@ void rtc_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
 //     OBOS_UNUSED(userdata);
 //     return ((volatile gf_rtc*)(Arch_RTCBase.base))->alarm_status;
 // }
-OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
+OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status CoreS_InitializeTimer(irq_handler handler)
 {
     if (Arch_RTCBase.base)
         return OBOS_STATUS_ALREADY_INITIALIZED;
@@ -130,7 +130,10 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 	// Core_TimerIRQ->irqChecker  = rtc_check_irq_callback;
 	Core_TimerIRQ->handler = rtc_irq_handler;
 	Core_TimerIRQ->handlerUserdata = handler;
-    Arch_RTCBase = *(BootDeviceBase*)(Arch_GetBootInfo(BootInfoType_GoldfishRtcBase) + 1);
+    BootInfoTag* rtc_tag = Arch_GetBootInfo(BootInfoType_GoldfishRtcBase);
+    if (!rtc_tag)
+        return OBOS_STATUS_INTERNAL_ERROR;
+    Arch_RTCBase = *(BootDeviceBase*)(rtc_tag + 1);
     Arch_RTCBase.irq -= 8; // weirdness
     // Map it.
     uintptr_t virt_base =
