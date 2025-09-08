@@ -39,20 +39,21 @@ else()
 endif()
 set(TARGET_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
 set(TARGET_DRIVER_COMPILE_OPTIONS_C -fno-omit-frame-pointer -msoft-float)
-set(TARGET_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
-set(TARGET_DRIVER_LINKER_OPTIONS -mcpu=68040 -z max-page-size=4096)
+set(TARGET_LINKER_OPTIONS -z max-page-size=4096)
+set(TARGET_DRIVER_LINKER_OPTIONS -z max-page-size=4096)
 
 if (OBOS_ENABLE_KASAN)
 	add_compile_options($<$<COMPILE_LANGUAGE:C>:-fasan-shadow-offset=0>)
 endif()
 
 add_compile_options("-mcpu=68040")
+add_link_options("-mcpu=68040")
 
 list (APPEND oboskrnl_sources 
 	"arch/m68k/entry.c" "arch/m68k/asm_helpers.S" "arch/m68k/irql.c" "arch/m68k/driver_loader.c"
 	"arch/m68k/irq.c" "arch/m68k/isr.S" "arch/m68k/thread_ctx.S" "arch/m68k/thread_ctx.c"
 	"arch/m68k/mmu.c" "arch/m68k/pmm.c" "arch/m68k/exception_handlers.c" "arch/m68k/goldfish_rtc.c"
-	"arch/m68k/goldfish_pic.c" "arch/m68k/gf_tty.c" "arch/m68k/syscall.c"
+	"arch/m68k/goldfish_pic.c" "arch/m68k/gf_tty.c" "arch/m68k/syscall.c" "arch/m68k/execve.c"
 )
 
 add_compile_definitions(

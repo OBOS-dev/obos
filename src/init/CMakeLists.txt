@@ -14,6 +14,8 @@ endif()
 if (OBOS_ENABLE_KASAN)
     add_compile_options("-fno-sanitize=address")
 endif()
+add_compile_options("-fPIE")
+add_link_options("-pie")
 
 link_libraries(syscall_invoke)
 

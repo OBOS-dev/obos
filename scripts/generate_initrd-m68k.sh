@@ -5,6 +5,7 @@ then
     mkdir tar
 fi
 # TODO: Drivers?
+cp out/init tar/
 if [[ ! -d tar/dev ]]
 then
     mkdir tar/dev

@@ -12,8 +12,8 @@
 
 #define MAX_FILENAME_LEN 256UL /* In bytes */
 
-typedef  int64_t off_t;
-typedef uint64_t uoff_t;
+typedef  intptr_t off_t;
+typedef uintptr_t uoff_t;
 #define OFF_T_MIN INT64_MIN
 #define OFF_T_MAX INT64_MAX
 #define UOFF_T_MIN UINT64_MIN

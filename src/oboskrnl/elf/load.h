@@ -13,6 +13,7 @@
 
 typedef struct elf_info {
     void* base;
+    void* rtld_base;
     uintptr_t entry;
     uintptr_t real_entry;
 } elf_info;

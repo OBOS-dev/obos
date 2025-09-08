@@ -17,8 +17,8 @@
 #include <scheduler/process.h>
 
 const char *syscall_to_string[] = {
-    "Core_ExitCurrentThread",
-    "Core_Yield",
+    "Core_ExitCurrentThread/Sys_SetTCB",
+    "Core_Yield/Sys_GetTCB",
     "OBOS_Reboot",
     "OBOS_Shutdown",
     "Sys_HandleClose",
@@ -178,25 +178,43 @@ const char* status_to_string[] = {
 
 void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f);
 
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN];
+void Sys_SetTCB(void* tcb)
+{
+    Core_GetCurrentThread()->context.tcb = tcb;
+}
+void *Sys_GetTCB()
+{
+    return Core_GetCurrentThread()->context.tcb;
+}
+
+uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
+    (uintptr_t)Sys_SetTCB,
+    (uintptr_t)Sys_GetTCB,
+};
 
 void Arch_LogSyscall(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4, uintptr_t p5, uint32_t sysnum);
 void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum);
 
+// parameters 1-5 are in d0-d4, respectively
+// syscall number is in d5
+// return value is in d0
 void Arch_SyscallTrapHandler(interrupt_frame* frame)
 {
     uint32_t syscall_number = frame->d5;
     uintptr_t* table = IS_ARCH_SYSCALL(syscall_number) ? OBOS_ArchSyscallTable : OBOS_SyscallTable;
-    syscall_number -= ARCH_SYSCALL_BEGIN;
-    Arch_LogSyscall(frame->d0, frame->d1, frame->d2, frame->d3, frame->d5, syscall_number);
+    if (IS_ARCH_SYSCALL(syscall_number))
+        syscall_number -= ARCH_SYSCALL_BEGIN;
+    if (frame->d5 != (ARCH_SYSCALL_BEGIN+1) /* Sys_GetTCB */)
+        Arch_LogSyscall(frame->d0, frame->d1, frame->d2, frame->d3, frame->d4, syscall_number);
     if (syscall_number >= SYSCALL_END)
     {
         frame->a1 = OBOS_STATUS_UNIMPLEMENTED;
         return;
     }
     uintptr_t(*hnd)(uint32_t p1, uint32_t p2, uint32_t p3, uint32_t p4, uint32_t p5) = (void*)table[syscall_number];
-    frame->a1 = hnd(frame->d0, frame->d1, frame->d2, frame->d3, frame->d5);
-    Arch_LogSyscallRet(frame->a1, syscall_number);
+    frame->d0 = hnd(frame->d0, frame->d1, frame->d2, frame->d3, frame->d4);
+    if (frame->d5 != (ARCH_SYSCALL_BEGIN+1) /* Sys_GetTCB */)
+        Arch_LogSyscallRet(frame->d0, syscall_number);
 }
 
 void OBOSS_InitializeSyscallInterface()
@@ -208,10 +226,10 @@ void Arch_LogSyscall(uintptr_t d0, uintptr_t d1, uintptr_t d2, uintptr_t d3, uin
 {
     if (sysnum >= sizeof(syscall_to_string)/sizeof(const char*))
     {
-        OBOS_Warning("(thread %ld, process %ld) invalid syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, sysnum, d0,d1,d2,d3,d4);
+        OBOS_Warning("(thread %d, process %d) invalid syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, sysnum, d0,d1,d2,d3,d4);
         return;
     }
-    OBOS_Debug("(thread %ld, process %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], d0,d1,d2,d3,d4);
+    OBOS_Debug("(thread %d, process %d) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], d0,d1,d2,d3,d4);
 }
 void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum)
 {
@@ -229,8 +247,8 @@ void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum)
         (ret == 0 || sysnum == 22 || sysnum == 42 || sysnum == 58 || sysnum == 34 || sysnum == 0
          || sysnum == 20 || sysnum == 59 || sysnum == 61 || sysnum == 9 || sysnum == 1 || sysnum == 19
          || sysnum == 2 || (sysnum == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
-        OBOS_Debug("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+        OBOS_Debug("(thread %d, process %d) syscall %s returned 0x%x (%s)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
-        OBOS_Log("(thread %ld, process %ld) syscall %s returned 0x%x (%s)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
+        OBOS_Log("(thread %d, process %d) syscall %s returned 0x%x (%s)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
 
 }

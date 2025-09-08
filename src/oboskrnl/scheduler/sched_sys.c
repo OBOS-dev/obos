@@ -286,7 +286,7 @@ obos_status Sys_ThreadSetOwner(handle thr_hnd, handle proc_hnd)
 
     return Core_ProcessAppendThread(proc, thr);
 }
-uint64_t Sys_ThreadGetTid(handle thread_hnd)
+uintptr_t Sys_ThreadGetTid(handle thread_hnd)
 {
     struct thread* thr = thread_object_from_handle(thread_hnd, true, false);
     OBOS_ASSERT(thr);
@@ -491,7 +491,7 @@ uint32_t Sys_ProcessGetStatus(handle process)
     return proc->exitCode;
 }
 
-uint64_t Sys_ProcessGetPID(handle process)
+uintptr_t Sys_ProcessGetPID(handle process)
 {
     struct process* proc =
         HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
@@ -513,7 +513,7 @@ uint64_t Sys_ProcessGetPID(handle process)
     return proc->pid;
 }
 
-uint64_t Sys_ProcessGetPPID(handle process)
+uintptr_t Sys_ProcessGetPPID(handle process)
 {
     struct process* proc =
         HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?

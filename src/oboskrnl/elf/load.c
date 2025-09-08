@@ -147,6 +147,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         status = OBOS_LoadELF(ctx, buff, buff_size, &tmp_info, dryRun, true);
         if (obos_is_error(status))
             return status;
+        info->rtld_base = tmp_info.base;
         real_entry = tmp_info.entry;
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)buff, buff_size);
     }

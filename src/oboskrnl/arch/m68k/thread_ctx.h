@@ -27,4 +27,5 @@ struct thread_context_info
 	irql irql;
 	void* stackBase;
 	size_t stackSize;
+	void* tcb;
 } OBOS_ALIGN(4);

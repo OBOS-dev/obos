@@ -42,7 +42,7 @@ obos_status Sys_ThreadPriority(handle thread, const thread_priority *new, thread
 obos_status Sys_ThreadAffinity(handle thread, const thread_affinity *new, thread_affinity* old);
 // Can only be called once per thread-object, and must be called before readying a thread.
 obos_status Sys_ThreadSetOwner(handle thr, handle process);
-uint64_t Sys_ThreadGetTid(handle thr);
+uintptr_t Sys_ThreadGetTid(handle thr);
 
 // locks/wait.h
 
@@ -53,8 +53,8 @@ obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */);
 handle Sys_ProcessOpen(uint64_t pid);
 handle Sys_ProcessStart(handle mainThread /* optional, set to HANDLE_INVALID if unwanted */, handle vmm_context, bool is_fork);
 uint32_t Sys_ProcessGetStatus(handle process);
-uint64_t Sys_ProcessGetPID(handle process);
-uint64_t Sys_ProcessGetPPID(handle process);
+uintptr_t Sys_ProcessGetPID(handle process);
+uintptr_t Sys_ProcessGetPPID(handle process);
 // Gets a handle to any arbitrary child process.
 handle Sys_ProcessGetChildHandle();
 

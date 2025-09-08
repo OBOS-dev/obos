@@ -78,7 +78,7 @@ typedef struct thread_node
 } thread_node;
 typedef struct thread
 {
-	uint64_t tid;
+	uintptr_t tid;
 	thread_flags flags;
 
 	size_t references;

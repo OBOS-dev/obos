@@ -78,3 +78,17 @@ void CoreS_SetKernelStack(void* stck)
     // TODO: Set kernel stack
     OBOS_UNUSED(stck);
 }
+
+void* CoreS_ThreadAlloca(const thread_ctx* ctx_, size_t size, obos_status *status)
+{
+    thread_ctx* ctx = (void*)ctx_;
+    if (!ctx)
+    {
+        if (status) *status = OBOS_STATUS_INVALID_ARGUMENT;
+        return nullptr;
+    }
+    ctx->usp -= size;
+    uintptr_t ret = ctx->usp;
+    if (status) *status = OBOS_STATUS_SUCCESS;
+    return (void*)ret;
+}

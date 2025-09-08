@@ -171,7 +171,6 @@ int main(int argc, char** argv)
     if (!WIFEXITED(status) && !WIFSIGNALED(status))
         goto top;
     sigchld_handler(SIGCHLD);
-    abort();
-    // while (1)
-    //     asm volatile ("" :::"memory");
+    while (1)
+        asm volatile ("" :::"memory");
 }
