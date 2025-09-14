@@ -24,7 +24,7 @@ jobs:
 
     - name: Get libgcc binaries
       run: |
-        git clone https://codeberg.org/osdev/libgcc-binaries
+        git clone https://github.com/osdev0/libgcc-binaries
 
     - name: Install dependencies.
       run: |
