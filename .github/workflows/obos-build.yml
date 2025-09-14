@@ -24,7 +24,10 @@ jobs:
 
     - name: Get libgcc binaries
       run: |
-        git clone https://github.com/osdev0/libgcc-binaries
+        mkdir libgcc-binaries
+        cd libgcc-binaries
+        curl -LO https://github.com/osdev0/libgcc-binaries/releases/download/2025-08-21/libgcc-x86_64-no-red-zone.a
+        cd ..
 
     - name: Install dependencies.
       run: |
