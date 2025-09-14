@@ -121,7 +121,7 @@ uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
 // Height=768P
 // Pitch=4096B
 // Format=XRGB8888
-char Arch_Framebuffer[1024*768*4];
+// char Arch_Framebuffer[1024*768*4];
 void Arch_KernelEntry();
 uintptr_t Arch_TTYBase = 0;
 static char idle_task_stack[0x10000];
@@ -152,8 +152,8 @@ void Arch_KernelEntryBootstrap()
     // OBOS_TextRendererState.fb.pitch = 1024*4;
     // OBOS_TextRendererState.fb.format = OBOS_FB_FORMAT_RGBX8888;
     
-    memzero(Arch_Framebuffer, 1024*768*4);
-    OBOS_TextRendererState.font = font_bin;
+    // memzero(Arch_Framebuffer, 1024*768*4);
+    // OBOS_TextRendererState.font = font_bin;
     OBOS_KernelCmdLine = Arch_KernelFile.response->kernel_file->cmdline;
     OBOS_ParseCMDLine();
     
@@ -183,6 +183,7 @@ void Arch_KernelEntryBootstrap()
 }
 void Arch_InitializePageTables();
 void Arch_PageFaultHandler(interrupt_frame* frame);
+void Arch_AddressErrorHandler(interrupt_frame* frame);
 extern BootDeviceBase Arch_RTCBase;
 void timer_yield(dpc* on, void* udata)
 {
@@ -336,6 +337,7 @@ void OBOSS_KernelPostIRQInit()
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
+    Arch_RawRegisterInterrupt(0x3, (uintptr_t)Arch_AddressErrorHandler);
     Arch_RawRegisterInterrupt(24, (uintptr_t)Arch_PICHandleSpurious);
     for (uint8_t vec = 25; vec < 32; vec++)
         Arch_RawRegisterInterrupt(vec, (uintptr_t)Arch_PICHandleIRQ);

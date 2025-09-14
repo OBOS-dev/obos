@@ -94,7 +94,7 @@ obos_status Sys_ThreadContextRead(handle thread_context, struct thread_context_i
 
 // scheduler/thread.h
 
-handle Sys_ThreadOpen(handle proc_hnd, uint64_t tid)
+handle Sys_ThreadOpen(handle proc_hnd, uintptr_t tid)
 {
     if (!tid)
         return HANDLE_INVALID;
@@ -173,6 +173,9 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     }
 
     thr->kernelStack = Mm_AllocateKernelStack(ctx->un.thread_ctx->vmm_ctx, nullptr);
+#ifdef __m68k__
+    thr->context.sp = (uintptr_t)thr->kernelStack + 0x10000;
+#endif
 
     handle_desc* desc = nullptr;
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD, &desc);
@@ -357,7 +360,7 @@ process* Core_LookupProc(uint64_t pid)
     // return nullptr;
 }
 
-handle Sys_ProcessOpen(uint64_t pid)
+handle Sys_ProcessOpen(uintptr_t pid)
 {
     OBOS_UNUSED(pid);
     if (pid > Core_NextPID)
@@ -395,7 +398,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         return HANDLE_INVALID;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-    thread* main = main_desc->un.thread;
+    thread* main = main_desc ? main_desc->un.thread : nullptr;
     context* vmm_ctx = vmm_ctx_desc->un.vmm_context;
 
     process* new = Core_ProcessAllocate(nullptr);
@@ -460,6 +463,8 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
         new->exec_file = memcpy(Allocate(OBOS_KernelAllocator, len_exec_file+1, nullptr), Core_GetCurrentThread()->proc->exec_file, len_exec_file+1);
         new->cmdline = memcpy(Allocate(OBOS_KernelAllocator, len_cmdline+1, nullptr), Core_GetCurrentThread()->proc->cmdline, len_cmdline+1);
     }
+
+    // If this fails then it's game over
     Core_ProcessStart(new, main);
 
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());

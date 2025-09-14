@@ -67,3 +67,21 @@ void Arch_PageFaultHandler(interrupt_frame* frame)
         frame->pc, frame->sr
     );
 }
+
+void Arch_AddressErrorHandler(interrupt_frame* frame)
+{
+    OBOS_Panic(OBOS_PANIC_EXCEPTION,
+        "address fault at 0x%08x.\nRegister dump:\n"
+        "d0: 0x%08x, d1: 0x%08x, d2: 0x%08x, d3: 0x%08x\n"
+        "d1: 0x%08x, d5: 0x%08x, d6: 0x%08x, d7: 0x%08x\n"
+        "a0: 0x%08x, a1: 0x%08x, a2: 0x%08x, a3: 0x%08x\n"
+        "a4: 0x%08x, a5: 0x%08x, a6: 0x%08x, sp: 0x%08x\n"
+        "pc: 0x%08x, sr: 0x%08x\n",
+        frame->pc,
+        frame->d0, frame->d1, frame->d2, frame->d3,
+        frame->d4, frame->d5, frame->d6, frame->d7,
+        frame->a0, frame->a1, frame->a2, frame->a3,
+        frame->a4, frame->a5, frame->a6, frame->usp,
+        frame->pc, frame->sr
+    );
+}

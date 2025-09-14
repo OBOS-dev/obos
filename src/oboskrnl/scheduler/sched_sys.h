@@ -33,7 +33,7 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
 
 // scheduler/thread.h
 
-handle Sys_ThreadOpen(handle proc, uint64_t tid);
+handle Sys_ThreadOpen(handle proc, uintptr_t tid);
 handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, handle thread_context);
 obos_status Sys_ThreadReady(handle thread);
 obos_status Sys_ThreadBlock(handle thread);
@@ -50,7 +50,7 @@ obos_status Sys_WaitOnObject(handle object /* must be a waitable handle */);
 
 // scheduler/process.h
 
-handle Sys_ProcessOpen(uint64_t pid);
+handle Sys_ProcessOpen(uintptr_t pid);
 handle Sys_ProcessStart(handle mainThread /* optional, set to HANDLE_INVALID if unwanted */, handle vmm_context, bool is_fork);
 uint32_t Sys_ProcessGetStatus(handle process);
 uintptr_t Sys_ProcessGetPID(handle process);

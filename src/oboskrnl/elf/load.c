@@ -102,55 +102,6 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         goto dry;
 
     uintptr_t real_entry = 0;
-    if (load_dynld)
-    {
-        const Elf_Phdr* phdrs = (Elf_Phdr*)((const char*)file+ehdr->e_phoff);
-        const char* interp = nullptr;
-        for (size_t i = 0; i < ehdr->e_phnum; i++)
-        {
-            if (phdrs[i].p_type == PT_INTERP)
-            {
-                interp = (char*)file+phdrs[i].p_offset;
-                break;
-            }
-        }
-
-        if (!interp)
-        {
-            load_dynld = false;
-            goto load;
-        }
-
-        fd interp_fd = {};
-        status = Vfs_FdOpen(&interp_fd, interp, FD_OFLAGS_READ);
-        if (obos_is_error(status))
-            return status;
-
-        // Load the interpreter instead, but also make sure to sanity check it.
-        // Assume the interpreter doesn't need an interpreter, that'd be pretty dumb.
-
-        if (!VfsH_LockMountpoint(interp_fd.vn->mount_point))
-            return OBOS_STATUS_INTERNAL_ERROR;
-        volatile size_t buff_size = interp_fd.vn->filesize;
-        VfsH_UnlockMountpoint(interp_fd.vn->mount_point);
-
-        status = OBOS_STATUS_SUCCESS;
-        void* buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, buff_size, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &interp_fd, &status);
-        if (obos_is_error(status))
-        {
-            Vfs_FdClose(&interp_fd);
-            return status;
-        }
-        Vfs_FdClose(&interp_fd);
-
-        elf_info tmp_info = {};
-        status = OBOS_LoadELF(ctx, buff, buff_size, &tmp_info, dryRun, true);
-        if (obos_is_error(status))
-            return status;
-        info->rtld_base = tmp_info.base;
-        real_entry = tmp_info.entry;
-        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)buff, buff_size);
-    }
 
     limit += (OBOS_PAGE_SIZE-(limit%OBOS_PAGE_SIZE));
     base -= (base%OBOS_PAGE_SIZE);
@@ -242,6 +193,56 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
                 Mm_VirtualMemoryFree(ctx, (void*)phdrs[j].p_vaddr, phdrs[j].p_memsz);
             return status;
         }
+    }
+    
+    if (load_dynld)
+    {
+        const Elf_Phdr* phdrs = (Elf_Phdr*)((const char*)file+ehdr->e_phoff);
+        const char* interp = nullptr;
+        for (size_t i = 0; i < ehdr->e_phnum; i++)
+        {
+            if (phdrs[i].p_type == PT_INTERP)
+            {
+                interp = (char*)file+phdrs[i].p_offset;
+                break;
+            }
+        }
+
+        if (!interp)
+        {
+            load_dynld = false;
+            goto load;
+        }
+
+        fd interp_fd = {};
+        status = Vfs_FdOpen(&interp_fd, interp, FD_OFLAGS_READ);
+        if (obos_is_error(status))
+            return status;
+
+        // Load the interpreter instead, but also make sure to sanity check it.
+        // Assume the interpreter doesn't need an interpreter, that'd be pretty dumb.
+
+        if (!VfsH_LockMountpoint(interp_fd.vn->mount_point))
+            return OBOS_STATUS_INTERNAL_ERROR;
+        volatile size_t buff_size = interp_fd.vn->filesize;
+        VfsH_UnlockMountpoint(interp_fd.vn->mount_point);
+
+        status = OBOS_STATUS_SUCCESS;
+        void* buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, buff_size, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &interp_fd, &status);
+        if (obos_is_error(status))
+        {
+            Vfs_FdClose(&interp_fd);
+            return status;
+        }
+        Vfs_FdClose(&interp_fd);
+
+        elf_info tmp_info = {};
+        status = OBOS_LoadELF(ctx, buff, buff_size, &tmp_info, dryRun, true);
+        if (obos_is_error(status))
+            return status;
+        info->rtld_base = tmp_info.base;
+        real_entry = tmp_info.entry;
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)buff, buff_size);
     }
 
     info->base = (void*)base;

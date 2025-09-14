@@ -7,19 +7,26 @@
 #include <int.h>
 #include <error.h>
 #include <syscall.h>
+#include <handle.h>
 #include <font.h>
 #include <cmdline.h>
 
 #include <arch/m68k/interrupt_frame.h>
 
+#include <mm/context.h>
+
 #include <scheduler/thread.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
+#include <scheduler/sched_sys.h>
+
+#include <allocators/base.h>
 
 const char *syscall_to_string[] = {
     "Core_ExitCurrentThread/Sys_SetTCB",
     "Core_Yield/Sys_GetTCB",
-    "OBOS_Reboot",
+    "OBOS_Reboot/Sys_ThreadContextCreateFork",
     "OBOS_Shutdown",
     "Sys_HandleClose",
     "Sys_HandleClone",
@@ -186,14 +193,58 @@ void *Sys_GetTCB()
 {
     return Core_GetCurrentThread()->context.tcb;
 }
+handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, handle vmm_context);
 
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SetTCB,
     (uintptr_t)Sys_GetTCB,
+    (uintptr_t)Sys_ThreadContextCreateFork,
 };
 
 void Arch_LogSyscall(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4, uintptr_t p5, uint32_t sysnum);
 void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum);
+
+handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, handle vmm_context)
+{
+    context* vmm_ctx =
+        HANDLE_TYPE(vmm_context) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc->ctx : nullptr;
+    if (!vmm_ctx)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        obos_status status = OBOS_STATUS_SUCCESS;
+        handle_desc* vmm_ctx_desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), vmm_context, HANDLE_TYPE_VMM_CONTEXT, false, &status);
+        OBOS_UNUSED(status);
+        if (!vmm_ctx_desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return HANDLE_INVALID;
+        }
+        vmm_ctx = vmm_ctx_desc->un.vmm_context;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    handle_desc* desc = nullptr;
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_THREAD_CTX, &desc);
+    thread_ctx_handle *ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx_handle), nullptr);
+    desc->un.thread_ctx = ctx;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    ctx->ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
+    ctx->canFree = true;
+    ctx->lock = PUSHLOCK_INITIALIZE();
+
+    ctx->ctx->urp = vmm_ctx->pt;
+    ctx->ctx->pc = entry;
+    ctx->ctx->usp = stack_pointer;
+    ctx->ctx->sr = 0;
+    ctx->ctx->tcb = Core_GetCurrentThread()->context.tcb;
+    ctx->vmm_ctx = vmm_ctx;
+    ctx->ctx->stackBase = Core_GetCurrentThread()->context.stackBase;
+    ctx->ctx->stackSize = Core_GetCurrentThread()->context.stackSize;
+
+    return hnd;
+}
 
 // parameters 1-5 are in d0-d4, respectively
 // syscall number is in d5
@@ -212,7 +263,10 @@ void Arch_SyscallTrapHandler(interrupt_frame* frame)
         return;
     }
     uintptr_t(*hnd)(uint32_t p1, uint32_t p2, uint32_t p3, uint32_t p4, uint32_t p5) = (void*)table[syscall_number];
-    frame->d0 = hnd(frame->d0, frame->d1, frame->d2, frame->d3, frame->d4);
+    if (hnd)
+        frame->d0 = hnd(frame->d0, frame->d1, frame->d2, frame->d3, frame->d4);
+    else
+        frame->d0 = OBOS_STATUS_UNIMPLEMENTED;
     if (frame->d5 != (ARCH_SYSCALL_BEGIN+1) /* Sys_GetTCB */)
         Arch_LogSyscallRet(frame->d0, syscall_number);
 }

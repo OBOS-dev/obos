@@ -108,3 +108,5 @@ CoreS_CallFunctionOnStack:
     move.l %d2, %sp
     add #4, %sp
     rts
+
+.section .note.GNU-stack,"",%progbits

@@ -138,7 +138,10 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
-//  printf("opened %s on fd 0x%x\n", path, desc);
+    if (obos_is_error(status))
+        printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
+    else
+        printf("open of %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
@@ -210,12 +213,16 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
         return status;
     name = ZeroAllocate(OBOS_KernelAllocator, sz_name+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(uname, name, nullptr);
+    // printf("opening %s\n", name);
     real_dent = VfsH_DirentLookupFrom(name, parent_dent);
 
     if (!real_dent)
     {
         if (~oflags & FD_OFLAGS_CREATE)
+        {
+            Free(OBOS_KernelAllocator, name, sz_name);
             return OBOS_STATUS_NOT_FOUND;
+        }
         status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
         if (obos_is_error(status))
         {
@@ -445,7 +452,7 @@ obos_status Sys_FdEOF(const handle desc)
     return Vfs_FdEOF(fd->un.fd);
 }
 
-obos_status Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp)
+obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_argp)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;

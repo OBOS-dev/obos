@@ -49,7 +49,7 @@ uoff_t   Sys_FdTellOff(const handle desc);
 size_t  Sys_FdGetBlkSz(const handle desc);
 obos_status  Sys_FdEOF(const handle desc);
 
-obos_status Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_argp);
+obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_argp);
 
 obos_status Sys_FdFlush(handle desc);
 
@@ -61,6 +61,7 @@ enum {
     FSFDT_FD_PATH,
 };
 
+#if defined(__x86_64__)
 struct stat {
     uint64_t st_dev;
     uint64_t st_ino;
@@ -79,6 +80,27 @@ struct stat {
     long resv[6];
     long __unused[3];
 };
+#elif defined(__m68k__)
+
+struct OBOS_PACK stat {
+	int64_t st_dev;
+	unsigned char __st_dev_padding[2];
+	unsigned long __st_ino;
+	unsigned int st_mode;
+	unsigned long st_nlink;
+	uid st_uid;
+	gid st_gid;
+	int64_t st_rdev;
+	unsigned char __st_rdev_padding[2];
+	long long st_size; /* TODO: off64_t? */
+	long st_blksize;
+	int64_t st_blocks;
+    uint64_t unused[3];
+	uint64_t st_ino;
+};
+OBOS_STATIC_ASSERT(sizeof(struct stat) == 92, "sizeof(struct stat) should be 92");
+
+#endif
 
 #define AT_EMPTY_PATH 0x1000
 #define AT_NO_AUTOMOUNT 0x800
