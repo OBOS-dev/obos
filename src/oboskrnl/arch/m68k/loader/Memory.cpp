@@ -168,7 +168,7 @@ namespace Npl
         }
 
         const uintptr_t loaderBase = (uintptr_t)LOADER_BLOB_BEGIN;
-        const uintptr_t loaderTop = (uintptr_t)LOADER_BLOB_END;
+        const uintptr_t loaderTop = ((uintptr_t)LOADER_BLOB_END) + PageSize * 2 /* be mindful of the boot tags, save a few pages after this */;
         ReservePhysicalRange(loaderBase, loaderTop, MemoryType::Reclaimable);
 
         if (auto initrdPtr = FindBootInfoTag(BootInfoType::InitRd); initrdPtr.ptr != nullptr)

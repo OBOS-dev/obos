@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/m68k/driver_loader.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
@@ -15,6 +15,8 @@
 #include <mm/alloc.h>
 
 #include <elf/elf.h>
+
+#include <allocators/base.h>
 
 #include <driver_interface/loader.h>
 #include <driver_interface/driverId.h>

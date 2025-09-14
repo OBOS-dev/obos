@@ -23,8 +23,6 @@
 
 #include <driver_interface/header.h>
 
-#include <uacpi_libc.h>
-
 #include <locks/mutex.h>
 
 #include <mm/swap.h>

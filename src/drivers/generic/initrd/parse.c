@@ -11,8 +11,6 @@
 
 #include <utils/string.h>
 
-#include <uacpi_libc.h>
-
 #include "parse.h"
 #include "ustar_hdr.h"
 
@@ -46,7 +44,7 @@ void free(void* buf)
 #define set_status(to) status ? (*status = to) : (void)0
 const ustar_hdr* GetFile(const char* path, obos_status* status)
 {
-    if (!OBOS_InitrdBinary)
+    if (!OBOS_InitrdBinary || (OBOS_InitrdSize < sizeof(ustar_hdr)))
     {
         set_status(OBOS_STATUS_NOT_FOUND);
         return nullptr;
@@ -58,7 +56,7 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
     }
     set_status(OBOS_STATUS_SUCCESS);
     const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
-    size_t pathlen = uacpi_strnlen(path, 100);
+    size_t pathlen = strnlen(path, 100);
     char path_slash[100];
     memcpy(path_slash, path, pathlen);
     if (path_slash[pathlen-1] != '/')
@@ -68,11 +66,11 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
     }
     while (memcmp(hdr->magic, USTAR_MAGIC, 6))
     {
-        if (uacpi_strncmp(path_slash, hdr->filename, pathlen) == 0 ||
-            uacpi_strncmp(path, hdr->filename, pathlen) == 0
+        if (strncmp(path_slash, hdr->filename, pathlen) ||
+            strncmp(path, hdr->filename, pathlen)
         )
             return hdr;
-        size_t filesize = oct2bin(hdr->filesize, uacpi_strnlen(hdr->filesize, 12));
+        size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
     }

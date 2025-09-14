@@ -223,11 +223,14 @@ OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* 
 		nBytes = 16;
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
+
+#if __SIZE_MAX__ > __UINT32_MAX__
 	if (obos_expect(nBytes > (4UL*1024*1024*1024), false))
 	{
 		if (status) *status = OBOS_STATUS_INVALID_ARGUMENT;
 		return NULL; // invalid argument
 	}
+#endif
 
 	size_t cache_index = __builtin_ctzll(nBytes)-4;
 	volatile cache* c = &This->caches[cache_index];
@@ -304,9 +307,11 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 
+#if __SIZE_MAX__ > __UINT32_MAX__
 	if (nBytes > (4UL*1024*1024*1024))
 		return OBOS_STATUS_INVALID_ARGUMENT; // invalid argument
-
+#endif
+		
 	basic_allocator* alloc = (basic_allocator*)This_;
 
 	size_t cache_index = __builtin_ctzll(nBytes)-4;

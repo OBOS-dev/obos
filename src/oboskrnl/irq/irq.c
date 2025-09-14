@@ -63,6 +63,7 @@ void Core_IRQDispatcher(interrupt_frame* frame)
 	if (!s_irqVectors[frame->vector].allowWorkSharing)
 	{
 		irq* irq_obj = s_irqVectors[frame->vector].irqObjects.head->data;
+		OBOS_ASSERT(irq_obj->handler);
 		irq_obj->handler(
 			irq_obj,
 			frame,
@@ -282,7 +283,11 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (obj->vector)
 		return OBOS_STATUS_ALREADY_INITIALIZED;
+#ifndef __m68k__
 	irql oldIrql = Core_SpinlockAcquire(&s_lock);
+#else
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_lock, IRQL_MASKED, false);
+#endif
 	irq_vector_id found = OBOS_IRQ_VECTOR_ID_MAX;
 	irq_vector_id base = OBOS_IRQL_TO_IRQ_VECTOR_ID(requiredIrql);
 	bool shouldIgnoreObjectCapacity = false;

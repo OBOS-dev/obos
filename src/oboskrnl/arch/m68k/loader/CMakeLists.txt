@@ -37,6 +37,7 @@ target_link_options(m68k_bootloader
 )
 target_compile_definitions(m68k_bootloader
     PRIVATE NPL_ENABLE_LOGGING=1
+    PRIVATE OUTPUT_DIRECTORY="${OUTPUT_DIR}"
 )
 
 target_include_directories(m68k_bootloader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

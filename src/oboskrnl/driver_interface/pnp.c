@@ -18,8 +18,6 @@
 
 #include <utils/tree.h>
 
-#include <uacpi_libc.h>
-
 #include <utils/list.h>
 
 #include <mm/alloc.h>
@@ -30,9 +28,12 @@
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 #include <uacpi/uacpi.h>
 #include <uacpi/namespace.h>
 #include <uacpi/utilities.h>
+#include <uacpi_libc.h>
+#endif
 
 #include <scheduler/thread.h>
 
@@ -52,8 +53,8 @@ typedef RB_HEAD(pci_pnp_device_tree, pnp_device) pci_pnp_device_tree;
 static int pnp_pci_driver_cmp(pnp_device* a_, pnp_device* b_);
 #if OBOS_ARCHITECTURE_HAS_ACPI
 static int pnp_acpi_driver_compare(pnp_device* a, pnp_device* b);
-#endif
 RB_GENERATE_STATIC(acpi_pnp_device_tree, pnp_device, acpi_node, pnp_acpi_driver_compare);
+#endif
 RB_GENERATE_STATIC(pci_pnp_device_tree, pnp_device, pci_node, pnp_pci_driver_cmp);
 
 static int pnp_pci_driver_cmp(pnp_device* a_, pnp_device* b_)
@@ -104,6 +105,7 @@ static void free(void* blk)
     Free(OBOS_KernelAllocator, hdr, hdr->size);
 }
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 static void free_acpi_pnp_device(acpi_pnp_device_tree* map, pnp_device* dev)
 {
     if (map)
@@ -117,6 +119,7 @@ static void free_acpi_pnp_device(acpi_pnp_device_tree* map, pnp_device* dev)
     }
     // free(dev);
 }
+#endif
 static void free_pci_pnp_device(pci_pnp_device_tree* map, pnp_device* dev)
 {
     if (map)
@@ -489,10 +492,10 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             ent = ent->d_next_child;
             continue;
         }
-        if (uacpi_strnlen(hdr->driverName, 64))
-            OBOS_Log("Found driver '%*s'\n", uacpi_strnlen(hdr->driverName, 64), hdr->driverName);
+        if (strnlen(hdr->driverName, 64))
+            OBOS_Log("Found driver '%*s'\n", strnlen(hdr->driverName, 64), hdr->driverName);
         else
-            OBOS_Log("Found a driver.\n", uacpi_strnlen(hdr->driverName, 64), hdr->driverName);
+            OBOS_Log("Found a driver.\n", strnlen(hdr->driverName, 64), hdr->driverName);
         struct driver_file *drv_file = memzero(malloc(sizeof(struct driver_file)), sizeof(struct driver_file));
         *drv_file = (struct driver_file){ .hdr=hdr, .base=buf, .file=file };
         driver_header_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header_node), nullptr);
@@ -522,14 +525,14 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             size_t filesize = Vfs_FdTellOff(file->file);
             Vfs_FdSeek(file->file, 0, SEEK_SET);
             obos_status loadStatus = OBOS_STATUS_SUCCESS;
-            if (uacpi_strnlen(file->hdr->driverName, 64))
-                OBOS_Log("Loading '%*s'\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+            if (strnlen(file->hdr->driverName, 64))
+                OBOS_Log("Loading '%*s'\n", strnlen(file->hdr->driverName, 64), file->hdr->driverName);
             else
-                OBOS_Log("Loading a driver...\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName);
+                OBOS_Log("Loading a driver...\n");
             driver_id* drv = Drv_LoadDriver(file->base, filesize, &loadStatus);
             if (obos_is_error(loadStatus))
             {
-                OBOS_Warning("Could not load '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
+                OBOS_Warning("Could not load '%*s'. Status: %d\n", strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 continue;
             }
             drv->refCnt++;
@@ -537,7 +540,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             loadStatus = Drv_StartDriver(drv, nullptr);
             if (obos_is_error(loadStatus) && loadStatus != OBOS_STATUS_NO_ENTRY_POINT)
             {
-                OBOS_Warning("Could not start '%*s'. Status: %d\n", uacpi_strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
+                OBOS_Warning("Could not start '%*s'. Status: %d\n", strnlen(file->hdr->driverName, 64), file->hdr->driverName, loadStatus);
                 Drv_UnloadDriver(drv);
                 continue;
             }
@@ -629,6 +632,6 @@ obos_status Drv_PnpLoad_uHDA()
 #else
 obos_status Drv_PnpLoad_uHDA()
 {
-    return OBO_SSTATUS_UNIMPLEMENTED;
+    return OBOS_STATUS_UNIMPLEMENTED;
 }
 #endif

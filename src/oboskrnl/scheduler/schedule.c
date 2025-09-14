@@ -139,7 +139,8 @@ switch_thread:
 	if (chosenThread->proc)
 		CoreS_GetCPULocalPtr()->currentContext = chosenThread->proc->ctx;
 	CoreS_GetCPULocalPtr()->currentKernelStack = chosenThread->kernelStack;
-	CoreS_SetKernelStack(chosenThread->kernelStack);
+	if (CoreS_SetKernelStack)
+		CoreS_SetKernelStack(chosenThread->kernelStack);
 	// for (volatile bool b = (chosenThread->tid == 7); b; )
 	// 	asm volatile ("":"=r"(b) :"r"(b) :"memory");
 	CoreS_SwitchToThreadContext(&chosenThread->context);

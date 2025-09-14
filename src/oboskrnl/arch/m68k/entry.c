@@ -8,6 +8,7 @@
 #include <error.h>
 #include <kinit.h>
 #include <cmdline.h>
+#include <syscall.h>
 #include <text.h>
 #include <klog.h>
 #include <font.h>
@@ -48,7 +49,6 @@
 
 #include <asan.h>
 
-allocator_info* OBOS_KernelAllocator;
 timer_frequency CoreS_TimerFrequency;
 
 OBOS_ALIGNAS(0x10) volatile struct limine_memmap_request Arch_MemmapRequest = {
@@ -121,12 +121,12 @@ uintptr_t OBOSS_StackFrameGetPC(stack_frame curr)
 // Height=768P
 // Pitch=4096B
 // Format=XRGB8888
-char Arch_Framebuffer[1024*768*4];
+// char Arch_Framebuffer[1024*768*4];
 void Arch_KernelEntry();
+uintptr_t Arch_TTYBase = 0;
 static char idle_task_stack[0x10000];
 static char kernel_main_stack[0x10000];
 void Arch_IdleTask();
-uintptr_t Arch_TTYBase = 0;
 obos_status Arch_MapPage(page_table pt_root, uintptr_t virt, uintptr_t to, uintptr_t ptFlags);
 void Arch_KernelEntryBootstrap()
 {    
@@ -152,8 +152,8 @@ void Arch_KernelEntryBootstrap()
     // OBOS_TextRendererState.fb.pitch = 1024*4;
     // OBOS_TextRendererState.fb.format = OBOS_FB_FORMAT_RGBX8888;
     
-    memzero(Arch_Framebuffer, 1024*768*4);
-    OBOS_TextRendererState.font = font_bin;
+    // memzero(Arch_Framebuffer, 1024*768*4);
+    // OBOS_TextRendererState.font = font_bin;
     OBOS_KernelCmdLine = Arch_KernelFile.response->kernel_file->cmdline;
     OBOS_ParseCMDLine();
     
@@ -183,7 +183,7 @@ void Arch_KernelEntryBootstrap()
 }
 void Arch_InitializePageTables();
 void Arch_PageFaultHandler(interrupt_frame* frame);
-static basic_allocator kalloc;
+void Arch_AddressErrorHandler(interrupt_frame* frame);
 extern BootDeviceBase Arch_RTCBase;
 void timer_yield(dpc* on, void* udata)
 {
@@ -243,11 +243,11 @@ typedef struct log_backend {
 } log_backend;
 */
 
-void tty_print(const char* buf, size_t sz, void *data)
+OBOS_NO_UBSAN void tty_print(const char* buf, size_t sz, void *data)
 {
     OBOS_UNUSED(data);
     for (size_t i = 0; i < sz; i++)
-        ((uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
+        ((volatile uint32_t*)Arch_TTYBase)[0] = buf[i]; // Enable device through CMD register
 }
 void tty_set_color(color c, void* udata)
 {
@@ -259,6 +259,14 @@ void tty_reset_color(void *udata)
 }
 static log_backend tty_backend = { .write=tty_print, .set_color=tty_set_color, .reset_color=tty_reset_color };
 
+void OBOSS_KernelPostTmInit()
+{
+    OBOS_Debug("%s: Initializing scheduler timer.\n", __func__);
+    static timer sched_timer;
+    sched_timer.handler = sched_timer_hnd;
+    sched_timer.userdata = nullptr;
+    Core_TimerObjectInitialize(&sched_timer, TIMER_MODE_INTERVAL, 4000);
+}
 void OBOSS_KernelPostPMMInit()
 {
     OBOS_Debug("%s: Initializing page tables.\n", __func__);
@@ -285,15 +293,7 @@ void OBOSS_GetModule(struct boot_module *module, const char* name)
 
 void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t name_len)
 {
-    if (strncmp(name, "initrd-driver", name_len))
-    {
-        module->address = (void*)Arch_ModuleStart;
-        module->size = (uintptr_t)Arch_ModuleEnd - (uintptr_t)Arch_ModuleStart;
-        module->is_kernel = false;
-        module->is_memory = false;
-        module->name = "initrd-driver";
-    }
-    else if (strncmp(name, "initrd", name_len))
+    if (strncmp(name, "initrd", name_len))
     {
         module->address = (void*)Arch_InitrdRequest.response->modules[0]->address;
         module->size = Arch_InitrdRequest.response->modules[0]->size;
@@ -309,6 +309,14 @@ void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t nam
         module->is_memory = false;
         module->name = "__KERNEL__";
     }
+    else if (strncmp(name, "initrd_driver", name_len))
+    {
+        module->address = (void*)Arch_ModuleStart;
+        module->size = (uintptr_t)Arch_ModuleEnd - (uintptr_t)Arch_ModuleStart;
+        module->is_kernel = false;
+        module->is_memory = false;
+        module->name = "initrd_driver";
+    }
 }
 
 void OBOSS_GetKernelModule(struct boot_module *module)
@@ -321,10 +329,15 @@ void OBOSS_KernelPostKProcInit()
 	Core_ProcessAppendThread(OBOS_KernelProcess, &kmain_thread);
 	Core_ProcessAppendThread(OBOS_KernelProcess, &idle_thread);
 }
+void OBOSS_KernelPostIRQInit()
+{
+    OBOSS_InitializeSyscallInterface();
+}
 
 void Arch_KernelEntry()
 {
     Arch_RawRegisterInterrupt(0x2, (uintptr_t)Arch_PageFaultHandler);
+    Arch_RawRegisterInterrupt(0x3, (uintptr_t)Arch_AddressErrorHandler);
     Arch_RawRegisterInterrupt(24, (uintptr_t)Arch_PICHandleSpurious);
     for (uint8_t vec = 25; vec < 32; vec++)
         Arch_RawRegisterInterrupt(vec, (uintptr_t)Arch_PICHandleIRQ);

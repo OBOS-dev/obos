@@ -1,12 +1,12 @@
 /*
 	oboskrnl/klog.c
 
-	Copyright (c) 2024 Omar Berrow
+	Copyright (c) 2024-2025 Omar Berrow
 */
 
-#include "cmdline.h"
 #include <int.h>
 #include <memmanip.h>
+#include <cmdline.h>
 #include <klog.h>
 #include <stdarg.h>
 #include <memmanip.h>
@@ -278,7 +278,7 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 			if (sym)
 			{
 				if (drv)
-					printf("%*s!%s+%x", uacpi_strnlen(drv->header.driverName, 64), drv->header.driverName, sym->name, pc-sym->address);
+					printf("%*s!%s+%x", strnlen(drv->header.driverName, 64), drv->header.driverName, sym->name, pc-sym->address);
 				else 
 					printf("oboskrnl!%s+%x", sym->name, pc-sym->address);
 			}
@@ -308,8 +308,8 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 			goto next;
 		printf("\t%p     ", node->data->base);
 		printf("%12ld     ", node->data->main_thread ? node->data->main_thread->tid : -1);
-		if (uacpi_strnlen(node->data->header.driverName, 64))
-			printf("%*s\n", uacpi_strnlen(node->data->header.driverName, 64), node->data->header.driverName);
+		if (strnlen(node->data->header.driverName, 64))
+			printf("%*s\n", strnlen(node->data->header.driverName, 64), node->data->header.driverName);
 		else
 		 	printf("Unknown\n");
 		next:

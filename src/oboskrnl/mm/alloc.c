@@ -145,7 +145,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags pr
 }
 
 page* Mm_AnonPage = nullptr;
-void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
+void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, uoff_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     set_statusp(ustatus, status);
@@ -742,9 +742,18 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             //     rng->virt, rng->virt+rng->size
             // );
             RB_REMOVE(page_tree, &ctx->pages, rng);
-            RB_INSERT(page_tree, &ctx->pages, before);
-            RB_INSERT(page_tree, &ctx->pages, after);
-            RB_INSERT(page_tree, &ctx->pages, new);
+            if (before->size)
+                RB_INSERT(page_tree, &ctx->pages, before);
+            else
+                Mm_Allocator->Free(Mm_Allocator, before, sizeof(page_range));
+            if (after->size)
+                RB_INSERT(page_tree, &ctx->pages, after);
+            else
+                Mm_Allocator->Free(Mm_Allocator, after, sizeof(page_range));
+            if (new->size)
+                RB_INSERT(page_tree, &ctx->pages, new);
+            else
+                Mm_Allocator->Free(Mm_Allocator, before, sizeof(page_range));
             Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
             rng = new;
         }
@@ -787,6 +796,8 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
                 }
                 curr = next;
             }
+            if (!rng->size)
+                RB_REMOVE(page_tree, &ctx->pages, rng);
             rng = new;
         }
     }

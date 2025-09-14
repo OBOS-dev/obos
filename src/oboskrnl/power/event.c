@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 #include <locks/event.h>
 
 #include <vfs/vnode.h>
@@ -76,3 +77,7 @@ void OBOS_InitializeACPIEvents()
         OBOS_PowerEvents[OBOS_POWER_BUTTON_EVENT].activated = true;
     uacpi_find_devices("PNP0C0C", foreach_event, power_button_notify);
 }
+#else
+void OBOS_InitializeACPIEvents()
+{}
+#endif

@@ -22,3 +22,5 @@ pflush:
     move.l (4, %sp), %a0
     pflush %a0
     rts
+
+.section .note.GNU-stack,"",%progbits

@@ -59,7 +59,8 @@ static void notify_timer_dpc(dpc* dpc, void* userdata)
     OBOS_UNUSED(dpc);
     uintptr_t *udata = userdata;
     timer* timer = (void*)udata[0];
-    timer->handler(timer->userdata);
+    if (timer)
+        timer->handler(timer->userdata);
 }
 static void notify_timer(timer* timer)
 {

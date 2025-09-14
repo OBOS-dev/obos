@@ -139,23 +139,18 @@ int main(int argc, char** argv)
         while (tcgetpgrp(0) != getpgid(0))
             syscall0(Sys_Yield);
         execvp(handoff_process, &argv[optind]);
-        perror("execlp");
+        perror("execvp");
         exit(EXIT_FAILURE);
     }
     else 
     {
         tcsetpgrp(0, getpgid(pid));
     }
-    if (fork() == 0)
+    int power_button = open("/dev/power_button", O_RDONLY);
+    if (power_button != -1 && fork() == 0)
     {
         // ACPI Event Handler.
         is_power_button_handler = true;
-        int power_button = open("/dev/power_button", O_RDONLY);
-        if (power_button == -1)
-        {
-            perror("open(\"/dev/power_button\")");
-            return errno;
-        }
         fd_set set = {};
         FD_ZERO(&set);
         FD_SET(power_button, &set);
@@ -171,7 +166,6 @@ int main(int argc, char** argv)
     if (!WIFEXITED(status) && !WIFSIGNALED(status))
         goto top;
     sigchld_handler(SIGCHLD);
-    abort();
-    // while (1)
-    //     asm volatile ("" :::"memory");
+    while (1)
+        asm volatile ("" :::"memory");
 }

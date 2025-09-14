@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <error.h>
+#include <memmanip.h>
 #include <partition.h>
 #include <mbr.h>
 #include <gpt.h>
@@ -23,8 +24,6 @@
 #include <utils/string.h>
 #include <utils/uuid.h>
 #include <utils/list.h>
-
-#include <uacpi_libc.h>
 
 LIST_GENERATE(partition_list, partition, node);
 partition_list OBOS_Partitions;
@@ -161,8 +160,8 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
             if (hdr->ftable.probe(part_vnode))
             {
                 partitions[i].fs_driver = node->data;
-                if (uacpi_strnlen(node->data->header.driverName, 32))
-                    OBOS_Log("Partition recognized by '%*s'\n", uacpi_strnlen(node->data->header.driverName, 32), node->data->header.driverName);
+                if (strnlen(node->data->header.driverName, 32))
+                    OBOS_Log("Partition recognized by '%*s'\n", strnlen(node->data->header.driverName, 32), node->data->header.driverName);
                 else
                     OBOS_Log("Partition recognized by a driver\n");
                 break;

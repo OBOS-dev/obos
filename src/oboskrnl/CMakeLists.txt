@@ -47,9 +47,13 @@ endif()
 
 target_link_libraries(oboskrnl
 	PRIVATE ${LIBGCC} 
-	PRIVATE uacpi
 	PRIVATE sanitizers
 )
+if (OBOS_ARCHITECTURE_HAS_ACPI)
+	target_link_libraries(oboskrnl
+		PRIVATE uacpi
+	)
+endif()
 
 set_property(TARGET oboskrnl PROPERTY link_depends ${LINKER_SCRIPT})
 

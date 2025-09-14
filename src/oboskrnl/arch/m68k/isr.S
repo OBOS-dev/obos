@@ -89,3 +89,5 @@ Arch_SimulateIRQ:
     jmp (%a0)
 ret:
     rts
+
+.section .note.GNU-stack,"",%progbits

@@ -475,7 +475,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         OBOS_ENSURE(this_driver);
         vnode* vn = Drv_AllocateVNode(this_driver, (uintptr_t)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
         const char* dev_name = Devices[i].interface_name;
-        OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
+        OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
     }
 

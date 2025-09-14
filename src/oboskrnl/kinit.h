@@ -22,6 +22,7 @@ void OBOS_KernelInit();
 void OBOS_LoadSymbolTable();
 OBOS_WEAK void OBOSS_KernelPostPMMInit();
 OBOS_WEAK void OBOSS_KernelPostVMMInit();
+OBOS_WEAK void OBOSS_KernelPostTmInit();
 OBOS_WEAK void OBOSS_KernelPostKProcInit();
 OBOS_WEAK void OBOSS_KernelPostIRQInit();
 OBOS_WEAK void OBOSS_InitializeSMP();

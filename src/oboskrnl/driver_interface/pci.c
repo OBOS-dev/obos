@@ -20,10 +20,12 @@
 
 #include <vfs/vnode.h>
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/utilities.h>
 #include <uacpi/namespace.h>
+#endif
 
 #include <utils/list.h>
 
@@ -612,6 +614,11 @@ obos_status Drv_PCIUpdateResource(pci_resource* resource)
 }
 
 #else
-
+#include <error.h>
+obos_status Drv_EarlyPCIInitialize()
+{
+    return OBOS_STATUS_UNIMPLEMENTED;
+}
+__attribute__((alias("Drv_EarlyPCIInitialize"))) obos_status Drv_PCIInitialize();
 #endif
 

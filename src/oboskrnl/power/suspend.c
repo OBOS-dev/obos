@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
  */
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -35,8 +36,6 @@
 #include <uacpi_arch_helpers.h>
 
 #include <utils/list.h>
-
-#if OBOS_ARCHITECTURE_HAS_ACPI
 
 static mutex suspend_lock = MUTEX_INITIALIZE();
 // the thread that initiated the suspend.
@@ -226,6 +225,10 @@ obos_status OBOS_Suspend()
 }
 
 #else
+
+#include <int.h>
+#include <klog.h>
+#include <error.h>
 
 obos_status OBOS_Suspend()
 {

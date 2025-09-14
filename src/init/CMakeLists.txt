@@ -4,6 +4,8 @@
 
 if (${OBOS_ARCHITECTURE} STREQUAL "x86_64")
     add_library(syscall_invoke STATIC "x86_64-syscall.S")
+    elseif (${OBOS_ARCHITECTURE} STREQUAL "m68k")
+    add_library(syscall_invoke STATIC "m68k-syscall.S")
 endif()
 
 if (OBOS_ENABLE_UBSAN)
@@ -12,6 +14,8 @@ endif()
 if (OBOS_ENABLE_KASAN)
     add_compile_options("-fno-sanitize=address")
 endif()
+add_compile_options("-fPIE")
+add_link_options("-pie")
 
 link_libraries(syscall_invoke)
 
