@@ -576,6 +576,8 @@ char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 {
     if (!relative_to)
         relative_to = Vfs_Root;
+    if (!ent)
+        return nullptr;
     
     size_t path_len = 0;
     char* path = nullptr;
