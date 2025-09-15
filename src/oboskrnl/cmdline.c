@@ -48,6 +48,7 @@ static const char* const help_message =
 "--acpi-no-osi: Don't create the _OSI method when building the namespace. For more info, see documenation for UACPI_FLAG_NO_OSI.\n"
 "--acpi-bad-xsdt: Use the RSDT, even if the XSDT is present. For more info, see documenation for UACPI_FLAG_BAD_XSDT.\n"
 "--no-smp: Disables SMP. Has the equivalent effect of passing OBOS_UP at build-time.\n"
+"--pnp-module-path=pathspec: Where to find kernel modules for PnP during kernel init.\n"
 "--disable-libc-log: Disables the logs from the C library (see Sys_LibcLog) .\n"
 "--disable-syscall-error-log: Makes all syscall logs happen at DEBUG level.\n"
 "--help: Displays this help message.\n";
