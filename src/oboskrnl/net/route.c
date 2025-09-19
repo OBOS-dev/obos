@@ -92,10 +92,10 @@ obos_status Net_Initialize(vnode* nic)
 
     nic->net_tables = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_tables), nullptr);
 
-    mount* const point = nic->mount_point ? nic->mount_point : nic->un.mounted;
-    const driver_header* driver = nic->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (nic->vtype == VNODE_TYPE_CHR || nic->vtype == VNODE_TYPE_BLK || nic->vtype == VNODE_TYPE_FIFO)
-        driver = &nic->un.device->driver->header;
+    driver_header* driver = Vfs_GetVnodeDriver(nic);
+    if (!driver)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
     nic->net_tables->desc = nic->desc;
     if (driver->ftable.reference_device)
         driver->ftable.reference_device(&nic->net_tables->desc);

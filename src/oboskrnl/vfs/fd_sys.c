@@ -634,12 +634,11 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     st.st_ino = to_stat->inode;   
-    if (to_stat->flags & VFLAGS_EVENT_DEV)
+    if (to_stat->flags & VFLAGS_EVENT_DEV && ~to_stat->flags & VFLAGS_DRIVER_DEAD)
         goto done;
-    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
-        driver = &to_stat->un.device->driver->header;
+    const driver_header* driver = Vfs_GetVnodeDriverStat(to_stat);
+    if (!driver)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     size_t blkSize = 0;
     size_t blocks = 0;
     OBOS_ENSURE(driver);

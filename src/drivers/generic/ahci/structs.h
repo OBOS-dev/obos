@@ -312,6 +312,7 @@ typedef struct Port
 	volatile void* clBase;
 	volatile void* fisBase;
 	struct vnode* vn;
+	struct dirent* ent;
 	uintptr_t clBasePhys, fisBasePhys;
 	const char* dev_name;
 	uint64_t nSectors; // used in get_max_blk_count

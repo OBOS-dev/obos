@@ -246,10 +246,9 @@ static __attribute__((no_instrument_function)) void page_writer()
                 // This is a file page, so writing it back is different than writing back an
                 // anonymous page.
                 size_t nBytes = OBOS_MIN((size_t)OBOS_PAGE_SIZE, pg->backing_vn->filesize-pg->file_offset);
-                mount* const point = pg->backing_vn->mount_point ? pg->backing_vn->mount_point : pg->backing_vn->un.mounted;
-                const driver_header* driver = pg->backing_vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-                if (pg->backing_vn->vtype == VNODE_TYPE_BLK)
-                    driver = &pg->backing_vn->un.device->driver->header;
+                driver_header* driver = Vfs_GetVnodeDriver(pg->backing_vn);
+                if (!driver)
+                    continue;
                 size_t blkSize = 0;
                 driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
                 nBytes /= blkSize;

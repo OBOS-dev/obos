@@ -45,7 +45,9 @@ enum
     VFLAGS_PARTITION = 4,
     VFLAGS_FB = 8,
     // A file that only provides events, and cannot be read/written.
-    VFLAGS_EVENT_DEV = 16, 
+    VFLAGS_EVENT_DEV = 16,
+    // The driver implementing this vnode is DEAD and should NOT be used.
+    VFLAGS_DRIVER_DEAD = 32,
 };
 
 // basically a struct specinfo, but renamed.
@@ -110,3 +112,9 @@ struct async_irp
     vnode* vn;
 };
 OBOS_EXPORT vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev, uint32_t type);
+
+// For files that can have I/O on them (FIFOs, regular files, CHR/BLK devices, and sockets)
+OBOS_EXPORT driver_header* Vfs_GetVnodeDriver(vnode* vn);
+// For files that can and can't have I/O on them (directories, symbolic links, FIFOs, regular files, CHR/BLK devices, and sockets)
+OBOS_EXPORT driver_header* Vfs_GetVnodeDriverStat(vnode* vn);
+OBOS_EXPORT struct mount* Vfs_GetVnodeMount(vnode* vn);
