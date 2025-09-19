@@ -109,7 +109,8 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
             *status = OBOS_STATUS_INVALID_ARGUMENT;
         return nullptr; // use-after-free; it is impossible for a handle in-use to be nullptr
     }
-    *status = OBOS_STATUS_SUCCESS;
+    if (status)
+        *status = OBOS_STATUS_SUCCESS;
     if (!ignoreType)
         OBOS_ASSERT(table->arr[hnd].type == type);
     return &table->arr[hnd];
