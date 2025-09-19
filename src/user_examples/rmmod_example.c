@@ -13,7 +13,7 @@ int main(int argc, char** argv)
     }
 
     handle hnd = syscall1(Sys_FindDriverByName, argv[1]);
-    if (hnd != HANDLE_INVALID)
+    if (hnd == HANDLE_INVALID)
     {
         fprintf(stderr, "Could not find driver %s\n", argv[1]);
         return -1;
