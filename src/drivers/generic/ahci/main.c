@@ -82,6 +82,8 @@ void driver_cleanup_callback()
     for (size_t i = 0; i < PortCount; i++)
     {
         Port* port = &Ports[i];
+        if (!port->vn)
+            continue;
         Vfs_UnlinkNode(port->ent);
         port->vn->flags |= VFLAGS_DRIVER_DEAD; 
     }
