@@ -19,10 +19,7 @@ int main(int argc, char** argv)
             if (obos_is_error(status))
             {
                 if (curr == HANDLE_INVALID)
-                {
-                    name_size = sizeof("End of list");
-                    memcpy(name, "End of list", name_size);
-                }
+                    break;
                 else
                 {
                     fprintf(stderr, "Sys_QueryDriverName: %d\n", status);
