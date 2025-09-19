@@ -118,7 +118,12 @@ obos_status Sys_UnloadDriver(handle driver)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return Drv_UnloadDriver(drv->un.driver_id);
+    driver_id* id = drv->un.driver_id;
+
+    // Otherwise, refcount is too high for the driver to be unloaded
+    Sys_HandleClose(driver);
+
+    return Drv_UnloadDriver(id);
 }
 
 obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
