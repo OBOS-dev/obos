@@ -20,6 +20,7 @@ add_executable (umount "umount_example.c")
 add_executable (swapon "swapon_example.c")
 add_executable (mkswap "mkswap_example.c")
 add_executable (sync-anon "sync_anon_example.c")
+add_executable (lsmod "lsmod_example.c")
 
 if (${OBOS_ARCHITECTURE} STREQUAL "x86_64")
     add_executable(obos-gettime "x86_timeofday_example.c")
