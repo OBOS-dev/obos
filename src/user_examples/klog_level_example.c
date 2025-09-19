@@ -12,7 +12,7 @@ int main(int argc, char** argv)
         return -1;
     }
     int level = strtol(argv[1], NULL, 0);
-    if (level == LONG_MAX)
+    if (level == INT_MAX)
     {
         perror("strtol");
         return -1;
