@@ -11,7 +11,10 @@ int main(int argc, char** argv)
         do {
             char name[64] = {};
             size_t name_size = 64;
-            curr = syscall1(Sys_EnumerateLoadedDrivers, curr);
+            handle old = curr;
+            curr = syscall1(Sys_EnumerateLoadedDrivers, old);
+            if (old != HANDLE_INVALID)
+                syscall1(Sys_HandleClose, old);
             obos_status status = syscall3(Sys_QueryDriverName, curr, name, &name_size);
             if (obos_is_error(status))
             {
@@ -27,8 +30,6 @@ int main(int argc, char** argv)
                 }
             }
             printf("%.*s\n", (int)name_size, name);
-            if (curr != HANDLE_INVALID)
-                syscall1(Sys_HandleClose, curr);
         } while(curr != HANDLE_INVALID);
     }
     else
