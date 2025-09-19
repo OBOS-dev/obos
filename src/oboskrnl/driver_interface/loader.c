@@ -371,6 +371,8 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
 
 obos_status Drv_UnloadDriver(driver_id* driver)
 {
+    // The kernel don't want the driver no more.
+    --driver->refCnt;
     if (driver->refCnt != 1)
         OBOS_Warning("Driver not unloaded because refcount=%ld\n", driver->refCnt);
     return Drv_UnrefDriver(driver);
