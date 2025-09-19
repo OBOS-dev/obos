@@ -86,7 +86,7 @@ obos_status Sys_StartDriver(handle driver, handle* mainThread)
 
     handle tmp = HANDLE_INVALID;
     status = memcpy_k_to_usr(mainThread, &tmp, sizeof(handle));
-    if (obos_is_error(status))
+    if (obos_is_error(status) && mainThread != nullptr)
         return status;
 
     thread* mainThreadPtr = nullptr;
