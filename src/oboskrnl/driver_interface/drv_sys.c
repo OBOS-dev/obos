@@ -1,13 +1,14 @@
 /*
  * oboskrnl/driver_interface/drv_sys.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
 #include <error.h>
 #include <handle.h>
 #include <memmanip.h>
+#include <syscall.h>
 
 #include <driver_interface/drv_sys.h>
 #include <driver_interface/loader.h>
@@ -20,6 +21,8 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+
+#include <allocators/base.h>
 
 handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 {
@@ -136,9 +139,19 @@ obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
 }
 
 // Finds a loaded driver by its name, and returns a handle to it.
-handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */)
+handle Sys_FindDriverByName(const char* uname /* assumed to be 64-bytes at max */)
 {
     perm_check_hnd();
+
+    char* name = nullptr;
+    size_t sz_name = 0;
+    obos_status status = OBOSH_ReadUserString(uname, nullptr, &sz_name);
+    if (obos_is_error(status))
+        return HANDLE_INVALID;
+    if (sz_name >= 64)
+        return HANDLE_INVALID;
+    name = ZeroAllocate(OBOS_KernelAllocator, sz_name+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uname, name, nullptr);
 
     driver_id *id = nullptr;
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
@@ -151,6 +164,7 @@ handle Sys_FindDriverByName(const char* name /* assumed to be 64-bytes at max */
 
         curr = curr->next;
     }
+    Free(OBOS_KernelAllocator, name, sz_name);
     if (!id)
         return HANDLE_INVALID;
 
@@ -176,15 +190,16 @@ handle Sys_EnumerateLoadedDrivers(handle curr)
     if (curr != HANDLE_INVALID)
     {
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-        obos_status status = OBOS_STATUS_SUCCESS;
-        handle_desc* drv = OBOS_HandleLookup(OBOS_CurrentHandleTable(), curr, HANDLE_TYPE_DRIVER_ID, false, &status);
+        handle_desc* drv = OBOS_HandleLookup(OBOS_CurrentHandleTable(), curr, HANDLE_TYPE_DRIVER_ID, false, nullptr);
         if (!drv)
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return status;
+            return HANDLE_INVALID;
         }
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         id = drv->un.driver_id;
+        if (!id->node.next)
+            return HANDLE_INVALID;
         id = id->node.next->data;
     }
     else
@@ -206,7 +221,7 @@ obos_status Sys_QueryDriverName(handle driver, char* namebuf, size_t *sznamebuf 
     perm_check();
     
     if (!sznamebuf)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_INVALID_ARGUMENT; 
 
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     obos_status status = OBOS_STATUS_SUCCESS;
