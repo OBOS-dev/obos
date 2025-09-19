@@ -165,6 +165,16 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
         if (status) *status = OBOS_STATUS_INVALID_HEADER;
         return nullptr;
     }
+    for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
+    {
+        if (uacpi_strncmp(header_.driverName, curr->data->header.driverName, 64) == 0)
+        {
+            OBOS_Error("%s: Refusing to load an already loaded driver.\n", __func__);
+            if (status) *status = OBOS_STATUS_ALREADY_INITIALIZED;
+            return nullptr;
+        }
+        curr = curr->next;
+    }
     driver_id* driver = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_id), nullptr);
     Elf_Sym* dynamicSymbolTable = nullptr;
     size_t nEntriesDynamicSymbolTable = 0;
@@ -313,6 +323,8 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (driver->header.flags & DRIVER_HEADER_FLAGS_NO_ENTRY)
         return OBOS_STATUS_NO_ENTRY_POINT;
+    if (driver->started)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
     obos_status status = OBOS_STATUS_SUCCESS;
     thread* thr = CoreH_ThreadAllocate(&status);
     if (obos_is_error(status))
@@ -352,6 +364,7 @@ obos_status Drv_StartDriver(driver_id* driver, thread** mainThread)
     }
     driver->main_thread = thr;
     thr->references++;
+    driver->started = true;
     CoreH_ThreadReady(thr); // very low chance of failure.
     return OBOS_STATUS_SUCCESS;
 }
