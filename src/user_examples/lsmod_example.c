@@ -1,3 +1,5 @@
+// Lists loaded modules, or queries a modules existence.
+
 #include <obos/syscall.h>
 #include <obos/error.h>
 #include <stdio.h>
