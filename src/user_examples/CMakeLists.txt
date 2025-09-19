@@ -23,6 +23,7 @@ add_executable (sync-anon "sync_anon_example.c")
 add_executable (lsmod "lsmod_example.c")
 add_executable (ldmod "ldmod_example.c")
 add_executable (stmod "stmod_example.c")
+add_executable (rmmod "rmmod_example.c")
 
 if (${OBOS_ARCHITECTURE} STREQUAL "x86_64")
     add_executable(obos-gettime "x86_timeofday_example.c")
