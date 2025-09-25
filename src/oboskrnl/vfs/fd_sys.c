@@ -1820,11 +1820,12 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         {
             // doesn't exactly follow linux, but whatever.
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-            handle_desc* desc = nullptr;
-            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            handle_desc* descp = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &descp);
+            fd = OBOS_CurrentHandleTable()->arr + desc;
             void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
-            cb(fd, desc);
-            desc->type = HANDLE_TYPE_FD;
+            cb(fd, descp);
+            descp->type = HANDLE_TYPE_FD;
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             status = OBOS_STATUS_SUCCESS;
             res = new_desc;
@@ -1834,12 +1835,13 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         {
             // doesn't exactly follow linux, but whatever.
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-            handle_desc* desc = nullptr;
-            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            handle_desc* pdesc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &pdesc);
+            fd = OBOS_CurrentHandleTable()->arr + desc;
             void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
-            cb(fd, desc);
-            desc->un.fd->flags |= FD_FLAGS_NOEXEC;
-            desc->type = HANDLE_TYPE_FD;
+            cb(fd, pdesc);
+            pdesc->un.fd->flags |= FD_FLAGS_NOEXEC;
+            pdesc->type = HANDLE_TYPE_FD;
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             res = new_desc;
             status = OBOS_STATUS_SUCCESS;
