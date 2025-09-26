@@ -21,10 +21,10 @@
     if (!(_parent))\
         _status = (OBOS_STATUS_NOT_FOUND);\
     else\
-        _status = Vfzs_CreateNode(_parent, (name), (vtype), (mode));\
+        _status = Vfs_CreateNode(_parent, (name), (vtype), (mode));\
     (_status);\
 })
 
 obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, file_perm mode);
 
-obos_status Vfs_UnlinkNode(dirent* node);
+OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node);

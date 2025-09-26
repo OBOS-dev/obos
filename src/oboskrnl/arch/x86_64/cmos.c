@@ -1,5 +1,5 @@
 /*
- * oboskrnl/arch/x86_64/cmos.h
+ * oboskrnl/arch/x86_64/cmos.c
  *
  * Copyright (c) 2025 Omar Berrow
 */

@@ -121,7 +121,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     return status;
 }
 
-obos_status Vfs_UnlinkNode(dirent* node)
+OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
 {
     if (!node)
         return OBOS_STATUS_SUCCESS;

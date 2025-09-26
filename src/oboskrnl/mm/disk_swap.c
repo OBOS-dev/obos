@@ -50,20 +50,12 @@ static uintptr_t lba_to_block_id(struct metadata* data, uint64_t lba, bool huge_
     return (lba / BLOCKS_PER_PAGE(data->vn->blkSize, huge_page)) << PAGE_SHIFT(huge_page);
 }
 
-static const driver_header* get_driver(vnode* vn)
-{
-    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    const driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
-        driver = &vn->un.device->driver->header;
-    return driver;
-}
-
 static obos_status read_freelist_node(struct metadata* data, uint64_t curr_lba, disk_swap_node* out)
 {
     char buff[data->vn->blkSize];
     memzero(buff, sizeof(buff));
-    const driver_header* hdr = get_driver(data->vn);
+    const driver_header* hdr = Vfs_GetVnodeDriver(data->vn);
+    OBOS_ENSURE(hdr && "disk swap: driver pulled out from under our feet! (Vfs_GetVnodeDriver() returned nullptr)");
     obos_status status = hdr->ftable.read_sync(data->vn->desc, buff, 1, curr_lba, nullptr);
     if (obos_is_success(status))
         memcpy(out, buff, sizeof(*out));
@@ -74,7 +66,7 @@ static obos_status write_freelist_node(struct metadata* data, uint64_t curr_lba,
     char buff[data->vn->blkSize];
     memzero(buff, sizeof(buff));
     memcpy(buff, in, sizeof(*in));
-    const driver_header* hdr = get_driver(data->vn);
+    const driver_header* hdr = Vfs_GetVnodeDriver(data->vn);
     return hdr->ftable.write_sync(data->vn->desc, buff, 1, curr_lba, nullptr);
 }
 
@@ -163,7 +155,7 @@ static obos_status swap_write(struct swap_device* dev, uintptr_t id, page* pg)
     uint32_t blkOffset = block_id_to_lba(data, id, pg->flags & PHYS_PAGE_HUGE_PAGE);
     uint32_t blkCount = BLOCKS_PER_PAGE(data->vn->blkSize, pg->flags & PHYS_PAGE_HUGE_PAGE);
 
-    const driver_header* hdr = get_driver(data->vn);
+    const driver_header* hdr = Vfs_GetVnodeDriver(data->vn);
     return hdr->ftable.write_sync(data->vn->desc, MmS_MapVirtFromPhys(pg->phys), blkCount, blkOffset, nullptr);
 }
 
@@ -179,7 +171,7 @@ static obos_status swap_read(struct swap_device* dev, uintptr_t id, page* pg)
     uint32_t blkOffset = block_id_to_lba(data, id, pg->flags & PHYS_PAGE_HUGE_PAGE);
     uint32_t blkCount = BLOCKS_PER_PAGE(data->vn->blkSize, pg->flags & PHYS_PAGE_HUGE_PAGE);
 
-    const driver_header* hdr = get_driver(data->vn);
+    const driver_header* hdr = Vfs_GetVnodeDriver(data->vn);
     return hdr->ftable.read_sync(data->vn->desc, MmS_MapVirtFromPhys(pg->phys), blkCount, blkOffset, nullptr);
 }
 

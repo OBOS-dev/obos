@@ -253,6 +253,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
     if (fd->un.fd->vn->seals & F_SEAL_WRITE)
         return OBOS_STATUS_ACCESS_DENIED;
     if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (fd->un.fd->offset + nBytes) > fd->un.fd->vn->filesize)
@@ -329,6 +331,13 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
         return status;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
+    if (fd->un.fd->vn->seals & F_SEAL_WRITE)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (offset + nBytes) > fd->un.fd->vn->filesize)
+        return OBOS_STATUS_ACCESS_DENIED;
 
     status = OBOS_STATUS_SUCCESS;
     void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, OBOS_PROTECTION_READ_ONLY, true, &status);
@@ -466,8 +475,13 @@ obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_ar
 
     if (sz_argp == SIZE_MAX)
     {
-        if (fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size)
-            status = fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size(request, &sz_argp);
+        if (!fd->un.fd->vn)
+            return OBOS_STATUS_UNINITIALIZED;
+        driver_header* header = Vfs_GetVnodeDriver(fd->un.fd->vn);
+        if (!header)
+            return OBOS_STATUS_INTERNAL_ERROR;
+        if (header->ftable.ioctl_argp_size)
+            status = header->ftable.ioctl_argp_size(request, &sz_argp);
         else
             status = OBOS_STATUS_UNIMPLEMENTED;
         if (obos_is_error(status))
@@ -541,6 +555,8 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 return status;
             }
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            if (!fd->un.fd->vn)
+                return OBOS_STATUS_UNINITIALIZED;
             to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->parent->vnode;
             break;
         }
@@ -641,12 +657,11 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     st.st_ino = to_stat->inode;   
-    if (to_stat->flags & VFLAGS_EVENT_DEV)
+    if (to_stat->flags & VFLAGS_EVENT_DEV && ~to_stat->flags & VFLAGS_DRIVER_DEAD)
         goto done;
-    mount* const point = to_stat->mount_point ? to_stat->mount_point : to_stat->un.mounted;
-    const driver_header* driver = (to_stat->vtype == VNODE_TYPE_REG || to_stat->vtype == VNODE_TYPE_DIR || to_stat->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (to_stat->vtype == VNODE_TYPE_CHR || to_stat->vtype == VNODE_TYPE_BLK || to_stat->vtype == VNODE_TYPE_FIFO)
-        driver = &to_stat->un.device->driver->header;
+    const driver_header* driver = Vfs_GetVnodeDriverStat(to_stat);
+    if (!driver)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     size_t blkSize = 0;
     size_t blocks = 0;
     OBOS_ENSURE(driver);
@@ -1763,7 +1778,9 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         return status;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_UNINITIALIZED;
+    
     uintptr_t* args = Mm_MapViewOfUserMemory(
         CoreS_GetCPULocalPtr()->currentContext, 
         uargs, nullptr, 
@@ -1828,11 +1845,12 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         {
             // doesn't exactly follow linux, but whatever.
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-            handle_desc* desc = nullptr;
-            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            handle_desc* descp = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &descp);
+            fd = OBOS_CurrentHandleTable()->arr + desc;
             void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
-            cb(fd, desc);
-            desc->type = HANDLE_TYPE_FD;
+            cb(fd, descp);
+            descp->type = HANDLE_TYPE_FD;
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             status = OBOS_STATUS_SUCCESS;
             res = new_desc;
@@ -1842,12 +1860,13 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         {
             // doesn't exactly follow linux, but whatever.
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-            handle_desc* desc = nullptr;
-            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+            handle_desc* pdesc = nullptr;
+            handle new_desc = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &pdesc);
+            fd = OBOS_CurrentHandleTable()->arr + desc;
             void(*cb)(handle_desc *hnd, handle_desc *new) = OBOS_HandleCloneCallbacks[HANDLE_TYPE_FD];
-            cb(fd, desc);
-            desc->un.fd->flags |= FD_FLAGS_NOEXEC;
-            desc->type = HANDLE_TYPE_FD;
+            cb(fd, pdesc);
+            pdesc->un.fd->flags |= FD_FLAGS_NOEXEC;
+            pdesc->type = HANDLE_TYPE_FD;
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             res = new_desc;
             status = OBOS_STATUS_SUCCESS;

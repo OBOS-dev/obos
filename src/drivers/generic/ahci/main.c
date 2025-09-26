@@ -44,6 +44,7 @@
 
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
+#include <vfs/create.h>
 
 #include <utils/list.h>
 
@@ -79,7 +80,14 @@ void driver_cleanup_callback()
     }
     Core_IrqObjectFree(&HbaIrq);
     // TODO: Free HBA, port clb, and fb
-    
+    for (size_t i = 0; i < PortCount; i++)
+    {
+        Port* port = &Ports[i];
+        if (!port->vn)
+            continue;
+        Vfs_UnlinkNode(port->ent);
+        port->vn->flags |= VFLAGS_DRIVER_DEAD; 
+    }
 }
 
 driver_id* this_driver;
@@ -420,7 +428,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 			port->nSectors,
 			port->sectorSize);
         port->vn = Drv_AllocateVNode(this, (dev_desc)port, port->nSectors*port->sectorSize, nullptr, VNODE_TYPE_BLK);
-        Drv_RegisterVNode(port->vn, port->dev_name);
+        port->ent = Drv_RegisterVNode(port->vn, port->dev_name);
     }
     OBOS_Log("%*s: Finished initialization of the HBA.\n", strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};

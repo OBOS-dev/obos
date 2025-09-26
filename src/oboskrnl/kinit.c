@@ -296,9 +296,20 @@ void OBOS_KernelInit()
         foreach_string_in_list(modules_to_load, load_driver_modules, nullptr);
     }
 
-    OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
-    Drv_PnpLoadDriversAt(Vfs_Root, true);
     do {
+        OBOS_Log("%s: Loading drivers through PnP.\n", __func__);
+        const char* modules_path = OBOS_GetOPTS("pnp-module-path");
+        dirent* target = nullptr;
+        if (modules_path)
+        {
+            target = VfsH_DirentLookup(modules_path);
+            if (!target)
+                OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find %s passed in pnp-module-path command line option.\n", modules_path);
+        }
+        else
+            target = Vfs_Root;
+        Drv_PnpLoadDriversAt(target, true);
+        
         if (!initrd_drv_module.address)
             break;
         char* modules_to_load = OBOS_GetOPTS("load-modules");

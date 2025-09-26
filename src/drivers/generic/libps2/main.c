@@ -13,7 +13,7 @@
 #include <driver_interface/driverId.h>
 
 #include <vfs/irp.h>
-
+#include <vfs/create.h>
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 
@@ -105,10 +105,20 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     return st;
 }
 
-// TODO: Implement.
+static void cleanup_port_vn(ps2_port* port)
+{
+    Vfs_UnlinkNode(port->ent);
+    port->vn->flags |= VFLAGS_DRIVER_DEAD;
+}
+
 void cleanup()
 {
-    
+    ps2_port* port1 = PS2_GetPort(false);    
+    ps2_port* port2 = PS2_GetPort(false);
+    if (port1)
+        cleanup_port_vn(port1);
+    if (port2)
+        cleanup_port_vn(port2);
 }
 
 static void irp_event_set(irp* req)
@@ -191,12 +201,13 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         if (port->type == PS2_DEV_TYPE_UNKNOWN)
             continue;
         vnode* vn = Drv_AllocateVNode(this, (uintptr_t)port, 0, nullptr, VNODE_TYPE_CHR);
+        port->vn = vn;
         char dev_name[6] = {};
         memcpy(dev_name, port->str_id, 5);
         dev_name[4] = i == 0 ? '1' : '2';
         dev_name[5] = 0;
         OBOS_Debug("%*s: Registering PS/2 Device at %s%c%s\n", strnlen(this->header.driverName, 64), this->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
-        Drv_RegisterVNode(vn, dev_name);
+        port->ent = Drv_RegisterVNode(vn, dev_name);
     }
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

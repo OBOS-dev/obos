@@ -60,6 +60,7 @@ Arch_SyscallTrapHandler:
 
     ; Conserve caller-saved "scratch" registers before logging the syscall
     push rax
+    push r11
     push rdi
     push rsi
     push rdx
@@ -78,6 +79,7 @@ Arch_SyscallTrapHandler:
     pop rdx
     pop rsi
     pop rdi
+    pop r11
     pop rax
 
     push rax

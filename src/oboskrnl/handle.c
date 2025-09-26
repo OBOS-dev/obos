@@ -21,6 +21,8 @@
 #include <vfs/alloc.h>
 #include <vfs/fd.h>
 
+#include <driver_interface/loader.h>
+
 #include <allocators/base.h>
 
 OBOS_NO_UBSAN void OBOS_ExpandHandleTable(handle_table* table, size_t size)
@@ -107,7 +109,8 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
             *status = OBOS_STATUS_INVALID_ARGUMENT;
         return nullptr; // use-after-free; it is impossible for a handle in-use to be nullptr
     }
-    *status = OBOS_STATUS_SUCCESS;
+    if (status)
+        *status = OBOS_STATUS_SUCCESS;
     if (!ignoreType)
         OBOS_ASSERT(table->arr[hnd].type == type);
     return &table->arr[hnd];
@@ -188,6 +191,10 @@ void dirent_close(handle_desc* hnd)
 {
     Free(OBOS_KernelAllocator, hnd->un.dirent, sizeof(struct dirent_handle));
 }
+void drv_close(handle_desc* hnd)
+{
+    Drv_UnrefDriver(hnd->un.driver_id);
+}
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
@@ -200,7 +207,7 @@ void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     nullptr,
     nullptr,
     nullptr,
-    nullptr,
+    drv_close,
     nullptr,
 };
 

@@ -55,6 +55,10 @@ void OBOS_LoadInit()
 
     OBOS_Log("Loading %s\n", init_path);
 
+    obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
+    if (obos_is_error(status))
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not open %s. Status: %d\n", init_path, status);
+
     context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
     Mm_ConstructContext(new_ctx);
     process* new = Core_ProcessAllocate(nullptr);
@@ -63,10 +67,6 @@ void OBOS_LoadInit()
     new_ctx->workingSet.capacity = 64*1024*1024;
     Core_ProcessStart(new, nullptr);
     new->exec_file = VfsH_DirentPath(VfsH_DirentLookup(init_path), nullptr);
-
-    obos_status status = Vfs_FdOpen(&init_fd, init_path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
-    if (obos_is_error(status))
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not open %s. Status: %d\n", init_path, status);
 
     void* buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, init_fd.vn->filesize, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &init_fd, nullptr);
     if (obos_is_error(status))

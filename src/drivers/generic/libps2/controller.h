@@ -75,6 +75,9 @@ typedef struct ps2_port {
     bool works : 1;
     bool suppress_irqs : 1;
     bool second : 1;
+
+    struct vnode* vn;
+    struct dirent* ent;
 } ps2_port;
 
 DRV_EXPORT void PS2_DeviceWrite(bool channel_two, uint8_t val);
