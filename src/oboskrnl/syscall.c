@@ -235,6 +235,8 @@ obos_status Sys_TTYName(handle desc, char* ubuf, size_t size)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
     if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
         return OBOS_STATUS_NOT_A_TTY;
 
@@ -276,6 +278,8 @@ obos_status Sys_IsATTY(handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
     if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
         return OBOS_STATUS_NOT_A_TTY;
     return OBOS_STATUS_SUCCESS;
