@@ -246,6 +246,8 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
     if (fd->un.fd->vn->seals & F_SEAL_WRITE)
         return OBOS_STATUS_ACCESS_DENIED;
     if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (fd->un.fd->offset + nBytes) > fd->un.fd->vn->filesize)
@@ -322,6 +324,13 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
         return status;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (!fd->un.fd->vn)
+        return OBOS_STATUS_UNINITIALIZED;
+    if (fd->un.fd->vn->seals & F_SEAL_WRITE)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if ((fd->un.fd->vn->seals & F_SEAL_GROW) && (offset + nBytes) > fd->un.fd->vn->filesize)
+        return OBOS_STATUS_ACCESS_DENIED;
 
     status = OBOS_STATUS_SUCCESS;
     void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buf, nullptr, nBytes, OBOS_PROTECTION_READ_ONLY, true, &status);
@@ -459,6 +468,8 @@ obos_status Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_arg
 
     if (sz_argp == SIZE_MAX)
     {
+        if (!fd->un.fd->vn)
+            return OBOS_STATUS_UNINITIALIZED;
         if (fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size)
             status = fd->un.fd->vn->un.device->driver->header.ftable.ioctl_argp_size(request, &sz_argp);
         else
@@ -534,6 +545,8 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 return status;
             }
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            if (!fd->un.fd->vn)
+                return OBOS_STATUS_UNINITIALIZED;
             to_stat = HANDLE_TYPE(desc) == HANDLE_TYPE_FD ? fd->un.fd->vn : fd->un.dirent->parent->vnode;
             break;
         }
@@ -1755,7 +1768,9 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
         return status;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_UNINITIALIZED;
+    
     uintptr_t* args = Mm_MapViewOfUserMemory(
         CoreS_GetCPULocalPtr()->currentContext, 
         uargs, nullptr, 
