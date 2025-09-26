@@ -471,7 +471,7 @@ obos_status Sys_FdIoctl(handle desc, uint64_t request, void* argp, size_t sz_arg
         if (!fd->un.fd->vn)
             return OBOS_STATUS_UNINITIALIZED;
         driver_header* header = Vfs_GetVnodeDriver(fd->un.fd->vn);
-        if (header)
+        if (!header)
             return OBOS_STATUS_INTERNAL_ERROR;
         if (header->ftable.ioctl_argp_size)
             status = header->ftable.ioctl_argp_size(request, &sz_argp);
