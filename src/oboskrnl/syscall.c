@@ -107,6 +107,7 @@ void Sys_ExitCurrentProcess(uint32_t exitCode)
     Core_ExitCurrentProcess((exitCode & 0xff) << 8);
 }
 
+#define _SC_CLK_TCK 2
 #define _SC_OPEN_MAX 4
 #define _SC_PAGE_SIZE 30
 #define _SC_NPROCESSORS_CONF 83
@@ -119,6 +120,9 @@ obos_status Sys_SysConf(int num, long *ret_)
     obos_status status = OBOS_STATUS_SUCCESS;
     switch (num)
     {
+        case _SC_CLK_TCK:
+            ret = CoreS_TimerFrequency;
+            break;
         case _SC_NPROCESSORS_ONLN:
         case _SC_NPROCESSORS_CONF:
             ret = Core_CpuCount;
