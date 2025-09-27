@@ -20,6 +20,7 @@ git clone https://github.com/OBOS-dev/obos-pkgs.git
 3. Run the following commands to build an OBOS distribution:
 ```sh
 cp settings-x86_64.json settings.json
+./bootstrap-repo
 ./obos-strap setup-env
 ./obos-strap install bootstrap-binutils
 export PATH=$PATH:$PWD/host_pkgs/bin
