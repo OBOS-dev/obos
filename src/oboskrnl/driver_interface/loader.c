@@ -171,7 +171,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     }
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
     {
-        if (uacpi_strncmp(header_.driverName, curr->data->header.driverName, 64) == 0)
+        if (strncmp(header_.driverName, curr->data->header.driverName, 64))
         {
             OBOS_Error("%s: Refusing to load an already loaded driver.\n", __func__);
             if (status) *status = OBOS_STATUS_ALREADY_INITIALIZED;
