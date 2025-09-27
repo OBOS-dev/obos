@@ -9,6 +9,7 @@
 /dependencies/uHDA
 /dependencies/flanterm/
 /dependencies/include/
+/dependencies/freebsd-e1000
 /dependencies/needs_download.cmake
 /qemu_log.txt
 /tar
