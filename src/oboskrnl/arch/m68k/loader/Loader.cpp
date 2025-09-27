@@ -11,7 +11,7 @@ asm("\
 .section .rodata \n\
 .balign 0x10 \n\
 KERNEL_BLOB_BEGIN: \n\
-    .incbin \"../../out/oboskrnl\" \n\
+    .incbin \"" OUTPUT_DIRECTORY "/oboskrnl\" \n\
 KERNEL_BLOB_END: \n\
 .previous \n\
 ");

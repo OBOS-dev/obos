@@ -56,6 +56,10 @@ chmod +x ./launch_qemu.sh
 cd scripts
 call launch_qemu.bat
 ```
+## Port status
+- x86_64-obos: Working, not all ported programs work
+- m68k-obos: Userspace is unstable, but the port works otherwise
+- For information on ported programs, go to the obos-pkgs repository
 ## Credits
 - My friend [@LemurLord16](https://github.com/LemurLord16) (@sigsbeedrive on discord) for listening to me yap about new features.
 - My cousin Ali because why not.

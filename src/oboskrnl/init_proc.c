@@ -77,6 +77,7 @@ void OBOS_LoadInit()
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not load %s. Status: %d\n", init_path, status);
 
     OBOS_Log("Loaded %s at 0x%p\n", init_path, aux.elf.base);
+    OBOS_Debug("NOTE: Dynamic linker loaded at 0x%p\n", aux.elf.rtld_base);
 
     const Elf_Ehdr* ehdr = buf;
     aux.phdr.ptr = (void*)((uintptr_t)aux.elf.base + ehdr->e_phoff);

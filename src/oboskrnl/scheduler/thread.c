@@ -261,7 +261,8 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	currentThread->kernelStack = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
-	CoreS_SetKernelStack(nullptr);
+	if (CoreS_SetKernelStack)
+		CoreS_SetKernelStack(nullptr);
 	Core_Yield();
 	OBOS_UNREACHABLE;
 }

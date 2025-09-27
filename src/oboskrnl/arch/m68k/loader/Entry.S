@@ -24,3 +24,5 @@ LoaderExit:
 StackBase:
 .zero 0x4000
 StackTop:
+
+.section .note.GNU-stack,"",%progbits

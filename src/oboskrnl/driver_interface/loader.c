@@ -42,6 +42,10 @@
 symbol_table OBOS_KernelSymbolTable;
 driver_list Drv_LoadedDrivers;
 driver_list Drv_LoadedFsDrivers;
+static int cmp_symbols(driver_symbol* left, driver_symbol* right)
+{
+    return strcmp_std(left->name, right->name);
+}
 RB_GENERATE(symbol_table, driver_symbol, rb_entry, cmp_symbols);
 
 #define OffsetPtr(ptr, off, type) ((type)(((uintptr_t)ptr) + ((intptr_t)off)))
@@ -167,7 +171,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
     }
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
     {
-        if (uacpi_strncmp(header_.driverName, curr->data->header.driverName, 64) == 0)
+        if (strncmp(header_.driverName, curr->data->header.driverName, 64))
         {
             OBOS_Error("%s: Refusing to load an already loaded driver.\n", __func__);
             if (status) *status = OBOS_STATUS_ALREADY_INITIALIZED;
@@ -460,7 +464,7 @@ void Drv_ExitDriver(struct driver_id* id, const driver_init_status* status)
         {
             OBOS_Warning("Initialization of driver %d (%s) failed with status %d.\n", 
                 id->id, 
-                uacpi_strnlen(id->header.driverName, 64) ? id->header.driverName : "Unknown",
+                strnlen(id->header.driverName, 64) ? id->header.driverName : "Unknown",
                 status->status
             );
             if (status->context)

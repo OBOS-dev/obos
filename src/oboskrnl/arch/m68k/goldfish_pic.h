@@ -28,6 +28,7 @@ void Arch_PICEnable(pic*, uint32_t line);
 uint8_t Arch_PICGetPendingCount(pic*);
 uint32_t Arch_PICGetPending(pic*);
 void Arch_PICRegisterIRQ(uint32_t line, uint8_t irq);
+void Arch_PICUnregisterIRQ(uint32_t line);
 void Arch_PICMaskIRQ(uint32_t line, bool mask);
 void Arch_PICHandleIRQ(interrupt_frame*);
 void Arch_PICHandleSpurious(interrupt_frame*);

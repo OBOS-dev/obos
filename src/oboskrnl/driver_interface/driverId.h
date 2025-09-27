@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/driverId.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -11,8 +11,6 @@
 #include <utils/tree.h>
 
 #include <driver_interface/header.h>
-
-#include <uacpi_libc.h>
 
 #include <scheduler/thread.h>
 
@@ -37,10 +35,6 @@ typedef struct driver_symbol
     int8_t visibility : 4;
 } driver_symbol;
 typedef RB_HEAD(symbol_table, driver_symbol) symbol_table;
-inline static int cmp_symbols(driver_symbol* left, driver_symbol* right)
-{
-    return uacpi_strcmp(left->name, right->name);
-}
 RB_PROTOTYPE(symbol_table, driver_symbol, rb_entry, cmp_symbols);
 typedef struct driver_node
 {

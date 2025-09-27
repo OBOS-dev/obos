@@ -11,8 +11,6 @@
 
 #include <allocators/base.h>
 
-#include <uacpi_libc.h>
-
 void OBOS_StringSetAllocator(string* obj, allocator_info* allocator)
 {
     obj->allocator = allocator;

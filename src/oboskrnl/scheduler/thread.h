@@ -66,7 +66,7 @@ typedef enum
 #if defined(__x86_64__)
 typedef __uint128_t thread_affinity;
 #elif defined(__m68k__)
-typedef uint64_t thread_affinity;
+typedef uint32_t thread_affinity;
 #endif
 extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
 extern const uint64_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
@@ -78,7 +78,7 @@ typedef struct thread_node
 } thread_node;
 typedef struct thread
 {
-	uint64_t tid;
+	uintptr_t tid;
 	thread_flags flags;
 
 	size_t references;

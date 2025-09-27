@@ -15,6 +15,8 @@
 
 #if defined(__x86_64__) || defined(__i686__)
 #   include <x86/i8042/ps2_irql.h>
+#else
+#define IRQL_PS2 -1
 #endif
 
 enum {PS2_PORT_MAGIC=0x1BADBEEF};

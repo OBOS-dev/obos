@@ -137,11 +137,12 @@ void Arch_CallDeferredIrq(m68k_dirq* irq, m68k_dirq* table)
 void CoreS_SetIRQL(uint8_t to, uint8_t old)
 {
     if (to == IRQL_MASKED)
-        Arch_SetHardwareIPL(7); // avoid a lot of nexedless deferring.
+        Arch_SetHardwareIPL(7); // avoid a lot of needless deferring.
     else
         Arch_SetHardwareIPL(0);
     if (to >= old)
         return;
+    CoreS_GetCPULocalPtr()->currentIrql = to;
     m68k_dirq_list* deferred = &CoreS_GetCPULocalPtr()->arch_specific.deferred;
     // If to < current irql, run all defferred IRQs.
     // Start at the highest priority IRQs.
@@ -153,8 +154,17 @@ void CoreS_SetIRQL(uint8_t to, uint8_t old)
             continue; // it's not time yet
         }
         m68k_dirq* prev = curr->prev;
-        for (size_t i = 0; i < curr->nDefers; i++)
+        while (curr->nDefers != 0)
             Arch_CallDeferredIrq(curr, CoreS_GetCPULocalPtr()->arch_specific.irqs);
+        if (curr->prev)
+            curr->prev->next = curr->next;
+        if (curr->next)
+            curr->next->prev = curr->prev;
+        if (deferred->tail == curr)
+            deferred->tail = curr->prev;
+        if (deferred->head == curr)
+            deferred->head = curr->next;
+        deferred->nNodes--;
         curr = prev;
     }
 }

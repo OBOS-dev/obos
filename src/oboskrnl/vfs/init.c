@@ -36,8 +36,6 @@
 
 #include <power/event.h>
 
-#include <uacpi_libc.h>
-
 // InitRD driver name.
 #include <generic/initrd/name.h>
 
@@ -80,7 +78,7 @@ void Vfs_Initialize()
     vdev initrd_dev = { };
     for (driver_node* cur = Drv_LoadedDrivers.head; cur; )
     {
-        if (uacpi_strncmp(cur->data->header.driverName, INITRD_DRIVER_NAME, 32) == 0)
+        if (strncmp(cur->data->header.driverName, INITRD_DRIVER_NAME, 32))
         {
             initrd_dev.driver = cur->data;
             break;

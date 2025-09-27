@@ -35,11 +35,12 @@
 #include "mm/page.h"
 #include "structs.h"
 
+#if OBOS_ARCHITECTURE_HAS_ACPI
 #include <uacpi/namespace.h>
 #include <uacpi/resources.h>
 #include <uacpi/types.h>
 #include <uacpi/utilities.h>
-#include <uacpi_libc.h>
+#endif
 
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
@@ -226,7 +227,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 
     size_t barlen = bar->bar->size;
     OBOS_Log("%*s: Initializing AHCI controller at %02x:%02x:%02x. HBA at 0x%p-0x%p.\n",
-        uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName,
+        strnlen(drv_hdr.driverName, 64), drv_hdr.driverName,
         PCINode->location.bus, PCINode->location.slot, PCINode->location.function,
         bar, bar+barlen);
 
@@ -343,13 +344,13 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         StartCommandEngine(hPort);
         curr->works = true;
     }
-    OBOS_Log("%*s: Initialized %d ports.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, PortCount);
+    OBOS_Log("%*s: Initialized %d ports.\n", strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, PortCount);
     for (uint8_t i = 0; i < PortCount; i++)
     {
         Port* port = Ports + i;
         if (!port->works)
             continue;
-        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
+        OBOS_Log("%*s: Sending IDENTIFY_ATA to port %d.\n",  strnlen(drv_hdr.driverName, 64), drv_hdr.driverName, i);
         HBA->ports[port->hbaPortIndex].is = 0xffffffff;
         HBA->ports[port->hbaPortIndex].ie = 0xffffffff;
         HBA->ports[port->hbaPortIndex].serr = 0xffffffff;
@@ -382,7 +383,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         port->type = HBA->ports[port->hbaPortIndex].sig == SATA_SIG_ATA ? DRIVE_TYPE_SATA : DRIVE_TYPE_SATAPI;
         if (port->type == DRIVE_TYPE_SATAPI)
         {
-            OBOS_Log("%*s: Cannot send IDENTIFY_ATA to a SATAPI port.\n",  uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
+            OBOS_Log("%*s: Cannot send IDENTIFY_ATA to a SATAPI port.\n",  strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
             ClearCommand(port, &data);
             continue;
         }
@@ -429,7 +430,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         port->vn = Drv_AllocateVNode(this, (dev_desc)port, port->nSectors*port->sectorSize, nullptr, VNODE_TYPE_BLK);
         port->ent = Drv_RegisterVNode(port->vn, port->dev_name);
     }
-    OBOS_Log("%*s: Finished initialization of the HBA.\n", uacpi_strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
+    OBOS_Log("%*s: Finished initialization of the HBA.\n", strnlen(drv_hdr.driverName, 64), drv_hdr.driverName);
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }
 
