@@ -70,3 +70,6 @@ obos_status Sys_SetUid(uid to);
 obos_status Sys_SetGid(gid to);
 uid Sys_GetUid();
 gid Sys_GetGid();
+
+obos_status Sys_SetProcessGroup(handle proc, uint32_t pgid);
+obos_status Sys_GetProcessGroup(handle proc, uint32_t* pgid);

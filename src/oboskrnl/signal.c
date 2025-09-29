@@ -251,6 +251,21 @@ obos_status OBOS_KillProcess(struct process* proc, int sigval)
     return status;
 }
 
+obos_status OBOS_KillProcessGroup(process_group* pgrp, int sigval)
+{
+    if (!pgrp || !(sigval >= 0 && sigval <= SIGMAX))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    for (process* proc = LIST_GET_HEAD(process_list, &pgrp->processes); proc; )
+    {
+        process* const next = LIST_GET_NEXT(process_list, &pgrp->processes, proc);
+        obos_status status = OBOS_KillProcess(proc, sigval);
+        if (obos_is_error(status))
+            return status;
+        proc = next;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
 void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 {
     sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval];

@@ -138,10 +138,10 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
-    if (obos_is_error(status))
-        printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
-    else
-        printf("open of %s on fd 0x%x\n", path, desc);
+    // if (obos_is_error(status))
+    //     printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
+    // else
+    //     printf("open of %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);
     return status;
 }
@@ -1323,7 +1323,10 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     if (~fd->un.fd->flags & FD_FLAGS_OPEN)
+    {
+        if (status) *status = OBOS_STATUS_UNINITIALIZED;
         return false;
+    }
 
     irp* req = VfsH_IRPAllocate();
     req->dryOp = true;
@@ -1411,7 +1414,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
                 num_events++;
                 read_set_tmp[_i] |= BIT(_j);
             }
-            else if (!num_events)
+            else if (!num_events && tmp)
                 unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
                 goto out;
@@ -1428,7 +1431,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
                 write_set_tmp[_i] |= BIT(_j);
                 num_events++;
             }
-            else if (!num_events)
+            else if (!num_events && tmp)
                 unsignaledIRPs[unsignaledIRPIndex++] = tmp;
             if (obos_is_error(status))
                 goto out;
@@ -1440,7 +1443,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     uintptr_t timeout = UINTPTR_MAX;
     if (extra.timeout)
         memcpy_usr_to_k(&timeout, extra.timeout, sizeof(uintptr_t));
-    if (!num_events)
+    if (!num_events && obos_is_success(status))
     {
         if (!timeout)
         {

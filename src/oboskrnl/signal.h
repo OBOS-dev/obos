@@ -1,7 +1,7 @@
 /*
  * oboskrnl/signal.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -15,6 +15,7 @@
 #include <irq/irq.h>
 
 #include <scheduler/thread.h>
+#include <scheduler/process.h>
 #include <scheduler/thread_context_info.h>
 
 #include <locks/event.h>
@@ -111,7 +112,8 @@ enum {
 obos_status OBOS_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset);
 obos_status OBOS_SigAltStack(const uintptr_t* sp, uintptr_t* oldsp);
 
-obos_status OBOS_KillProcess(struct process* proc, int sigval);
+obos_status OBOS_KillProcess(process* proc, int sigval);
+obos_status OBOS_KillProcessGroup(process_group* pgrp, int sigval);
 
 typedef struct thread_context_info ucontext_t;
 
@@ -156,6 +158,7 @@ typedef struct stack {
 // Syscalls
 obos_status Sys_Kill(handle thr, int sigval);
 obos_status Sys_KillProcess(handle proc, int sigval);
+obos_status Sys_KillProcessGroup(uint32_t pgid, int sigval);
 obos_status Sys_SigAction(int signum, const user_sigaction* act, user_sigaction* oldact);
 obos_status Sys_SigPending(sigset_t* mask);
 obos_status Sys_SigProcMask(int how, const sigset_t* mask, sigset_t* oldset);

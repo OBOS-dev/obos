@@ -577,7 +577,6 @@ void OBOSS_MakeTTY()
         dirent* tty = nullptr;
         Vfs_RegisterTTY(&i, &tty, false);
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
-        Core_GetCurrentThread()->proc->controlling_tty->fg_job = Core_GetCurrentThread()->proc;
     }
 }
 

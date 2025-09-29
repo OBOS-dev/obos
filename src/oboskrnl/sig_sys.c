@@ -62,6 +62,17 @@ obos_status Sys_KillProcess(handle proc_hnd, int sigval)
     return OBOS_KillProcess(proc, sigval);
 }
 
+obos_status Sys_KillProcessGroup(uint32_t pgid, int sigval)
+{
+    if (!pgid || !sigval || sigval >= SIGMAX)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    process_group key = {.pgid=pgid};
+    process_group* pgrp = RB_FIND(process_group_tree, &Core_ProcessGroups, &key);
+    if (!pgrp)
+        return OBOS_STATUS_NOT_FOUND;
+    return OBOS_KillProcessGroup(pgrp, sigval);
+}
+
 obos_status Sys_SigAction(int signum, const user_sigaction* act, user_sigaction* oldact)
 {
     sigaction kact = {};

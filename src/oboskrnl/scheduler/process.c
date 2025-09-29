@@ -31,6 +31,15 @@
 
 #include <utils/tree.h>
 
+LIST_GENERATE(process_list, process, node);
+
+static int pgrp_cmp(const process_group* lhs, const process_group* rhs)
+{ return lhs->pgid < rhs->pgid ? -1 : (lhs->pgid == rhs->pgid ? 0 : 1); }
+RB_GENERATE(process_group_tree, process_group, rb_node, pgrp_cmp);
+
+process_group_tree Core_ProcessGroups;
+mutex Core_ProcessGroupTreeLock;
+
 process* OBOS_KernelProcess;
 uint32_t Core_NextPID = 0;
 static OBOS_PAGEABLE_FUNCTION void free_node(thread_node* n)
@@ -78,6 +87,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->parent->children.tail = proc;
 	proc->parent->children.nChildren++;
 	proc->refcount++;
+	proc->pgrp = proc->parent->pgrp;
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
 	proc->controlling_tty = proc->parent->controlling_tty;
@@ -265,8 +275,7 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 
 	proc->exitCode = code;
 
-	if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
-		proc->controlling_tty->fg_job = proc->parent;
+	Core_ExitProcessGroup();
 
 	// Kill all threads.
 	for (thread_node* node = proc->threads.head; node; )
@@ -296,4 +305,73 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 	CoreS_CallFunctionOnStack(ExitCurrentProcess, code);
 	while (1)
 		;
+}
+
+void Core_ExitProcessGroup()
+{
+	process* proc = Core_GetCurrentThread()->proc;
+	if (!proc->pgrp)
+		return;
+	process_group* pgrp = proc->pgrp;
+	Core_MutexAcquire(&pgrp->lock);
+	LIST_REMOVE(process_list, &pgrp->processes, proc);
+	if (pgrp->leader == proc)
+		pgrp->leader = nullptr;
+	if (!LIST_GET_NODE_COUNT(process_list, &pgrp->processes))
+	{
+		// process group is ded :/
+		Core_MutexAcquire(&Core_ProcessGroupTreeLock);
+		RB_REMOVE(process_group_tree, &Core_ProcessGroups, pgrp);
+		Core_MutexRelease(&Core_ProcessGroupTreeLock);
+	}
+	Core_MutexRelease(&pgrp->lock);
+}
+
+obos_status Core_SetProcessGroup(process* proc, uint32_t pgid)
+{
+	if (!proc)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!pgid)
+		pgid = proc->pid;
+
+	// TODO: Check session IDs
+	if (proc != Core_GetCurrentThread()->proc && proc->parent != Core_GetCurrentThread()->proc)
+		return OBOS_STATUS_NOT_FOUND; // ESRCH?
+
+	if (proc->pgrp && proc->pgrp->leader == proc)
+		return proc->pgrp->pgid == pgid ? OBOS_STATUS_SUCCESS : OBOS_STATUS_ACCESS_DENIED; // EPERM?
+
+	process_group key = {.pgid=pgid};
+	
+	Core_MutexAcquire(&Core_ProcessGroupTreeLock);
+	
+	process_group* pgrp = RB_FIND(process_group_tree, &Core_ProcessGroups, &key);
+	if (pgrp)
+		goto found;
+
+	pgrp = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*pgrp), nullptr);
+	pgrp->leader = proc;
+	pgrp->lock = MUTEX_INITIALIZE();
+	pgrp->pgid = pgid;
+	RB_INSERT(process_group_tree, &Core_ProcessGroups, pgrp);
+	
+	found:
+	Core_MutexRelease(&Core_ProcessGroupTreeLock);
+
+	Core_MutexAcquire(&pgrp->lock);
+	LIST_APPEND(process_list, &pgrp->processes, proc);
+	proc->pgrp = pgrp;
+	Core_MutexRelease(&pgrp->lock);
+
+	return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Core_GetProcessGroup(process* proc, uint32_t* pgid)
+{
+	if (!proc || !pgid)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (!proc->pgrp)
+		return OBOS_STATUS_INVALID_OPERATION;
+	*pgid = proc->pgrp->pgid;
+	return OBOS_STATUS_SUCCESS;
 }

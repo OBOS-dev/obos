@@ -180,25 +180,19 @@ obos_status Sys_SetControllingTTY(handle desc, bool fg)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    tty* t = nullptr;
+    tty* tty = nullptr;
     if (fd)
     {
         if (~fd->un.fd->flags & FD_FLAGS_OPEN)
             return OBOS_STATUS_UNINITIALIZED;
         if (~fd->un.fd->vn->flags & VFLAGS_IS_TTY)
             return OBOS_STATUS_NOT_A_TTY;
-        t = fd->un.fd->vn->data;
+        tty = fd->un.fd->vn->data;
     }
 
     process* proc = Core_GetCurrentThread()->proc;
     
-    // FIXME: If the parent's controlling TTY is not the same as ours, then we have a problem.
-    if (proc->controlling_tty && proc->controlling_tty->fg_job == proc)
-        proc->controlling_tty->fg_job = proc->parent;
-    
-    proc->controlling_tty = t;
-    if (fg && t)
-        proc->controlling_tty->fg_job = proc;
+    proc->controlling_tty = tty;
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -399,6 +393,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SymLinkAt,
     (uintptr_t)Sys_CreateNamedPipe,
     (uintptr_t)Sys_PPoll,
+    // 113-126 are reserved for socket syscalls
+    [127]=(uintptr_t)Sys_KillProcessGroup,
+    (uintptr_t)Sys_SetProcessGroup,
+    (uintptr_t)Sys_GetProcessGroup,
 };
 
 // Arch syscall table is defined per-arch

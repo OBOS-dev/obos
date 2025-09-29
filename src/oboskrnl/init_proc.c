@@ -1,7 +1,7 @@
 /*
  * oboskrnl/init_proc.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #include <int.h>
@@ -15,6 +15,8 @@
 
 #include <mm/alloc.h>
 #include <mm/context.h>
+
+#include <locks/mutex.h>
 
 #include <scheduler/process.h>
 #include <scheduler/thread.h>
@@ -33,6 +35,8 @@ static struct exec_aux_values aux;
 
 void OBOS_LoadInit()
 {
+    Core_ProcessGroupTreeLock = MUTEX_INITIALIZE();
+
     if (!Core_GetCurrentThread()->proc->controlling_tty)
     {
         OBOS_Error("%s: Cannot load init due to non-existent controlling tty.\n", __func__);
@@ -129,8 +133,9 @@ void OBOS_LoadInit()
 
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 
+    Core_SetProcessGroup(new, 1);
     if (new->controlling_tty)
-        new->controlling_tty->fg_job = new;
+        new->controlling_tty->fg_job = new->pgrp;
 
     // CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 

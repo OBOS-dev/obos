@@ -117,7 +117,7 @@ typedef struct tty {
         size_t in_ptr;
         size_t size;
     } input_buffer;
-    struct process* fg_job;
+    struct process_group* fg_job;
     atomic_bool paused;
     bool quoted : 1;
 } tty;

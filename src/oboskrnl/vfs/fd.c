@@ -69,9 +69,9 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (desc->flags & FD_FLAGS_OPEN)
         return OBOS_STATUS_ALREADY_INITIALIZED;
-    if ((~oflags & FD_OFLAGS_WRITE) && (~oflags & FD_OFLAGS_READ))
-        return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* vnode = vn;
+    if (((~oflags & FD_OFLAGS_WRITE) && (~oflags & FD_OFLAGS_READ)) && ~vnode->flags & VFLAGS_EVENT_DEV)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     OBOS_ASSERT(vnode);
     if (vnode->vtype == VNODE_TYPE_DIR || vnode->vtype == VNODE_TYPE_LNK)
         return OBOS_STATUS_NOT_A_FILE;

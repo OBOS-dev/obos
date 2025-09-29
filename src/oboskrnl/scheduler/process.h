@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/process.h
  * 
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #pragma once
@@ -16,8 +16,11 @@
 
 #include <locks/spinlock.h>
 #include <locks/wait.h>
+#include <locks/mutex.h>
 
 #include <scheduler/thread.h>
+
+#include <utils/list.h>
 
 typedef struct process
 {
@@ -30,6 +33,8 @@ typedef struct process
 	struct context* ctx;
 	handle_table handles;
 	_Atomic(size_t) refcount;
+
+	struct process_group* pgrp;
 
 	uid currentUID;
 	gid currentGID;
@@ -56,9 +61,26 @@ typedef struct process
 
 	tty* controlling_tty;
 
-	// Relavant to Sys_WaitProcess(HANDLE_ANY, ...)
 	size_t times_waited;
+
+	LIST_NODE(process_list, struct process) node;
 } process;
+typedef LIST_HEAD(process_list, process) process_list;
+LIST_PROTOTYPE(process_list, process, node);
+
+typedef struct process_group {
+	uint32_t pgid;
+	process* leader;
+	process_list processes;
+	mutex lock;
+	RB_ENTRY(process_group) rb_node;
+} process_group;
+typedef RB_HEAD(process_group_tree, process_group) process_group_tree;
+RB_PROTOTYPE(process_group_tree, process_group, node, pgrp_cmp);
+extern process_group_tree Core_ProcessGroups;
+// be careful! this is not initialized until OBOS_LoadInit
+extern mutex Core_ProcessGroupTreeLock;
+
 extern uint32_t Core_NextPID;
 
 // The first thread in this process must be the kernel main thread, until the thread exits.
@@ -90,3 +112,10 @@ OBOS_EXPORT obos_status Core_ProcessAppendThread(process* proc, thread* thread);
 OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code);
 
 process* Core_LookupProc(uint64_t pid);
+
+/// <summary>
+/// Exits the current process group.
+/// </summary>
+void Core_ExitProcessGroup();
+obos_status Core_SetProcessGroup(process* proc, uint32_t pgid);
+obos_status Core_GetProcessGroup(process* proc, uint32_t* pgid);

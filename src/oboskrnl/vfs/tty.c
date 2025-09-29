@@ -74,7 +74,7 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
     if (!tty || tty->magic != TTY_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    if (tty->fg_job != Core_GetCurrentThread()->proc)
+    if (tty->fg_job && tty->fg_job != Core_GetCurrentThread()->proc->pgrp)
         return OBOS_STATUS_INTERNAL_ERROR; // EIO
 
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -259,18 +259,24 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             break;
         case TIOCSPGRP:
         {
-            uint32_t /* pid_t */ *pid = argp;
-            process* proc = Core_LookupProc(*pid);
-            if (!proc || *pid == 0)
+            uint32_t /* pid_t */ *pgid = argp;
+            process_group key = {.pgid=*pgid};
+            Core_MutexAcquire(&Core_ProcessGroupTreeLock);
+            process_group* pgrp = RB_FIND(process_group_tree, &Core_ProcessGroups, &key);
+            Core_MutexRelease(&Core_ProcessGroupTreeLock);
+            if (!pgrp)
                 status = OBOS_STATUS_INVALID_ARGUMENT;
             else
-                tty->fg_job = proc;
+                tty->fg_job = pgrp;
             break;
         }
         case TIOCGPGRP:
         {
-            uint32_t /* pid_t */ *pid = argp;
-            *pid = tty->fg_job->pid;
+            uint32_t /* pid_t */ *pgid = argp;
+            if (tty->fg_job)
+                *pgid = tty->fg_job->pgid;
+            else
+                *pgid = 0;
             break;
         }
         case TIOCGWINSZ:
@@ -364,7 +370,7 @@ static obos_status tty_submit_irp(void* request)
 
     // Reads can be done asynchronously, so do that.
 
-    if (tty->fg_job != Core_GetCurrentThread()->proc)
+    if (tty->fg_job && tty->fg_job != Core_GetCurrentThread()->proc->pgrp)
     {
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTTIN);
         if (Core_GetCurrentThread()->signal_info && ~Core_GetCurrentThread()->signal_info->pending & BIT(SIGTTIN - 1))
@@ -448,7 +454,7 @@ void erase_bytes(tty* tty, size_t nBytesToErase)
 static void tty_kill(tty* tty, int sigval)
 {
     if (tty->termios.lflag & ISIG)
-        OBOS_KillProcess(tty->fg_job, sigval);
+        OBOS_KillProcessGroup(tty->fg_job, sigval);
 }
 
 static void data_ready(void *tty_, const void *buf, size_t nBytesReady) 

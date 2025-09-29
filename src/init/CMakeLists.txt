@@ -14,8 +14,10 @@ endif()
 if (OBOS_ENABLE_KASAN)
     add_compile_options("-fno-sanitize=address")
 endif()
-add_compile_options("-fPIE")
-add_link_options("-pie")
+if (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86-64")
+    add_compile_options("-fPIE")
+    add_link_options("-pie")
+endif()
 
 link_libraries(syscall_invoke)
 

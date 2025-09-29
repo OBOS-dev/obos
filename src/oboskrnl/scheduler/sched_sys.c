@@ -553,27 +553,20 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    process* process = nullptr;
+    struct waitable_header* signaled = nullptr;
+    struct waitable_header* single_waitee = nullptr;
+    struct waitable_header** waitees = nullptr;
+    size_t nWaitees = 0;
 
     if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
     {
-        struct process* iter = Core_GetCurrentThread()->proc->children.head;
-        while (iter)
-        {
-            if (iter->dead)
-                goto next;
-            if (!process || iter->times_waited < process->times_waited)
-                process = iter;
-            if (!process->waiting_threads.signaled && (options & WNOHANG))
-                process = nullptr;
-            next:
-            iter = iter->next;
-        }
-        status = process ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
-        if (!process)
-            return status;
-        process->refcount++;
-        process->times_waited++;
+        nWaitees = Core_GetCurrentThread()->proc->children.nChildren;
+        if (!nWaitees)
+            return OBOS_STATUS_NOT_FOUND;
+        waitees = ZeroAllocate(OBOS_KernelAllocator, nWaitees, sizeof(struct waitable_header*), nullptr);
+        process* iter = Core_GetCurrentThread()->proc->children.head;
+        for (size_t i = 0; i < nWaitees; i++, iter = iter->next)
+            waitees[i] = WAITABLE_OBJECT(*iter);
     }
     else
     {
@@ -584,38 +577,80 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
-        process = desc->un.process;
+        // process = desc->un.process;
+        waitees = &single_waitee;
+        nWaitees = 1;
+        single_waitee = WAITABLE_OBJECT(*desc->un.process);
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
 
-    status = memcpy_k_to_usr(pid, &process->pid, sizeof(uint32_t));
-
-    if (obos_is_error(status))
-        return status;
-
-    if (options & WNOHANG && !process->waiting_threads.signaled)
-        return OBOS_STATUS_RETRY;
+    if (options & WNOHANG)
+    {
+        size_t nSignaled = nWaitees;
+        for (size_t i = 0; i < nWaitees; i++)
+            if (!waitees[i]->signaled && !waitees[i]->interrupted)
+                nSignaled--;
+        if (!nSignaled)
+        {
+            uint32_t opid = 0;
+            int ostatus = 0;
+            memcpy_k_to_usr(wstatus, &ostatus, sizeof(int));
+            memcpy_k_to_usr(pid, &opid, sizeof(uint32_t));
+            return OBOS_STATUS_SUCCESS;
+        }
+    } 
 
     again:
     Core_GetCurrentThread()->inWaitProcess = true;
-    status = Core_WaitOnObject(WAITABLE_OBJECT(*process));
+    status = Core_WaitOnObjects(nWaitees, waitees, &signaled);
     Core_GetCurrentThread()->inWaitProcess = false;
     if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
         return status;
 
+    process* process = (struct process*)signaled;
+    
+    if (status == OBOS_STATUS_ABORTED)
+    {
+        if (signaled)
+            status = OBOS_STATUS_SUCCESS;
+        else
+            goto done;
+    }
+
     if ((process->exitCode == 0xffff) && ~options & WCONTINUED)
         goto again;
 
-    if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
-        process->refcount--;
-
+    if (process->dead)
+    {
+        if (process->next)
+            process->next->prev = process->prev;
+        if (process->prev)
+            process->prev->next = process->next;
+        if (process->parent->children.head == process)
+            process->parent->children.head = process->next;
+        if (process->parent->children.tail == process)
+            process->parent->children.tail = process->prev;
+        process->parent->children.nChildren--;
+    }
+    
     CoreH_ClearSignaledState(WAITABLE_OBJECT(*process));
-
+    
+    if (obos_expect(pid != nullptr, true))
+        memcpy_k_to_usr(pid, &process->pid, sizeof(uint32_t));
     if (obos_expect(wstatus != nullptr, true))
-        return memcpy_k_to_usr(wstatus, &process->exitCode, sizeof(uint32_t));
+        memcpy_k_to_usr(wstatus, &process->exitCode, sizeof(uint32_t));
 
-    return OBOS_STATUS_SUCCESS;
+    if (HANDLE_TYPE(proc) == HANDLE_TYPE_ANY)
+        if (!(--process->refcount))
+			Free(OBOS_NonPagedPoolAllocator, process, sizeof(*process));
+
+    done:
+    if (waitees != &single_waitee)
+        Free(OBOS_KernelAllocator, waitees, sizeof(struct waitable_header*)*nWaitees);
+
+    return status;
 }
+
 
 obos_status Sys_SetUid(uid to)
 {
@@ -639,3 +674,53 @@ uid Sys_GetUid()
 { return Core_GetCurrentThread()->proc->currentUID; }
 gid Sys_GetGid()
 { return Core_GetCurrentThread()->proc->currentGID; }
+
+obos_status Sys_SetProcessGroup(handle process, uint32_t pgid)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    if (!proc)
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return UINT32_MAX;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+    return Core_SetProcessGroup(proc, pgid);
+}
+
+obos_status Sys_GetProcessGroup(handle process, uint32_t* opgid)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    if (!proc)
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return UINT32_MAX;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    uint32_t pgid = 0;
+    obos_status status = Core_GetProcessGroup(proc, &pgid);
+    if (obos_is_success(status))
+        status = memcpy_k_to_usr(opgid, &pgid, sizeof(pgid));
+    
+    return status;
+}

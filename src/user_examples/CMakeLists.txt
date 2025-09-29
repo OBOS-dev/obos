@@ -11,8 +11,10 @@ endif()
 
 link_libraries(syscall_invoke)
 
-add_compile_options("-fPIE")
-add_link_options("-pie")
+if (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86-64")
+    add_compile_options("-fPIE")
+    add_link_options("-pie")
+endif()
 
 add_executable (powerctl "powerctl_example.c")
 add_executable (klog-level "klog_level_example.c")

@@ -137,6 +137,9 @@ const char *syscall_to_string[] = {
     "Sys_SymLinkAt",
     "Sys_CreateNamedPipe",
     "Sys_PPoll",
+    [127]="Sys_KillProcessGroup",
+    "Sys_SetProcessGroup",
+    "Sys_GetProcessGroup",
 };
 
 const char* status_to_string[] = {
@@ -278,7 +281,7 @@ void OBOSS_InitializeSyscallInterface()
 
 void Arch_LogSyscall(uintptr_t d0, uintptr_t d1, uintptr_t d2, uintptr_t d3, uintptr_t d4, uint32_t sysnum)
 {
-    if (sysnum >= sizeof(syscall_to_string)/sizeof(const char*))
+    if (sysnum >= sizeof(syscall_to_string)/sizeof(const char*) || !syscall_to_string[sysnum])
     {
         OBOS_Warning("(thread %d, process %d) invalid syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, sysnum, d0,d1,d2,d3,d4);
         return;
@@ -289,7 +292,7 @@ void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum)
 {
     OBOS_UNUSED(ret);
     OBOS_UNUSED(sysnum);
-    if (sysnum >= sizeof(syscall_to_string)/sizeof(const char*))
+    if (sysnum >= sizeof(syscall_to_string)/sizeof(const char*) || !syscall_to_string[sysnum])
         return;
     static bool cached_opt = false, opt = false;
     if (!cached_opt)
