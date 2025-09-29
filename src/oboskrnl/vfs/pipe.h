@@ -33,10 +33,12 @@ typedef struct pipe_desc
 {
     vnode* vn;
     size_t size;
-    void* buffer;
-    size_t offset;
-    event read_event;
-    event write_event;
+    void* buf;
+    intptr_t in_ptr;
+    intptr_t ptr;
+    event data_evnt;
+    event empty_evnt;
+    event write_evnt;
     // locks access to buffer and size
     // read_sync and write_sync don't modify
     // those variables, so they can take this
