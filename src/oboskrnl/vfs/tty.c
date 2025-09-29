@@ -284,19 +284,19 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         }
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
-                case TCOOFF:
+                case TCION:
                     tty->paused = true;
                     break;
-                case TCOON:
+                case TCIOFF:
                     tty->paused = false;
                     break;
-                case TCIOFF:
+                case TCOOFF:
                 {
                     char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTOP] : '\023' /* assume it is this */;
                     tty->interface.write(tty, &ch, 1);
                     break;
                 }
-                case TCION:
+                case TCOON:
                 {
                     char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTART] : '\021' /* assume it is this */;
                     tty->interface.write(tty, &ch, 1);
