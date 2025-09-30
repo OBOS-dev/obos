@@ -118,8 +118,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
     for (size_t i = 0; i < nObjects; i++)
     {
         irql spinlockIrql = Core_SpinlockAcquire(&nodes[i].obj->lock);
-        if (nodes[i].obj != curr->hdrSignaled && (curr->interrupted && curr->signalInterrupted))
-            CoreH_ThreadListRemove(&nodes[i].obj->waiting, &nodes[i].node);
+        CoreH_ThreadListRemove(&nodes[i].obj->waiting, &nodes[i].node);
         Core_SpinlockRelease(&nodes[i].obj->lock, spinlockIrql);
     }
 
