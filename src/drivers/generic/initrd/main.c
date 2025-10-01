@@ -167,10 +167,17 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
 {
     initrd_inode* ino = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(initrd_inode), nullptr);
     ino->ino = CurrentInodeNumber++;
-    ino->path_len = strnlen(hdr->filename, 100);
+
+    bool path_needs_slash = hdr->filename[0] != '/' && (*hdr->prefix && hdr->prefix[strnlen(hdr->prefix, 155)-1] != '/');
+    ino->path_len = strnlen(hdr->filename, 100) + strnlen(hdr->prefix, 155) + path_needs_slash;
     ino->path_size = ino->path_len;
     ino->path = Allocate(OBOS_KernelAllocator, ino->path_len+1, nullptr);
-    memcpy(ino->path, hdr->filename, ino->path_len);
+
+    memcpy(ino->path, hdr->prefix, strnlen(hdr->prefix, 155));
+    if (path_needs_slash)
+        ino->path[strnlen(hdr->prefix, 155)] = '/';
+    memcpy(ino->path + strnlen(hdr->prefix, 155) + path_needs_slash, hdr->filename, strnlen(hdr->filename, 100));
+    
     ino->path[ino->path_len] = 0;
     ino->persistent = true;
     // Get our parent.
@@ -287,9 +294,10 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 
     while (memcmp(hdr->magic, USTAR_MAGIC, 6))
     {
-        size_t filename_len = strlen(hdr->filename);
+        size_t hdr_filename_len = strnlen(hdr->filename, 100);
+        size_t hdr_prefix_len = strnlen(hdr->prefix, 155);
         size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
-        if (strchr(hdr->filename, '/') != filename_len)
+        if (strchr(hdr->filename, '/') != hdr_filename_len || strchr(hdr->prefix, '/') != hdr_prefix_len)
             goto down;
 
         initrd_inode* ino = create_inode_boot(hdr);
@@ -383,11 +391,13 @@ static char* fullpath(dev_desc parent, const char* what)
     OBOS_ENSURE(ret);
     return ret;
 }
-initrd_inode* create_inode_with_parents(const char* path)
+initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
 {
-    const ustar_hdr* hdr = GetFile(path, nullptr);
+    if (!hdr)
+        hdr = GetFile(path, nullptr);
     if (!hdr)
         return nullptr;
+    
     initrd_inode* ino = create_inode_boot(hdr);
     // Get our parent.
     int64_t index = strrfind(ino->path, '/');
@@ -417,7 +427,10 @@ initrd_inode* create_inode_with_parents(const char* path)
             }
 
             const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
-            OBOS_ASSERT(sub_hdr);
+            if (!sub_hdr && ((iter + off) >= end))
+                goto down; // NOTE: bugggy?
+            if (sub_hdr == hdr)
+                goto down;
             
             initrd_inode* sub_ino = create_inode_boot(sub_hdr);
             sub_ino->parent = ino->parent;
@@ -461,7 +474,7 @@ OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, co
         return OBOS_STATUS_SUCCESS;
     }
     char* path = fullpath(parent, what);
-    ino = create_inode_with_parents(path);
+    ino = create_inode_with_parents(path, nullptr);
     Free(OBOS_KernelAllocator, path, strlen(path));
 
     *found = (dev_desc)ino;
@@ -499,19 +512,32 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
         while (memcmp(hdr->magic, USTAR_MAGIC, 6))
         {
             size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
-            size_t filename_len = strnlen(hdr->filename, 100);
             if (hdr == dir->hdr)
                 goto down;
-            if (!dir->path_len || (strncmp(dir->path, hdr->filename, dir->path_len) && dir->path_len != filename_len))
+            char* hdr_path = nullptr;
+            size_t hdr_path_len = strnlen(hdr->filename, 100) + strnlen(hdr->prefix, 155);
+            do {
+                size_t len_hdr_prefix = strnlen(hdr->prefix, 155);
+                bool prefix_has_slash = true;
+                if (*hdr->prefix && hdr->prefix[len_hdr_prefix-1] != '/' && hdr->filename[0] != '/')
+                {
+                    hdr_path_len++;
+                    prefix_has_slash = false;
+                }
+                hdr_path = malloc(hdr_path_len+1);
+                snprintf(hdr_path, hdr_path_len+1, prefix_has_slash ? "%s%s" : "%s/%s", hdr->prefix, hdr->filename);
+            } while(0);
+
+            if (!dir->path_len || (strncmp(dir->path, hdr_path, dir->path_len) && dir->path_len != hdr_path_len))
             {
                 int addend = 0;
                 if (dir->path_len)
                     addend = dir->path[dir->path_len-1] != '/';
-                if (strchr(hdr->filename+dir->path_len+addend, '/') == filename_len-(dir->path_len+addend))
+                if (strchr(hdr_path+dir->path_len+addend, '/') == hdr_path_len-(dir->path_len+addend))
                 {
-                    initrd_inode *ino = DirentLookupFrom(hdr->filename, dir);
+                    initrd_inode *ino = DirentLookupFrom(hdr_path, dir);
                     if (!ino)
-                        ino = create_inode_with_parents(hdr->filename);
+                        ino = create_inode_with_parents(hdr_path, hdr);
                     if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
                         break;
                 }

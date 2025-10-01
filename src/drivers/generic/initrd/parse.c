@@ -1,12 +1,13 @@
 /*
  * drivers/generic/initrd/parse.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
 */
 
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
+#include <klog.h>
 #include <cmdline.h>
 
 #include <utils/string.h>
@@ -49,15 +50,15 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
         set_status(OBOS_STATUS_NOT_FOUND);
         return nullptr;
     }
-    if (strlen(path) > 100)
+    if (strlen(path) > 255)
     {
         set_status(OBOS_STATUS_INVALID_ARGUMENT);
         return nullptr;
     }
     set_status(OBOS_STATUS_SUCCESS);
     const ustar_hdr* hdr = (ustar_hdr*)OBOS_InitrdBinary;
-    size_t pathlen = strnlen(path, 100);
-    char path_slash[100];
+    size_t pathlen = strnlen(path, 255);
+    char path_slash[256];
     memcpy(path_slash, path, pathlen);
     if (path_slash[pathlen-1] != '/')
     {
@@ -66,10 +67,27 @@ const ustar_hdr* GetFile(const char* path, obos_status* status)
     }
     while (memcmp(hdr->magic, USTAR_MAGIC, 6))
     {
-        if (strncmp(path_slash, hdr->filename, pathlen) ||
-            strncmp(path, hdr->filename, pathlen)
-        )
-            return hdr;
+        if (!(*hdr->prefix))
+        {
+            if (pathlen >= 100)
+                OBOSS_SpinlockHint();
+            if (strncmp(path_slash, hdr->filename, pathlen) ||
+                strncmp(path, hdr->filename, pathlen)
+            )
+                return hdr;
+        }
+        else
+        {
+            char hdr_filename[256] = {};
+            size_t prefix_len = strnlen(hdr->prefix, 155);
+            size_t filename_len = strnlen(hdr->filename, 100);
+            memcpy(hdr_filename, hdr->prefix, prefix_len);
+            if (hdr->prefix[prefix_len-1] != '/')
+                hdr_filename[prefix_len] = '/';
+            memcpy(hdr_filename + prefix_len + (hdr->prefix[prefix_len-1] != '/'), hdr->filename, filename_len);
+            if (strcmp(hdr_filename, path))
+                return hdr;
+        }
         size_t filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
         size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
         hdr = (ustar_hdr*)(((uintptr_t)hdr) + filesize_rounded + 512);
