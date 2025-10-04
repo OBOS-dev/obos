@@ -192,11 +192,7 @@ obos_status Vfs_FdWrite(fd* desc, const void* buf, size_t nBytes, size_t* nWritt
 {
     obos_status status = Vfs_FdPWrite(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nWritten);
     if (obos_expect(obos_is_success(status), 1))
-    {
-        if (nBytes > (desc->vn->filesize - desc->offset) && desc->vn->vtype == VNODE_TYPE_REG)
-            desc->vn->filesize += (nBytes-(desc->vn->filesize - desc->offset)); // add the difference to the file size
         Vfs_FdSeek(desc, nBytes, SEEK_CUR);
-    }
     return status;
 }
 static obos_status do_uncached_read(fd* desc, void* into, size_t nBytes, size_t* nRead_, size_t uoffset)
@@ -271,9 +267,9 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
         return OBOS_STATUS_UNINITIALIZED;
     if (!nBytes)
         return OBOS_STATUS_SUCCESS;
-    if (is_eof(desc->vn, desc->offset))
-        return OBOS_STATUS_EOF;
-    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype == VNODE_TYPE_BLK)
+    // if (is_eof(desc->vn, desc->offset))
+    //     return OBOS_STATUS_EOF;
+    if (desc->vn->vtype == VNODE_TYPE_BLK && nBytes > (desc->vn->filesize - offset))
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
@@ -305,6 +301,10 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
                 return OBOS_STATUS_INVALID_OPERATION;
 
             memcpy(ent, buf, nBytes);
+            if ((start & ~(OBOS_PAGE_SIZE-1)) != (desc->vn->filesize & ~(OBOS_PAGE_SIZE-1)))
+                pg->end_offset = pg->file_offset + OBOS_PAGE_SIZE;
+            else
+                pg->end_offset = OBOS_MAX(pg->end_offset, offset + nBytes);
             Mm_MarkAsDirtyPhys(pg);
         }
         else
@@ -318,11 +318,15 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
                 uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
                 if (!ent)
                     return OBOS_STATUS_INVALID_OPERATION;
-                size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
-                nToRead = OBOS_MIN(nToRead, nBytes-i);
-                memcpy(ent, (const void*)((uintptr_t)buf+i), nToRead);
-                curr += nToRead;
-                i += nToRead;
+                size_t nToWrite = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
+                nToWrite = OBOS_MIN(nToWrite, nBytes-i);
+                memcpy(ent, (const void*)((uintptr_t)buf+i), nToWrite);
+                if (curr != (desc->vn->filesize & ~(OBOS_PAGE_SIZE-1)))
+                    pg->end_offset = pg->file_offset + OBOS_PAGE_SIZE;
+                else
+                    pg->end_offset = OBOS_MAX(pg->end_offset, offset + nBytes);
+                curr += nToWrite;
+                i += nToWrite;
                 Mm_MarkAsDirtyPhys(pg);
             }
         }
@@ -331,6 +335,8 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
         if (nWritten)
             *nWritten = nBytes;
     }
+    size_t nToExpand = ((offset + nBytes) > desc->vn->filesize) ? (offset + nBytes) - desc->vn->filesize : 0;
+    desc->vn->filesize += nToExpand;
     return status;
 }
 obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_t* nRead)
@@ -410,7 +416,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_UNINITIALIZED;
     OBOS_ENSURE(desc->vn);
-    if (desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK || desc->vn->vtype == VNODE_TYPE_CHR)
         return OBOS_STATUS_SUCCESS; // act like it worked
     size_t finalOff = 0;
     driver_header* driver = Vfs_GetVnodeDriver(desc->vn);
@@ -436,8 +442,8 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
             finalOff -= finalOff % blkSize;
             break;
     }
-    if (is_eof(desc->vn, finalOff) && desc->vn->vtype != VNODE_TYPE_FIFO)
-        return OBOS_STATUS_EOF;
+    // if (is_eof(desc->vn, finalOff) && desc->vn->vtype != VNODE_TYPE_FIFO)
+    //     return OBOS_STATUS_EOF;
     desc->offset = finalOff;
     return OBOS_STATUS_SUCCESS;
 }
@@ -504,14 +510,17 @@ obos_status Vfs_FdClose(fd* desc)
         return OBOS_STATUS_SUCCESS;
     if (!(desc->flags & FD_FLAGS_OPEN))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    vnode* vn = desc->vn;
     Vfs_FdFlush(desc);
     driver_header* driver = Vfs_GetVnodeDriver(desc->vn);
     mount* point = Vfs_GetVnodeMount(desc->vn);
+    if (!driver)
+        goto down_here;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
     if (driver->ftable.unreference_device && driver->ftable.reference_device)
         driver->ftable.unreference_device(desc->desc);
-    vnode* vn = desc->vn;
+    down_here:
     LIST_REMOVE(fd_list, &desc->vn->opened, desc);
     if (vn->vtype == VNODE_TYPE_FIFO)
     {
@@ -521,7 +530,9 @@ obos_status Vfs_FdClose(fd* desc)
     vn->refs--;
     desc->flags &= ~FD_FLAGS_OPEN;
     
-    VfsH_UnlockMountpoint(point);
+    if (point)
+        VfsH_UnlockMountpoint(point);
+
     return OBOS_STATUS_SUCCESS;
 }
 LIST_GENERATE_INTERNAL(fd_list, struct fd, node, OBOS_EXPORT);

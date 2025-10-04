@@ -245,7 +245,8 @@ static __attribute__((no_instrument_function)) void page_writer()
             {
                 // This is a file page, so writing it back is different than writing back an
                 // anonymous page.
-                size_t nBytes = OBOS_MIN((size_t)OBOS_PAGE_SIZE, pg->backing_vn->filesize-pg->file_offset);
+                size_t nBytes = pg->end_offset - pg->file_offset;
+                OBOS_ENSURE(nBytes <= OBOS_PAGE_SIZE);
                 driver_header* driver = Vfs_GetVnodeDriver(pg->backing_vn);
                 if (!driver)
                     continue;
@@ -307,6 +308,9 @@ void Mm_MarkAsDirtyPhys(page* node)
     // stuff like fbdev use the pagecache to allow for mapping of the
     // framebuffer from userspace.
     if (node->flags & PHYS_PAGE_MMIO)
+        return;
+
+    if (node->flags & PHYS_PAGE_DIRTY)
         return;
  
     irql oldIrql = Core_SpinlockAcquire(&swap_lock);

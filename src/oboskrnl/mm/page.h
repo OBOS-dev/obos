@@ -72,6 +72,7 @@ typedef struct page
     struct vnode* backing_vn;
     // Should always be aligned to a page offset (OBOS_PAGE_SIZE)
     size_t file_offset;
+    size_t end_offset;
 
     _Atomic(size_t) refcount;
     // A reference count of pages that have this page paged in.
