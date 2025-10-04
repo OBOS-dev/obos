@@ -40,6 +40,8 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
 {
     if (!as || !thr || !(sigval >= 0 && sigval <= SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!thr->proc)
+        return OBOS_STATUS_INVALID_OPERATION;
     if (thr->proc->pid == 0)
         return OBOS_STATUS_INVALID_OPERATION;
     if (sigval == 0)
