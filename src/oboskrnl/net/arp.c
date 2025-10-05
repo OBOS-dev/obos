@@ -49,12 +49,23 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     
     if (ent) 
     {
-        memcpy(*out, ent->phys, sizeof(mac_address));
+        Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+        if (memcmp_b(ent->phys, 0, sizeof(mac_address)))
+        {
+            Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+            RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+            Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+            ent = nullptr;
+            goto down;
+        }
+        if (out)
+            memcpy(*out, ent->phys, sizeof(mac_address));
         if (address_table_ent)
             *address_table_ent = ent;
         return OBOS_STATUS_SUCCESS;
     }
 
+    down:
     ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(address_table_entry), nullptr);
     ent->addr = addr;
     ent->sync = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -90,8 +101,16 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         return status; // hdr_ptr isn't leaked, as we never reference it
     }
 
-    Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
-    memcpy(*out, ent->phys, sizeof(mac_address));
+    status = Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+    if (obos_is_error(status))
+    {
+        Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+        RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+        Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+        return status;
+    }
+    if (out)
+        memcpy(*out, ent->phys, sizeof(mac_address));
     if (address_table_ent)
         *address_table_ent = ent;
     return OBOS_STATUS_SUCCESS;
@@ -130,10 +149,7 @@ PacketProcessSignature(ARPRequest, arp_header*)
     if (!ent)
         ExitPacketHandler();
     if (~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY)
-    {
-        printf(__FILE__ ":%d (uh oh something bad has happened!!1!!)\n", __LINE__);
         ExitPacketHandler();
-    }
     size_t real_size = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
     arp_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
     struct arp_header_payload* payload = (void*)(hdr+1);

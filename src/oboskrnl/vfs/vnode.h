@@ -48,6 +48,7 @@ enum
     VFLAGS_EVENT_DEV = 16,
     // The driver implementing this vnode is DEAD and should NOT be used.
     VFLAGS_DRIVER_DEAD = 32,
+    VFLAGS_NIC_NO_FCS = 64,
 };
 
 // basically a struct specinfo, but renamed.

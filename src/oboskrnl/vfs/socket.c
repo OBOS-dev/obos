@@ -1,0 +1,401 @@
+/*
+ * oboskrnl/vfs/socket.c
+ *
+ * Copyright (c) 2025 Omar Berrow
+ *
+ * POSIX sockets
+*/
+
+#include <int.h>
+#include <error.h>
+#include <memmanip.h>
+
+#include <net/ip.h>
+#include <net/tcp.h>
+#include <net/udp.h>
+#include <net/tables.h>
+#include <net/macros.h>
+
+#include <vfs/fd.h>
+#include <vfs/socket.h>
+#include <vfs/alloc.h>
+#include <vfs/irp.h>
+
+#include <utils/shared_ptr.h>
+
+#include <allocators/base.h>
+
+socket_ops** Net_SocketBackendTable;
+size_t Net_SocketBackendTableSize;
+
+static socket_ops* get_sock_ops(int domain, int protocol)
+{
+    OBOS_UNUSED(domain);
+    if (Net_SocketBackendTableSize < (size_t)protocol)
+        return nullptr;
+    return Net_SocketBackendTable[protocol];
+}
+
+static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
+{
+    OBOS_UNUSED(desc);
+    *blkSize = 1;
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status get_max_blk_count(dev_desc desc, size_t* count)
+{
+    OBOS_UNUSED(desc && count);
+    return OBOS_STATUS_INVALID_OPERATION;
+}
+
+static obos_status submit_irp(void* req_)
+{
+    irp* req = req_;
+    if (!req) 
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    socket_desc* desc = (void*)req->desc;
+    if (!desc) 
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    return desc->ops->submit_irp(req);
+}
+
+static obos_status finalize_irp(void* req_)
+{
+    irp* req = req_;
+    if (!req)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    socket_desc* desc = (void*)req->desc;
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    if (desc->ops->finalize_irp)
+        return desc->ops->finalize_irp(req);
+    else
+        return OBOS_STATUS_SUCCESS;
+}
+
+OBOS_PAGEABLE_FUNCTION static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+{
+    OBOS_UNUSED(what);
+    OBOS_UNUSED(request);
+    OBOS_UNUSED(argp);
+    return OBOS_STATUS_INVALID_IOCTL;
+}
+OBOS_PAGEABLE_FUNCTION static obos_status ioctl_argp_size(uint32_t request, size_t *sz)
+{
+    OBOS_UNUSED(request);
+    OBOS_UNUSED(sz);
+    return OBOS_STATUS_INVALID_IOCTL;
+}
+
+static obos_status reference_device(dev_desc* pdesc)
+{
+    if (!pdesc || !(*pdesc))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    socket_desc* desc = (void*)*pdesc;
+    desc->refs++;
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status unreference_device(dev_desc desc) 
+{
+    socket_desc* socket = (void*)desc;
+    if (!(--socket->refs))
+        socket->ops->free(socket);
+    return OBOS_STATUS_SUCCESS;
+}
+
+driver_id OBOS_SocketDriver = {
+    .id=0,
+    .header = {
+        .magic=OBOS_DRIVER_MAGIC,
+        .driverName="Socket Driver",
+        .ftable = {
+            .ioctl = ioctl,
+            .ioctl_argp_size = ioctl_argp_size,
+            .get_blk_size=get_blk_size,
+            .get_max_blk_count=get_max_blk_count,
+            .reference_device = reference_device,
+            .unreference_device = unreference_device,
+            .submit_irp = submit_irp,
+            .finalize_irp = finalize_irp,
+        },
+    }
+};
+vdev OBOS_SocketDriverVdev = {
+    .driver = &OBOS_SocketDriver,
+};
+
+static vnode* socket_make_vnode(int domain, int protocol, socket_desc* idesc)
+{
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
+    vn->blkSize = 1;
+    vn->filesize = 0;
+    vn->vtype = VNODE_TYPE_SOCK;
+    vn->desc = (dev_desc)(idesc ? idesc : get_sock_ops(domain, protocol)->create());
+    vn->un.device = &OBOS_SocketDriverVdev;
+    socket_desc *desc = (void*)vn->desc;
+    desc->vn = vn;
+    desc->opts.ttl = 64;
+    desc->opts.hdrincl = false;
+    return vn;
+}
+
+static void make_fd(fd* out, int domain, int protocol, socket_desc* idesc)
+{
+    vnode* vn = socket_make_vnode(domain, protocol, idesc);
+    socket_desc *desc = (void*)vn->desc;
+    desc->protocol = protocol;
+    desc->refs++;
+
+    out->vn = vn;
+    out->desc = out->vn->desc;
+    out->flags = FD_FLAGS_OPEN|FD_FLAGS_READ|FD_FLAGS_WRITE|FD_FLAGS_UNCACHED;
+    out->offset = 0;
+    LIST_APPEND(fd_list, &out->vn->opened, out);
+}
+
+static obos_status inet_socket(int type, int protocol, fd* out)
+{
+    OBOS_UNUSED(type);
+    if (protocol == IPPROTO_IP && type == SOCK_DGRAM) protocol = IPPROTO_UDP;
+    if (protocol == IPPROTO_IP && type == SOCK_STREAM) protocol = IPPROTO_TCP;
+
+    if (protocol == IPPROTO_TCP && type != SOCK_STREAM)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (protocol == IPPROTO_UDP && type != SOCK_DGRAM)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (!get_sock_ops(AF_INET, protocol))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    make_fd(out, AF_INET, protocol, nullptr);
+    return OBOS_STATUS_SUCCESS;
+}
+#define validate_fd_status(fd)\
+do {\
+    if (~fd->flags & FD_FLAGS_OPEN)\
+        return OBOS_STATUS_INVALID_ARGUMENT;\
+    if (fd->vn->vtype != VNODE_TYPE_SOCK)\
+        return OBOS_STATUS_INVALID_ARGUMENT;\
+} while(0)
+
+obos_status Net_Socket(int domain, int type, int protocol, fd* out)
+{
+    if (!out)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (domain) {
+        case AF_INET:
+            return inet_socket(type, protocol, out);
+        default: break;
+    }
+    return OBOS_STATUS_UNIMPLEMENTED;
+}
+
+obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags, fd* out)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->accept)
+        return OBOS_STATUS_INVALID_OPERATION;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    socket_desc* new_desc = nullptr;
+    struct sockaddr_in addr = {};
+    status = desc->ops->accept(desc, &addr, flags, &new_desc);
+    memcpy(oaddr, &addr, OBOS_MIN(*addr_len, sizeof(struct sockaddr_in)));
+    *addr_len = sizeof(struct sockaddr_in);
+    make_fd(out, AF_INET, desc->ops->protocol, new_desc);
+    if (flags & SOCK_NONBLOCK)
+        out->flags |= FD_FLAGS_NOBLOCK;
+    if (flags & SOCK_CLOEXEC)
+        out->flags |= FD_FLAGS_NOEXEC;
+    return status;
+}
+
+obos_status Net_Bind(fd* socket, sockaddr* addr, size_t* addr_len)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->bind)
+        return OBOS_STATUS_INVALID_OPERATION;
+    if (*addr_len != sizeof(struct sockaddr_in))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    return desc->ops->bind(desc, (struct sockaddr_in*)addr);
+}
+
+obos_status Net_Connect(fd* socket, sockaddr* addr, size_t* addr_len)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->connect)
+        return OBOS_STATUS_INVALID_OPERATION;
+    if (*addr_len != sizeof(struct sockaddr_in))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    return desc->ops->connect(desc, (struct sockaddr_in*)addr);
+}
+
+obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, const void* optval, size_t optlen)
+{
+    validate_fd_status(socket);
+    OBOS_UNUSED(level);
+    socket_desc* desc = (void*)socket->vn->desc;
+    switch (optname) {
+        case IP_TTL:
+            if (optlen < sizeof(uint8_t))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            desc->opts.ttl = *(uint8_t*)optval;
+            break;
+        case IP_HDRINCL:
+            if (optlen < sizeof(bool))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            desc->opts.hdrincl = *(bool*)optval;
+            break;
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, void* optval, size_t *optlen)
+{
+    validate_fd_status(socket);
+    OBOS_UNUSED(level);
+    socket_desc* desc = (void*)socket->vn->desc;
+    switch (optname) {
+        case IP_TTL:
+            if (*optlen < sizeof(uint8_t))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            *(uint8_t*)optval = desc->opts.ttl;
+            *optlen = sizeof(uint8_t);
+            break;
+        case IP_HDRINCL:
+            if (*optlen < sizeof(bool))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            *(bool*)optval = desc->opts.hdrincl;
+            *optlen = sizeof(bool);
+            break;
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Net_GetPeerName(fd* socket, sockaddr* oaddr, size_t* addr_len)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->getpeername)
+        return OBOS_STATUS_INVALID_OPERATION;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    struct sockaddr_in addr = {};
+    status = desc->ops->getpeername(desc, &addr);
+    memcpy(oaddr, &addr, OBOS_MIN(*addr_len, sizeof(struct sockaddr_in)));
+    *addr_len = sizeof(struct sockaddr_in);
+    return status;
+}
+
+obos_status Net_GetSockName(fd* socket, sockaddr* oaddr, size_t* addr_len)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->getsockname)
+        return OBOS_STATUS_INVALID_OPERATION;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    struct sockaddr_in addr = {};
+    status = desc->ops->getpeername(desc, &addr);
+    memcpy(oaddr, &addr, OBOS_MIN(*addr_len, sizeof(struct sockaddr_in)));
+    *addr_len = sizeof(struct sockaddr_in);
+    return status;
+}
+
+obos_status Net_Listen(fd* socket, int backlog)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->listen)
+        return OBOS_STATUS_INVALID_OPERATION;
+    return desc->ops->listen(desc, backlog);
+}
+
+obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t *nRead, sockaddr* addr, size_t* len_addr)
+{
+    irp* req = VfsH_IRPAllocate();
+    req->blkCount = sz;
+    req->buff = buffer;
+    req->socket_flags = flags;
+    req->op = IRP_READ;
+    req->dryOp = false;
+    req->sz_socket_data = len_addr ? *len_addr : 0;
+    req->socket_data = addr;
+    req->vn = socket->vn;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = VfsH_IRPSubmit(req, &socket->desc)))
+    {
+        VfsH_IRPUnref(req);
+        return status;
+    }
+    status = VfsH_IRPWait(req);
+    if (len_addr)
+        *len_addr = sizeof(struct sockaddr_in);
+    if (nRead)
+        *nRead = req->nBlkRead;
+    VfsH_IRPUnref(req);
+    return status;
+}
+
+obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, sockaddr* addr, size_t len_addr)
+{
+    irp* req = VfsH_IRPAllocate();
+    req->blkCount = sz;
+    req->cbuff = buffer;
+    req->socket_flags = flags;
+    req->op = IRP_WRITE;
+    req->dryOp = false;
+    req->sz_socket_data = len_addr;
+    req->socket_data = addr;
+    req->vn = socket->vn;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = VfsH_IRPSubmit(req, &socket->desc)))
+    {
+        VfsH_IRPUnref(req);
+        return status;
+    }
+    status = VfsH_IRPWait(req);
+    VfsH_IRPUnref(req);
+    return status;
+}
+
+obos_status Net_Shutdown(fd* socket, int how)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->shutdown)
+        return OBOS_STATUS_INVALID_OPERATION;
+    return desc->ops->shutdown(desc, how);
+}
+
+obos_status Net_SockAtMark(fd* socket)
+{
+    validate_fd_status(socket);
+    socket_desc* desc = (void*)socket->vn->desc;
+    if (!desc->ops->sockatmark)
+        return OBOS_STATUS_INVALID_OPERATION;
+    return desc->ops->sockatmark(desc);
+}
+
+
+obos_status NetH_AddSocketBackend(socket_ops* ops)
+{
+    if (Net_SocketBackendTableSize < (size_t)ops->protocol)
+    {
+        Net_SocketBackendTableSize = (ops->protocol+3) & ~3;
+        Net_SocketBackendTable = Vfs_Realloc(Net_SocketBackendTable, Net_SocketBackendTableSize*sizeof(socket_ops));
+    }
+    Net_SocketBackendTable[ops->protocol] = ops;
+    return OBOS_STATUS_SUCCESS;
+}
+
+void VfsH_InitializeSocketInterface()
+{
+    NetH_AddSocketBackend(&Net_UDPSocketBackend);
+    NetH_AddSocketBackend(&Net_TCPSocketBackend);
+}

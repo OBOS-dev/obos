@@ -40,7 +40,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
 {
     if (!rng->prot.rw && ec & PF_EC_RW)
     {
-        *type = INVALID_FAULT;
+        *type = ACCESS_FAULT;
         return;
     }
     page what = {.backing_vn=rng->un.mapped_vn,.file_offset=addr-rng->virt};
@@ -290,7 +290,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             break;
         case ACCESS_FAULT:
             break;
-        default: 
+        default:
             OBOS_ASSERT(!"invalid fault type. fault is neither a SOFT_FAULT, HARD_FAULT, nor a ACCESS_FAULT.");
             break;
     }

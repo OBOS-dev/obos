@@ -14,6 +14,11 @@
 #include <net/tables.h>
 #include <net/icmp.h>
 
+#include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
+#include <scheduler/thread.h>
+#include <scheduler/schedule.h>
+
 #include <locks/pushlock.h>
 #include <locks/event.h>
 
@@ -22,6 +27,9 @@
 #include <utils/tree.h>
 #include <utils/list.h>
 #include <utils/shared_ptr.h>
+
+#include <vfs/alloc.h>
+#include <vfs/socket.h>
 
 #include <mm/alloc.h>
 
@@ -101,43 +109,13 @@ obos_status NetH_SendTCPSegment(vnode* nic, void* ent_ /* ip_table_entry */, ip_
     }
     hdr->chksum = tcp_chksum(&ip_psuedo_header, sizeof(ip_psuedo_header), hdr, sz);
     hdr->chksum = be16_to_host(hdr->chksum);
+    
+    printf("tcp tx segment: hdr->flags=0x%x, hdr->ack=0x%x, hdr->seq=0x%x\n", hdr->flags, be32_to_host(hdr->ack), be32_to_host(hdr->seq));
 
     return NetH_SendIPv4Packet(nic, ent, dest, 0x6, dat->ttl, 0, OBOS_SharedPtrCopy(ptr));
 }
 
 uintptr_t mt_random(void);
-
-void NetH_TestTCP(vnode* nic, void* ent_)
-{
-    ip_table_entry *ent = ent_;
-    ip_addr dest = {{192,168,100,1}};
-    tcp_connection* con = nullptr;
-    NetH_TCPEstablishConnection(
-        nic, ent, 
-        dest, 
-        0, 1024,
-        4096,
-        1460,
-        &con);
-    
-    while (con->state != TCP_STATE_ESTABLISHED)
-        OBOSS_SpinlockHint();
-
-    Core_WaitOnObject(WAITABLE_OBJECT(con->sig));
-    Core_EventClear(&con->sig);
-    while (con->state == TCP_STATE_ESTABLISHED)
-    {
-        // OBOS_Debug("received:\n%.*s\n", con->recv_buffer.ptr, con->recv_buffer.buf);
-        shared_ptr payload = {};
-        OBOS_SharedPtrConstructSz(&payload, con->recv_buffer.buf, con->recv_buffer.ptr);
-        NetH_TCPTransmitPacket(nic, con, OBOS_SharedPtrCopy(&payload));
-        con->recv_buffer.ptr -= con->recv_buffer.ptr;
-
-        Core_WaitOnObject(WAITABLE_OBJECT(con->sig));
-        Core_EventClear(&con->sig);
-    }
-
-}
 
 obos_status NetH_TCPEstablishConnection(vnode* nic,
                                         void* ent_ /* ip_table_entry */, 
@@ -203,6 +181,7 @@ obos_status NetH_TCPEstablishConnection(vnode* nic,
     con->tx_window = 0;
     con->sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     con->ack_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    con->nic = nic;
 
     Core_PushlockAcquire(&nic->net_tables->tcp_connections_lock, false);
     RB_INSERT(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, con);
@@ -302,33 +281,35 @@ obos_status NetH_TCPTransmitPacket(vnode* nic, tcp_connection* con, shared_ptr* 
     obos_status status = OBOS_STATUS_SUCCESS;
     for (size_t i = 0; i < nSegments; i++)
     {
-        // payload is unreferenced in NetH_SendTCPSegment
-        OBOS_SharedPtrRef(payload);
-        status = NetH_SendTCPSegment(nic, con->ip_ent, con->dest.addr, &segments[i]);
-        if (obos_is_error(status))
-            break;
         int tries = 10;
         for (; tries >= 0; tries--)
         {
+            // payload is unreferenced in NetH_SendTCPSegment
+            OBOS_SharedPtrRef(payload);
+            status = NetH_SendTCPSegment(nic, con->ip_ent, con->dest.addr, &segments[i]);
+            if (obos_is_error(status))
+                break;
             event timer_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
             timer timer = {};
             timer.handler = tx_tm_hnd;
             timer.userdata = (void*)&timer_event;
-            Core_TimerObjectInitialize(&timer, TIMER_MODE_DEADLINE, 100*1000 /* 100ms */);
+            Core_TimerObjectInitialize(&timer, TIMER_MODE_DEADLINE, 10*1000*1000 /* 10 s */);
             struct waitable_header* objects[2] = {
                 WAITABLE_OBJECT(con->ack_sig),
                 WAITABLE_OBJECT(timer_event)
             };
             struct waitable_header* signaled = nullptr;
             Core_WaitOnObjects(2, objects, &signaled);
+            printf("signaled=%p, ack_sig=%p, timer_event=%p\n", signaled, objects[0], objects[1]);
             Core_CancelTimer(&timer);
             CoreH_FreeDPC(&timer.handler_dpc, false);
             Core_EventClear(&con->ack_sig);
+            Core_EventClear(&timer_event);
             if (signaled == objects[0])
                 break;
             NetDebug("%s: Retransmission of segment 0x%x (%d tries left)\n", __func__, segments[i].seq, tries);
         }
-        if (tries == 10)
+        if (tries <= 0)
         {
             status = OBOS_STATUS_TIMED_OUT;
             break;
@@ -424,7 +405,14 @@ PacketProcessSignature(TCP, ip_header*)
     tcp_connection* current_connection = RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &conn_key);
     Core_PushlockRelease(&nic->net_tables->tcp_connections_lock, true);
 
-    if (!current_connection && !port)
+    if (port)
+    {
+        Core_PushlockAcquire(&port->connection_tree_lock, true);
+        current_connection = RB_FIND(tcp_connection_tree, &port->connections, &conn_key);
+        Core_PushlockRelease(&port->connection_tree_lock, true);
+    }
+    
+    if ((!current_connection || current_connection->state == TCP_STATE_CLOSED) && !port)
     {
         // Net_ICMPv4DestUnreachable(nic, ip_hdr, (ethernet2_header*)buf->obj, hdr, ICMPv4_CODE_PORT_UNREACHABLE);
         struct tcp_pseudo_hdr resp = {};
@@ -446,11 +434,11 @@ PacketProcessSignature(TCP, ip_header*)
     resp.dest_port = be16_to_host(hdr->src_port);
     resp.src_port = be16_to_host(hdr->dest_port);
     resp.ttl = 64;
-    resp.window = current_connection->rx_window;
+    resp.window = !current_connection ? 0 : current_connection->rx_window_shift.window;
 
     if (hdr->flags & TCP_SYN)
     {
-        if (current_connection->is_client)
+        if (current_connection && current_connection->is_client)
             current_connection->state = TCP_STATE_ESTABLISHED;
         else
         {
@@ -473,9 +461,11 @@ PacketProcessSignature(TCP, ip_header*)
             new_con->ip_ent = ent;
             new_con->is_client = false;
             resp.flags |= TCP_SYN;
-            Core_PushlockAcquire(&port->connection_list_lock, false);
+            current_connection = new_con;
+            resp.window = current_connection ? 0 : current_connection->rx_window_shift.window;
+            Core_PushlockAcquire(&port->connection_tree_lock, false);
             RB_INSERT(tcp_connection_tree, &port->connections, new_con);
-            Core_PushlockRelease(&port->connection_list_lock, false);
+            Core_PushlockRelease(&port->connection_tree_lock, false);
         }
         if ((hdr->data_offset >> 4) > 5)
         {
@@ -526,25 +516,27 @@ PacketProcessSignature(TCP, ip_header*)
     else
         current_connection->tx_window = be16_to_host(hdr->window);
 
+    printf("tcp recv segment: hdr->flags=0x%x, hdr->ack=0x%x, hdr->seq=0x%x, last_ack=0x%x\n", hdr->flags, be32_to_host(hdr->ack), be32_to_host(hdr->seq), current_connection->last_ack);
+
     if (be32_to_host(hdr->seq) != current_connection->last_ack)
     {
         NetDebug("hdr->seq=0x%x, last_ack=0x%x\n", be32_to_host(hdr->seq), current_connection->last_ack);
         ExitPacketHandler();
     }
 
-    if (hdr->flags == TCP_ACK)
-        ExitPacketHandler();
-
     if (hdr->flags & TCP_ACK)
     {
         if (current_connection->state == TCP_STATE_SYN)
             current_connection->state = TCP_STATE_ESTABLISHED;
-        if (hdr->flags == (TCP_ACK|TCP_SYN))
+        if (hdr->flags == (TCP_ACK|TCP_SYN) || hdr->flags & TCP_FIN)
             resp.seq = ++current_connection->last_seq;
         else
             resp.seq = current_connection->last_seq;
-        resp.ack = be32_to_host(hdr->seq)+1;
-        current_connection->last_ack = resp.ack;
+        if (hdr->flags != TCP_ACK)
+        {
+            resp.ack = be32_to_host(hdr->seq)+1;
+            current_connection->last_ack = resp.ack;
+        }
         Core_EventSet(&current_connection->ack_sig, false);
     }
 
@@ -566,13 +558,17 @@ PacketProcessSignature(TCP, ip_header*)
             {
                 current_connection->state = TCP_STATE_CLOSED;
                 Core_EventSet(&current_connection->sig, false);
+                NetH_SendTCPSegment(nic, ent, ip_hdr->src_address, &resp);
+                ExitPacketHandler();
             }
             break;
         case TCP_STATE_FIN_WAIT2:
             if (hdr->flags & TCP_ACK)
             {
                 current_connection->state = TCP_STATE_CLOSED;
-                Core_EventSet(&current_connection->sig, false);
+                Core_EventSet(&current_connection->sig, false);    
+                NetH_SendTCPSegment(nic, ent, ip_hdr->src_address, &resp);
+                ExitPacketHandler();    
             }
             break;
         default:
@@ -583,13 +579,17 @@ PacketProcessSignature(TCP, ip_header*)
             }
             break;
     }
-    
-    if (hdr->flags & TCP_RST)
-        current_connection->state = TCP_STATE_CLOSED;
 
+    if (hdr->flags & TCP_RST)
+    {
+        current_connection->state = TCP_STATE_CLOSED;
+        current_connection->reset = true;
+        Core_EventSet(&current_connection->sig, false);    
+    }
+    
     abort:
 
-    if (current_connection->state < TCP_STATE_CLOSED)
+    if (current_connection->state < TCP_STATE_CLOSED && hdr->flags != TCP_ACK)
         NetH_SendTCPSegment(nic, ent, ip_hdr->src_address, &resp);
 
     if (resp.flags == TCP_RST)
@@ -601,3 +601,552 @@ PacketProcessSignature(TCP, ip_header*)
 // LIST_GENERATE(tcp_incoming_list, tcp_incoming_packet, node);
 RB_GENERATE(tcp_connection_tree, tcp_connection, node, tcp_connection_cmp);
 RB_GENERATE(tcp_port_tree, tcp_port, node, tcp_port_cmp);
+
+typedef struct tcp_socket {
+    union {
+        struct {
+            tcp_port** bound_ports;
+            size_t bound_port_count;
+            event* listen_event;
+            tcp_port* interrupted_port;
+            thread* internal_listen_thread;
+            event internal_listen_event;
+            event kill_listen_thread;
+        } serv;
+        tcp_connection* connection;
+    };
+    bool is_server : 1;
+    bool recv_closed : 1;
+} tcp_socket;
+
+socket_desc* tcp_create()
+{
+    socket_desc* ret = Vfs_Calloc(1, sizeof(socket_desc));
+    ret->ops = &Net_TCPSocketBackend;
+    ret->protocol = IPPROTO_TCP;
+    ret->protocol_data = nullptr;
+    return ret;
+}
+
+void tcp_free(socket_desc* socket)
+{
+    if (!socket->protocol_data)
+        goto down;
+    tcp_socket* s = socket->protocol_data;
+
+    if (!s->is_server)
+    {
+        Net_TCPSocketBackend.shutdown(socket, SHUT_RDWR);
+        net_tables* iface = s->connection->nic->net_tables;
+        Core_PushlockAcquire(&iface->tcp_connections_lock, false);
+        RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
+        Core_PushlockRelease(&iface->tcp_connections_lock, false);
+        Free(OBOS_KernelAllocator, s->connection, sizeof(*s->connection));
+    }
+    else
+    {
+        if (s->serv.internal_listen_thread)
+        {
+            s->serv.internal_listen_thread->references++;
+            Core_EventSet(&s->serv.kill_listen_thread, false);
+            while (~s->serv.internal_listen_thread->flags & THREAD_FLAGS_DIED)
+                Core_Yield();
+            if (!(--s->serv.internal_listen_thread->references) && s->serv.internal_listen_thread->free)
+                s->serv.internal_listen_thread->free(s->serv.internal_listen_thread);
+        }
+        for (size_t i = 0; i < s->serv.bound_port_count; i++)
+        {
+            tcp_port* port = s->serv.bound_ports[i];
+            Core_PushlockAcquire(&port->iface->tcp_ports_lock, false);
+            RB_REMOVE(tcp_port_tree, &port->iface->tcp_ports, port);
+            Core_PushlockRelease(&port->iface->tcp_ports_lock, false);
+            Vfs_Free(port);
+        }
+        Vfs_Free(s->serv.bound_ports);
+    }
+    Vfs_Free(s);
+
+    down:
+    Vfs_Free(socket);
+}
+
+obos_status tcp_accept(socket_desc* socket, struct sockaddr_in* addr, int flags, socket_desc** out)
+{
+    OBOS_UNUSED(flags);
+    if (!socket->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = socket->protocol_data;
+    if (!s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    obos_status st = Core_WaitOnObject(WAITABLE_OBJECT(*s->serv.listen_event));
+    Core_EventClear(s->serv.listen_event);
+    if (obos_is_error(st))
+        return st;
+    if (!s->serv.interrupted_port)
+        return OBOS_STATUS_RETRY;
+
+    tcp_connection* con = nullptr;
+    tcp_connection* iter = nullptr;
+    Core_PushlockAcquire(&s->serv.interrupted_port->connection_tree_lock, true);
+    RB_FOREACH(iter, tcp_connection_tree, &s->serv.interrupted_port->connections)
+    {
+        if (!iter->accepted)
+        {
+            con = iter;
+            con->accepted = true;
+            break;
+        }
+    }
+    Core_PushlockRelease(&s->serv.interrupted_port->connection_tree_lock, true);
+    if (s->serv.bound_port_count > 1)
+        s->serv.interrupted_port = nullptr;
+
+    *out = tcp_create();
+    socket_desc* new_desc = *out;
+    tcp_socket* new = new_desc->protocol_data = Vfs_Calloc(1, sizeof(tcp_socket));
+    new->is_server = false;
+    new->recv_closed = false;
+    new->connection = con;
+    memcpy(&addr->addr, &con->src.addr, sizeof(ip_addr));
+    addr->port = host_to_be16(con->src.port);
+    addr->family = AF_INET;
+
+    return st;
+}
+
+static obos_status interface_has_address(net_tables* interface, ip_addr addr, ip_table_entry** oent)
+{
+    Core_PushlockAcquire(&interface->table_lock, true);
+    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &interface->table); ent; )
+    {
+        if (ent->address.addr == addr.addr)
+        {
+            if (oent)
+                *oent = ent;
+            Core_PushlockRelease(&interface->table_lock, true);
+            return OBOS_STATUS_SUCCESS;
+        }
+        ent = LIST_GET_NEXT(ip_table, &interface->table, ent);
+    }
+    Core_PushlockRelease(&interface->table_lock, true);
+    return OBOS_STATUS_ADDRESS_NOT_AVAILABLE;
+}
+
+static obos_status bind_interface(uint16_t port, net_tables* iface, tcp_port** oport)
+{
+    tcp_port* bport = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(tcp_port), nullptr);
+    bport->port = port;
+    bport->connection_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    bport->connection_tree_lock = PUSHLOCK_INITIALIZE();
+    Core_PushlockAcquire(&iface->tcp_ports_lock, false);
+    if (RB_FIND(tcp_port_tree, &iface->tcp_ports, bport))
+    {
+        Free(OBOS_KernelAllocator, bport, sizeof(*bport));
+        Core_PushlockRelease(&iface->tcp_ports_lock, false);
+        return OBOS_STATUS_PORT_IN_USE;
+    }
+    RB_INSERT(tcp_port_tree, &iface->tcp_ports, bport);
+    bport->iface = iface;
+    Core_PushlockRelease(&iface->tcp_ports_lock, false);
+    *oport = bport;
+    return OBOS_STATUS_SUCCESS;
+}
+
+void internal_listen_thread(void* udata)
+{
+    tcp_socket* s = udata;
+    struct waitable_header** objs = ZeroAllocate(OBOS_NonPagedPoolAllocator, s->serv.bound_port_count+1, sizeof(struct waitable_header*), nullptr);
+    struct waitable_header* signaled = nullptr;
+    objs[0] = WAITABLE_OBJECT(s->serv.kill_listen_thread);
+    for (size_t i = 1; i <= s->serv.bound_port_count; i++)
+        objs[i] = WAITABLE_OBJECT(s->serv.bound_ports[i-1]->connection_event);
+    while (1)
+    {
+        Core_WaitOnObjects(s->serv.bound_port_count+1, objs, &signaled);
+        if (signaled == objs[0])
+            break;
+        for (size_t i = 0; i < s->serv.bound_port_count; i++)
+        {
+            if (signaled == WAITABLE_OBJECT(s->serv.bound_ports[i]->connection_event))
+            {
+                s->serv.interrupted_port = s->serv.bound_ports[i];
+                break;
+            }
+        }
+        if (!s->serv.interrupted_port)
+            continue;
+        Core_EventSet(s->serv.listen_event, false);
+    }
+    Free(OBOS_NonPagedPoolAllocator, objs, s->serv.bound_port_count+1 * sizeof(struct waitable_header*));
+    Core_ExitCurrentThread();
+}
+
+obos_status tcp_bind(socket_desc* socket, struct sockaddr_in* addr)
+{
+    uint16_t port = be16_to_host(addr->port);
+    if (!port)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (socket->protocol_data)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+    tcp_socket* s = Vfs_Calloc(1, sizeof(tcp_socket));
+    s->is_server = true;
+    s->recv_closed = false;
+    if (addr->addr.addr == 0)
+    {
+        s->serv.bound_port_count = LIST_GET_NODE_COUNT(network_interface_list, &Net_Interfaces);
+        s->serv.bound_ports = Vfs_Calloc(s->serv.bound_port_count, sizeof(tcp_port*));
+        size_t i = 0;
+        for (net_tables* interface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); interface && i < s->serv.bound_port_count; i++)
+        {
+            obos_status status = bind_interface(port, interface, &s->serv.bound_ports[i]);
+            if (obos_is_error(status))
+            {
+                Vfs_Free(s->serv.bound_ports);
+                Vfs_Free(s);
+                return status;
+            }
+            interface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, interface);
+        }
+    }
+    else
+    {
+        s->serv.bound_port_count = 1;
+        s->serv.bound_ports = Vfs_Calloc(s->serv.bound_port_count, sizeof(tcp_port*));
+        for (net_tables* interface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); interface; )
+        {
+            obos_status status = OBOS_STATUS_SUCCESS;
+            status = interface_has_address(interface, addr->addr, nullptr);
+            if (obos_is_error(status))
+            {
+                interface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, interface);
+                continue;
+            }
+
+            status = bind_interface(port, interface, &s->serv.bound_ports[0]);
+            if (obos_is_error(status))
+            {
+                Vfs_Free(s->serv.bound_ports);
+                Vfs_Free(s);
+                return status;
+            }
+            
+            break;
+        }
+        if (!s->serv.bound_ports)
+        {
+            Vfs_Free(s->serv.bound_ports);
+            Vfs_Free(s);
+            return OBOS_STATUS_ADDRESS_NOT_AVAILABLE;
+        }
+    }
+
+    if (s->serv.bound_port_count == 1)
+    {
+        s->serv.listen_event = &s->serv.bound_ports[0]->connection_event;
+        s->serv.interrupted_port = s->serv.bound_ports[0];
+    }
+    else
+    {
+        s->serv.internal_listen_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+        s->serv.listen_event = &s->serv.internal_listen_event;
+        s->serv.internal_listen_thread = CoreH_ThreadAllocate(nullptr);
+        thread_ctx ctx = {};
+        void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x1000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+        CoreS_SetupThreadContext(&ctx, (uintptr_t)internal_listen_thread, (uintptr_t)s, false, stack, 0x1000);
+        CoreH_ThreadInitialize(s->serv.internal_listen_thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+        s->serv.internal_listen_thread->stackFree = CoreH_VMAStackFree;
+        s->serv.internal_listen_thread->stackFreeUserdata = &Mm_KernelContext;
+        Core_ProcessAppendThread(OBOS_KernelProcess, s->serv.internal_listen_thread);
+        CoreH_ThreadReady(s->serv.internal_listen_thread);
+    }
+
+    socket->protocol_data = s;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_connect(socket_desc* socket, struct sockaddr_in* addr)
+{
+    if (socket->protocol_data)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+    net_tables* iface = nullptr;
+    ip_table_entry* ent = nullptr;
+    uint8_t ttl = 0;
+    
+    obos_status st = NetH_AddressRoute(&iface, &ent, &ttl, addr->addr);
+    if (obos_is_error(st))
+        return st;
+
+    tcp_socket* s = socket->protocol_data = Vfs_Calloc(1, sizeof(tcp_socket));
+    s->is_server = false;
+    st = NetH_TCPEstablishConnection(
+        iface->interface, 
+        ent, 
+        addr->addr, 
+        0,
+        be16_to_host(addr->port),
+        1024, 
+        1520, 
+        &s->connection);
+    if (obos_is_error(st))
+    {
+        Vfs_Free(s);
+        socket->protocol_data = nullptr;
+        return st;
+    }
+    event tm_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    timer tm = {};
+    tm.userdata = (void*)&tm_sig;
+    tm.handler = tx_tm_hnd;
+    Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, 10*1000*1000);
+    
+    struct waitable_header* objs[3] = {
+        WAITABLE_OBJECT(s->connection->ack_sig),
+        WAITABLE_OBJECT(s->connection->sig),
+        WAITABLE_OBJECT(tm_sig)
+    };
+    struct waitable_header* signaled = nullptr;
+    while (s->connection->state != TCP_STATE_ESTABLISHED)
+    {
+        Core_WaitOnObjects(sizeof(objs)/sizeof(*objs), objs, &signaled);
+        if (signaled == WAITABLE_OBJECT(tm_sig) || s->connection->reset)
+        {
+            Core_PushlockAcquire(&iface->tcp_connections_lock, false);
+            RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
+            Core_PushlockRelease(&iface->tcp_connections_lock, false);
+            Free(OBOS_KernelAllocator, s->connection, sizeof(*s->connection));
+            
+            Vfs_Free(s);
+            Core_CancelTimer(&tm);
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            socket->protocol_data = nullptr;
+            return OBOS_STATUS_CONNECTION_REFUSED;
+        }
+        Core_EventClear(&s->connection->ack_sig);
+        Core_EventClear(&s->connection->sig);
+    }
+    Core_CancelTimer(&tm);
+    CoreH_FreeDPC(&tm.handler_dpc, false);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_getpeername(socket_desc* socket, struct sockaddr_in* addr)
+{
+    if (!socket->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = socket->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!s->connection)
+        return OBOS_STATUS_UNINITIALIZED;
+    if (s->connection->is_client)
+    {
+        memcpy(&addr->addr, &s->connection->dest.addr, sizeof(s->connection->dest.addr));
+        addr->port = host_to_be16(s->connection->dest.port);
+    }
+    else
+    {
+        memcpy(&addr->addr, &s->connection->src.addr, sizeof(s->connection->src.addr));
+        addr->port = host_to_be16(s->connection->src.port);    
+    }
+    addr->family = AF_INET;
+    memzero(addr->sin_zero, sizeof(addr->sin_zero));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_getsockname(socket_desc* socket, struct sockaddr_in* addr)
+{
+    if (!socket->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = socket->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!s->connection)
+        return OBOS_STATUS_UNINITIALIZED;
+    if (!s->connection->is_client)
+    {
+        memcpy(&addr->addr, &s->connection->dest.addr, sizeof(s->connection->dest.addr));
+        addr->port = host_to_be16(s->connection->dest.port);
+    }
+    else
+    {
+        memcpy(&addr->addr, &s->connection->src.addr, sizeof(s->connection->src.addr));
+        addr->port = host_to_be16(s->connection->src.port);    
+    }
+    addr->family = AF_INET;
+    memzero(addr->sin_zero, sizeof(addr->sin_zero));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_listen(socket_desc* socket, int backlog)
+{
+    OBOS_UNUSED(backlog);
+    if (!socket->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = socket->protocol_data;
+    if (!s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    // No-op
+    return OBOS_STATUS_SUCCESS;
+}
+
+static void irp_on_event_set(irp* req)
+{
+    socket_desc* desc = (void*)req->desc;
+    tcp_socket* s = desc->protocol_data;
+    if ((s->connection->recv_buffer.ptr < req->blkCount && (req->socket_flags & MSG_WAITALL)) || !s->connection->recv_buffer.ptr)
+    {
+        if (req->evnt)
+            Core_EventClear(req->evnt);
+        req->status = OBOS_STATUS_IRP_RETRY;
+        return;
+    }
+    req->status = OBOS_STATUS_SUCCESS;
+    if (req->dryOp)
+        return;
+    size_t nToRead = OBOS_MIN(s->connection->recv_buffer.ptr, req->blkCount);
+    memcpy(req->buff, s->connection->recv_buffer.buf, nToRead);
+    s->connection->recv_buffer.ptr -= nToRead;
+    req->nBlkRead += nToRead;
+}
+
+obos_status tcp_submit_irp(irp* req)
+{
+    socket_desc* desc = (void*)req->desc;
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+    {
+        req->status = OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (s->recv_closed && req->op == IRP_READ)
+    {
+        req->status = OBOS_STATUS_UNINITIALIZED;
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (s->connection->state == TCP_STATE_CLOSED)
+    {
+        req->status = OBOS_STATUS_UNINITIALIZED;
+        return OBOS_STATUS_SUCCESS;
+    }
+    if (req->op == IRP_READ)
+    {
+        if (req->blkCount > s->connection->recv_buffer.size)
+        {
+            req->status = OBOS_STATUS_MESSAGE_TOO_BIG;
+            return OBOS_STATUS_SUCCESS;
+        }
+        if (s->connection->recv_buffer.ptr < req->blkCount)
+        {
+            req->evnt = &s->connection->sig;
+            req->on_event_set = irp_on_event_set;
+        }
+        else
+            irp_on_event_set(req);
+    }
+    else
+    {
+        req->evnt = nullptr;
+        req->on_event_set = nullptr;    
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_finalize_irp(irp* req)
+{
+    socket_desc* desc = (void*)req->desc;
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (req->op != IRP_WRITE || req->dryOp)
+        return OBOS_STATUS_SUCCESS;
+    shared_ptr *payload = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct shared_ptr), nullptr);
+    OBOS_SharedPtrConstructSz(payload, Allocate(OBOS_NonPagedPoolAllocator, req->blkCount, nullptr), req->blkCount);
+    memcpy(payload->obj, req->cbuff, req->blkCount);
+    payload->free = OBOS_SharedPtrDefaultFree;
+    payload->freeUdata = OBOS_NonPagedPoolAllocator;
+    payload->onDeref = NetFreeSharedPtr;
+    req->status = NetH_TCPTransmitPacket(s->connection->nic, s->connection, OBOS_SharedPtrCopy(payload));
+    req->nBlkWritten = req->blkCount;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_shutdown(socket_desc* desc, int how)
+{
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (how == SHUT_RD)
+    {
+        s->recv_closed = true;
+        return OBOS_STATUS_SUCCESS;
+    }
+    else if (how == SHUT_RDWR)
+        s->recv_closed = true;
+
+    obos_status st = NetH_TCPCloseConnection(s->connection->nic, s->connection);
+    if (obos_is_error(st))
+        return st;
+
+    event tm_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    timer tm = {};
+    tm.userdata = (void*)&tm_sig;
+    tm.handler = tx_tm_hnd;
+    Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, 10*1000*1000);
+    
+    struct waitable_header* objs[2] = {
+        WAITABLE_OBJECT(s->connection->ack_sig),
+        WAITABLE_OBJECT(tm_sig)
+    };
+    Core_EventClear(&s->connection->ack_sig);
+    struct waitable_header* signaled = nullptr;
+    while (s->connection->state != TCP_STATE_CLOSED)
+    {
+        Core_WaitOnObjects(2, objs, &signaled);
+        if (signaled == WAITABLE_OBJECT(tm_sig))
+        {
+            s->connection->state = TCP_STATE_CLOSED;
+            break;
+        }
+        Core_EventClear(&s->connection->ack_sig);
+    }
+    Core_CancelTimer(&tm);
+    CoreH_FreeDPC(&tm.handler_dpc, false);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_sockatmark(socket_desc* desc)
+{
+    OBOS_UNUSED(desc);
+    // TODO: TCP Urgent Data
+    return OBOS_STATUS_RETRY;
+}
+
+socket_ops Net_TCPSocketBackend = {
+    .protocol = IPPROTO_TCP,
+    .create = tcp_create,
+	.free = tcp_free,
+	.accept = tcp_accept,
+	.bind = tcp_bind,
+	.connect = tcp_connect,
+	.getpeername = tcp_getpeername,
+	.getsockname = tcp_getsockname,
+	.listen = tcp_listen,
+	.submit_irp = tcp_submit_irp,
+	.finalize_irp = tcp_finalize_irp,
+	.shutdown = tcp_shutdown,
+	.sockatmark = tcp_sockatmark
+};

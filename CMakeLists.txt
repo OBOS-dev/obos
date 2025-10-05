@@ -47,7 +47,7 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 project(
 	OBOS
 	LANGUAGES C CXX ASM
-	DESCRIPTION "Hybrid Kernel with advanced driver loading."
+	DESCRIPTION "Hybrid Kernel with driver loading."
 	HOMEPAGE_URL https://github.com/OBOS-dev/obos
 	)
 
@@ -93,7 +93,10 @@ if (OBOS_REFRESH_DEPENDENCIES)
 	if (OBOS_ENABLE_UHDA)
 		message("Fetching uHDA.")
 		include ("dependencies/uhda.cmake")
-	endif()
+		endif()
+	message("Fetching e1000 driver.")
+	include ("dependencies/freebsd-e1000.cmake")
+
 	file (WRITE "${CMAKE_SOURCE_DIR}/dependencies/needs_download.cmake"
 		"# This file is auto-generated.\n# Set this variable to true or delete this file to refresh all dependencies.\nset (OBOS_REFRESH_DEPENDENCIES false)"
 	)
@@ -106,6 +109,7 @@ else()
 	endif()
 	include("dependencies/flanterm.cmake")
 	include("dependencies/uhda.cmake")
+	include("dependencies/freebsd-e1000.cmake")
 endif()
 
 if (OBOS_UP)
@@ -174,14 +178,6 @@ endif()
 add_compile_definitions(OBOS_UBSAN_ENABLED=${OBOS_ENABLE_UBSAN})
 
 #list (APPEND oboskrnl_sources "sanitizers/asan.c")
-if (OBOS_ENABLE_KASAN)
-	add_compile_options(
-		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
-	)
-	set (OBOS_ENABLE_KASAN "1")
-else()
-	set (OBOS_ENABLE_KASAN "0")
-endif()
 if (OBOS_ENABLE_UHDA)
 	set (OBOS_ENABLE_UHDA "1")
 else()
@@ -247,6 +243,15 @@ if (OBOS_COMPILE_USER_EXAMPLES)
 	add_subdirectory("src/user_examples")
 endif()
 
+if (OBOS_ENABLE_KASAN)
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C>:-fsanitize=kernel-address>
+	)
+	set (OBOS_ENABLE_KASAN "1")
+else()
+	set (OBOS_ENABLE_KASAN "0")
+endif()
+
 # Include the kernel
 add_subdirectory("src/oboskrnl")
 if (OBOS_ARCHITECTURE STREQUAL "m68k")
@@ -271,6 +276,7 @@ add_subdirectory("src/drivers/generic/extfs")
 add_subdirectory("src/drivers/test_driver")
 add_subdirectory("src/drivers/generic/ahci")
 add_subdirectory("src/drivers/generic/r8169")
+add_subdirectory("src/drivers/generic/freebsd-e1000")
 if (OBOS_ARCHITECTURE STREQUAL "x86_64")
 	add_subdirectory("src/drivers/x86/bochs_vbe")
 	add_subdirectory("src/drivers/x86/uart")

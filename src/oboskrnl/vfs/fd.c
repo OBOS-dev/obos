@@ -120,7 +120,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_UNCACHED;
     if (oflags & FD_OFLAGS_NOEXEC)
         desc->flags |= FD_FLAGS_NOEXEC;
-    if (vnode->vtype == VNODE_TYPE_CHR || vnode->vtype == VNODE_TYPE_FIFO)
+    if (vnode->vtype == VNODE_TYPE_CHR || vnode->vtype == VNODE_TYPE_FIFO || vnode->vtype == VNODE_TYPE_SOCK)
         desc->flags |= FD_FLAGS_UNCACHED;
     if (vnode->flags & VFLAGS_EVENT_DEV)
         desc->flags &= ~(FD_FLAGS_READ|FD_FLAGS_WRITE);
@@ -252,7 +252,7 @@ obos_status Vfs_FdRead(fd* desc, void* buf, size_t nBytes, size_t* nRead)
 {
     if (!desc || !desc->vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (nBytes > (desc->vn->filesize - (desc ? desc->offset : SIZE_MAX)) && desc->vn->vtype != VNODE_TYPE_CHR)
+    if (nBytes > (desc->vn->filesize - (desc ? desc->offset : SIZE_MAX)) && desc->vn->vtype != VNODE_TYPE_CHR && desc->vn->vtype != VNODE_TYPE_SOCK)
         nBytes = desc->vn->filesize - (desc ? desc->offset : SIZE_MAX);
     obos_status status = Vfs_FdPRead(desc, buf, desc ? desc->offset : SIZE_MAX, nBytes, nRead);
     if (obos_expect(obos_is_success(status), 1))
@@ -274,7 +274,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
     if (!(desc->flags & FD_FLAGS_WRITE))
         return OBOS_STATUS_ACCESS_DENIED;
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
@@ -351,10 +351,10 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
         return OBOS_STATUS_EOF;
     if (!(desc->flags & FD_FLAGS_READ))
         return OBOS_STATUS_ACCESS_DENIED;
-    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR)
+    if (nBytes > (desc->vn->filesize - offset) && desc->vn->vtype != VNODE_TYPE_CHR && desc->vn->vtype != VNODE_TYPE_SOCK)
         nBytes = desc->vn->filesize - offset; // truncate size to the space we have left in the file.
     obos_status status = OBOS_STATUS_SUCCESS;
-    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO)
+    if (desc->vn->vtype == VNODE_TYPE_CHR || desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK)
         OBOS_ASSERT(desc->flags & FD_FLAGS_UNCACHED);
     if (desc->flags & FD_FLAGS_UNCACHED)
     {
@@ -547,9 +547,7 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
         return OBOS_STATUS_SUCCESS;
     }
     if (!vn->blkSize)
-    {
         Vfs_GetVnodeDriver(vn)->ftable.get_blk_size(vn->desc, &vn->blkSize);
-    }
 
     *out = nBytes / vn->blkSize;
     return OBOS_STATUS_SUCCESS;

@@ -145,7 +145,8 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags pr
 }
 
 page* Mm_AnonPage = nullptr;
-void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, uoff_t offset, obos_status* ustatus)
+page* Mm_UserAnonPage = nullptr;
+void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
     set_statusp(ustatus, status);
@@ -335,7 +336,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     {
         OBOS_ASSERT(Mm_AnonPage);
         // Use the anon physical page.
-        phys = Mm_AnonPage;
+        phys = prot & OBOS_PROTECTION_USER_PAGE ? Mm_UserAnonPage : Mm_AnonPage;
     }
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
     {
@@ -837,7 +838,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
 
     irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
 
-    irql oldIrql2 = Core_SpinlockAcquire(&user_context->lock);
+    irql oldIrql2 = user_context == &Mm_KernelContext ? IRQL_INVALID : Core_SpinlockAcquire(&user_context->lock);
     if (!pages_exist(user_context, (void*)ubase, size, respectUserProtection, prot))
     {
         Core_SpinlockRelease(&user_context->lock, oldIrql2);
@@ -939,7 +940,8 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
     }
 
-    Core_SpinlockRelease(&user_context->lock, oldIrql2);
+    if (user_context != &Mm_KernelContext)
+        Core_SpinlockRelease(&user_context->lock, oldIrql2);
     Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
 
     Mm_KernelContext.stat.committedMemory += size;

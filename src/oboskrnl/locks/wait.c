@@ -38,7 +38,6 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     }
     thread* curr = Core_GetCurrentThread();
     // We're waiting on one object.
-    curr->nSignaled = 0;
     curr->nWaiting = 1;
     memzero(&curr->lock_node, sizeof(curr->lock_node));
     curr->lock_node.data = curr;
@@ -49,22 +48,45 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
         return status;
     }
+    curr->waiting_objects.waitingObject = obj;
+    curr->waiting_objects.is_array = false;
+    curr->waiting_objects.free_array = nullptr;
+    curr->waiting_objects.free_userdata = nullptr;
+    curr->waiting_objects.nObjs = 1;
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
     CoreH_ThreadBlock(curr, true);
-    Core_LowerIrql(oldIrql);
+    memzero(&curr->waiting_objects, sizeof(curr->waiting_objects));
     if (curr->interrupted)
     {
         if (curr->signalInterrupted)
         {
             curr->signalInterrupted = false;
             CoreH_ThreadListRemove(&obj->waiting, &curr->lock_node);
+#ifdef __x86_64__
+            Core_LowerIrql(oldIrql);
+            asm volatile("hlt" :::"memory");
+            oldIrql = IRQL_INVALID;
+#endif
         }
         curr->interrupted = false;
+        if (oldIrql != IRQL_INVALID)
+            Core_LowerIrql(oldIrql);
+        Core_Yield();
         return OBOS_STATUS_ABORTED;
     }
+    CoreH_ThreadListRemove(&obj->waiting, &curr->lock_node);
+    curr->hdrSignaled = nullptr;
+    curr->nWaiting = 0;
+    Core_LowerIrql(oldIrql);
+    Core_Yield();
     if (obj->interrupted)
         return OBOS_STATUS_ABORTED;
     return OBOS_STATUS_SUCCESS;
+}
+
+static void free_arr(void* udata, struct waiting_array_node* objs, size_t nObjs)
+{
+    ((allocator_info*)udata)->Free(udata, objs, nObjs*sizeof(struct waiting_array_node*));
 }
 
 obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, struct waitable_header** signaled)
@@ -77,15 +99,11 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
         return OBOS_STATUS_INVALID_IRQL;
 
     thread* curr = Core_GetCurrentThread();
-    curr->nSignaled = 0;
     curr->nWaiting = 1;
 
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     
-    struct {
-        thread_node node;
-        struct waitable_header* obj;   
-    }* nodes = ZeroAllocate(OBOS_NonPagedPoolAllocator, nObjects, sizeof(*nodes), nullptr);
+    waiting_array_node* nodes = ZeroAllocate(OBOS_NonPagedPoolAllocator, nObjects, sizeof(*nodes), nullptr);
     for (size_t i = 0; i < nObjects; i++)
     {
         struct waitable_header* const obj = objs[i];
@@ -102,18 +120,27 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
         CoreH_ThreadListAppend(&obj->waiting, &nodes[i].node);
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
     }
+    curr->waiting_objects.is_array = true;
+    curr->waiting_objects.free_array = free_arr;
+    curr->waiting_objects.free_userdata = OBOS_NonPagedPoolAllocator;
+    curr->waiting_objects.waitingObjects = nodes;
+    curr->waiting_objects.nObjs = nObjects;
 
     CoreH_ThreadBlock(curr, true);
+    memzero(&curr->waiting_objects, sizeof(curr->waiting_objects));
 
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    if (curr->signalInterrupted || curr->hdrSignaled->interrupted)
+    if (curr->signalInterrupted || (curr->hdrSignaled && curr->hdrSignaled->interrupted))
         status = OBOS_STATUS_ABORTED;
 
     if (signaled)
-        if (!curr->hdrSignaled->interrupted)
+    {
+        if (curr->hdrSignaled && !curr->hdrSignaled->interrupted)
             *signaled = Core_GetCurrentThread()->hdrSignaled;
-    
+        else
+            *signaled = nullptr;
+    }
 
     for (size_t i = 0; i < nObjects; i++)
     {
@@ -121,6 +148,9 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
         CoreH_ThreadListRemove(&nodes[i].obj->waiting, &nodes[i].node);
         Core_SpinlockRelease(&nodes[i].obj->lock, spinlockIrql);
     }
+
+    curr->hdrSignaled = nullptr;
+    curr->nWaiting = 0;
 
     Core_LowerIrql(oldIrql);
 
@@ -152,19 +182,21 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     for (thread_node* curr = obj->waiting.head; curr; )
     {
         thread_node* next = curr->next;
+        if (curr->awaken)
+        {
+            curr = next;
+            continue;   
+        }
         CoreH_ThreadListRemove(&obj->waiting, curr);
         if (!curr->data)
         {
             curr = next;
             continue;
         }
-        if ((++curr->data->nSignaled) == curr->data->nWaiting)
-        {
-            if (boostPriority)
-                CoreH_ThreadBoostPriority(curr->data);
-            CoreH_ThreadReadyNode(curr->data, curr->data->snode);
-            curr->data->hdrSignaled = obj;
-        }
+        if (boostPriority)
+            CoreH_ThreadBoostPriority(curr->data);
+        CoreH_ThreadReadyNode(curr->data, curr->data->snode);
+        curr->data->hdrSignaled = obj;
         if (curr->free)
             curr->free(curr);
         if (!all)

@@ -43,8 +43,10 @@ void* Vfs_Calloc(size_t nObjs, size_t szObj)
 
 void* Vfs_Realloc(void* what, size_t cnt)
 {
-    if (!Vfs_Allocator || !what)
+    if (!Vfs_Allocator)
         return nullptr;
+    if (!what)
+        return Vfs_Calloc(1, cnt);
     struct allocation_hdr* hdr = what;
     hdr--;
     size_t old_size = hdr->sz+sizeof(*hdr);

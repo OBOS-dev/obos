@@ -709,7 +709,7 @@ driver_header* Vfs_GetVnodeDriver(vnode* vn)
     if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
         return nullptr;
     driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO  || vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         if (!vn->un.device)
@@ -729,7 +729,7 @@ driver_header* Vfs_GetVnodeDriverStat(vnode* vn)
     if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
         return nullptr;
     driver_header* driver = (vn->vtype == VNODE_TYPE_REG || vn->vtype == VNODE_TYPE_DIR || vn->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
-    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+    if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
         if (!vn->un.device)

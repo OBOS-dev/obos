@@ -39,6 +39,8 @@
 #include <mm/fork.h>
 #include <mm/pmm.h>
 
+#include <net/tables.h>
+
 #include <locks/sys_futex.h>
 
 #include <vfs/fd_sys.h>
@@ -393,7 +395,20 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SymLinkAt,
     (uintptr_t)Sys_CreateNamedPipe,
     (uintptr_t)Sys_PPoll,
-    // 113-126 are reserved for socket syscalls
+    (uintptr_t)Sys_Socket,
+    (uintptr_t)Sys_SendTo,
+    (uintptr_t)Sys_RecvFrom,
+    (uintptr_t)Sys_Listen,
+    (uintptr_t)Sys_Accept,
+    (uintptr_t)Sys_Bind,
+    (uintptr_t)Sys_Connect,
+    (uintptr_t)Sys_SockName,
+    (uintptr_t)Sys_PeerName,
+    (uintptr_t)Sys_GetSockOpt,
+    (uintptr_t)Sys_SetSockOpt,
+    (uintptr_t)Sys_ShutdownSocket,
+    (uintptr_t)Sys_GetHostname,
+    (uintptr_t)Sys_SetHostname,
     [127]=(uintptr_t)Sys_KillProcessGroup,
     (uintptr_t)Sys_SetProcessGroup,
     (uintptr_t)Sys_GetProcessGroup,

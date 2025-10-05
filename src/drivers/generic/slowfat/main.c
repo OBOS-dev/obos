@@ -15,7 +15,6 @@
 
 #include <driver_interface/header.h>
 
-
 OBOS_PAGEABLE_FUNCTION obos_status get_blk_size(dev_desc desc, size_t* blkSize)
 {
     OBOS_UNUSED(desc);

@@ -197,6 +197,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         // Fallback to MSI.
         uint64_t header = 0; // 32-bit
         DrvS_ReadPCIRegister(dev->location, msi_offset+0, 4, &header);
+        OBOS_Debug("header=0x%x\n", header);
         handle->un.msix_entry = 0;
         handle->msix_pending_entry = 0;
         header |= BIT(16) /* Enable */;

@@ -71,6 +71,7 @@ extern OBOS_EXPORT struct allocator_info* Mm_Allocator;
 // flags: PHYS_PAGE_HUGE_PAGE
 // phys32: true
 extern OBOS_EXPORT page* Mm_AnonPage;
+extern OBOS_EXPORT page* Mm_UserAnonPage;
 
 OBOS_EXPORT void* MmH_FindAvailableAddress(context* ctx, size_t size, vma_flags flags, obos_status* status);
 // file can be nullptr for a anonymous mapping.

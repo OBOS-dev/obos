@@ -53,7 +53,7 @@ RB_GENERATE(symbol_table, driver_symbol, rb_entry, cmp_symbols);
 #define Cast(what, to) ((to)what)
 
 static uint32_t nextDriverId;
-static OBOS_NO_UBSAN driver_header* find_header(void* file, size_t szFile)
+static OBOS_NO_UBSAN OBOS_NO_KASAN driver_header* find_header(void* file, size_t szFile)
 {
     for (driver_header* curr = Cast(file, driver_header*); 
             Cast(curr, uintptr_t) < (Cast(file, uintptr_t) + szFile); 

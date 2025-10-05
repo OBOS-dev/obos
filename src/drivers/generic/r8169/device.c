@@ -596,7 +596,7 @@ obos_status r8169_buffer_remove_frame(r8169_buffer* buff, r8169_frame* frame)
 obos_status r8169_buffer_read_next_frame(r8169_buffer* buff, r8169_frame** frame)
 {
     if (!(*frame))
-        *frame = LIST_GET_HEAD(r8169_frame_list, &buff->frames);
+        *frame = LIST_GET_TAIL(r8169_frame_list, &buff->frames);
     else
         *frame = LIST_GET_NEXT(r8169_frame_list, &buff->frames, *frame);
     return OBOS_STATUS_SUCCESS;

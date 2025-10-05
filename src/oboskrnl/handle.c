@@ -20,6 +20,14 @@
 
 #include <vfs/alloc.h>
 #include <vfs/fd.h>
+#include <vfs/irp.h>
+#include <vfs/mount.h>
+
+#include <mm/context.h>
+#include <mm/alloc.h>
+
+#include <driver_interface/driverId.h>
+#include <driver_interface/header.h>
 
 #include <driver_interface/loader.h>
 
@@ -195,13 +203,29 @@ void drv_close(handle_desc* hnd)
 {
     Drv_UnrefDriver(hnd->un.driver_id);
 }
+void process_close(handle_desc* hnd)
+{
+    if (!(--hnd->un.process->refcount))
+        Free(OBOS_NonPagedPoolAllocator, hnd->un.process, sizeof(process));
+}
+void irp_close(handle_desc* hnd)
+{
+    user_irp* req = hnd->un.irp;
+    // if (req->obj->evnt)
+    //     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(*req->obj->evnt));
+    if (req->obj->buff)
+        Mm_VirtualMemoryFree(&Mm_KernelContext, req->obj->buff, req->buff_size);
+    VfsH_IRPUnref(req->obj);
+    Vfs_Free(req);
+}
+extern void OBOS_ThreadHandleFree(handle_desc* hnd);
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
     nullptr,
     dirent_close,
-    nullptr,
-    nullptr,
+    OBOS_ThreadHandleFree,
+    process_close,
     nullptr, // TODO: Refcount vmm contexts.
     nullptr,
     nullptr,
@@ -209,6 +233,7 @@ void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     nullptr,
     drv_close,
     nullptr,
+    irp_close,
 };
 
 static obos_status handle_close_unlocked(handle_table* current_table, handle hnd);

@@ -35,6 +35,7 @@
 #include <vfs/mount.h>
 #include <vfs/irp.h>
 #include <vfs/create.h>
+#include <vfs/socket.h>
 
 #include <locks/event.h>
 #include <locks/wait.h>
@@ -646,7 +647,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
             OBOS_ENSURE(!"unimplemented");
     }
     st.st_size = to_stat->filesize;
-    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && (~to_stat->flags & VFLAGS_EVENT_DEV))
+    if (to_stat->vtype != VNODE_TYPE_CHR && to_stat->vtype != VNODE_TYPE_BLK && to_stat->vtype != VNODE_TYPE_FIFO && to_stat->vtype != VNODE_TYPE_SOCK && (~to_stat->flags & VFLAGS_EVENT_DEV))
     {
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
@@ -1062,7 +1063,7 @@ obos_status Sys_Unmount(const char* uat)
     return status;
 }
 
-handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* ustatus)
+obos_status Sys_IRPCreate(handle *ufile, size_t offset, size_t size, enum irp_op operation, void* buffer)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
@@ -1072,48 +1073,54 @@ handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp
             break;
         default:
             status = OBOS_STATUS_INVALID_ARGUMENT;
-            if (ustatus) memcpy_k_to_usr(ustatus, &status, sizeof(obos_status));
-            return HANDLE_INVALID;
+            return status;
     }
+
+    handle file = 0;
+    status = memcpy_usr_to_k(&file, ufile, sizeof(handle));
+    if (obos_is_error(status))
+        return status;
 
     vnode* vn = nullptr;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), file, HANDLE_TYPE_FD, false, &status);
     if (!fd)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-        if (ustatus) memcpy_k_to_usr(ustatus, &status, sizeof(obos_status));
-        return HANDLE_INVALID;
+        return status;
     }
     vn = fd->un.fd->vn;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     if (!vn)
         return OBOS_STATUS_UNINITIALIZED;
 
+    bool dry = !buffer;
     void* buff = dry ? nullptr : Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer, nullptr, size, operation == IRP_READ ? 0 : OBOS_PROTECTION_READ_ONLY, true, &status);
 
     user_irp* obj = nullptr;
     handle_desc* desc = nullptr;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-    handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+    handle ret = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_IRP, &desc);
     desc->un.irp = obj = Vfs_Calloc(1, sizeof(user_irp));
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     obj->obj = VfsH_IRPAllocate();
-
+    obj->buff_size = size;
+    
     VfsH_IRPBytesToBlockCount(vn, size, &obj->obj->blkCount);
     VfsH_IRPBytesToBlockCount(vn, offset, &obj->obj->blkOffset);
     obj->obj->op = operation;
-    obj->obj->dryOp = !!dry;
+    obj->obj->dryOp = dry;
     obj->obj->buff = buff;
     obj->obj->vn = vn;
     obj->obj->status = OBOS_STATUS_SUCCESS;
-    
-    return ret;
+    obj->desc = fd->un.fd->desc;
+
+    return memcpy_k_to_usr(ufile, &ret, sizeof(ret));
 }
 obos_status Sys_IRPSubmit(handle desc)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1121,7 +1128,7 @@ obos_status Sys_IRPSubmit(handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    return VfsH_IRPSubmit(irph->un.irp->obj, nullptr);
+    return VfsH_IRPSubmit(irph->un.irp->obj, &irph->un.irp->desc);
 }
 
 obos_status Sys_IRPWait(handle desc, obos_status* out_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */, bool close)
@@ -1131,7 +1138,7 @@ obos_status Sys_IRPWait(handle desc, obos_status* out_status, size_t* nCompleted
     if (!out_status && !nCompleted)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1157,7 +1164,7 @@ obos_status Sys_IRPQueryState(handle desc)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1177,7 +1184,7 @@ obos_status Sys_IRPGetBuffer(handle desc, void** ubuffp)
     if (!ubuffp)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1194,7 +1201,7 @@ obos_status Sys_IRPGetStatus(handle desc, obos_status* out_status, size_t* nComp
     if (!out_status && !nCompleted)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    handle_desc* irph = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_IRP, false, &status);
     if (!irph)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1836,7 +1843,7 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
             */
             if (args[0] & O_DIRECT)
                 fd->un.fd->flags |= FD_FLAGS_UNCACHED;
-            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO)
+            else if (fd->un.fd->vn->vtype != VNODE_TYPE_CHR && fd->un.fd->vn->vtype != VNODE_TYPE_FIFO && fd->un.fd->vn->vtype != VNODE_TYPE_SOCK)
                 fd->un.fd->flags &= ~FD_FLAGS_UNCACHED;
             if (args[0] & O_NONBLOCK)
                 fd->un.fd->flags |= FD_FLAGS_NOBLOCK;
@@ -1951,4 +1958,355 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
     Mm_VirtualMemoryFree(&Mm_KernelContext, args, nArgs*sizeof(uintptr_t));
 
     return status;
+}
+
+obos_status Sys_Socket(handle desc, int family, int type, int protocol)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return Net_Socket(family, type, protocol, fd->un.fd);    
+}
+
+obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, struct sys_socket_io_params *uparams)
+{    
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    const struct sys_socket_io_params *params = 
+        Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), OBOS_PROTECTION_READ_ONLY, true, &status);
+    if (obos_is_error(status))
+        return status;
+    if (!params->addr_length || params->addr_length > 32)
+    {
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+        goto fail1;
+    }
+
+    status = OBOS_STATUS_SUCCESS;
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, OBOS_PROTECTION_READ_ONLY, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    void* buf = Allocate(OBOS_KernelAllocator, params->addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
+    if (obos_is_error(status))
+        goto fail3;
+
+    status = Net_SendTo(fd->un.fd, kbuf, size, flags, addr, params->addr_length);
+
+    OBOS_MAYBE_UNUSED fail3:
+    Free(OBOS_KernelAllocator, buf, params->addr_length);
+    OBOS_MAYBE_UNUSED fail2:
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
+    OBOS_MAYBE_UNUSED fail1:
+    Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)params, sizeof(*params));
+
+    return status;
+}
+
+obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, struct sys_socket_io_params *uparams)
+{    
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    struct sys_socket_io_params *params = 
+        Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+    if (!params->addr_length && params->sock_addr)
+    {
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+        goto fail1;
+    }
+
+    status = OBOS_STATUS_SUCCESS;
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    void* buf = Allocate(OBOS_KernelAllocator, params->addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
+    if (obos_is_error(status) && params->sock_addr)
+        goto fail3;
+    if (!params->sock_addr)
+    {
+        Free(OBOS_KernelAllocator, buf, params->addr_length);
+        addr = nullptr;
+    }
+
+    status = Net_RecvFrom(fd->un.fd, kbuf, size, flags, &params->nRead, addr, params->addr_length ? &params->addr_length : nullptr);
+
+    memcpy_k_to_usr(params->sock_addr, addr, params->addr_length);
+
+    OBOS_MAYBE_UNUSED fail3:
+    Free(OBOS_KernelAllocator, buf, params->addr_length);
+    OBOS_MAYBE_UNUSED fail2:
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
+    OBOS_MAYBE_UNUSED fail1:
+    Mm_VirtualMemoryFree(&Mm_KernelContext, params, sizeof(*params));
+
+    return status;
+}
+
+obos_status Sys_Listen(handle desc, int backlog)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return Net_Listen(fd->un.fd, backlog);
+}
+
+obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t* uaddr_length, int flags)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    
+    status = OBOS_STATUS_SUCCESS;
+    handle_desc* new_fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), empty_fd, HANDLE_TYPE_FD, false, &status);
+    if (!new_fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    size_t addr_length = 0;
+    status = memcpy_usr_to_k(&addr_length, uaddr_length, sizeof(size_t));
+    if (obos_is_error(status))
+        return status;
+
+    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, uaddr_ptr, addr_length);
+    if (obos_is_error(status))
+        goto fail1;
+
+    status = Net_Accept(fd->un.fd, addr, &addr_length, flags, new_fd->un.fd);
+
+    memcpy_k_to_usr(uaddr_length, &addr_length, sizeof(addr_length));
+
+    OBOS_MAYBE_UNUSED fail1:
+    Free(OBOS_KernelAllocator, buf, addr_length);
+
+    return status;
+}
+
+obos_status Sys_Bind(handle desc, const sockaddr *uaddr, size_t addr_length)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
+    if (obos_is_error(status))
+        goto fail1;
+
+    status = Net_Bind(fd->un.fd, addr, &addr_length);
+
+    OBOS_MAYBE_UNUSED fail1:
+    Free(OBOS_KernelAllocator, buf, addr_length);
+
+    return status;
+}
+
+obos_status Sys_Connect(handle desc, const sockaddr *uaddr, size_t addr_length)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
+    if (obos_is_error(status))
+        goto fail1;
+
+    status = Net_Connect(fd->un.fd, addr, &addr_length);
+
+    OBOS_MAYBE_UNUSED fail1:
+    Free(OBOS_KernelAllocator, buf, addr_length);
+
+    return status;
+}
+
+obos_status Sys_SockName(handle desc, sockaddr* uaddr, size_t addr_length, size_t* actual_addr_length)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
+    if (obos_is_error(status))
+        goto fail1;
+
+    status = Net_GetSockName(fd->un.fd, addr, &addr_length);
+
+    if (obos_is_success(status))
+        memcpy_k_to_usr(actual_addr_length, &addr_length, sizeof(addr_length));
+
+    OBOS_MAYBE_UNUSED fail1:
+    Free(OBOS_KernelAllocator, buf, addr_length);
+
+    return status;
+}
+
+obos_status Sys_PeerName(handle desc, sockaddr* uaddr, size_t addr_length, size_t* actual_addr_length)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
+    sockaddr *addr = buf;
+    status = memcpy_usr_to_k(addr, uaddr, addr_length);
+    if (obos_is_error(status))
+        goto fail1;
+
+    status = Net_GetPeerName(fd->un.fd, addr, &addr_length);
+
+    if (obos_is_success(status))
+        memcpy_k_to_usr(actual_addr_length, &addr_length, sizeof(addr_length));
+
+    OBOS_MAYBE_UNUSED fail1:
+    Free(OBOS_KernelAllocator, buf, addr_length);
+
+    return status;
+}
+
+obos_status Sys_GetSockOpt(handle desc, int layer, int number, void *ubuffer, size_t *usize)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    size_t size = 0;
+    status = memcpy_usr_to_k(&size, usize, sizeof(size_t));
+    if (obos_is_error(status))
+        return status;
+
+    void* kbuf = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        ubuffer, nullptr, size, 
+        0, true, 
+        &status);
+
+    status = Net_GetSockOpt(fd->un.fd, layer, number, kbuf, &size);
+
+    if (obos_is_success(status))
+        memcpy_k_to_usr(usize, &size, sizeof(size));
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
+
+    return status;
+}
+
+obos_status Sys_SetSockOpt(handle desc, int layer, int number, const void *ubuffer, size_t size)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    void* kbuf = Mm_MapViewOfUserMemory(
+        CoreS_GetCPULocalPtr()->currentContext, 
+        (void*)ubuffer, nullptr, size, 
+        OBOS_PROTECTION_READ_ONLY, true, 
+        &status);
+
+    status = Net_SetSockOpt(fd->un.fd, layer, number, kbuf, size);
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
+
+    return status;
+}
+
+obos_status Sys_ShutdownSocket(handle desc, int how)
+{
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return Net_Shutdown(fd->un.fd, how);
 }

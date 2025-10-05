@@ -232,7 +232,7 @@ static bool deref_vnode(vnode* vn)
 {
     if (!(--vn->refs))
     {
-        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO)
+        if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
             if (!(vn->un.device->refs--))
                 Vfs_Free(vn->un.device);
         Vfs_Free(vn);

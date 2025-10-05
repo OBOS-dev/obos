@@ -8,6 +8,7 @@
 /dependencies/uACPI
 /dependencies/uHDA
 /dependencies/flanterm/
+/dependencies/freebsd-e1000/
 /dependencies/include/
 /dependencies/freebsd-e1000
 /dependencies/needs_download.cmake

@@ -66,6 +66,7 @@ obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread
 	thr->affinity = affinity;
 	thr->masterCPU = nullptr;
 	thr->quantum = 0;
+	thr->references++;
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status CoreH_ThreadReady(thread* thr)
@@ -186,6 +187,7 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(threa
 	if(!list->head)
 		list->head = node;
 	node->prev = list->tail;
+	node->data->references++;
 	list->tail = node;
 	list->nNodes++;
 	Core_SpinlockRelease(&list->lock, oldIrql);
@@ -222,6 +224,7 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 	if (list->tail == node)
 		list->tail = node->prev;
 	list->nNodes--;
+	node->data->references--;
 	node->next = nullptr;
 	node->prev = nullptr;
 	Core_SpinlockRelease(&list->lock, oldIrql);
@@ -259,6 +262,24 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
 	CoreS_GetCPULocalPtr()->currentThread = nullptr;
 	currentThread->kernelStack = nullptr;
+	if (currentThread->waiting_objects.nObjs)
+	{
+		if (currentThread->waiting_objects.is_array)
+		{
+			for (size_t i = 0; i < currentThread->waiting_objects.nObjs; i++)
+			{
+				waiting_array_node* obj = &currentThread->waiting_objects.waitingObjects[i];
+				CoreH_ThreadListRemove(&obj->obj->waiting, &obj->node);
+			}
+			if (currentThread->waiting_objects.free_array)
+				currentThread->waiting_objects.free_array(
+					currentThread->waiting_objects.free_userdata,
+					currentThread->waiting_objects.waitingObjects,
+					currentThread->waiting_objects.nObjs);
+		}
+		else
+			CoreH_ThreadListRemove(&currentThread->waiting_objects.waitingObject->waiting, &currentThread->lock_node);
+	}
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
 	if (CoreS_SetKernelStack)

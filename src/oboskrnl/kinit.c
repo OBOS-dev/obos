@@ -43,6 +43,8 @@
 #include <vfs/vnode.h>
 #include <vfs/fd.h>
 
+#include <net/lo.h>
+
 #include <elf/elf.h>
 
 allocator_info* OBOS_KernelAllocator;
@@ -325,6 +327,8 @@ void OBOS_KernelInit()
     
     OBOS_Debug("%s: Finalizing VFS initialization...\n", __func__);
     Vfs_FinalizeInitialization();
+
+    Net_InitializeLoopbackDevice();
 
     if (OBOSS_MakeTTY)
         OBOSS_MakeTTY();

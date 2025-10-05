@@ -30,6 +30,7 @@ typedef enum {
     ICMPv4_CODE_PORT_UNREACHABLE,
     ICMPv4_CODE_FRAG_DF_SET,
     ICMPv4_CODE_SOURCE_ROUTE_FAILED,
+    ICMPv4_CODE_COMMUNICATION_ADMINISTRATIVELY_FILTERED = 13,
 } dest_unreachable_ec;
 // For ICMPv4_TYPE_TIME_EXCEEDED
 typedef enum {
@@ -48,6 +49,8 @@ typedef struct icmp_header {
 
 // ent points to struct ip_table_entry
 PacketProcessSignature(ICMPv4, ip_header*);
+
+obos_status NetH_ICMPv4ResponseToStatus(icmp_header* hdr);
 
 // Sends a Destination Unreachable ICMPv4 message to hdr->src_address.
 obos_status Net_ICMPv4DestUnreachable(vnode* nic, const ip_header* ip_hdr, const ethernet2_header* eth_hdr, void* pckt_data, dest_unreachable_ec code);

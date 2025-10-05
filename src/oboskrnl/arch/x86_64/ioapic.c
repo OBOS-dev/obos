@@ -109,6 +109,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN obos_status ParseMADT()
                 tm = TriggerModeEdgeSensitive;
             else if (tmFlg == 0b11)
                 tm = TriggerModeLevelSensitive;
+            OBOS_ENSURE(ioapic_redir_index < Arch_SizeofIRQRedirectionEntries);
             Arch_IRQRedirectionEntries[ioapic_redir_index].globalSystemInterrupt = ent->globalSystemInterrupt;
             Arch_IRQRedirectionEntries[ioapic_redir_index].source = ent->irqSource;
             Arch_IRQRedirectionEntries[ioapic_redir_index].polarity = res;

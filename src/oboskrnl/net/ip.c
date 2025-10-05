@@ -128,10 +128,12 @@ PacketProcessSignature(IPv4, ethernet2_header*)
     bool destination_local = false;
     Core_PushlockAcquire(&nic->net_tables->table_lock, true);
     ip_table_entry* forwarding_entry = nullptr;
+    ip_table_entry* local_entry = nullptr;
     for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); ent; )
     {
         if (ent->address.addr == hdr->dest_address.addr)
         {
+            local_entry = ent;
             destination_local = true;
             break;
         }
@@ -161,33 +163,37 @@ PacketProcessSignature(IPv4, ethernet2_header*)
         hdr->chksum = 0;
         hdr->chksum = be16_to_host(NetH_OnesComplementSum(hdr, IPv4_GET_HEADER_LENGTH(hdr)));
 
-        size_t sz = be16_to_host(hdr->packet_length) + sizeof(ethernet2_header);
-        char* pckt = Allocate(OBOS_KernelAllocator, sz, nullptr);
-
-        ethernet2_header* eth_hdr = (void*)pckt;
-        memcpy(eth_hdr, hdr, be16_to_host(hdr->packet_length));
-        
-        memcpy(eth_hdr->src, nic->net_tables->mac, sizeof(mac_address));
-        obos_status status = NetH_ResolveExternalIP(nic, hdr->dest_address, &eth_hdr->dest);
+        mac_address dest = {};
+        obos_status status = NetH_ResolveExternalIP(nic, hdr->dest_address, &dest);
         if (obos_is_error(status))
         {
             Net_ICMPv4DestUnreachable(nic, hdr, eth, data, ICMPv4_CODE_NET_UNREACHABLE);
-            Free(OBOS_KernelAllocator, pckt, sz);
             ExitPacketHandler();
         }
-        eth_hdr->type = host_to_be16(ETHERNET2_TYPE_IPv4);
-
-        shared_ptr *data_ptr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
-        OBOS_SharedPtrConstructSz(data_ptr, pckt, sz);
-        data_ptr->free = OBOS_SharedPtrDefaultFree;
-        data_ptr->freeUdata = OBOS_KernelAllocator;
-        data_ptr->onDeref = NetFreeSharedPtr;
+        shared_ptr* data_ptr = NetH_FormatEthernetPacket(nic, dest, hdr, be16_to_host(hdr->packet_length), ETHERNET2_TYPE_IPv4);
 
         NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(data_ptr));
         // pckt is freed once the packet is sent
 
         ExitPacketHandler();
     }
+
+    Core_PushlockAcquire(&nic->net_tables->cached_routes_lock, false);
+    struct route route_key = {.destination = hdr->src_address,.iface=nic->net_tables};
+    struct route *found_route = RB_FIND(route_tree, &nic->net_tables->cached_routes, &route_key);
+    if (!found_route)
+    {
+        // Cache the route for future use (like responding to a packet from this host).
+        struct route *r = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct route), nullptr);
+        r->destination = hdr->src_address;
+        r->ttl = hdr->time_to_live*2;
+        r->iface = nic->net_tables;
+        r->ent = local_entry;
+        r->hops = 0 /* undefined */;
+        r->route = nullptr /* undefined */;
+        RB_INSERT(route_tree, &r->iface->cached_routes, r);
+    }
+    Core_PushlockRelease(&nic->net_tables->cached_routes_lock, false);
 
     if (be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS || 
         IPv4_GET_FRAGMENT(hdr)
@@ -290,10 +296,10 @@ obos_status NetH_SendIPv4PacketMac(vnode *nic, void *ent_ /* ip_table_entry */, 
     if (!nic || !ent_ || !data)
         return OBOS_STATUS_INVALID_ARGUMENT;
     ip_table_entry* ent = ent_;
-    size_t sz = data->szObj + sizeof(ip_header) + sizeof(ethernet2_header);
+    size_t sz = data->szObj + sizeof(ip_header);
     char* pckt = Allocate(OBOS_KernelAllocator, sz, nullptr);
 
-    ip_header* hdr = (void*)(pckt+sizeof(ethernet2_header));
+    ip_header* hdr = (void*)pckt;
     memzero(hdr, sizeof(*hdr)); 
     hdr->dest_address = dest;
     hdr->src_address = ent->address;
@@ -308,17 +314,9 @@ obos_status NetH_SendIPv4PacketMac(vnode *nic, void *ent_ /* ip_table_entry */, 
     memcpy(hdr+1, data->obj, data->szObj);
     OBOS_SharedPtrUnref(data); 
 
-    ethernet2_header* eth_hdr = (void*)pckt;
-    memcpy(eth_hdr->src, nic->net_tables->mac, sizeof(mac_address));
-    memcpy(eth_hdr->dest, dest_mac, sizeof(mac_address));
-    eth_hdr->type = host_to_be16(ETHERNET2_TYPE_IPv4);
-
-    shared_ptr *data_ptr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
-    OBOS_SharedPtrConstructSz(data_ptr, pckt, sz);
-    data_ptr->free = OBOS_SharedPtrDefaultFree;
-    data_ptr->freeUdata = OBOS_KernelAllocator;
-    data_ptr->onDeref = NetFreeSharedPtr;
-
+    shared_ptr *data_ptr = NetH_FormatEthernetPacket(nic, dest_mac, hdr, sz, ETHERNET2_TYPE_IPv4);
+    Free(OBOS_KernelAllocator, pckt, sz);
+    
     return NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(data_ptr));
 }
 

@@ -70,12 +70,20 @@ typedef uint32_t thread_affinity;
 #endif
 extern OBOS_EXPORT thread_affinity Core_DefaultThreadAffinity;
 extern const uint64_t Core_ThreadPriorityToQuantum[THREAD_PRIORITY_MAX_VALUE+1];
+
 typedef struct thread_node
 {
 	struct thread_node *next, *prev;
 	struct thread* data;
+	bool awaken : 1;
 	void(*free)(struct thread_node* what);
 } thread_node;
+
+typedef struct waiting_array_node {
+	thread_node node;
+	struct waitable_header* obj;
+} waiting_array_node;
+
 typedef struct thread
 {
 	uintptr_t tid;
@@ -101,13 +109,23 @@ typedef struct thread
 
 	// The node used by waitable_header (locks/wait.h)
 	thread_node lock_node;
+	struct {
+		union {
+			struct waiting_array_node* waitingObjects;
+			struct waitable_header* waitingObject;
+		};
+		void(*free_array)(void* udata, struct waiting_array_node* objs, size_t nObjs);
+		void* free_userdata;
+		size_t nObjs;
+		bool is_array : 1;
+	} waiting_objects;
 	size_t nWaiting; // the count of objects the thread is waiting on.
-	size_t nSignaled; // the count of objects that have signaled the thread.
 	struct waitable_header* hdrSignaled;
 	bool interrupted : 1;
 	bool signalInterrupted : 1; // if interrupted is true because of a signal.
 	bool inWaitProcess : 1;
 	bool kill : 1;
+	int yield_count_since_kill : 2;
 	
 	struct signal_header* signal_info;
 

@@ -16,6 +16,8 @@
 #include <locks/pushlock.h>
 #include <locks/event.h>
 
+#include <vfs/socket.h>
+
 #include <utils/tree.h>
 #include <utils/list.h>
 
@@ -81,6 +83,7 @@ typedef struct tcp_connection {
     } dest;
 
     struct ip_table_entry* ip_ent;
+    vnode* nic;
 
     // tcp_incoming_list incoming_packets;
     // pushlock incoming_packet_lock;
@@ -92,6 +95,9 @@ typedef struct tcp_connection {
         size_t ptr;
     } recv_buffer;
     event sig;
+    bool got_icmp_msg : 1;
+    shared_ptr *icmp_header_ptr;
+    struct icmp_header* icmp_header;
     // Remote "ACK" signal
     event ack_sig;
     
@@ -110,7 +116,10 @@ typedef struct tcp_connection {
 
     uint8_t ttl;
 
-    bool is_client;
+    bool is_client : 1;
+    bool accepted : 1;
+    bool reset : 1;
+    
     RB_ENTRY(tcp_connection) node;
 } tcp_connection;
 static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
@@ -133,8 +142,9 @@ RB_PROTOTYPE(tcp_connection_tree, tcp_connection, node, tcp_connection_cmp);
 typedef struct tcp_port {
     uint16_t port;
     tcp_connection_tree connections;
-    pushlock connection_list_lock;
+    pushlock connection_tree_lock;
     event connection_event;
+    struct net_tables* iface;
     RB_ENTRY(tcp_port) node;
 } tcp_port;
 static inline int tcp_port_cmp(tcp_port* lhs, tcp_port* rhs)
@@ -174,8 +184,6 @@ obos_status NetH_SendTCPSegment(vnode* nic, void* ent /* ip_table_entry */, ip_a
 
 PacketProcessSignature(TCP, ip_header*);
 
-void NetH_TestTCP(vnode* nic, void* ent_);
-
 obos_status NetH_TCPEstablishConnection(vnode* nic,
                                         void* ent /* ip_table_entry */, 
                                         ip_addr dest, 
@@ -185,3 +193,5 @@ obos_status NetH_TCPEstablishConnection(vnode* nic,
                                         tcp_connection** con);
 obos_status NetH_TCPTransmitPacket(vnode* nic, tcp_connection* con, shared_ptr* payload);
 obos_status NetH_TCPCloseConnection(vnode* nic, tcp_connection* con);
+
+extern socket_ops Net_TCPSocketBackend;

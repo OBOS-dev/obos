@@ -12,6 +12,7 @@ cp out/bochs_vbe tar
 cp out/r8169 tar
 cp out/i8042 tar
 cp out/libps2 tar
+cp out/e1000 tar
 cp out/init tar
 if [[ ! -d tar/dev ]]
 then

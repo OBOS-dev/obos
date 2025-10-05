@@ -31,6 +31,7 @@
 #include <locks/event.h>
 
 #include <net/eth.h>
+#include <net/tables.h>
 
 #include "structs.h"
 
@@ -225,11 +226,11 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 obos_status ioctl_argp_size(uint32_t request, size_t *ret)
 {
     switch (request) {
-        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+        case IOCTL_IFACE_MAC_REQUEST:
             *ret = sizeof(mac_address);
             return OBOS_STATUS_SUCCESS;
         default:
-            break;
+            return Net_InterfaceIoctlArgpSize(request, ret);
     }
     return OBOS_STATUS_INVALID_IOCTL;
 }
@@ -245,11 +246,11 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     else
         return OBOS_STATUS_INVALID_ARGUMENT;
     switch (request) {
-        case IOCTL_ETHERNET_INTERFACE_MAC_REQUEST:
+        case IOCTL_IFACE_MAC_REQUEST:
             memcpy(argp, dev->mac, sizeof(mac_address));
             return OBOS_STATUS_SUCCESS;
         default:
-            break;
+            return Net_InterfaceIoctl(dev->vn, request, argp);
     }
     return OBOS_STATUS_INVALID_IOCTL;
 }
@@ -260,6 +261,11 @@ void irp_on_rx_event_set(irp* req)
     r8169_device* dev = hnd->dev;
     if (!hnd->rx_curr)
         r8169_buffer_read_next_frame(&dev->rx_buffer, &hnd->rx_curr);
+    if (!hnd->rx_curr)
+    {
+        req->status = OBOS_STATUS_IRP_RETRY;
+        return;
+    }
     req->status = OBOS_STATUS_SUCCESS;
     if (req->dryOp)
     {
@@ -328,9 +334,27 @@ obos_status submit_irp(void* req_)
     else if (!req->dryOp)
     {
         r8169_frame frame = {};
-        r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
-        r8169_buffer_add_frame(&dev->tx_buffer, &frame);
-        r8169_tx_queue_flush(dev, true);
+        /*
+            "Padding: The RTL8169S/RTL8110S will automatically pad any packets less than 64 bytes (including 4 bytes CRC) to 64-byte
+            long (including 4-byte CRC) before transmitting that packet onto network medium. The padded data are all 0x00"
+            Because of this, we need to pad the packets ourselves so that the FCS doesn't appear as 0x00 for the peer.
+        */
+        if (req->blkCount < 60)
+        {
+            uint8_t *copied_buffer = ZeroAllocate(OBOS_NonPagedPoolAllocator, 64, sizeof(char), nullptr);
+            memcpy(copied_buffer, req->cbuff, req->blkCount-4);
+            *(uint32_t*)(copied_buffer+60) = NetH_CRC32Bytes(copied_buffer, 60);
+            r8169_frame_generate(dev, &frame, copied_buffer, 64, FRAME_PURPOSE_TX);
+            r8169_buffer_add_frame(&dev->tx_buffer, &frame);
+            r8169_tx_queue_flush(dev, true);
+            Free(OBOS_NonPagedPoolAllocator, copied_buffer, 64);
+        }
+        else
+        {
+            r8169_frame_generate(dev, &frame, req->cbuff, req->blkCount, FRAME_PURPOSE_TX);
+            r8169_buffer_add_frame(&dev->tx_buffer, &frame);
+            r8169_tx_queue_flush(dev, true);
+        }
         req->evnt = nullptr;
     }
     return OBOS_STATUS_SUCCESS;
@@ -477,6 +501,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         const char* dev_name = Devices[i].interface_name;
         OBOS_Debug("%*s: Registering r8169 NIC card at %s%c%s\n", strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
+        Devices[0].vn = vn;
     }
 
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS};

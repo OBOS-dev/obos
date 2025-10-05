@@ -21,7 +21,8 @@ list (APPEND oboskrnl_sources
 	"elf/load.c" "driver_interface/drv_sys.c" "sig_sys.c" "execve.c"
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
-	"net/icmp.c" "net/tcp.c" "kinit.c"
+	"net/icmp.c" "net/tcp.c" "vfs/socket.c" "net/lo.c"
+	"kinit.c"
 )
 
 add_executable(oboskrnl)
@@ -29,6 +30,8 @@ add_executable(oboskrnl)
 set_source_files_properties("sanitizers/ubsan.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
 set_source_files_properties("klog.c" PROPERTIES COMPILE_OPTIONS "-Wno-error")
 set_source_files_properties("vfs/mount.c" PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
+set_source_files_properties("${CMAKE_SOURCE_DIR}/dependencies/flanterm/src/flanterm_backends/fb.c" PROPERTIES COMPILE_OPTIONS "-fno-sanitize=kernel-address")
+set_source_files_properties("${CMAKE_SOURCE_DIR}/dependencies/flanterm/src/flanterm.c" PROPERTIES COMPILE_OPTIONS "-fno-sanitize=kernel-address")
 
 target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_COMPILE_OPTIONS_C}>

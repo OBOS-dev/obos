@@ -35,10 +35,28 @@ typedef struct ethernet2_header {
     uint16_t type;
 } OBOS_PACK ethernet2_header;
 
-// Each ethernet driver should define this
-// argp points to a `mac_address`
-#define IOCTL_ETHERNET_INTERFACE_MAC_REQUEST 0x1
+enum {
+    // Each ethernet driver should define this
+    // argp points to a `mac_address`
+    IOCTL_IFACE_MAC_REQUEST = 0xe100,
+    // implementations of the following ioctls are in
+    // tables.h 
+    IOCTL_IFACE_ADD_IP_TABLE_ENTRY,
+    IOCTL_IFACE_REMOVE_IP_TABLE_ENTRY,
+    IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY,
+    IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY,
+    IOCTL_IFACE_SET_IP_TABLE_ENTRY,
+    IOCTL_IFACE_CLEAR_ARP_CACHE,
+    IOCTL_IFACE_CLEAR_ROUTE_CACHE,
+    IOCTL_IFACE_GET_IP_TABLE,
+    IOCTL_IFACE_GET_ROUTING_TABLE,
+    IOCTL_IFACE_SET_DEFAULT_GATEWAY,
+    IOCTL_IFACE_UNSET_DEFAULT_GATEWAY,
+    IOCTL_IFACE_INITIALIZE,
+};
+
+OBOS_EXPORT uint32_t NetH_CRC32Bytes(const void* data, size_t sz);
 
 PacketProcessSignature(Ethernet, void*);
 
-shared_ptr* NetH_FormatEthernetPacket(vnode* nic, mac_address dest, const void* data, size_t size, uint16_t type);
+shared_ptr* NetH_FormatEthernetPacket(vnode* nic, const mac_address dest, const void* data, size_t size, uint16_t type);

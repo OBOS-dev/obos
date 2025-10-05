@@ -24,7 +24,7 @@
 #include <utils/list.h>
 
 #define SIG_DFL (nullptr)
-#define SIG_IGN ((void*)UINTPTR_MAX)
+#define SIG_IGN ((void*)1)
 
 // Public
 enum {

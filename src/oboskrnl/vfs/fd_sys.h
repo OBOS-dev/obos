@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd_sys.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2025 Omar Berrow
  */
 
 #pragma once
@@ -13,6 +13,7 @@
 
 #include <vfs/limits.h>
 #include <vfs/irp.h>
+#include <vfs/socket.h>
 
 #include <driver_interface/header.h>
 
@@ -133,7 +134,12 @@ obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, si
 
 // These functions are undocumented because of changes made to them in another branch.
 
-handle Sys_IRPCreate(handle file, size_t offset, size_t size, bool dry, enum irp_op operation, void* buffer, obos_status* status);
+// obos_status Sys_FdAWrite(handle desc, const void* buf, size_t nBytes, handle evnt);
+// obos_status  Sys_FdARead(handle desc, void* buf, size_t nBytes, handle evnt);
+// *file on entry is the file descriptor of the file to make an IRP for
+// *file on exit is the handle to the irp
+// if buffer is nullptr, the irp->dryOp is set to true
+obos_status Sys_IRPCreate(handle *file, size_t offset, size_t size, enum irp_op operation, void* buffer);
 obos_status Sys_IRPSubmit(handle irp);
 // If close is true, the IRP is closed after waiting for it.
 obos_status Sys_IRPWait(handle irp, obos_status* irp_status, size_t* nCompleted /* irp.nBlkRead/nBlkWritten */, bool close);
@@ -433,3 +439,23 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t
 /// <param name="ret">Return value of the request</param>
 /// <returns>An obos_status.</returns>
 obos_status Sys_Fcntl(handle fd, int request, uintptr_t* args, size_t nArgs, int* ret);
+
+obos_status Sys_Socket(handle fd, int family, int type, int protocol);
+struct sys_socket_io_params {
+    sockaddr* sock_addr;
+    // Untouched in sendto, modified in recvfrom
+    size_t addr_length;
+    // Only valid in recvfrom
+    size_t nRead;
+};
+obos_status Sys_SendTo(handle fd, const void* buffer, size_t size, int flags, struct sys_socket_io_params *params);
+obos_status Sys_RecvFrom(handle fd, void* buffer, size_t size, int flags, struct sys_socket_io_params *params);
+obos_status Sys_Listen(handle fd, int backlog);
+obos_status Sys_Accept(handle fd, handle new_fd, sockaddr* addr_ptr, size_t *addr_length, int flags);
+obos_status Sys_Bind(handle fd, const sockaddr *addr, size_t addr_length);
+obos_status Sys_Connect(handle fd, const sockaddr *addr, size_t addr_length);
+obos_status Sys_SockName(handle fd, sockaddr* addr, size_t addr_length, size_t* actual_addr_length);
+obos_status Sys_PeerName(handle fd, sockaddr* addr, size_t addr_length, size_t* actual_addr_length);
+obos_status Sys_GetSockOpt(handle fd, int layer, int number, void *buffer, size_t *size);
+obos_status Sys_SetSockOpt(handle fd, int layer, int number, const void *buffer, size_t size);
+obos_status Sys_ShutdownSocket(handle fd, int how);

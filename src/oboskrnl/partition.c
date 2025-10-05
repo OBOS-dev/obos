@@ -122,7 +122,7 @@ obos_status OBOS_PartProbeDrive(struct dirent* ent, bool check_checksum)
         //     driver = ent->vnode->un.device->driver;
         mount* const point = ent->vnode->mount_point ? ent->vnode->mount_point : ent->vnode->un.mounted;
         driver_id* driver = ent->vnode->vtype == VNODE_TYPE_REG ? point->fs_driver->driver : nullptr;
-        if (ent->vnode->vtype == VNODE_TYPE_CHR || ent->vnode->vtype == VNODE_TYPE_BLK || ent->vnode->vtype == VNODE_TYPE_FIFO)
+        if (ent->vnode->vtype == VNODE_TYPE_CHR || ent->vnode->vtype == VNODE_TYPE_BLK || ent->vnode->vtype == VNODE_TYPE_FIFO || ent->vnode->vtype == VNODE_TYPE_SOCK)
             driver = ent->vnode->un.device->driver;
         vnode* part_vnode = Drv_AllocateVNode(driver, ent->vnode->desc, partitions[i].size, nullptr, VNODE_TYPE_BLK);
         string part_name;

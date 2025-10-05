@@ -17,31 +17,6 @@
 
 #include <allocators/base.h>
 
-struct allocation_hdr {
-    size_t sz;
-};
-
-void* malloc(size_t sz)
-{
-    sz += sizeof(struct allocation_hdr);
-    struct allocation_hdr* hdr = ZeroAllocate(OBOS_KernelAllocator, 1, sz, nullptr);
-    hdr->sz = sz;
-    return hdr+1;
-}
-void* realloc(void* buf, size_t sz)
-{
-    struct allocation_hdr* hdr = buf;
-    hdr--;
-    hdr->sz += sz;
-    return Reallocate(OBOS_KernelAllocator, buf, sz, hdr->sz-sz, nullptr);
-}
-void free(void* buf)
-{
-    struct allocation_hdr* hdr = buf;
-    hdr--;
-    Free(OBOS_KernelAllocator, hdr, hdr->sz);
-}
-
 #define set_status(to) status ? (*status = to) : (void)0
 const ustar_hdr* GetFile(const char* path, obos_status* status)
 {

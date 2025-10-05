@@ -156,11 +156,14 @@ void Mm_Initialize()
     OBOS_NonPagedPoolAllocator = (allocator_info*)&non_paged_pool_alloc;
     Mm_Allocator = (allocator_info*)&vmm_alloc;
     Mm_AnonPage = MmH_PgAllocatePhysical(true, true);
-#if OBOS_KASAN_ENABLED
-     memset(MmS_MapVirtFromPhys(Mm_AnonPage->phys), OBOS_ASANPoisonValues[ASAN_POISON_ANON_PAGE_UNINITED], OBOS_HUGE_PAGE_SIZE);
-#else
+// #if OBOS_KASAN_ENABLED
+//     Mm_UserAnonPage = MmH_PgAllocatePhysical(true, true);
+//     memzero(MmS_MapVirtFromPhys(Mm_UserAnonPage->phys), OBOS_HUGE_PAGE_SIZE);
+//     memset(MmS_MapVirtFromPhys(Mm_AnonPage->phys), OBOS_ASANPoisonValues[ASAN_POISON_ANON_PAGE_UNINITED], OBOS_HUGE_PAGE_SIZE);
+// #else
     memzero(MmS_MapVirtFromPhys(Mm_AnonPage->phys), OBOS_HUGE_PAGE_SIZE);
-#endif
+    Mm_UserAnonPage = Mm_AnonPage;
+// #endif
     // if (Core_TimerInterfaceInitialized)
     //     OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Timer interface cannot be initialized before the VMM. Status: %d.\n", __func__, OBOS_STATUS_INVALID_INIT_PHASE);
     Mm_KernelContext.lock = Core_SpinlockCreate();

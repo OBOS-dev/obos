@@ -19,6 +19,7 @@
 #include <vfs/fd.h>
 #include <vfs/pipe.h>
 #include <vfs/create.h>
+#include <vfs/socket.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -195,4 +196,6 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 #if OBOS_ARCHITECTURE_HAS_ACPI
     OBOS_InitializeACPIEvents();
 #endif
+
+    VfsH_InitializeSocketInterface();
 }
