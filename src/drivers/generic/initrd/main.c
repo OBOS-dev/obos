@@ -524,7 +524,7 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
                     hdr_path_len++;
                     prefix_has_slash = false;
                 }
-                hdr_path = malloc(hdr_path_len+1);
+                hdr_path = Allocate(OBOS_KernelAllocator, hdr_path_len+1, nullptr);
                 snprintf(hdr_path, hdr_path_len+1, prefix_has_slash ? "%s%s" : "%s/%s", hdr->prefix, hdr->filename);
             } while(0);
 
@@ -539,9 +539,14 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
                     if (!ino)
                         ino = create_inode_with_parents(hdr_path, hdr);
                     if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
+                    {
+                        Free(OBOS_KernelAllocator, hdr_path, hdr_path_len+1);
                         break;
+                    }
                 }
             }
+            Free(OBOS_KernelAllocator, hdr_path, hdr_path_len+1);
+
             down:
             (void)0;
             size_t filesize_rounded = (filesize + 0x1ff) & ~0x1ff;
