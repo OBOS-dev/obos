@@ -703,8 +703,8 @@ driver_header* Vfs_GetVnodeDriver(vnode* vn)
 {
     if (vn->flags & (VFLAGS_EVENT_DEV|VFLAGS_DRIVER_DEAD))
         return nullptr;
-    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    if (!point)
+    mount* point = Vfs_GetVnodeMount(vn);
+    if (!point && vn->vtype != VNODE_TYPE_SOCK && vn->vtype != VNODE_TYPE_FIFO)
         return nullptr;
     if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
         return nullptr;
@@ -723,8 +723,8 @@ driver_header* Vfs_GetVnodeDriverStat(vnode* vn)
 {
     if (vn->flags & (VFLAGS_EVENT_DEV|VFLAGS_DRIVER_DEAD))
         return nullptr;
-    mount* point = vn->mount_point ? vn->mount_point : vn->un.mounted;
-    if (!point)
+    mount* point = Vfs_GetVnodeMount(vn);
+    if (!point && vn->vtype != VNODE_TYPE_SOCK && vn->vtype != VNODE_TYPE_FIFO)
         return nullptr;
     if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
         return nullptr;
@@ -741,6 +741,8 @@ driver_header* Vfs_GetVnodeDriverStat(vnode* vn)
 mount* Vfs_GetVnodeMount(vnode* vn)
 {
     if (vn->flags & (VFLAGS_EVENT_DEV|VFLAGS_DRIVER_DEAD))
+        return nullptr;
+    if (vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         return nullptr;
     return vn->mount_point ? vn->mount_point : vn->un.mounted;
 }
