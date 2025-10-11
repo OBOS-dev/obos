@@ -893,56 +893,24 @@ obos_status Sys_ReadEntries(handle desc, void* buffer, size_t szBuf, size_t* nRe
 
 obos_status Sys_Mkdir(const char* upath, uint32_t mode)
 {
-    char* path = nullptr;
-    size_t sz_path = 0;
-    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
-    if (obos_is_error(status))
-        return status;
-    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
-    OBOSH_ReadUserString(upath, path, nullptr);
-
-    dirent* found = VfsH_DirentLookup(path);
-    if (found)
-        return OBOS_STATUS_ALREADY_INITIALIZED;
-
-    size_t index = strrfind(path, '/');
-    if (index == (sz_path-1))
-    {
-        path[index] = 0;
-        index = strrfind(path, '/');
-    }
-    if (index == SIZE_MAX)
-        index = 0;
-    char ch = path[index];
-    path[index] = 0;
-    const char* dirname = path;
-    // printf("dirname = %s\n", dirname);
-    dirent* parent = VfsH_DirentLookup(dirname);
-    path[index] = ch;
-    if (!parent)
-    {
-        Free(OBOS_KernelAllocator, path, sz_path);
-        return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
-    }
-    // printf("%s\n", OBOS_GetStringCPtr(&parent->name));
-    file_perm real_mode = unix_to_obos_mode(mode);
-    // printf("%s\n", path);
-    status = Vfs_CreateNode(parent, path+(!index ? index : index+1), VNODE_TYPE_DIR, real_mode);
-    Free(OBOS_KernelAllocator, path, sz_path);
-    // printf("%d\n", status);
-    return status;
+    return Sys_MkdirAt(AT_FDCWD, upath, mode);
 }
 obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
 {
+    handle_desc* dent = nullptr;
     obos_status status = OBOS_STATUS_SUCCESS;
-    handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
-    if (!dent)
+    if (ent != AT_FDCWD)
     {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
+        if (!dent)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-        return status;
     }
 
-    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     char* name = nullptr;
     size_t sz_path = 0;
     status = OBOSH_ReadUserString(uname, nullptr, &sz_path);
@@ -951,7 +919,18 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
     name = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(uname, name, nullptr);
 
-    status = Vfs_CreateNode(dent->un.dirent->parent, name, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    dirent* parent = !dent ? Core_GetCurrentThread()->proc->cwd : dent->un.dirent->parent;
+    size_t index = strrfind(name, '/');
+    char* dirname = name;
+    if (index != SIZE_MAX)
+    {
+        dirname = name+index;
+        *dirname = 0;
+        dirname++;
+        parent = VfsH_DirentLookupFrom(name, parent);
+    }
+
+    status = Vfs_CreateNode(parent, dirname, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
     Free(OBOS_KernelAllocator, name, sz_path);
 
     return status;
