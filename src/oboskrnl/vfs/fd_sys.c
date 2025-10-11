@@ -1879,7 +1879,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
 
     char* linkname = nullptr;
 
-    if (strchr(link, '/'))
+    if (strchr(link, '/') != strlen(link))
     {
         // frick whoever gave us this path because now i need to parse it >:(
         linkname = strrfind(link, '/') + link;
