@@ -246,6 +246,7 @@ OBOS_STATIC_ASSERT(sizeof(struct stat) == 92, "sizeof(struct stat) should be 92"
 #define AT_EMPTY_PATH 0x1000
 #define AT_NO_AUTOMOUNT 0x800
 #define AT_SYMLINK_NOFOLLOW 0x100
+#define AT_SYMLINK_FOLLOW 0x400
 
 /// <summary>
 /// Stats a file.
@@ -354,6 +355,8 @@ obos_status Sys_SymLink(const char* target, const char* link);
 /// <param name="link">The path of the new link</param>
 /// <returns>An obos_status.</returns>
 obos_status Sys_SymLinkAt(const char* target, handle dirfd, const char* link);
+
+obos_status Sys_LinkAt(handle olddirfd, const char *oldpath, handle newdirfd, const char *newpath, int flags);
 
 struct pselect_extra_args
 {

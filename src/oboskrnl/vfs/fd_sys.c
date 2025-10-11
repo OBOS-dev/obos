@@ -1687,10 +1687,10 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     
     char* link = nullptr;
     size_t sz_path2 = 0;
-    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path2);
+    status = OBOSH_ReadUserString(ulink, nullptr, &sz_path2);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, target, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path2);
         return status;
     }
     link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
@@ -1753,6 +1753,173 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     Free(OBOS_KernelAllocator, link, sz_path2);
     if (obos_is_error(status))
         Free(OBOS_KernelAllocator, target, sz_path);
+    return status;
+}
+
+obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, const char *ulink, int flags)
+{
+    char* target = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(utarget, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    target = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(utarget, target, nullptr);
+    
+    char* link = nullptr;
+    size_t sz_path2 = 0;
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path2);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, target, sz_path2);
+        return status;
+    }
+    link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(ulink, link, nullptr);
+
+    vnode* vtarget = nullptr;
+    dirent* dtarget = nullptr;
+    dirent* ptarget = nullptr;
+
+    if (olddirfd == AT_FDCWD)
+        ptarget = Core_GetCurrentThread()->proc->cwd;
+    else
+    {
+        if (flags & AT_EMPTY_PATH && !strlen(target))
+        {
+            if (HANDLE_TYPE(olddirfd) != HANDLE_TYPE_DIRENT && HANDLE_TYPE(olddirfd) != HANDLE_TYPE_FD)
+            {
+                Free(OBOS_KernelAllocator, target, sz_path);
+                Free(OBOS_KernelAllocator, link, sz_path2);
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            }
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            obos_status status = OBOS_STATUS_SUCCESS;
+            handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, 0, true, &status);
+            if (!hnd)
+            {
+                Free(OBOS_KernelAllocator, target, sz_path2);
+                Free(OBOS_KernelAllocator, link, sz_path2);
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                return status;
+            }
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            switch (HANDLE_TYPE(olddirfd)) {
+                case HANDLE_TYPE_FD: 
+                    if (~hnd->un.fd->flags & FD_FLAGS_OPEN)
+                    {
+                        Free(OBOS_KernelAllocator, target, sz_path);
+                        Free(OBOS_KernelAllocator, link, sz_path2);
+                        return OBOS_STATUS_UNINITIALIZED;
+                    }
+                    vtarget = hnd->un.fd->vn;
+                    break;
+                case HANDLE_TYPE_DIRENT: 
+                    if (!hnd->un.dirent || !hnd->un.dirent->parent)
+                    {
+                        Free(OBOS_KernelAllocator, target, sz_path);
+                        Free(OBOS_KernelAllocator, link, sz_path2);
+                        return OBOS_STATUS_UNINITIALIZED;
+                    }
+                    vtarget = hnd->un.dirent->parent->vnode;
+                    break;
+                default: OBOS_ENSURE(!"what");
+            }
+            goto skip_target_lookup;
+        }
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        obos_status status = OBOS_STATUS_SUCCESS;
+        handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (!dent)
+        {
+            Free(OBOS_KernelAllocator, target, sz_path);
+            Free(OBOS_KernelAllocator, link, sz_path2);
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        ptarget = dent->un.dirent->parent;
+    }
+
+    dtarget = VfsH_DirentLookupFrom(target, ptarget);
+    if (!dtarget)
+        return OBOS_STATUS_NOT_FOUND;
+    if (flags & AT_SYMLINK_FOLLOW)
+        dtarget = VfsH_FollowLink(dtarget);
+    vtarget = dtarget->vnode;
+
+    skip_target_lookup:
+
+    Free(OBOS_KernelAllocator, target, sz_path);
+
+    if (!vtarget)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+
+    dirent* plink = nullptr;
+
+    if (newdirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        status = OBOS_STATUS_SUCCESS;
+        handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), newdirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (!hnd)
+        {
+            Free(OBOS_KernelAllocator, target, sz_path2);
+            Free(OBOS_KernelAllocator, link, sz_path2);
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+    else
+        plink = Core_GetCurrentThread()->proc->cwd;
+
+    char* linkname = nullptr;
+
+    if (strchr(link, '/'))
+    {
+        // frick whoever gave us this path because now i need to parse it >:(
+        linkname = strrfind(link, '/') + link;
+        *linkname = 0;
+        linkname++;
+        plink = VfsH_DirentLookupFrom(link, plink);
+    }
+    else
+        linkname = link;
+
+    if (!plink)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_NOT_FOUND;
+    }
+
+    // Now we have plink, linkname, target, and vtarget
+    driver_header* target_header = Vfs_GetVnodeDriver(vtarget);
+    mount* target_mount = Vfs_GetVnodeMount(vtarget);
+    mount* link_mount = Vfs_GetVnodeMount(plink->vnode);
+    if (!link_mount || !target_mount || !target_header)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    if (target_mount != link_mount)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_ACCESS_DENIED; // well we should return exdev but that doesn't exist here does it :)
+    }
+
+    // Now for the magic..?
+    if (!target_header->ftable.hardlink_file)
+        // "EPERM - The filesystem containing oldpath and newpath does not support the creation of hard links."
+        status = OBOS_STATUS_ACCESS_DENIED; 
+    else
+        status = target_header->ftable.hardlink_file(vtarget->desc, plink->vnode->desc, linkname);
+
+    Free(OBOS_KernelAllocator, link, sz_path2);
+
     return status;
 }
 

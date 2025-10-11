@@ -198,6 +198,9 @@ typedef struct driver_ftable
     };
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 
+    // hard links the file 'desc' to 'parent/name'
+    obos_status(*hardlink_file)(dev_desc desc, dev_desc parent, const char* name);
+
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);

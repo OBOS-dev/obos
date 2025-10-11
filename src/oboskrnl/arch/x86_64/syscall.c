@@ -236,6 +236,7 @@ const char* syscall_to_string[] = {
     [127]="Sys_KillProcessGroup",
     "Sys_SetProcessGroup",
     "Sys_GetProcessGroup",
+    "Sys_LinkAt",
 };
 
 const char* status_to_string[] = {
