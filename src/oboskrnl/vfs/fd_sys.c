@@ -1867,7 +1867,6 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), newdirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!hnd)
         {
-            Free(OBOS_KernelAllocator, target, sz_path2);
             Free(OBOS_KernelAllocator, link, sz_path2);
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
