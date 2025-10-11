@@ -929,6 +929,8 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
         dirname++;
         parent = VfsH_DirentLookupFrom(name, parent);
     }
+    if (VfsH_DirentLookupFrom(dirname, parent))
+        return OBOS_STATUS_ALREADY_INITIALIZED;
 
     status = Vfs_CreateNode(parent, dirname, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
     Free(OBOS_KernelAllocator, name, sz_path);
@@ -1723,6 +1725,12 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
         goto fail;
     }
 
+    if (VfsH_DirentLookupFrom(link_name, parent))
+    {
+        status = OBOS_STATUS_ALREADY_INITIALIZED;
+        goto fail;
+    }
+
     file_perm perm = {.mode=0777};
     status = Vfs_CreateNode(parent, link_name, VNODE_TYPE_LNK, perm);
     dirent* node = VfsH_DirentLookupFrom(link_name, parent);
@@ -1886,7 +1894,12 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     if (target_mount != link_mount)
     {
         Free(OBOS_KernelAllocator, link, sz_path2);
-        return OBOS_STATUS_ACCESS_DENIED; // well we should return exdev but that doesn't exist here does it :)
+        return OBOS_STATUS_ACCESS_DENIED; // well we should return EXDEV but that doesn't exist here does it :)
+    }
+    if (VfsH_DirentLookupFrom(linkname, plink))
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_ALREADY_INITIALIZED;
     }
 
     // Now for the magic..?
@@ -1895,6 +1908,13 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         status = OBOS_STATUS_ACCESS_DENIED; 
     else
         status = target_header->ftable.hardlink_file(vtarget->desc, plink->vnode->desc, linkname);
+    if (obos_is_success(status))
+    {
+        dirent* ent = Vfs_Calloc(1, sizeof(dirent));
+        OBOS_InitString(&ent->name, linkname);
+        ent->vnode = vtarget;
+        VfsH_DirentAppendChild(plink, ent);
+    }
 
     Free(OBOS_KernelAllocator, link, sz_path2);
 
