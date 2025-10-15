@@ -57,8 +57,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
 static void notify_timer_dpc(dpc* dpc, void* userdata)
 {
     OBOS_UNUSED(dpc);
-    uintptr_t *udata = userdata;
-    timer* timer = (void*)udata[0];
+    timer* timer = userdata;
     if (timer)
         timer->handler(timer->userdata);
 }

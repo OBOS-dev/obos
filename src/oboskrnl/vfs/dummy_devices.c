@@ -203,22 +203,165 @@ struct fb_mode {
     uint16_t format; // See OBOS_FB_FORMAT_*
     uint8_t bpp; 
 };
+
+#define FBIOGET_VSCREENINFO 0x4600
+#define FBIOPUT_FSCREENINFO 0x4601
+#define FBIOGET_FSCREENINFO 0x4602
+#define FBIOGETCMAP     0x4604
+#define FBIOPUTCMAP     0x4605
+
+struct fb_fix_screeninfo {
+    char id[16];            /* identification string eg "TT Builtin" */
+    unsigned long smem_start;   /* Start of frame buffer mem */
+                    /* (physical address) */
+    uint32_t smem_len;         /* Length of frame buffer mem */
+    uint32_t type;         /* see FB_TYPE_*        */
+    uint32_t type_aux;         /* Interleave for interleaved Planes */
+    uint32_t visual;           /* see FB_VISUAL_*      */ 
+    uint16_t xpanstep;         /* zero if no hardware panning  */
+    uint16_t ypanstep;         /* zero if no hardware panning  */
+    uint16_t ywrapstep;        /* zero if no hardware ywrap    */
+    uint32_t line_length;      /* length of a line in bytes    */
+    unsigned long mmio_start;   /* Start of Memory Mapped I/O   */
+                    /* (physical address) */
+    uint32_t mmio_len;         /* Length of Memory Mapped I/O  */
+    uint32_t accel;            /* Indicate to driver which */
+                    /*  specific chip/card we have  */
+    uint16_t capabilities;     /* see FB_CAP_*         */
+    uint16_t reserved[2];      /* Reserved for future compatibility */
+};
+
+struct fb_bitfield {
+    uint32_t offset;           /* beginning of bitfield    */
+    uint32_t length;           /* length of bitfield       */
+    uint32_t msb_right;        /* != 0 : Most significant bit is */ 
+                    /* right */ 
+};
+
+struct fb_var_screeninfo {
+    uint32_t xres;         /* visible resolution       */
+    uint32_t yres;
+    uint32_t xres_virtual;     /* virtual resolution       */
+    uint32_t yres_virtual;
+    uint32_t xoffset;          /* offset from virtual to visible */
+    uint32_t yoffset;          /* resolution           */
+
+    uint32_t bits_per_pixel;       /* guess what           */
+    uint32_t grayscale;        /* 0 = color, 1 = grayscale,    */
+                    /* >1 = FOURCC          */
+    struct fb_bitfield red;     /* bitfield in fb mem if true color, */
+    struct fb_bitfield green;   /* else only length is significant */
+    struct fb_bitfield blue;
+    struct fb_bitfield transp;  /* transparency         */  
+
+    uint32_t nonstd;           /* != 0 Non standard pixel format */
+
+    uint32_t activate;         /* see FB_ACTIVATE_*        */
+
+    uint32_t height;           /* height of picture in mm    */
+    uint32_t width;            /* width of picture in mm     */
+
+    uint32_t accel_flags;      /* (OBSOLETE) see fb_info.flags */
+
+    /* Timing: All values in pixclocks, except pixclock (of course) */
+    uint32_t pixclock;         /* pixel clock in ps (pico seconds) */
+    uint32_t left_margin;      /* time from sync to picture    */
+    uint32_t right_margin;     /* time from picture to sync    */
+    uint32_t upper_margin;     /* time from sync to picture    */
+    uint32_t lower_margin;
+    uint32_t hsync_len;        /* length of horizontal sync    */
+    uint32_t vsync_len;        /* length of vertical sync  */
+    uint32_t sync;         /* see FB_SYNC_*        */
+    uint32_t vmode;            /* see FB_VMODE_*       */
+    uint32_t rotate;           /* angle we rotate counter clockwise */
+    uint32_t colorspace;       /* colorspace for FOURCC-based modes */
+    uint32_t reserved[4];      /* Reserved for future compatibility */
+};
+
+
 static obos_status ioctl_fb0(uint32_t request, void* argp)
 {
     obos_status status = OBOS_STATUS_INVALID_IOCTL;
-    if (request == 1)
-    {
-        status = OBOS_STATUS_SUCCESS;
-        static struct fb_mode mode = {};
-        if (!mode.bpp)
+    switch (request) {
+        case 1:       
         {
-            mode.bpp = OBOS_TextRendererState.fb.bpp;
-            mode.height = OBOS_TextRendererState.fb.height;
-            mode.width = OBOS_TextRendererState.fb.width;
-            mode.pitch = OBOS_TextRendererState.fb.pitch;
-            mode.format = OBOS_TextRendererState.fb.format;
+            status = OBOS_STATUS_SUCCESS;
+            static struct fb_mode mode = {};
+            if (!mode.bpp)
+            {
+                mode.bpp = OBOS_TextRendererState.fb.bpp;
+                mode.height = OBOS_TextRendererState.fb.height;
+                mode.width = OBOS_TextRendererState.fb.width;
+                mode.pitch = OBOS_TextRendererState.fb.pitch;
+                mode.format = OBOS_TextRendererState.fb.format;
+            }
+            memcpy(argp, &mode, sizeof(mode));
+            break;
         }
-        memcpy(argp, &mode, sizeof(mode));
+        case FBIOGET_FSCREENINFO:
+        {
+            status = OBOS_STATUS_SUCCESS;
+            static struct fb_fix_screeninfo res = {};
+            if (res.visual != 2)
+            {
+                res.visual = 2; // FB_VISUAL_TRUECOLOR
+                memcpy(res.id, "Builtin OBOS FB", 16);
+                res.type = 0; // FB_TYPE_PACKED_PIXELS
+                res.line_length = OBOS_TextRendererState.fb.pitch;
+                res.smem_len = OBOS_TextRendererState.fb.pitch*OBOS_TextRendererState.fb.height;
+            }
+            memcpy(argp, &res, sizeof(res));
+            break;
+        }
+        // we're not implementing this.
+        case FBIOPUT_FSCREENINFO: status = OBOS_STATUS_SUCCESS; break;
+        case FBIOPUTCMAP: status = OBOS_STATUS_SUCCESS; break;
+        case FBIOGET_VSCREENINFO:
+        {
+            status = OBOS_STATUS_SUCCESS;
+            static struct fb_var_screeninfo res = {};
+            if (!res.bits_per_pixel)
+            {
+                res.bits_per_pixel = OBOS_TextRendererState.fb.bpp;
+                res.xres = res.xres_virtual = OBOS_TextRendererState.fb.width;
+                res.yres = res.yres_virtual = OBOS_TextRendererState.fb.height;
+                res.xoffset = res.xres_virtual-res.xres;
+                res.yoffset = res.yres_virtual-res.yres;
+                res.red.length = 8;
+                res.green.length = 8;
+                res.blue.length = 8;
+                res.transp.length = 8;
+                switch (OBOS_TextRendererState.fb.format) {
+                    case OBOS_FB_FORMAT_BGR888:
+                        res.red.offset = 16;
+                        res.green.offset = 8;
+                        res.blue.offset = 0;
+                        res.transp.length = 0;
+                        break;
+                    case OBOS_FB_FORMAT_RGB888:
+                        res.red.offset = 0;
+                        res.green.offset = 8;
+                        res.blue.offset = 16;
+                        res.transp.length = 0;
+                        break;
+                    case OBOS_FB_FORMAT_RGBX8888:
+                        res.red.offset = 8;
+                        res.green.offset = 16;
+                        res.blue.offset = 24;
+                        res.transp.offset = 0;
+                        break;
+                    case OBOS_FB_FORMAT_XRGB8888:
+                        res.red.offset = 0;
+                        res.green.offset = 8;
+                        res.blue.offset = 16;
+                        res.transp.offset = 24;
+                        break;
+                }
+                // ignore timing stuff
+            }
+            memcpy(argp, &res, sizeof(res));
+            break;
+        }
     }
     return status;
 }
@@ -232,6 +375,14 @@ static obos_status ioctl_argp_size(uint32_t request, size_t* ret)
 {
     if (request == 1)
         *ret = sizeof(struct fb_mode);
+    else if (request == FBIOGET_FSCREENINFO)
+        *ret = sizeof(struct fb_fix_screeninfo);
+    else if (request == FBIOPUT_FSCREENINFO)
+        *ret = sizeof(struct fb_fix_screeninfo);
+    else if (request == FBIOGET_VSCREENINFO)
+        *ret = sizeof(struct fb_var_screeninfo);
+    else if (request == FBIOPUTCMAP)
+        *ret = 0;
     else
         return OBOS_STATUS_INVALID_IOCTL;
     return OBOS_STATUS_SUCCESS;

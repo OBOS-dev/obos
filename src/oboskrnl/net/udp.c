@@ -273,8 +273,11 @@ static void internal_read_thread(void* userdata)
     Core_ExitCurrentThread();
 }
 
-obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
+obos_status udp_bind(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
+    struct sockaddr_in* addr = (void*)saddr;
+    if (addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_INVALID_ARGUMENT;
     uint16_t port = be16_to_host(addr->port);
@@ -357,8 +360,11 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
 
 uintptr_t mt_random();
 
-obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
+obos_status udp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
+    struct sockaddr_in* addr = (void*)saddr;
+    if (addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
@@ -404,7 +410,7 @@ obos_status udp_irp_write(irp *req)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!ports && req->socket_data)
     {
-        obos_status status = udp_connect(socket, req->socket_data);
+        obos_status status = udp_connect(socket, req->socket_data, sizeof(struct sockaddr_in));
         if (obos_is_error(status))
             return status;
         ports = socket->protocol_data;
@@ -560,7 +566,8 @@ obos_status udp_shutdown(socket_desc* desc, int how)
 }
 
 struct socket_ops Net_UDPSocketBackend = {
-    .protocol = IPPROTO_UDP,
+    .proto_type.protocol = IPPROTO_UDP,
+    .domain = AF_INET,
     .create = udp_create,
 	.free = udp_free,
 	.accept = nullptr,

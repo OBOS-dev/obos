@@ -139,8 +139,8 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
-    // if (obos_is_error(status))
-    //     printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
+    if (obos_is_error(status))
+        printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
     // else
     //     printf("open of %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);
@@ -587,7 +587,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 dent = VfsH_DirentLookupFrom(path, ent->un.dirent->parent);
             }
-//          printf("trying stat of %s\n", path);
+            // printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
                 dent = VfsH_FollowLink(dent);
@@ -1917,6 +1917,9 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     }
 
     Free(OBOS_KernelAllocator, link, sz_path2);
+
+    // NOTE: DO NOT COMMIT!!!!
+    return OBOS_STATUS_SUCCESS;
 
     return status;
 }
