@@ -242,8 +242,8 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
         memcpy_usr_to_k(&thr->priority, new, sizeof(thr->priority));
         if (thr->priority != old_priority && thr->masterCPU) 
         {
-            CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[old_priority].list, thr->snode);
-            CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
+            CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[old_priority].list, &thr->snode);
+            CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority].list, &thr->snode);
         }
     }
     return OBOS_STATUS_SUCCESS;
@@ -544,11 +544,7 @@ void OBOS_ThreadHandleFree(handle_desc *hnd)
 {
     thread* thr = hnd->un.thread;
     if (!(--thr->references) && thr->free)
-    {
-        if (thr->snode->free)
-            thr->snode->free(thr->snode);
         thr->free(thr);
-    }
 }
 
 obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pid)
@@ -666,7 +662,7 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 obos_status Sys_SetUid(uid to)
 {
     process* proc = Core_GetCurrentThread()->proc;
-    if (proc->currentUID != 0 && !proc->set_uid)
+    if (proc->currentUID != 0)
         return OBOS_STATUS_ACCESS_DENIED;
     proc->currentUID = to;
     return OBOS_STATUS_SUCCESS;
@@ -675,7 +671,7 @@ obos_status Sys_SetUid(uid to)
 obos_status Sys_SetGid(gid to)
 {
     process* proc = Core_GetCurrentThread()->proc;
-    if (proc->currentUID != 0 && !proc->set_gid)
+    if (proc->currentUID != 0)
         return OBOS_STATUS_ACCESS_DENIED;
     proc->currentGID = to;
     return OBOS_STATUS_SUCCESS;

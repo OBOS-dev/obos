@@ -90,7 +90,6 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->pgrp = proc->parent->pgrp;
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
-	proc->controlling_tty = proc->parent->controlling_tty;
 	// if (proc->controlling_tty && proc->controlling_tty->fg_job == proc->parent)
 	// 	proc->controlling_tty->fg_job = proc; // we are the new foreground job.
 

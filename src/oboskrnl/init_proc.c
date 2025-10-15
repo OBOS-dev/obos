@@ -37,7 +37,7 @@ void OBOS_LoadInit()
 {
     Core_ProcessGroupTreeLock = MUTEX_INITIALIZE();
 
-    if (!Core_GetCurrentThread()->proc->controlling_tty)
+    if (!Core_GetCurrentThread()->proc->pgrp || !Core_GetCurrentThread()->proc->pgrp->controlling_tty)
     {
         OBOS_Error("%s: Cannot load init due to non-existent controlling tty.\n", __func__);
         return;
@@ -133,9 +133,10 @@ void OBOS_LoadInit()
 
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 
-    Core_SetProcessGroup(new, 1);
-    if (new->controlling_tty)
-        new->controlling_tty->fg_job = new->pgrp;
+    // init takes the process group of the kernel.
+    Core_SetProcessGroup(new, 0);
+    if (new->pgrp->controlling_tty)
+        new->pgrp->controlling_tty->fg_job = new->pgrp;
 
     // CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 

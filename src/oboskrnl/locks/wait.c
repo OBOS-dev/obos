@@ -182,11 +182,6 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     for (thread_node* curr = obj->waiting.head; curr; )
     {
         thread_node* next = curr->next;
-        if (curr->awaken)
-        {
-            curr = next;
-            continue;   
-        }
         CoreH_ThreadListRemove(&obj->waiting, curr);
         if (!curr->data)
         {
@@ -195,7 +190,7 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
         }
         if (boostPriority)
             CoreH_ThreadBoostPriority(curr->data);
-        CoreH_ThreadReadyNode(curr->data, curr->data->snode);
+        CoreH_ThreadReady(curr->data);
         curr->data->hdrSignaled = obj;
         if (curr->free)
             curr->free(curr);

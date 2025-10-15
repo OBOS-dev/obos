@@ -37,14 +37,7 @@ static void free_thr_kalloc(thread* thr)
 {
 	Free(OBOS_KernelAllocator, thr, sizeof(*thr));
 }
-static void free_node(thread_node* node)
-{
-	Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
-}
-static void free_node_kalloc(thread_node* node)
-{
-	Free(OBOS_KernelAllocator, node, sizeof(*node));
-}
+
 thread* CoreH_ThreadAllocate(obos_status* status)
 {
 	allocator_info* info = OBOS_NonPagedPoolAllocator;
@@ -55,12 +48,13 @@ thread* CoreH_ThreadAllocate(obos_status* status)
 		thr->free = info == OBOS_KernelAllocator ? free_thr_kalloc : free_thr;
 	return thr;
 }
+
 obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread_affinity affinity, const thread_ctx* ctx)
 {
 	if (!thr || !ctx || priority < 0 || priority > THREAD_PRIORITY_MAX_VALUE || !affinity)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	thr->priority = priority;
-	thr->status = THREAD_STATUS_READY;
+	thr->status = THREAD_STATUS_INVALID;
 	thr->tid = s_nextTID++;
 	thr->context = *ctx;
 	thr->affinity = affinity;
@@ -69,57 +63,46 @@ obos_status CoreH_ThreadInitialize(thread* thr, thread_priority priority, thread
 	thr->references++;
 	return OBOS_STATUS_SUCCESS;
 }
+
 obos_status CoreH_ThreadReady(thread* thr)
-{
-	if (!OBOS_KernelAllocator)
-		return OBOS_STATUS_INVALID_INIT_PHASE;
-	allocator_info* info = OBOS_NonPagedPoolAllocator;
-	if (!info)
-		info = OBOS_KernelAllocator;
-	if (thr->proc && thr->proc->pid > 0 && !thr->userStack)
-	    thr->userStack = Mm_VirtualMemoryAlloc(thr->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
-    thread_node* node = (thread_node*)info->ZeroAllocate(info, 1, sizeof(thread_node), nullptr);
-	node->free = info == OBOS_KernelAllocator ? free_node_kalloc : free_node;
-	obos_status status = CoreH_ThreadReadyNode(thr, node);
-	if (status != OBOS_STATUS_SUCCESS)
-		node->free(node);
-	return status;
-}
-obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node)
 {
 	// Find the processor with the least threads using the current thread's priority.
 	// Then, add the node to that list.
 	if (!Core_CpuInfo)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
-	if (!thr || !node)
+	if (!thr )
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->priority < 0 || thr->priority > THREAD_PRIORITY_MAX_VALUE)
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (thr->masterCPU)
+	if (thr->status == THREAD_STATUS_READY || thr->status == THREAD_STATUS_RUNNING)
 		return OBOS_STATUS_SUCCESS;
-	cpu_local* cpuFound = nullptr;
-	for (size_t cpui = 0; cpui < Core_CpuCount; cpui++)
+	cpu_local* cpuFound = thr->masterCPU;
+	if (!cpuFound)
 	{
-		cpu_local* cpu = &Core_CpuInfo[cpui];
-		if (!(thr->affinity & CoreH_CPUIdToAffinity(cpu->id)))
-			continue;
-		if (!cpuFound || cpu->nReadyThreads < cpuFound->nReadyThreads)
-			cpuFound = cpu;
+		for (size_t cpui = 0; cpui < Core_CpuCount; cpui++)
+		{
+			cpu_local* cpu = &Core_CpuInfo[cpui];
+			if (!(thr->affinity & CoreH_CPUIdToAffinity(cpu->id)))
+				continue;
+			if (!cpuFound || cpu->nReadyThreads < cpuFound->nReadyThreads)
+				cpuFound = cpu;
+		}
 	}
 	if (!cpuFound)
 		return OBOS_STATUS_INVALID_AFFINITY;
+
 	irql oldIrql = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql2 = Core_SpinlockAcquire(&cpuFound->schedulerLock);
-	node->data = thr;
-	thr->snode = node;
+	thr->snode.data = thr;
 	thr->masterCPU = cpuFound;
 	thr->masterCPU->nReadyThreads++;
 	thr->status = THREAD_STATUS_READY;
 	thread_list* priorityList = &cpuFound->priorityLists[thr->priority].list;
 	Core_ReadyThreadCount++;
-	obos_status status = CoreH_ThreadListAppend(priorityList, node);
+	obos_status status = CoreH_ThreadListAppend(priorityList, &thr->snode);
 	Core_SpinlockRelease(&thr->masterCPU->schedulerLock, oldIrql2);
 	Core_SpinlockRelease(&Core_SchedulerLock, oldIrql);
+
 	return status;
 }
 obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
@@ -133,7 +116,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	OBOS_ENSURE(thr->masterCPU->idleThread != thr && "Blocking an idle thread can be fatal.");
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
-	thread_node* node = thr->snode;
+	thread_node* node = &thr->snode;
 	CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, node);
 	thr->flags &= ~THREAD_FLAGS_PRIORITY_RAISED;
 	thr->status = THREAD_STATUS_BLOCKED;
@@ -164,8 +147,8 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 	irql oldIrql = thr->masterCPU ? Core_SpinlockAcquire(&thr->masterCPU->schedulerLock) : IRQL_INVALID;
 	if (thr->masterCPU)
 	{
-		CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, thr->snode);
-		CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority+1].list, thr->snode);
+		CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[thr->priority].list, &thr->snode);
+		CoreH_ThreadListAppend(&thr->masterCPU->priorityLists[thr->priority+1].list, &thr->snode);
 	}
 	thr->flags |= THREAD_FLAGS_PRIORITY_RAISED;
 	thr->priority++;
@@ -240,7 +223,7 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	OBOS_UNUSED(unused);
 	thread* currentThread = Core_GetCurrentThread();
 	// Block (unready) the current thread so it can no longer be run.
-	thread_node* node = currentThread->snode;
+	thread_node* node = &currentThread->snode;
 	CoreH_ThreadBlock(currentThread, false);
 	if (currentThread->proc)
 		CoreH_ThreadListRemove(&currentThread->proc->threads, currentThread->pnode);

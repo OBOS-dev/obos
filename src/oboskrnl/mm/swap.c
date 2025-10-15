@@ -37,7 +37,6 @@
 swap_dev* Mm_SwapProvider;
 
 static thread page_writer_thread;
-static thread_node page_writer_thread_node;
 static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
 static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
 static spinlock swap_lock;
@@ -357,7 +356,7 @@ void Mm_InitializePageWriter()
     thread_ctx ctx = {};
     CoreS_SetupThreadContext(&ctx, (uintptr_t)page_writer, 0, false,  Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x20000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x20000);
     CoreH_ThreadInitialize(&page_writer_thread, THREAD_PRIORITY_LOW, Core_DefaultThreadAffinity, &ctx);
-    CoreH_ThreadReadyNode(&page_writer_thread, &page_writer_thread_node);
+    CoreH_ThreadReady(&page_writer_thread);
 }
 
 // Wakes up the page writer to free up memory

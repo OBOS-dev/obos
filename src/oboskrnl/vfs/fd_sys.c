@@ -950,6 +950,16 @@ static handle alloc_fd(handle_table* tbl)
 
 void OBOS_OpenStandardFDs(handle_table* tbl)
 {
+    if (!Core_GetCurrentThread()->proc->pgrp)
+    {
+        OBOS_Warning("%s: No PGRP for current process\n", __func__);
+        return;
+    }
+    if (!Core_GetCurrentThread()->proc->pgrp->controlling_tty)
+    {
+        OBOS_Warning("%s: No controlling tty\n", __func__);
+        return;
+    }
     handle hnd_stdin = alloc_fd(tbl);
     handle hnd_stdout = alloc_fd(tbl);
     handle hnd_stderr = alloc_fd(tbl);
@@ -959,9 +969,9 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
     handle_desc* stdout = OBOS_HandleLookup(tbl, hnd_stdout, HANDLE_TYPE_FD, false, &status);
     handle_desc* stderr = OBOS_HandleLookup(tbl, hnd_stderr, HANDLE_TYPE_FD, false, &status);
     OBOS_UnlockHandleTable(tbl);
-    Vfs_FdOpenVnode(stdin->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_READ);
-    Vfs_FdOpenVnode(stdout->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_WRITE);
-    Vfs_FdOpenVnode(stderr->un.fd, Core_GetCurrentThread()->proc->controlling_tty->vn, FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stdin->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_READ);
+    Vfs_FdOpenVnode(stdout->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stderr->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_WRITE);
 }
 
 // Writebacks all dirty pages in the page cache back to disk.

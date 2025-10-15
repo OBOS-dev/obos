@@ -55,10 +55,8 @@ static char thr_stack[0x4000];
 static char kmain_thr_stack[0x40000];
 extern char Arch_InitialISTStack[0x20000];
 static thread bsp_idleThread;
-static thread_node bsp_idleThreadNode;
 
 static thread kernelMainThread;
-static thread_node kernelMainThreadNode;
 volatile struct ultra_boot_context* Arch_BootContext;
 
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool free_pte);
@@ -364,8 +362,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     CoreH_ThreadInitialize(&bsp_idleThread, THREAD_PRIORITY_IDLE, 1, &ctx1);
     kernelMainThread.context.gs_base = (uintptr_t)&bsp_cpu;
     bsp_idleThread.context.gs_base = (uintptr_t)&bsp_cpu;
-    CoreH_ThreadReadyNode(&kernelMainThread, &kernelMainThreadNode);
-    CoreH_ThreadReadyNode(&bsp_idleThread, &bsp_idleThreadNode);
+    CoreH_ThreadReady(&kernelMainThread);
+    CoreH_ThreadReady(&bsp_idleThread);
     Core_CpuInfo->idleThread = &bsp_idleThread;
 
     // Initialize the CPU's GDT.
@@ -569,6 +567,7 @@ void OBOSS_GetKernelModule(struct boot_module *module)
 
 void OBOSS_MakeTTY()
 {
+    Core_SetProcessGroup(Core_GetCurrentThread()->proc, 0);
     dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
     if (ps2k1)
     {
@@ -576,7 +575,7 @@ void OBOSS_MakeTTY()
         VfsH_MakeScreenTTY(&i, ps2k1->vnode, nullptr, OBOS_FlantermContext);
         dirent* tty = nullptr;
         Vfs_RegisterTTY(&i, &tty, false);
-        Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
+        Core_GetCurrentThread()->proc->pgrp->controlling_tty = tty->vnode->data;
     }
 }
 

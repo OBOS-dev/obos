@@ -84,10 +84,10 @@ __attribute__((no_instrument_function)) void Core_Schedule()
 		thread_priority_list* list = priorityList(getCurrentThread->priority);
 		if (getCurrentThread->flags & THREAD_FLAGS_PRIORITY_RAISED)
 		{
-			CoreH_ThreadListRemove(&list->list, getCurrentThread->snode);
+			CoreH_ThreadListRemove(&list->list, &getCurrentThread->snode);
 			getCurrentThread->priority--;
 			getCurrentThread->flags &= ~THREAD_FLAGS_PRIORITY_RAISED;
-			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), getCurrentThread->snode);
+			CoreH_ThreadListAppend(&(priorityList(getCurrentThread->priority)->list), &getCurrentThread->snode);
 		}
 		if (getCurrentThread->status != THREAD_STATUS_BLOCKED)
 			getCurrentThread->status = THREAD_STATUS_READY;
@@ -100,7 +100,7 @@ thread* chosenThread = nullptr;
 timer_tick CoreS_GetNativeTimerTick();
 // timer_tick start = CoreS_GetNativeTimerTick();
 	if (obos_expect(getCurrentThread != nullptr, true))
-		chosenThread = getCurrentThread->snode->next ? getCurrentThread->snode->next->data : nullptr;
+		chosenThread = getCurrentThread->snode.next ? getCurrentThread->snode.next->data : nullptr;
 	if (chosenThread)
 		goto switch_thread;
 

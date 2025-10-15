@@ -38,10 +38,7 @@ typedef struct process
 
 	uid currentUID;
 	gid currentGID;
-
-    bool set_uid : 1;
-    bool set_gid : 1;
-
+	
 	uint32_t exitCode;
 	bool dead;
 
@@ -59,10 +56,6 @@ typedef struct process
 	char* exec_file;
 	char* cmdline;
 
-	tty* controlling_tty;
-
-	size_t times_waited;
-
 	LIST_NODE(process_list, struct process) node;
 } process;
 typedef LIST_HEAD(process_list, process) process_list;
@@ -73,6 +66,7 @@ typedef struct process_group {
 	process* leader;
 	process_list processes;
 	mutex lock;
+	tty* controlling_tty;
 	RB_ENTRY(process_group) rb_node;
 } process_group;
 typedef RB_HEAD(process_group_tree, process_group) process_group_tree;

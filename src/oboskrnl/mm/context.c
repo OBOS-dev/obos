@@ -49,9 +49,6 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 	if (addr >= round_down(OBOS_KernelProcess->threads.head->data) &&
 		addr < round_up_cond(OBOS_KernelProcess->threads.head->data + 1))
 		return true;
-	if (addr >= round_down(OBOS_KernelProcess->threads.head->data->snode) &&
-		addr < round_up_cond(OBOS_KernelProcess->threads.head->data->snode + 1))
-		return true;
 	if (addr >= round_down(Core_SchedulerIRQ) &&
 		addr < round_up_cond(Core_SchedulerIRQ + 1))
 		return true;
@@ -65,9 +62,6 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
         if (addr >= round_down(cpu->idleThread) &&
 			addr < round_up_cond(cpu->idleThread + 1))
 			return true;
-        if (addr >= round_down(cpu->idleThread->snode) &&
-			addr < round_up_cond(cpu->idleThread->snode + 1))
-			return true;
 		if (addr >= round_down(cpu->idleThread->context.stackBase) &&
 			addr < round_up_cond((uintptr_t)cpu->idleThread->context.stackBase + cpu->idleThread->context.stackSize))
 			return true;
@@ -77,9 +71,6 @@ bool MmH_IsAddressUnPageable(uintptr_t addr)
 #elif defined(__m68k__)
 		if (addr >= round_down(cpu->idleThread) &&
 			addr < round_up_cond(cpu->idleThread + 1))
-			return true;
-        if (addr >= round_down(cpu->idleThread->snode) &&
-			addr < round_up_cond(cpu->idleThread->snode + 1))
 			return true;
 		if (addr >= round_down(cpu->idleThread->context.stackBase) &&
 			addr < round_up_cond((uintptr_t)cpu->idleThread->context.stackBase + cpu->idleThread->context.stackSize))

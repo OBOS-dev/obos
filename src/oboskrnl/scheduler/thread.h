@@ -75,7 +75,6 @@ typedef struct thread_node
 {
 	struct thread_node *next, *prev;
 	struct thread* data;
-	bool awaken : 1;
 	void(*free)(struct thread_node* what);
 } thread_node;
 
@@ -97,8 +96,9 @@ typedef struct thread
 	uint64_t quantum;
 	thread_affinity affinity;
 	uint64_t lastRunTick;
+
 	struct cpu_local* masterCPU /* the cpu that contain this thread's priority list. */;
-	struct thread_node* snode;
+	struct thread_node snode;
 	struct thread_node* pnode;
 	struct process* proc;
 	
@@ -145,6 +145,7 @@ typedef struct thread
 	// The amount of quantums the thread has ever ran for.
 	uint8_t total_quantums;
 } thread;
+
 typedef struct thread_list
 {
 	thread_node *head, *tail;
@@ -180,13 +181,6 @@ OBOS_EXPORT obos_status CoreH_ThreadInitialize(thread* thr, thread_priority prio
 /// <param name="thr">The thread to ready.</param>
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status CoreH_ThreadReady(thread* thr);
-/// <summary>
-/// Readies a thread, but uses a preallocated node.
-/// </summary>
-/// <param name="thr">The thread to ready.</param>
-/// <param name="node">The node to use.</param>
-/// <returns>The status of the function.</returns>
-OBOS_EXPORT obos_status CoreH_ThreadReadyNode(thread* thr, thread_node* node);
 /// <summary>
 /// Blocks a thread.<para/>
 /// Yields if the thread is the current thread, unless otherwise specified.

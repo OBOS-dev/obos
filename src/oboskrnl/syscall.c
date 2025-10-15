@@ -194,7 +194,10 @@ obos_status Sys_SetControllingTTY(handle desc, bool fg)
 
     process* proc = Core_GetCurrentThread()->proc;
     
-    proc->controlling_tty = tty;
+    if (proc->pgrp)
+        proc->pgrp->controlling_tty = tty;
+    else
+        return OBOS_STATUS_INVALID_ARGUMENT;
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -214,11 +217,12 @@ obos_status Sys_GetControllingTTY(handle desc, uint32_t oflags)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     process* proc = Core_GetCurrentThread()->proc;
-    if (!proc->controlling_tty)
+    if (!proc->pgrp || !proc->pgrp->controlling_tty)
         return OBOS_STATUS_NOT_FOUND; // No controlling TTY.
 
-    return Vfs_FdOpenVnode(fd->un.fd, proc->controlling_tty->vn, oflags);
+    return Vfs_FdOpenVnode(fd->un.fd, proc->pgrp->controlling_tty->vn, oflags);
 }
+
 obos_status Sys_TTYName(handle desc, char* ubuf, size_t size)
 {
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
