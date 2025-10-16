@@ -18,7 +18,7 @@ static OBOS_PAGEABLE_FUNCTION uint8_t send_command_impl(ps2_port* port, obos_sta
     PS2_DeviceWrite(port->second, cmd);
     for (size_t i = 0; i < nArgs; i++)
         PS2_DeviceWrite(port->second, va_arg(list, uint32_t) & 0xff);
-    return PS2_DeviceRead(0x20000, status);
+    return PS2_DeviceRead(0x10000, status);
 }
 
 OBOS_PAGEABLE_FUNCTION uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size_t nArgs, ...)
@@ -43,16 +43,30 @@ OBOS_PAGEABLE_FUNCTION uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size
 
 void identify_device(ps2_port* port, uint16_t* const model, uint8_t* const type)
 {
-    PS2_SendCommand(port, 0xf2, 0);
-    uint16_t byte_one = PS2_DeviceRead(0x20000, nullptr);
-    uint16_t byte_two = PS2_DeviceRead(0x20000, nullptr);
-    if ((byte_one == 0xff) && (byte_two == 0xff))
+    irql oldIrql = Core_RaiseIrql(IRQL_PS2);
+    bool success = false;
+    for (size_t i = 0; i < 2; i++)
+    {
+        if ((success = (PS2_SendCommand(port, 0xf2, 0) == PS2_ACK)))
+            break;
+    }
+    if (!success)
+    {
+        OBOS_Warning("Failed to identify device on channel %c: Failed to receive ACK\n", port->second ? '2' : '1');
+        Core_LowerIrql(oldIrql);
+        return;
+    }
+    uint16_t byte_one = PS2_DeviceRead(0x10000, nullptr);
+    uint16_t byte_two = PS2_DeviceRead(0x10000, nullptr);
+    bool byte_one_timed_out = byte_one == 0xff;
+    bool byte_two_timed_out = byte_two == 0xff;
+    if (byte_one_timed_out && byte_two_timed_out)
     {
         // An old device, assume it's a keyboard.
         *type = PS2_DEV_TYPE_KEYBOARD;
         goto done;    
     }
-    if (byte_two == 0xff)
+    if (byte_two_timed_out)
         byte_two = 0;
     *model = byte_two | (byte_one<<8);
     if (byte_one == 0xab || byte_one == 0xac)
@@ -60,14 +74,14 @@ void identify_device(ps2_port* port, uint16_t* const model, uint8_t* const type)
         *type = PS2_DEV_TYPE_KEYBOARD;
         goto done;
     }
-    if (byte_two == 0xff)
+    if (byte_two_timed_out)
     {
         // One-byte IDs should always be mice.
         *type = PS2_DEV_TYPE_MOUSE;
         goto done;
     }
     done:
-    return;
+    Core_LowerIrql(oldIrql);
 }
 
 void PS2_DetectDevice(ps2_port* port)
@@ -86,10 +100,14 @@ void PS2_DetectDevice(ps2_port* port)
     //     goto retry_echo;
     // }
 
+    irql oldIrql = Core_RaiseIrql(IRQL_PS2);
     PS2_SendCommand(port, 0xf5, 0);
+    Core_LowerIrql(oldIrql);
 
     uint16_t model = 0;
     identify_device(port, &model, &type);
+    if (type == 0)
+        return;
     if ((type == PS2_DEV_TYPE_KEYBOARD && port->second) || (type == PS2_DEV_TYPE_MOUSE && !port->second))
     {
         // Try this again...
@@ -104,6 +122,9 @@ void PS2_DetectDevice(ps2_port* port)
     }
 
     done:
+    oldIrql = Core_RaiseIrql(IRQL_PS2);
+    PS2_SendCommand(port, 0xf4, 0);
+    Core_LowerIrql(oldIrql);
     port->model = model;
 
     if (type != PS2_DEV_TYPE_UNKNOWN)

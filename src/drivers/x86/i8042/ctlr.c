@@ -71,6 +71,8 @@ void ps2_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
         uint8_t read = inb(PS2_DATA);
         if (port->data_ready)
             port->data_ready(port, read);
+        else
+            OBOS_Error("i8042: Possibly read command response! inb(PS2_DATA)=0x%02x\n", read);
     }
 }
 
@@ -102,14 +104,15 @@ obos_status PS2_InitializeController()
     write_ctlr_status(ctlr_config);
 
     // Determine if the controller is dual-channel.
+    
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
-    outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_TWO);
+    outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_TWO);
     ctlr_config = read_ctlr_status();
     PS2_CtlrData.dual_channel = ~ctlr_config & PS2_CTLR_CONFIG_PORT_TWO_CLOCK;
     if (PS2_CtlrData.dual_channel)
     {
         poll_status(PS2_INPUT_BUFFER_FULL, 0);
-        outb(PS2_CMD_STATUS, PS2_CTLR_ENABLE_PORT_TWO);
+        outb(PS2_CMD_STATUS, PS2_CTLR_DISABLE_PORT_TWO);
     }
 
     // Run device tests.
@@ -139,8 +142,11 @@ obos_status PS2_InitializeController()
     }
 
     // Enable devices.
-    PS2_EnableChannel(false, true);
-    PS2_EnableChannel(true, true);
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (obos_is_error(status = PS2_EnableChannel(false, true)))
+        OBOS_Warning("PS2_EnableChannel(channel_one, true): %d\n", status);
+    if (obos_is_error(status = PS2_EnableChannel(true, true)))
+        OBOS_Warning("PS2_EnableChannel(channel_two, true): %d\n", status);
 
     PS2_CtlrData.ports[1].second = true;
     // Initialize the structs.
@@ -170,15 +176,10 @@ obos_status PS2_InitializeController()
     // Enable port IRQs
     ctlr_config = read_ctlr_status();
     if (PS2_CtlrData.ports[0].works)
-    {
         ctlr_config |= PS2_CTLR_CONFIG_PORT_ONE_IRQ;
-        ctlr_config &= ~PS2_CTLR_CONFIG_PORT_TWO_CLOCK;
-    }
     if (PS2_CtlrData.ports[1].works)
-    {
         ctlr_config |= PS2_CTLR_CONFIG_PORT_TWO_IRQ;
-        ctlr_config &= ~PS2_CTLR_CONFIG_PORT_TWO_CLOCK;
-    }
+    ctlr_config &= ~(BIT(4)|BIT(5)|BIT(6));
     write_ctlr_status(ctlr_config);
 
     Core_LowerIrql(oldIrql);
@@ -192,6 +193,7 @@ void PS2_DeviceWrite(bool port_two, uint8_t val)
     poll_status(PS2_INPUT_BUFFER_FULL, 0);
     if (port_two)
         outb(PS2_CMD_STATUS, PS2_CTLR_WRITE_PORT_TWO);
+    poll_status(PS2_INPUT_BUFFER_FULL, 0);
     outb(PS2_DATA, val);
     Core_SpinlockRelease(&PS2_CtlrData.lock, oldIrql);
 }
@@ -209,8 +211,7 @@ uint8_t PS2_DeviceRead(uint32_t spin_timeout, obos_status* status)
         if (status) *status = OBOS_STATUS_TIMED_OUT;
         return 0xff;
     }
-    uint8_t data = inb(PS2_DATA);
-    return data;
+    return inb(PS2_DATA);
 }
 
 obos_status PS2_EnableChannel(bool channel_two, bool status)
