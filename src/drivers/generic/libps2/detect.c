@@ -12,13 +12,21 @@
 #include "controller.h"
 #include "detect.h"
 #include "keyboard.h"
+#include "mouse.h"
 
 static OBOS_PAGEABLE_FUNCTION uint8_t send_command_impl(ps2_port* port, obos_status* status, uint8_t cmd, size_t nArgs, va_list list)
 {
     PS2_DeviceWrite(port->second, cmd);
+    uint8_t ack = PS2_DeviceRead(0x10000, status);
+    if (ack != 0xfa)
+        return ack;
     for (size_t i = 0; i < nArgs; i++)
+    {
         PS2_DeviceWrite(port->second, va_arg(list, uint32_t) & 0xff);
-    return PS2_DeviceRead(0x10000, status);
+        ack = PS2_DeviceRead(0x10000, status);
+        if (ack != 0xfa)
+            return ack;
+    }
 }
 
 OBOS_PAGEABLE_FUNCTION uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size_t nArgs, ...)
@@ -135,9 +143,27 @@ void PS2_DetectDevice(ps2_port* port)
             PS2_InitializeKeyboard(port);
             break;
         case PS2_DEV_TYPE_MOUSE:
-            OBOS_Debug("PS/2: Found a PS/2 mouse, but PS/2 mice are unimplemented.\n");
-            __attribute__((fallthrough)); 
+            PS2_InitializeMouse(port);
+            break;
         default:
             break;
+    }
+}
+
+void PS2_EnableDevices()
+{
+    ps2_port* port_one = PS2_GetPort(false);
+    ps2_port* port_two = PS2_GetPort(true);
+    for (int i = 0; i < 2; i++)
+    {
+        ps2_port* port = (i == 1) ? port_two : port_one;
+        if (!port)
+            continue;
+        if (!port->works)
+            continue;
+        if (port->type == PS2_DEV_TYPE_KEYBOARD)
+            PS2_StartKeyboard(port);
+        else if (port->type == PS2_DEV_TYPE_MOUSE)
+            PS2_StartMouse(port);
     }
 }

@@ -352,6 +352,10 @@ obos_status Core_SetProcessGroup(process* proc, uint32_t pgid)
 	pgrp->leader = proc;
 	pgrp->lock = MUTEX_INITIALIZE();
 	pgrp->pgid = pgid;
+	// TODO(oberrow): When sessions are implemented, take the controlling tty
+	// from there.
+	if (Core_GetCurrentThread()->proc && Core_GetCurrentThread()->proc->pgrp)
+		pgrp->controlling_tty = Core_GetCurrentThread()->proc->pgrp->controlling_tty;
 	RB_INSERT(process_group_tree, &Core_ProcessGroups, pgrp);
 	
 	found:

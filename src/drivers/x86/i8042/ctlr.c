@@ -64,7 +64,7 @@ void ps2_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
 {
     OBOS_UNUSED(i && frame && oldIrql);
     ps2_port* port = userdata;
-    if (port->suppress_irqs)
+    if (port->suppress_irqs || !port->data_ready)
         return;
     while (inb(PS2_CMD_STATUS) & PS2_OUTPUT_BUFFER_FULL)
     {

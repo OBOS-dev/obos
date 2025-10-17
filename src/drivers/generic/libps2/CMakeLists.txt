@@ -6,7 +6,7 @@
 # into a file is to allow PS/2 keyboard/mouse drivers to be shared between 
 # platforms with different controllers.
 
-add_executable(libps2 "keyboard.c" "detect.c" "main.c")
+add_executable(libps2 "keyboard.c" "detect.c" "main.c" "mouse.c")
 
 target_compile_options(libps2
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>

@@ -11,5 +11,6 @@
 #include "controller.h"
 
 void PS2_DetectDevice(ps2_port* port);
+void PS2_EnableDevices();
 
 uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size_t nArgs, ...);

@@ -32,7 +32,7 @@
 static void signal_ring_buffer_dpc(dpc* d, void* userdata)
 {
     OBOS_UNUSED(d);
-    ps2k_ringbuffer* buff = userdata;
+    ps2_ringbuffer* buff = userdata;
     Core_EventSet(&buff->e, true);
 }
 
@@ -134,15 +134,15 @@ static void keyboard_ready(ps2_port* port, uint8_t scancode)
     KEYCODE_ADD_MODIFIER(code, data->super_key ? SUPER_KEY : 0);
 
     // OBOS_Debug("Got key %s (0x%02x), modifiers 0x%02x\n", OBOS_ScancodeToString[SCANCODE_FROM_KEYCODE(code)], SCANCODE_FROM_KEYCODE(code), MODIFIERS_FROM_KEYCODE(code));
-    PS2_RingbufferAppend(&data->input, code, false);
+    PS2_RingbufferAppendKeycode(&data->input, code, false);
     
     data->dpc.userdata = &data->input;
     CoreH_InitializeDPC(&data->dpc, signal_ring_buffer_dpc, 0);
 }
 
-ps2k_data keyboard_data_buf[2];
+static ps2k_data keyboard_data_buf[2];
 
-obos_status read_code(void* handle, keycode* out, bool block)
+static obos_status read_code(void* handle, keycode* out, bool block)
 {
     ps2k_handle* hnd = handle;
     if (hnd->magic != PS2K_HND_MAGIC_VALUE)
@@ -158,10 +158,10 @@ obos_status read_code(void* handle, keycode* out, bool block)
         Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
     }
 
-    return PS2_RingbufferFetch(&data->input, &hnd->in_ptr, out);
+    return PS2_RingbufferFetchKeycode(&data->input, &hnd->in_ptr, out);
 }
 
-obos_status get_readable_count(void* handle, size_t* nReadable)
+static obos_status get_readable_count(void* handle, size_t* nReadable)
 {
     ps2k_handle* hnd = handle;
     if (hnd->magic != PS2K_HND_MAGIC_VALUE)
@@ -172,7 +172,7 @@ obos_status get_readable_count(void* handle, size_t* nReadable)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status make_handle(struct ps2_port* port, void** handle)
+static obos_status make_handle(struct ps2_port* port, void** handle)
 {
     ps2k_data* data = port->pudata;
     if (data->ps2k_magic != PS2K_MAGIC_VALUE)
@@ -215,6 +215,8 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
         Core_LowerIrql(oldIrql);
         return;
     }
+
+    PS2_SendCommand(port, 0xf5, 0);
 
 	// Keys need to held for 250 ms before repeating, and they repeat at a rate of 30 hz (33.33333 ms).
     res = PS2_SendCommand(port, 0xf3, 1, 0x00);
@@ -270,14 +272,17 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     }
 
     // Enable scanning.
-    res = PS2_SendCommand(port, 0xf4, 0);
-    if (res != PS2_ACK)
-    {
-        Core_LowerIrql(oldIrql);
-        return;
-    }
+    // res = PS2_SendCommand(port, 0xf4, 0);
+    // if (res != PS2_ACK)
+    // {
+    //     Core_LowerIrql(oldIrql);
+    //     return;
+    // }
 
-    port->suppress_irqs = false;
+    // 'true' is not an error, see PS2_StartKeyboard
+    port->suppress_irqs = true;
+
+
 
     data->set = set;
 
@@ -289,7 +294,7 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     OBOS_Log("PS/2: Successfully initialized keyboard on channel %c\n", port->second ? '2' : '1');
     OBOS_Debug("PS/2 Keyboard is using scancode set %d\n", data->set);
     data->initialized = true;
-    PS2_RingbufferInitialize(&data->input);
+    PS2_RingbufferInitialize(&data->input, false);
 
     port->type = PS2_DEV_TYPE_KEYBOARD;
     port->id[3] = port->type;
@@ -297,22 +302,37 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     port->blk_size = sizeof(keycode);
 }
 
-obos_status PS2_RingbufferInitialize(ps2k_ringbuffer* buff)
+void PS2_StartKeyboard(ps2_port* port)
+{
+    uint8_t res = PS2_SendCommand(port, 0xf4, 0);
+    if (res != PS2_ACK)
+        return;
+
+    port->suppress_irqs = false;
+}
+
+obos_status PS2_RingbufferInitialize(ps2_ringbuffer* buff, bool mouse)
 {
     memzero(buff, sizeof(*buff));
+
     buff->e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     buff->size = OBOS_PAGE_SIZE;
-    buff->nElements = buff->size/sizeof(keycode);
+    if (!mouse)
+        buff->nElements = buff->size/sizeof(keycode);
+    else
+        buff->nElements = buff->size/sizeof(mouse_packet);
+
     page* phys = MmH_PgAllocatePhysical(false, false);
     if (!phys)
         return OBOS_STATUS_NOT_ENOUGH_MEMORY;
     buff->buff = MmS_MapVirtFromPhys(phys->phys);
     buff->out_ptr = 0;
     buff->handle_count = 0;
+
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status PS2_RingbufferAppend(ps2k_ringbuffer* buff, keycode code, bool signal)
+obos_status PS2_RingbufferAppendKeycode(ps2_ringbuffer* buff, keycode code, bool signal)
 {
     buff->keycodes[buff->out_ptr++ % buff->nElements] = code;
     if (signal)
@@ -320,7 +340,7 @@ obos_status PS2_RingbufferAppend(ps2k_ringbuffer* buff, keycode code, bool signa
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status PS2_RingbufferFetch(const ps2k_ringbuffer* buff, size_t* in_ptr, keycode* code)
+obos_status PS2_RingbufferFetchKeycode(const ps2_ringbuffer* buff, size_t* in_ptr, keycode* code)
 {
     if (*in_ptr == buff->out_ptr)
         return OBOS_STATUS_EOF;
@@ -329,7 +349,24 @@ obos_status PS2_RingbufferFetch(const ps2k_ringbuffer* buff, size_t* in_ptr, key
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status PS2_RingbufferFree(ps2k_ringbuffer* buff)
+obos_status PS2_RingbufferAppendMousePacket(ps2_ringbuffer* buff, mouse_packet pckt, bool signal)
+{
+    buff->mouse_packets[buff->out_ptr++ % buff->nElements] = pckt;
+    if (signal)
+        Core_EventSet(&buff->e, true);
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status PS2_RingbufferFetchMousePacket(const ps2_ringbuffer* buff, size_t* in_ptr, mouse_packet* pckt)
+{
+    if (*in_ptr == buff->out_ptr)
+        return OBOS_STATUS_EOF;
+    *pckt = buff->mouse_packets[(*in_ptr)++ % buff->nElements];
+    *in_ptr = *in_ptr % buff->nElements; // sanitize it for the user
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status PS2_RingbufferFree(ps2_ringbuffer* buff)
 {
     memset(buff->buff, 0xcc, buff->size);
     uintptr_t phys = MmS_UnmapVirtFromPhys(buff->buff);

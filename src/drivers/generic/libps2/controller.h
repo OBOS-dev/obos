@@ -12,6 +12,7 @@
 #include <locks/event.h>
 
 #include <vfs/keycode.h>
+#include <vfs/mouse.h>
 
 #if defined(__x86_64__) || defined(__i686__)
 #   include <x86/i8042/ps2_irql.h>
@@ -39,6 +40,7 @@ typedef struct ps2_port {
     
     union {
         obos_status(*read_code)(void* handle, keycode* out, bool block);
+        obos_status(*read_mouse_packet)(void* handle, mouse_packet* out, bool block);
         obos_status(*read_raw)(void* handle, void* buf, bool block);
     };
     // Gets the amount of readable objects for that handle.
