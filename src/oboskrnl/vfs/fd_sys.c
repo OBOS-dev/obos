@@ -1901,7 +1901,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         Free(OBOS_KernelAllocator, link, sz_path2);
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
-
+    
     // Now for the magic..?
     if (!target_header->ftable.hardlink_file)
         // "EPERM - The filesystem containing oldpath and newpath does not support the creation of hard links."

@@ -1026,6 +1026,8 @@ static void irp_on_event_set(irp* req)
     req->status = OBOS_STATUS_SUCCESS;
     if (req->dryOp)
         return;
+    // TODO: Do we handle MSG_PEEK anywhere?
+    // Fix if not.
     size_t nToRead = OBOS_MIN(s->connection->recv_buffer.ptr, req->blkCount);
     memcpy(req->buff, s->connection->recv_buffer.buf, nToRead);
     s->connection->recv_buffer.ptr -= nToRead;

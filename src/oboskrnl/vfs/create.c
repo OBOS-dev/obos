@@ -17,6 +17,7 @@
 #include <vfs/dirent.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
+#include <vfs/socket.h>
 
 #include <utils/string.h>
 #include <utils/list.h>
@@ -141,14 +142,17 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
 
     obos_status status = OBOS_STATUS_SUCCESS;
 
-    if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+    if (node->vnode->vtype == VNODE_TYPE_DIR || node->vnode->vtype == VNODE_TYPE_REG || node->vnode->vtype == VNODE_TYPE_LNK)
     {
-        char* path = VfsH_DirentPath(node, parent_mnt->root);
-        status = ftable->premove_file(parent_mnt->device, path);
-        Vfs_Free(path);   
+        if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+        {
+            char* path = VfsH_DirentPath(node, parent_mnt->root);
+            status = ftable->premove_file(parent_mnt->device, path);
+            Vfs_Free(path);   
+        }
+        else 
+            status = ftable->remove_file(node->vnode->desc);
     }
-    else 
-        status = ftable->remove_file(node->vnode->desc);
 
     if (obos_is_error(status))
         return status;
@@ -159,11 +163,18 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
     OBOS_FreeString(&node->name);
     LIST_REMOVE(dirent_list, &parent_mnt->dirent_list, node);
     --node->vnode->refs; // Removed from dirent list.
-    if (!(--node->vnode->refs))
+    if (!node->vnode->refs)
     {
         for (size_t i = 0; i < node->vnode->nPartitions; i++)
             LIST_REMOVE(partition_list, &OBOS_Partitions, &node->vnode->partitions[i]);
         Vfs_Free(node->vnode->partitions);
+
+        if (node->vnode->vtype == VNODE_TYPE_SOCK)
+        {
+            struct socket_desc* desc = (void*)node->vnode->desc;
+            desc->ops->free(desc);
+            Vfs_Free(desc);
+        }
 
         Vfs_Free(node->vnode);
     }
