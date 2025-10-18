@@ -47,6 +47,10 @@
 #include <arch/x86_64/cmos.h>
 #include <arch/x86_64/interrupt_frame.h>
 
+#include "gdbstub/connection.h"
+#include "gdbstub/gdb_udp_backend.h"
+#include "gdbstub/debug.h"
+
 #include <uacpi_libc.h>
 
 extern void Arch_InitBootGDT();
@@ -579,6 +583,13 @@ void OBOSS_MakeTTY()
         Core_GetCurrentThread()->proc->controlling_tty = tty->vnode->data;
     }
 }
+
+static bool isnum(char ch)
+{
+    return (ch - '0') >= 0 && (ch - '0') < 10;
+}
+
+#include <net/tables.h>
 
 void Arch_KernelMainBootstrap()
 {

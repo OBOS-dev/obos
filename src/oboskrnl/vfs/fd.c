@@ -553,13 +553,13 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
 obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
 {
     vnode* const vn = request->vn;
+    if (!request || !vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (vn->flags & VFLAGS_EVENT_DEV)
     {
         request->evnt = vn->un.evnt;
         return OBOS_STATUS_SUCCESS;
     }
-    if (!request || !vn)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     driver_header* driver = Vfs_GetVnodeDriver(vn);
     OBOS_ENSURE(driver);
     if (!vn->blkSize)

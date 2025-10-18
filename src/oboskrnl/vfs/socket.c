@@ -118,6 +118,95 @@ static obos_status unreference_device(dev_desc desc)
     return OBOS_STATUS_SUCCESS;
 }
 
+static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
+{
+    socket_desc* socket = (void*)desc;
+    irp* req = VfsH_IRPAllocate();
+    req->desc = desc;
+    req->vn = nullptr;
+    req->blkOffset = blkOffset;
+    req->blkCount = blkCount;
+    req->buff = buf;
+    req->op = IRP_READ;
+    req->dryOp = false;
+    req->socket_flags = 0;
+    req->socket_data = NULL;
+    req->sz_socket_data = 0;
+    obos_status status = socket->ops->submit_irp(req);
+    if (obos_is_error(status))
+    {
+        VfsH_IRPUnref(req);
+        return status;
+    }
+
+    while (req->evnt)
+    {
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*req->evnt));
+        if (obos_is_error(status))
+        {
+            VfsH_IRPUnref(req);
+            return status;
+        }
+        if (req->on_event_set)
+            req->on_event_set(req);
+        if (req->status != OBOS_STATUS_IRP_RETRY)
+            break;
+    }
+
+    if (socket->ops->finalize_irp)
+        socket->ops->finalize_irp(req);
+
+    status = req->status;
+    if (nBlkRead)
+        *nBlkRead = req->nBlkRead;
+    VfsH_IRPUnref(req);
+    return status;
+}
+static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
+{
+    socket_desc* socket = (void*)desc;
+    irp* req = VfsH_IRPAllocate();
+    req->desc = desc;
+    req->vn = nullptr;
+    req->blkOffset = blkOffset;
+    req->blkCount = blkCount;
+    req->cbuff = buf;
+    req->op = IRP_WRITE;
+    req->dryOp = false;
+    req->socket_flags = 0;
+    req->socket_data = NULL;
+    req->sz_socket_data = 0;
+    obos_status status = socket->ops->submit_irp(req);
+    if (obos_is_error(status))
+    {
+        VfsH_IRPUnref(req);
+        return status;
+    }
+
+    while (req->evnt)
+    {
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*req->evnt));
+        if (obos_is_error(status))
+        {
+            VfsH_IRPUnref(req);
+            return status;
+        }
+        if (req->on_event_set)
+            req->on_event_set(req);
+        if (req->status != OBOS_STATUS_IRP_RETRY)
+            break;
+    }
+
+    if (socket->ops->finalize_irp)
+        socket->ops->finalize_irp(req);
+
+    status = req->status;
+    if (nBlkWritten)
+        *nBlkWritten = req->nBlkWritten;
+    VfsH_IRPUnref(req);
+    return status;
+}
+
 driver_id OBOS_SocketDriver = {
     .id=0,
     .header = {
@@ -127,6 +216,8 @@ driver_id OBOS_SocketDriver = {
             .ioctl = ioctl,
             .ioctl_argp_size = ioctl_argp_size,
             .get_blk_size=get_blk_size,
+            .read_sync=read_sync,
+            .write_sync=write_sync,
             .get_max_blk_count=get_max_blk_count,
             .reference_device = reference_device,
             .unreference_device = unreference_device,
