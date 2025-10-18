@@ -2,8 +2,6 @@
 #include <stdio.h>
 #include <obos/syscall.h>
 
-#define SysS_ClockGet 0x80000002
-
 int main()
 {
     long secs = 0;
