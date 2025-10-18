@@ -311,6 +311,7 @@ obos_status Kdbg_InitializeHandlers()
 
 #include <syscall.h>
 #include <net/tables.h>
+#include <scheduler/sched_sys.h>
 #include "gdb_udp_backend.h"
 
 static gdb_connection current_connection;
@@ -319,6 +320,8 @@ static bool started_gdb_stub = false;
 
 obos_status SysS_GDBStubBindInet(struct sockaddr_in* uaddr, int proto)
 {
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
     if (bound_gdb_stub)
         return OBOS_STATUS_IN_USE;
 
@@ -352,6 +355,8 @@ obos_status SysS_GDBStubBindInet(struct sockaddr_in* uaddr, int proto)
 
 obos_status SysS_GDBStubBindDevice(handle desc)
 {
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
     if (bound_gdb_stub)
         return OBOS_STATUS_IN_USE;
 
@@ -385,6 +390,10 @@ obos_status SysS_GDBStubBindDevice(handle desc)
 
 obos_status SysS_GDBStubStart()
 {
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (!bound_gdb_stub)
+        return OBOS_STATUS_UNINITIALIZED;
     if (started_gdb_stub)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
