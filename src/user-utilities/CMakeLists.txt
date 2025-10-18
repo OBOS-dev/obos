@@ -32,4 +32,5 @@ add_executable (rmmod "rmmod.c")
 
 if (${OBOS_ARCHITECTURE} STREQUAL "x86_64")
     add_executable(obos-gettime "x86_obos-gettime.c")
+    add_executable(enable-kgdbstub "x86_enable-kgdbstub.c")
 endif()
