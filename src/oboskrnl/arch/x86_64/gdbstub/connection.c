@@ -341,6 +341,7 @@ obos_status SysS_GDBStubBindInet(struct sockaddr_in* uaddr, int proto)
             if (obos_is_error(status))
                 break;
             OBOS_Log("Bound GDB Stub to interface '" MAC_ADDRESS_FORMAT "', port %d\n", MAC_ADDRESS_ARGS(iface->mac), be16_to_host(addr.port));
+            break;
         }
         case IPPROTO_TCP:
             OBOS_Warning("Cannot bind GDB Stub to TCP. Unimplemented.\n");
