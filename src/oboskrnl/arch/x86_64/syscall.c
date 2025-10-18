@@ -103,15 +103,18 @@ uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
     (uintptr_t)SysS_SetFSBase,
     (uintptr_t)SysS_ThreadContextCreateFork,
     (uintptr_t)SysS_ClockGet,
+    (uintptr_t)SysS_GDBStubBindInet,
+    (uintptr_t)SysS_GDBStubBindDevice,
+    (uintptr_t)SysS_GDBStubStart,
 };
 
 const char* syscall_to_string[] = {
     "Core_ExitCurrentThread/Sys_SetFSBase",
     "Core_Yield/Sys_ThreadContextCreateFork",
     "OBOS_Reboot/SysS_ClockGet",
-    "OBOS_Shutdown",
-    "Sys_HandleClose",
-    "Sys_HandleClone",
+    "OBOS_Shutdown/SysS_GDBStubBindInet",
+    "Sys_HandleClose/SysS_GDBStubBindDevice",
+    "Sys_HandleClone/SysS_GDBStubStart",
     "Sys_ThreadContextCreate", // 6
     "OBOS_Suspend",
     "Sys_ThreadOpen",
