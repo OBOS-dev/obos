@@ -399,6 +399,7 @@ obos_status SysS_GDBStubStart()
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
     current_connection.connection_active = true;
+    Kdbg_CurrentConnection = &current_connection;
     Kdbg_InitializeHandlers();
     Kdbg_Break();
     
