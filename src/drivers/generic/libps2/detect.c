@@ -18,15 +18,16 @@ static OBOS_PAGEABLE_FUNCTION uint8_t send_command_impl(ps2_port* port, obos_sta
 {
     PS2_DeviceWrite(port->second, cmd);
     uint8_t ack = PS2_DeviceRead(0x10000, status);
-    if (ack != 0xfa)
+    if (ack != PS2_ACK)
         return ack;
     for (size_t i = 0; i < nArgs; i++)
     {
         PS2_DeviceWrite(port->second, va_arg(list, uint32_t) & 0xff);
         ack = PS2_DeviceRead(0x10000, status);
-        if (ack != 0xfa)
+        if (ack != PS2_ACK)
             return ack;
     }
+    return PS2_ACK;
 }
 
 OBOS_PAGEABLE_FUNCTION uint8_t PS2_SendCommand(ps2_port* port, uint8_t cmd, size_t nArgs, ...)
