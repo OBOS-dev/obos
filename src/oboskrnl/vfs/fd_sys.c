@@ -139,8 +139,8 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         status = Vfs_FdOpenDirent(fd->un.fd, ent, oflags);
     }
     err:
-    if (obos_is_error(status))
-        printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
+    // if (obos_is_error(status))
+    //     printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
     // else
     //     printf("open of %s on fd 0x%x\n", path, desc);
     Free(OBOS_KernelAllocator, path, sz_path);

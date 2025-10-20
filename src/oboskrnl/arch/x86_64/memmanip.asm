@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 [BITS 64]
+[DEFAULT ABS]
 
 global memset:function default
 global memzero:function default

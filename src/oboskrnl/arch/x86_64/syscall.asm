@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 BITS 64
+[DEFAULT ABS]
 
 extern OBOS_SyscallTable
 extern OBOS_ArchSyscallTable

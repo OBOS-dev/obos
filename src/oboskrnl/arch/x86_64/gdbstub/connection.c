@@ -312,6 +312,11 @@ obos_status Kdbg_InitializeHandlers()
 #include <syscall.h>
 #include <net/tables.h>
 #include <scheduler/sched_sys.h>
+#include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+#include <mm/alloc.h>
+#include <mm/context.h>
 #include "gdb_udp_backend.h"
 
 static gdb_connection current_connection;
@@ -389,6 +394,16 @@ obos_status SysS_GDBStubBindDevice(handle desc)
     return status;
 }
 
+static thread gdb_thread = {};
+static event gdb_connected = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+
+static void gdb_defer_thread()
+{
+    Kdbg_Break();
+    Core_EventSet(&gdb_connected, false);
+    Core_ExitCurrentThread();
+}
+
 obos_status SysS_GDBStubStart()
 {
     if (Sys_GetUid() != 0)
@@ -401,7 +416,23 @@ obos_status SysS_GDBStubStart()
     current_connection.connection_active = true;
     Kdbg_CurrentConnection = &current_connection;
     Kdbg_InitializeHandlers();
-    Kdbg_Break();
+
+    thread_ctx ctx = {};
+    const size_t stackSize = 0x4000;
+    void* stackBase = Mm_VirtualMemoryAlloc(
+        &Mm_KernelContext, 
+        nullptr, stackSize, 
+        0, VMA_FLAGS_KERNEL_STACK, 
+        nullptr, 
+        nullptr
+    );
+
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)gdb_defer_thread, 0, false, stackBase, stackSize);
+    
+    CoreH_ThreadInitialize(&gdb_thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, &gdb_thread);
+    CoreH_ThreadReady(&gdb_thread);
+    Core_WaitOnObject(WAITABLE_OBJECT(gdb_connected));
     
     return OBOS_STATUS_SUCCESS;
 }

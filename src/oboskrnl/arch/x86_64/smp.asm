@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 [BITS 64]
+[DEFAULT ABS]
 
 global Arch_SMPTrampolineStart:data hidden
 global Arch_SMPTrampolineEnd:data hidden

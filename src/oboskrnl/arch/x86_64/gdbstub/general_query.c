@@ -117,7 +117,7 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
         "swbreak",
         "hwbreak",
         "multiprocess",
-        "vContSupported",
+        // "vContSupported",
         "error-message",
     };
     const size_t packet_size = 4096;

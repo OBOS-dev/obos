@@ -595,9 +595,9 @@ void OBOS_InitializeHDAAudioDev();
 
 obos_status Drv_PnpLoad_uHDA()
 {
-    pci_hid target_class = {};
-    target_class.indiv.classCode = UHDA_MATCHING_CLASS;
-    target_class.indiv.subClass = UHDA_MATCHING_SUBCLASS;
+    // pci_hid target_class = {};
+    // target_class.indiv.classCode = UHDA_MATCHING_CLASS;
+    // target_class.indiv.subClass = UHDA_MATCHING_SUBCLASS;
 
     for (uint8_t bus = 0; bus < Drv_PCIBusCount; bus++)
     {
