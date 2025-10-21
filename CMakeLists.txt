@@ -241,7 +241,7 @@ if (OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_UTILS)
 	add_subdirectory("src/init")
 endif()
 if (OBOS_COMPILE_USER_UTILS)
-	add_subdirectory("src/USER_UTILS")
+	add_subdirectory("src/user_examples")
 endif()
 
 if (OBOS_ONLY_COMPILE_USER_UTILS)
