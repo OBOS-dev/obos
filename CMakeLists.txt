@@ -18,7 +18,7 @@ option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is a hypervisor, where writing to cr8 can be slow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
 option (OBOS_COMPILE_USER_UTILS "Compiles user examples" ${OBOS_USE_OBOS_GCC})
-option (OBOS_ONLY_COMPILE_USER_UTILS "Only compile user utilities" ${OBOS_COMPILE_USER_UTILS})
+option (OBOS_ONLY_COMPILE_USER_UTILS "Only compile user utilities" OFF)
 option (OBOS_ENABLE_UHDA "Whether to include uHDA" ON)
 
 set (OBOS_LAZY_IRQL OFF)
