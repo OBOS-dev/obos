@@ -17,14 +17,15 @@ option (OBOS_ENABLE_LOCK_PROFILING "(Experimental) Enable profiling for locks.")
 option (OBOS_ENABLE_PROFILER "(Experimental) Enable profiling.")
 option (OBOS_LAZY_IRQL "Enables lazy IRQL. Recommended if the main target of the kernel is a hypervisor, where writing to cr8 can be slow.")
 option (OBOS_USE_OBOS_GCC "Uses arch-obos-gcc instead of obos-elf-gcc. Ignored if OBOS_USE_CLANG is true.")
-option (OBOS_COMPILE_USER_EXAMPLES "Compiles user examples" ${OBOS_USE_OBOS_GCC})
+option (OBOS_COMPILE_USER_UTILS "Compiles user examples" ${OBOS_USE_OBOS_GCC})
+option (OBOS_ONLY_COMPILE_USER_UTILS "Only compile user utilities" ${OBOS_COMPILE_USER_UTILS})
 option (OBOS_ENABLE_UHDA "Whether to include uHDA" ON)
 
 set (OBOS_LAZY_IRQL OFF)
 
-if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_EXAMPLES)
-	message(WARNING "OBOS_COMPILE_USER_EXAMPLES must be OFF if OBOS_USE_OBOS_GCC is OFF")
-	set(OBOS_COMPILE_USER_EXAMPLES OFF)
+if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_UTILS)
+	message(WARNING "OBOS_COMPILE_USER_UTILS must be OFF if OBOS_USE_OBOS_GCC is OFF")
+	set(OBOS_COMPILE_USER_UTILS OFF)
 endif()
 
 # String options
@@ -236,11 +237,15 @@ add_compile_definitions(
 	OBOS_ARCHITECTURE_HAS_PCI=${OBOS_ARCHITECTURE_HAS_PCI}
 )
 
-if (OBOS_USE_OBOS_GCC)
+if (OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_UTILS)
 	add_subdirectory("src/init")
 endif()
-if (OBOS_COMPILE_USER_EXAMPLES)
-	add_subdirectory("src/user_examples")
+if (OBOS_COMPILE_USER_UTILS)
+	add_subdirectory("src/USER_UTILS")
+endif()
+
+if (OBOS_ONLY_COMPILE_USER_UTILS)
+	return()
 endif()
 
 if (OBOS_ENABLE_KASAN)
