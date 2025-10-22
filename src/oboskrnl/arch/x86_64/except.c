@@ -69,6 +69,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
             case OBOS_STATUS_SUCCESS:
                 CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
                 OBOS_ASSERT(frame->rsp != 0);
+                cli();
                 return;
             case OBOS_STATUS_UNHANDLED:
                 break;
