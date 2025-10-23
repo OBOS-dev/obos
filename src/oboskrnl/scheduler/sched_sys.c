@@ -28,6 +28,7 @@
 #include <locks/wait.h>
 
 #include <vfs/fd_sys.h>
+#include <vfs/alloc.h>
 
 // scheduler/thread_context_info.h
 
@@ -423,7 +424,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                         continue;
                     handle_desc* new_hnd = &new->handles.arr[i];
                     new_hnd->type = HANDLE_TYPE_FD;
-                    new_hnd->un.fd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(fd), NULL);
+                    new_hnd->un.fd = Vfs_Calloc(1, sizeof(fd));
                     uint32_t oflags = 0;
                     if (hnd->un.fd->flags & FD_FLAGS_READ)
                         oflags |= FD_OFLAGS_READ;
