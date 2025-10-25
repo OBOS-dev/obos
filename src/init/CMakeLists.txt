@@ -23,7 +23,4 @@ link_libraries(syscall_invoke)
 
 add_executable (init "main.c" "motd.c" "nm.c")
 
-find_package(cJSON REQUIRED)
-
-target_link_libraries(init PRIVATE "${CJSON_LIBRARIES}")
-target_include_directories(init PRIVATE "${CJSON_INCLUDE_DIR}")
+target_link_libraries(init PRIVATE cjson)
