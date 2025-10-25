@@ -131,6 +131,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
             uintptr_t real_limit = phdrs[i].p_vaddr+phdrs[i].p_memsz;
             if (real_limit % OBOS_PAGE_SIZE)
                 real_limit += (OBOS_PAGE_SIZE-(real_limit%OBOS_PAGE_SIZE));
+            // printf("ELF: Allocating 0x%p bytes (memsz=0x%p, real_base=0x%p, real_limit=0x%p, vaddr=0x%p)", real_limit-real_base, phdrs[i].p_memsz, real_base, real_limit, phdrs[i].p_vaddr);
             ubase = Mm_VirtualMemoryAlloc(ctx,
                                           (void*)real_base,
                                           real_limit-real_base,
@@ -161,8 +162,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         kbase = Mm_MapViewOfUserMemory(ctx,
                                        (void*)real_base,
                                        nullptr,
-                                    //    real_limit-real_base,
-                                       phdrs[i].p_memsz,
+                                       real_limit-real_base,
                                        0,
                                        false, // disrespect user protection flags.
                                        &status) + (phdrs[i].p_vaddr % OBOS_PAGE_SIZE);
