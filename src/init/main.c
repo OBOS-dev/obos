@@ -76,7 +76,8 @@ int main(int argc, char** argv)
     const char* swap_file = NULL;
     char* handoff_process = NULL;
     int opt = 0;
-    while ((opt = getopt(argc, argv, "+s:c:h")) != -1)
+    long final_log_level = 2;
+    while ((opt = getopt(argc, argv, "+s:c:l:h")) != -1)
     {
         switch (opt)
         {
@@ -104,15 +105,27 @@ int main(int argc, char** argv)
                 swap_file = optarg;
                 break;
             }
+            case 'l':
+            {
+                errno = 0;
+                final_log_level = strtol(optarg, NULL, 0);
+                if (errno != 0 || final_log_level < 0 || final_log_level > 4)
+                {
+                    fprintf(stderr, "Expected integer within [0...4] for -l option, got %s instead\n", optarg);
+                    return -1;
+                }
+                break;
+            }
             case 'h':
             default:
-                fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action -s swap_dev] handoff_path", argv[0]);
+                fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action] [-s swap_dev] [-l kernel_log_level] handoff_path [handoff program arguments]", argv[0]);
                 return opt != 'h';
         }
     }
+    syscall1(Sys_SetKLogLevel, final_log_level);
     if (optind >= argc)
     {
-        fprintf(stderr, "Usage: %s handoff_path", argv[0]);
+        fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action] [-s swap_dev] [-l kernel_log_level] handoff_path [handoff program arguments]", argv[0]);
         return 1;
     }
     // if (strcasecmp(sigchld_action, "ignore") != 0)
