@@ -264,6 +264,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             currentPath[currentPathLen++] = '/';
         // printf("%.*s\n", currentPathLen, currentPath);
         dirent* new = VfsH_DirentLookupFromCacheOnly(token, last ? last : mountpoint->root);
+        new = VfsH_FollowLink(new);
         if (new && new->d_parent == mountpoint->root->d_parent)
             new = nullptr;
         if (!new)
