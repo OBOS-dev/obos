@@ -5,7 +5,6 @@
 */
 
 #include <int.h>
-#include <klog.h>
 
 #include <vfs/alloc.h>
 
@@ -15,7 +14,6 @@
 allocator_info* Vfs_Allocator;
 
 struct allocation_hdr {
-    uint64_t magic; // 0xdeadbeef15a114e0
     size_t sz;
 };
 
@@ -30,7 +28,6 @@ void* Vfs_Malloc(size_t cnt)
     cnt += sizeof(struct allocation_hdr);
     struct allocation_hdr *hdr = Vfs_Allocator->ZeroAllocate(Vfs_Allocator, 1, cnt, nullptr);
     hdr->sz = cnt-sizeof(struct allocation_hdr);
-    hdr->magic = 0xdeadbeef15a114e0;
     return hdr+1;
 }
 
@@ -52,7 +49,6 @@ void* Vfs_Realloc(void* what, size_t cnt)
         return Vfs_Calloc(1, cnt);
     struct allocation_hdr* hdr = what;
     hdr--;
-    OBOS_ENSURE(hdr->magic == 0xdeadbeef15a114e0);
     size_t old_size = hdr->sz+sizeof(*hdr);
     hdr->sz = cnt;
     hdr = Vfs_Allocator->Reallocate(Vfs_Allocator, hdr, cnt+sizeof(*hdr), old_size, nullptr);
@@ -65,6 +61,5 @@ void Vfs_Free(void* what)
         return;
     struct allocation_hdr* hdr = what;
     hdr--;
-    OBOS_ENSURE(hdr->magic == 0xdeadbeef15a114e0);
     Vfs_Allocator->Free(Vfs_Allocator, hdr, hdr->sz + sizeof(*hdr));
 }
