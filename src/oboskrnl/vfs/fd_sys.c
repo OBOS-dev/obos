@@ -2168,7 +2168,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
         Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), OBOS_PROTECTION_READ_ONLY, true, &status);
     if (obos_is_error(status))
         return status;
-    if (!params->addr_length || params->addr_length > 32)
+    if (params->sock_addr && (!params->addr_length || params->addr_length > 32))
     {
         status = OBOS_STATUS_INVALID_ARGUMENT;
         goto fail1;
@@ -2179,16 +2179,20 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     if (obos_is_error(status))
         return status;
 
-    void* buf = Allocate(OBOS_KernelAllocator, params->addr_length, nullptr);
+    void* buf = params->addr_length ? Allocate(OBOS_KernelAllocator, params->addr_length, nullptr) : nullptr;
     sockaddr *addr = buf;
-    status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
-    if (obos_is_error(status))
-        goto fail3;
+    if (params->addr_length)
+    {
+        status = memcpy_usr_to_k(addr, params->sock_addr, params->addr_length);
+        if (obos_is_error(status))
+            goto fail3;
+    }
 
     status = Net_SendTo(fd->un.fd, kbuf, size, flags, addr, params->addr_length);
 
     OBOS_MAYBE_UNUSED fail3:
-    Free(OBOS_KernelAllocator, buf, params->addr_length);
+    if (params->addr_length)
+        Free(OBOS_KernelAllocator, buf, params->addr_length);
     OBOS_MAYBE_UNUSED fail2:
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
     OBOS_MAYBE_UNUSED fail1:
