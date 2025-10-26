@@ -311,7 +311,7 @@ obos_status Net_GetSockName(fd* socket, sockaddr* oaddr, size_t* addr_len)
         return OBOS_STATUS_INVALID_OPERATION;
     obos_status status = OBOS_STATUS_SUCCESS;
     struct sockaddr_in addr = {};
-    status = desc->ops->getpeername(desc, &addr);
+    status = desc->ops->getsockname(desc, &addr);
     memcpy(oaddr, &addr, OBOS_MIN(*addr_len, sizeof(struct sockaddr_in)));
     *addr_len = sizeof(struct sockaddr_in);
     return status;

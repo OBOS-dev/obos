@@ -2382,7 +2382,10 @@ obos_status Sys_SockName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     status = Net_GetSockName(fd->un.fd, addr, &addr_length);
 
     if (obos_is_success(status))
+    {
         memcpy_k_to_usr(actual_addr_length, &addr_length, sizeof(addr_length));
+        memcpy_k_to_usr(uaddr, buf, addr_length);
+    }
 
     OBOS_MAYBE_UNUSED fail1:
     Free(OBOS_KernelAllocator, buf, addr_length);
@@ -2411,7 +2414,10 @@ obos_status Sys_PeerName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     status = Net_GetPeerName(fd->un.fd, addr, &addr_length);
 
     if (obos_is_success(status))
+    {
         memcpy_k_to_usr(actual_addr_length, &addr_length, sizeof(addr_length));
+        memcpy_k_to_usr(uaddr, buf, addr_length);
+    }
 
     OBOS_MAYBE_UNUSED fail1:
     Free(OBOS_KernelAllocator, buf, addr_length);
