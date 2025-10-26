@@ -540,9 +540,9 @@ PacketProcessSignature(TCP, ip_header*)
         Core_EventSet(&current_connection->ack_sig, false);
     }
 
-    if (hdr->flags & TCP_PSH)
+    size_t data_sent = be16_to_host(ip_hdr->packet_length) - IPv4_GET_HEADER_LENGTH(ip_hdr) - ((hdr->data_offset >> 4) * 4);
+    if (hdr->flags & TCP_PSH || data_sent > 0)
     {
-        size_t data_sent = be16_to_host(ip_hdr->packet_length) - IPv4_GET_HEADER_LENGTH(ip_hdr) - ((hdr->data_offset >> 4) * 4);
         uint32_t nRead = OBOS_MIN(current_connection->recv_buffer.size - current_connection->recv_buffer.ptr, data_sent);
         void* recv_data = (void*)(((uintptr_t)hdr) + ((hdr->data_offset >> 4) * 4));
         memcpy(current_connection->recv_buffer.buf + current_connection->recv_buffer.ptr, recv_data, nRead);
