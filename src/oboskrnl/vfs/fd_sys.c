@@ -920,6 +920,8 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
     OBOSH_ReadUserString(uname, name, nullptr);
 
     dirent* parent = !dent ? Core_GetCurrentThread()->proc->cwd : dent->un.dirent->parent;
+    if (name[0] == '/')
+        parent = Vfs_Root;
     size_t index = strrfind(name, '/');
     char* dirname = name;
     if (index != SIZE_MAX)
