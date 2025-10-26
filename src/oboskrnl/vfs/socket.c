@@ -186,12 +186,22 @@ obos_status Net_Socket(int domain, int type, int protocol, fd* out)
 {
     if (!out)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    int flags = type & (SOCK_CLOEXEC|SOCK_NONBLOCK);
+    type &= ~(SOCK_CLOEXEC|SOCK_NONBLOCK);
+    obos_status status = OBOS_STATUS_UNIMPLEMENTED;
     switch (domain) {
         case AF_INET:
-            return inet_socket(type, protocol, out);
+            status = inet_socket(type, protocol, out);
         default: break;
     }
-    return OBOS_STATUS_UNIMPLEMENTED;
+    if (obos_is_success(status))
+    {
+        if (flags & SOCK_CLOEXEC)
+            out->flags |= FD_FLAGS_NOEXEC;
+        if (flags & SOCK_NONBLOCK)
+            out->flags |= FD_FLAGS_NOBLOCK;
+    }
+    return status;
 }
 
 obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags, fd* out)
