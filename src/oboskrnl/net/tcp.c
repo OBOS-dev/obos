@@ -540,7 +540,7 @@ PacketProcessSignature(TCP, ip_header*)
         Core_EventSet(&current_connection->ack_sig, false);
     }
 
-    if ((be32_to_host(hdr->seq) - resp.ack) > 0)
+    if (hdr->flags & TCP_PSH)
     {
         size_t data_sent = be16_to_host(ip_hdr->packet_length) - IPv4_GET_HEADER_LENGTH(ip_hdr) - ((hdr->data_offset >> 4) * 4);
         uint32_t nRead = OBOS_MIN(current_connection->recv_buffer.size - current_connection->recv_buffer.ptr, data_sent);
@@ -589,7 +589,7 @@ PacketProcessSignature(TCP, ip_header*)
     
     abort:
 
-    if (current_connection->state < TCP_STATE_CLOSED)
+    if (current_connection->state < TCP_STATE_CLOSED && hdr->flags != TCP_ACK)
         NetH_SendTCPSegment(nic, ent, ip_hdr->src_address, &resp);
 
     if (resp.flags == TCP_RST)
