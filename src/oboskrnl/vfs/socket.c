@@ -284,7 +284,9 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
             *(bool*)optval = desc->opts.hdrincl;
             *optlen = sizeof(bool);
             break;
-        default: return OBOS_STATUS_INVALID_ARGUMENT;
+        // TODO(oberrow): Support more SOCK opts, until then always say that we support it, even if we don't
+        // default: return OBOS_STATUS_INVALID_ARGUMENT;
+        default: return OBOS_STATUS_SUCCESS;
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -343,10 +345,15 @@ obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t 
         VfsH_IRPUnref(req);
         return status;
     }
-    if (((flags & MSG_DONTWAIT) || (socket->flags & FD_FLAGS_NOBLOCK)))
-        printf("ohwowanonblockingsockethownice\n");
-    if ((req->evnt || !req->evnt->hdr.signaled) && ((flags & MSG_DONTWAIT) || (socket->flags & FD_FLAGS_NOBLOCK)))
-        status = OBOS_STATUS_WOULD_BLOCK;
+    // if (((flags & MSG_DONTWAIT) || (socket->flags & FD_FLAGS_NOBLOCK)))
+    //     printf("ohwowanonblockingsockethownice\n");
+    if (socket->flags & FD_FLAGS_NOBLOCK)
+    {
+        if ((req->evnt && req->evnt->hdr.signaled) || !req->evnt)
+            status = VfsH_IRPWait(req);
+        else
+            status = OBOS_STATUS_TIMED_OUT;
+    }
     else
         status = VfsH_IRPWait(req);
     if (len_addr)
