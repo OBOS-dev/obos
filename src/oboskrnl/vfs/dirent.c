@@ -290,7 +290,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             if (curtype == FILE_TYPE_SYMBOLIC_LINK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
         }
-        if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new)
+        if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new && last != new)
             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
         last = new;
         Vfs_Free(token);
@@ -339,9 +339,9 @@ dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
     return lookup(path, root_par, false);
 }
 
-dirent* VfsH_DirentLookup(const char* path)
+dirent* VfsH_DirentLookupWD(const char* path, dirent* wd)
 {
-    dirent* begin = Core_GetCurrentThread()->proc->cwd;
+    dirent* begin = wd;
     if (!begin)
         begin = Vfs_Root;
     if (path[0] == 0)
@@ -351,6 +351,15 @@ dirent* VfsH_DirentLookup(const char* path)
     if (path[0] == '/')
         begin = Vfs_Root;
     return VfsH_DirentLookupFrom(path, begin);
+
+}
+
+dirent* VfsH_DirentLookup(const char* path)
+{
+    dirent* cwd = nullptr;
+    if (Core_GetCurrentThread() && Core_GetCurrentThread()->proc)
+        cwd = Core_GetCurrentThread()->proc->cwd;
+    return VfsH_DirentLookupWD(path, cwd);
 }
 
 dirent* VfsH_FollowLink(dirent* ent)
@@ -358,12 +367,13 @@ dirent* VfsH_FollowLink(dirent* ent)
     if (!ent)
         return nullptr;
     while (ent && ent->vnode->vtype == VNODE_TYPE_LNK)
-        ent = VfsH_DirentLookupFrom(ent->vnode->un.linked, ent->d_parent ? ent->d_parent : Vfs_Root);
+        ent = VfsH_DirentLookupWD(ent->vnode->un.linked, ent->d_parent ? ent->d_parent : Vfs_Root);
     return ent;
 }
 
 void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 {
+    OBOS_ENSURE(parent != child);
     if(!parent->d_children.head)
         parent->d_children.head = child;
     if (parent->d_children.tail)

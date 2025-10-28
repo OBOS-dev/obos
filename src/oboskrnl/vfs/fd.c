@@ -321,10 +321,8 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
                 size_t nToWrite = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
                 nToWrite = OBOS_MIN(nToWrite, nBytes-i);
                 memcpy(ent, (const void*)((uintptr_t)buf+i), nToWrite);
-                if (curr != (desc->vn->filesize & ~(OBOS_PAGE_SIZE-1)))
-                    pg->end_offset = pg->file_offset + OBOS_PAGE_SIZE;
-                else
-                    pg->end_offset = OBOS_MAX(pg->end_offset, offset + nBytes);
+                pg->end_offset = curr+nToWrite;
+                OBOS_ENSURE((pg->end_offset - pg->file_offset) <= OBOS_PAGE_SIZE);
                 curr += nToWrite;
                 i += nToWrite;
                 Mm_MarkAsDirtyPhys(pg);
@@ -555,13 +553,13 @@ obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out)
 obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
 {
     vnode* const vn = request->vn;
+    if (!request || !vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (vn->flags & VFLAGS_EVENT_DEV)
     {
         request->evnt = vn->un.evnt;
         return OBOS_STATUS_SUCCESS;
     }
-    if (!request || !vn)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     driver_header* driver = Vfs_GetVnodeDriver(vn);
     OBOS_ENSURE(driver);
     if (!vn->blkSize)

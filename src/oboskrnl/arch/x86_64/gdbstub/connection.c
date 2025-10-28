@@ -308,3 +308,131 @@ obos_status Kdbg_InitializeHandlers()
     initialized_handlers = true;
     return OBOS_STATUS_SUCCESS;
 }
+
+#include <syscall.h>
+#include <net/tables.h>
+#include <scheduler/sched_sys.h>
+#include <scheduler/schedule.h>
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+#include <mm/alloc.h>
+#include <mm/context.h>
+#include "gdb_udp_backend.h"
+
+static gdb_connection current_connection;
+static bool bound_gdb_stub = false;
+static bool started_gdb_stub = false;
+
+obos_status SysS_GDBStubBindInet(struct sockaddr_in* uaddr, int proto)
+{
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (bound_gdb_stub)
+        return OBOS_STATUS_IN_USE;
+
+    struct sockaddr_in addr = {};
+    obos_status status = memcpy_usr_to_k(&addr, uaddr, sizeof(addr));
+    if (obos_is_error(status))
+        return status;
+    
+    switch (proto) {
+        case IPPROTO_UDP:
+        {
+            net_tables* iface = nullptr;
+            status = NetH_GetLocalAddressInterface(&iface, addr.addr);
+            if (obos_is_error(status))
+                break;
+            status = Kdbg_ConnectionInitializeUDP(&current_connection, be16_to_host(addr.port), iface->interface);
+            if (obos_is_error(status))
+                break;
+            OBOS_Log("Bound GDB Stub to interface '" MAC_ADDRESS_FORMAT "', port %d\n", MAC_ADDRESS_ARGS(iface->mac), be16_to_host(addr.port));
+            break;
+        }
+        case IPPROTO_TCP:
+            OBOS_Warning("Cannot bind GDB Stub to TCP. Unimplemented.\n");
+            return OBOS_STATUS_UNIMPLEMENTED;
+        case IPPROTO_IP:
+        default:    
+            return OBOS_STATUS_INVALID_ARGUMENT;    
+    }
+    bound_gdb_stub = obos_is_success(status);
+    return status;
+}
+
+obos_status SysS_GDBStubBindDevice(handle desc)
+{
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (bound_gdb_stub)
+        return OBOS_STATUS_IN_USE;
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    if (!fd->un.fd || ~fd->un.fd->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_UNINITIALIZED;
+
+    driver_header* header = Vfs_GetVnodeDriver(fd->un.fd->vn);
+    if (!header)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    dev_desc new_desc = fd->un.fd->vn->desc;
+    if (header->ftable.reference_device)
+        status = header->ftable.reference_device(&new_desc);
+    if (obos_is_error(status))
+        return status;
+
+    status = Kdbg_ConnectionInitialize(&current_connection, &header->ftable, new_desc);
+    bound_gdb_stub = obos_is_success(status);
+
+    return status;
+}
+
+static thread gdb_thread = {};
+static event gdb_connected = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+
+static void gdb_defer_thread()
+{
+    Kdbg_Break();
+    Core_EventSet(&gdb_connected, false);
+    Core_ExitCurrentThread();
+}
+
+obos_status SysS_GDBStubStart()
+{
+    if (Sys_GetUid() != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (!bound_gdb_stub)
+        return OBOS_STATUS_UNINITIALIZED;
+    if (started_gdb_stub)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+
+    current_connection.connection_active = true;
+    Kdbg_CurrentConnection = &current_connection;
+    Kdbg_InitializeHandlers();
+
+    thread_ctx ctx = {};
+    const size_t stackSize = 0x4000;
+    void* stackBase = Mm_VirtualMemoryAlloc(
+        &Mm_KernelContext, 
+        nullptr, stackSize, 
+        0, VMA_FLAGS_KERNEL_STACK, 
+        nullptr, 
+        nullptr
+    );
+
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)gdb_defer_thread, 0, false, stackBase, stackSize);
+    
+    CoreH_ThreadInitialize(&gdb_thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, &gdb_thread);
+    CoreH_ThreadReady(&gdb_thread);
+    Core_WaitOnObject(WAITABLE_OBJECT(gdb_connected));
+    
+    return OBOS_STATUS_SUCCESS;
+}

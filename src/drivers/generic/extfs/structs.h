@@ -195,7 +195,7 @@ typedef struct ext_inode {
     uint32_t dir_acl; // revision one, contains the top 32-bits of the file size for regular files
     uint32_t fragment;
     uint8_t os2[12];
-} OBOS_PACK ext_inode;
+} OBOS_ALIGN(1) ext_inode;
 
 enum {
     EXT2_FT_UNKNOWN = 0,

@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 [BITS 64]
+[DEFAULT ABS]
 
 global Arch_FindCounter:function hidden
 extern Arch_LAPICAddress

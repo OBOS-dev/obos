@@ -215,7 +215,7 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 	return 1;
 }
 
-OBOS_NO_UBSAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
+OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
 {
 	basic_allocator* This = (basic_allocator*)This_;
 

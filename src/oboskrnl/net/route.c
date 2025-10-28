@@ -350,6 +350,40 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
         return OBOS_STATUS_NO_ROUTE_TO_HOST;
 }
 
+static obos_status interface_has_address(net_tables* interface, ip_addr addr, ip_table_entry** oent)
+{
+    Core_PushlockAcquire(&interface->table_lock, true);
+    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &interface->table); ent; )
+    {
+        if (ent->address.addr == addr.addr)
+        {
+            if (oent)
+                *oent = ent;
+            Core_PushlockRelease(&interface->table_lock, true);
+            return OBOS_STATUS_SUCCESS;
+        }
+        ent = LIST_GET_NEXT(ip_table, &interface->table, ent);
+    }
+    Core_PushlockRelease(&interface->table_lock, true);
+    return OBOS_STATUS_ADDRESS_NOT_AVAILABLE;
+}
+obos_status NetH_GetLocalAddressInterface(net_tables** out_interface, ip_addr src)
+{
+    for (net_tables* interface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); interface; )
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        status = interface_has_address(interface, src, nullptr);
+        if (obos_is_error(status))
+        {
+            interface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, interface);
+            continue;
+        }
+        *out_interface = interface;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_ADDRESS_NOT_AVAILABLE;
+}
+
 network_interface_list Net_Interfaces;
 
 LIST_GENERATE(gateway_list, gateway, node);

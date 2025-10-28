@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 bits 64
+[DEFAULT ABS]
 
 section .data
 global Arch_KernelCR3:data hidden

@@ -22,7 +22,7 @@ list (APPEND oboskrnl_sources
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
 	"net/icmp.c" "net/tcp.c" "vfs/socket.c" "net/lo.c"
-	"kinit.c"
+	"kinit.c" "vfs/local_socket.c"
 )
 
 add_executable(oboskrnl)
@@ -42,6 +42,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error=address>
 )
 
 if (OBOS_ENABLE_PROFILER)

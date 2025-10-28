@@ -16,7 +16,7 @@
 
 // obos_status VfsH_CreateNodeP(const char* parent, const char* name, uint32_t vtype, file_perm mode);
 #define VfsH_CreateNodeP(parent, name, vtype, mode) ({\
-    struct dirent* _parent = VfsH_DirentLookup(parent);\
+    struct dirent*_parent = VfsH_DirentLookup(parent);\
     obos_status _status = OBOS_STATUS_SUCCESS;\
     if (!(_parent))\
         _status = (OBOS_STATUS_NOT_FOUND);\

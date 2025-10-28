@@ -587,7 +587,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 dent = VfsH_DirentLookupFrom(path, ent->un.dirent->parent);
             }
-//          printf("trying stat of %s\n", path);
+            // printf("trying stat of %s\n", path);
             Free(OBOS_KernelAllocator, path, sz_path);
             if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
                 dent = VfsH_FollowLink(dent);
@@ -1708,7 +1708,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             size_t last_slash = strrfind(link, '/');
             char ch = link[last_slash];
             link[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(link, parent);
+            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_Root : parent);
             link[last_slash] = ch;
             link_name = link+last_slash+1;
         }
@@ -1723,7 +1723,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             size_t last_slash = strrfind(link, '/');
             char ch = link[last_slash];
             link[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(link, parent);
+            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_Root : parent);
             link[last_slash] = ch;
             link_name = link+last_slash+1;
         }
@@ -1913,7 +1913,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         Free(OBOS_KernelAllocator, link, sz_path2);
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
-
+    
     // Now for the magic..?
     if (!target_header->ftable.hardlink_file)
         // "EPERM - The filesystem containing oldpath and newpath does not support the creation of hard links."
@@ -1929,6 +1929,9 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     }
 
     Free(OBOS_KernelAllocator, link, sz_path2);
+
+    // NOTE: DO NOT COMMIT!!!!
+    return OBOS_STATUS_SUCCESS;
 
     return status;
 }

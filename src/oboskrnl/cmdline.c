@@ -24,7 +24,6 @@ OBOS_PAGEABLE_VARIABLE size_t OBOS_InitArgumentsCount;
 static const char* const help_message =
 "OBOSKRNL usage:\n"
 "NOTE: Any amount of dashes ('-') can be used at the beginning of the option or flag.\n"
-"--enable-kdbg: Enables the kernel debugger at boot. Not supported by all architectures.\n"
 "--initrd-module=name: The name or path of the initrd module.\n"
 "--initrd-driver-module=name: The name or path of the initrd driver module.\n"
 "--load-modules=name[,name]: If an initrd driver is specified, then 'name' is an absolute path\n"

@@ -1057,8 +1057,13 @@ void tcp_free(socket_desc* socket)
     Vfs_Free(socket);
 }
 
-obos_status tcp_accept(socket_desc* socket, struct sockaddr_in* addr, int flags, socket_desc** out)
+obos_status tcp_accept(socket_desc* socket, struct sockaddr* saddr, size_t *addr_len, int flags, socket_desc** out)
 {
+    if (*addr_len < sizeof(struct sockaddr_in))
+    {
+        *addr_len = sizeof(struct sockaddr_in);
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    }
     OBOS_UNUSED(flags);
     if (!socket->protocol_data)
         return OBOS_STATUS_UNINITIALIZED;
@@ -1094,8 +1099,10 @@ obos_status tcp_accept(socket_desc* socket, struct sockaddr_in* addr, int flags,
     new->is_server = false;
     new->connection = con;
     new->connection->recv_buffer.closed = false;
+    struct sockaddr_in* addr = (void*)saddr;
     if (addr)
     {
+        *addr_len = sizeof(struct sockaddr_in);
         memcpy(&addr->addr, &con->src.addr, sizeof(ip_addr));
         addr->port = host_to_be16(con->src.port);
         addr->family = AF_INET;
@@ -1171,8 +1178,11 @@ void internal_listen_thread(void* udata)
     Core_ExitCurrentThread();
 }
 
-obos_status tcp_bind(socket_desc* socket, struct sockaddr_in* addr)
+obos_status tcp_bind(socket_desc* socket, struct sockaddr* saddr, size_t addr_len)
 {
+    struct sockaddr_in* addr = (void*)saddr;
+    if (addr_len < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     uint16_t port = be16_to_host(addr->port);
     if (!port)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -1292,8 +1302,11 @@ static obos_status get_src_port(vnode* nic, ip_table_entry* ent, ip_addr dest, u
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status tcp_connect(socket_desc* socket, struct sockaddr_in* addr)
+obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
+    struct sockaddr_in* addr = (struct sockaddr_in*)saddr;
+    if (addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_ALREADY_INITIALIZED;
     net_tables* iface = nullptr;
@@ -1370,8 +1383,12 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr_in* addr)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status tcp_getpeername(socket_desc* socket, struct sockaddr_in* addr)
+obos_status tcp_getpeername(socket_desc* socket, struct sockaddr* saddr, size_t* addrlen)
 {
+    struct sockaddr_in* addr = (struct sockaddr_in*)saddr;
+    if (*addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *addrlen = sizeof(*addr);
     if (!socket->protocol_data)
         return OBOS_STATUS_UNINITIALIZED;
     tcp_socket* s = socket->protocol_data;
@@ -1394,8 +1411,12 @@ obos_status tcp_getpeername(socket_desc* socket, struct sockaddr_in* addr)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status tcp_getsockname(socket_desc* socket, struct sockaddr_in* addr)
+obos_status tcp_getsockname(socket_desc* socket, struct sockaddr* saddr, size_t* addrlen)
 {
+    struct sockaddr_in* addr = (struct sockaddr_in*)saddr;
+    if (*addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    *addrlen = sizeof(*addr);
     if (!socket->protocol_data)
         return OBOS_STATUS_UNINITIALIZED;
     tcp_socket* s = socket->protocol_data;
@@ -1635,7 +1656,8 @@ obos_status tcp_sockatmark(socket_desc* desc)
 }
 
 socket_ops Net_TCPSocketBackend = {
-    .protocol = IPPROTO_TCP,
+    .proto_type.protocol = IPPROTO_TCP,
+    .domain = AF_INET,
     .create = tcp_create,
 	.free = tcp_free,
 	.accept = tcp_accept,

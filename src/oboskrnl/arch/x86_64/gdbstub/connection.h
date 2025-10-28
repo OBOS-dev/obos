@@ -8,6 +8,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <handle.h>
 
 #include <scheduler/thread.h>
 #include <scheduler/thread_context_info.h>
@@ -15,6 +16,8 @@
 #include <driver_interface/header.h>
 
 #include <arch/x86_64/gdbstub/breakpoint.h>
+
+#include <vfs/socket.h>
 
 typedef struct gdb_connection
 {
@@ -68,3 +71,7 @@ obos_status Kdbg_ConnectionSetAck(gdb_connection* conn, bool ack);
 char* KdbgH_FormatResponse(const char* format, ...);
 // size needs to be the exact size of the output, or bad things will happen.
 char* KdbgH_FormatResponseSized(size_t size, const char* format, ...);
+
+obos_status SysS_GDBStubBindInet(struct sockaddr_in* addr, int proto);
+obos_status SysS_GDBStubBindDevice(handle devfd);
+obos_status SysS_GDBStubStart();

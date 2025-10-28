@@ -3,6 +3,7 @@
 ; Copyright (c) 2024 Omar Berrow
 
 [BITS 64]
+[DEFAULT ABS]
 
 ; obos_status CoreS_SetupThreadContext(thread_ctx* ctx, uintptr_t entry, uintptr_t arg1, bool makeUserMode, void* stackBase, size_t stackSize);
 ; OBOS_NORETURN void CoreS_SwitchToThreadContext(const thread_ctx* ctx);

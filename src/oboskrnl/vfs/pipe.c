@@ -46,6 +46,7 @@ static obos_status pipe_write(pipe_desc* stream, const void* buffer, size_t sz, 
     memcpy(out_ptr, buffer, sz);
     stream->ptr += sz;
     Core_EventSet(&stream->data_evnt, false);
+    Core_EventClear(&stream->empty_evnt);
     if (bytes_written)
         *bytes_written = sz;
     return OBOS_STATUS_SUCCESS;
@@ -105,7 +106,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
             break;
         }
     }
-    if (has_write_fd && pipe->empty_evnt.hdr.signaled)
+    if (!has_write_fd && pipe->empty_evnt.hdr.signaled)
     {
         OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
         if (nBlkRead)
@@ -211,9 +212,9 @@ static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
             pipe->buf = Vfs_Realloc(pipe->buf, *sargp);
             pipe->size = *sargp;
             // TODO: Properly change this?
-            if (pipe->ptr > pipe->size)
+            if ((uintptr_t)pipe->ptr > pipe->size)
                 pipe->ptr = 0;
-            if (pipe->in_ptr > pipe->size)
+            if ((uintptr_t)pipe->in_ptr > pipe->size)
                 pipe->in_ptr = 0;
             Core_EventClear(&pipe->data_evnt);
             Core_EventSet(&pipe->empty_evnt, false);

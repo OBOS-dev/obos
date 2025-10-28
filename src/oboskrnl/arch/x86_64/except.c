@@ -69,6 +69,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
             case OBOS_STATUS_SUCCESS:
                 CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
                 OBOS_ASSERT(frame->rsp != 0);
+                cli();
                 return;
             case OBOS_STATUS_UNHANDLED:
                 break;
@@ -86,7 +87,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         Core_LowerIrqlNoThread(IRQL_PASSIVE);
         Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
         Kdbg_CallDebugExceptionHandler(frame, true);
-        (void)Core_RaiseIrqlNoThread(oldIrql);
+        irql discardedlol = Core_RaiseIrqlNoThread(oldIrql);
+        (void)discardedlol;
         asm("cli");
     }
     if (frame->cs & 3)
@@ -169,7 +171,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN OBOS_NO_KASA
             Core_LowerIrqlNoThread(IRQL_PASSIVE);
             Kdbg_NotifyGDB(Kdbg_CurrentConnection, 11 /* SIGSEGV */);
             Kdbg_CallDebugExceptionHandler(frame, true);
-            (void)Core_RaiseIrqlNoThread(oldIrql);
+            irql discardedlol = Core_RaiseIrqlNoThread(oldIrql);
+            (void)discardedlol;
             asm("cli");
         }
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGSEGV);
@@ -249,7 +252,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_FP
             Core_LowerIrqlNoThread(IRQL_PASSIVE);
             Kdbg_NotifyGDB(Kdbg_CurrentConnection, SIGFPE);
             Kdbg_CallDebugExceptionHandler(frame, true);
-            (void)Core_RaiseIrqlNoThread(oldIrql);
+            irql discardedlol = Core_RaiseIrqlNoThread(oldIrql);
+            (void)discardedlol;
             asm("cli");
         }
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGFPE);

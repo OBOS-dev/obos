@@ -159,6 +159,7 @@ extern network_interface_list Net_Interfaces;
 obos_status Net_Initialize(vnode* nic);
 obos_status NetH_SendEthernetPacket(vnode *nic, shared_ptr* data);
 obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_entry, uint8_t *ttl, ip_addr destination);
+obos_status NetH_GetLocalAddressInterface(net_tables** interface, ip_addr src);
 
 OBOS_EXPORT obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp);
 OBOS_EXPORT obos_status Net_InterfaceIoctlArgpSize(uint32_t request, size_t* argp_sz);

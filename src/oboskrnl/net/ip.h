@@ -40,6 +40,23 @@ typedef union ip_addr {
 } OBOS_PACK ip_addr;
 #define IP_ADDRESS_FORMAT "%d.%d.%d.%d"
 #define IP_ADDRESS_ARGS(addr) addr.comp1,addr.comp2,addr.comp3,addr.comp4
+#define IP_ADDRESS_SET_COMPONENT(addr, comp_idx, val) \
+do {\
+    if ((comp_idx) == 0) (addr)->comp1 = (val);\
+    else if ((comp_idx) == 1) (addr)->comp2 = (val);\
+    else if ((comp_idx) == 2) (addr)->comp3 = (val);\
+    else if ((comp_idx) == 3) (addr)->comp4 = (val);\
+} while(0);
+#define IP_ADDRESS_GET_COMPONENT(addr, comp_idx) \
+({\
+    uint8_t _val = 0;\
+    if ((comp_idx) == 0) _val = (addr)->comp1;\
+    else if ((comp_idx) == 1) _val = (addr)->comp2;\
+    else if ((comp_idx) == 2) _val = (addr)->comp3;\
+    else if ((comp_idx) == 3) _val = (addr)->comp4;\
+    (_val);\
+})
+
 
 #define IPv4_GET_HEADER_LENGTH(hdr) (((hdr)->version_hdrlen & 0x0f) * 4)
 #define IPv4_GET_HEADER_VERSION(hdr) (((hdr)->version_hdrlen & 0xf0) >> 4)

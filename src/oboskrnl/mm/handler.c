@@ -220,8 +220,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             handled = false;
         if (curr_type > type && handled)
             type = curr_type;
-        if (type == INVALID_FAULT)
-            handled = true;
+        // if (type == INVALID_FAULT)
+        //     handled = true;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
     if (!handled && pg->cow_type)

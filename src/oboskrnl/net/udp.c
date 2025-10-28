@@ -220,23 +220,6 @@ static obos_status bind_interface(uint16_t port, net_tables* interface, udp_port
     *out = bport;
     return OBOS_STATUS_SUCCESS;
 }
-static obos_status interface_has_address(net_tables* interface, ip_addr addr, ip_table_entry** oent)
-{
-    Core_PushlockAcquire(&interface->table_lock, true);
-    for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &interface->table); ent; )
-    {
-        if (ent->address.addr == addr.addr)
-        {
-            if (oent)
-                *oent = ent;
-            Core_PushlockRelease(&interface->table_lock, true);
-            return OBOS_STATUS_SUCCESS;
-        }
-        ent = LIST_GET_NEXT(ip_table, &interface->table, ent);
-    }
-    Core_PushlockRelease(&interface->table_lock, true);
-    return OBOS_STATUS_ADDRESS_NOT_AVAILABLE;
-}
 
 static void internal_read_thread(void* userdata)
 {
@@ -273,8 +256,11 @@ static void internal_read_thread(void* userdata)
     Core_ExitCurrentThread();
 }
 
-obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
+obos_status udp_bind(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
+    struct sockaddr_in* addr = (void*)saddr;
+    if (addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_INVALID_ARGUMENT;
     uint16_t port = be16_to_host(addr->port);
@@ -306,26 +292,25 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
     {
         ports->nPorts = 1;
         ports->ports = Vfs_Calloc(ports->nPorts, sizeof(udp_port*));
-        for (net_tables* interface = LIST_GET_HEAD(network_interface_list, &Net_Interfaces); interface; )
+        
+        net_tables* interface = nullptr;
+        obos_status status = NetH_GetLocalAddressInterface(&interface, addr->addr);
+        if (obos_is_error(status))
         {
-            obos_status status = OBOS_STATUS_SUCCESS;
-            status = interface_has_address(interface, addr->addr, nullptr);
-            if (obos_is_error(status))
-            {
-                interface = LIST_GET_NEXT(network_interface_list, &Net_Interfaces, interface);
-                continue;
-            }
-
-            status = bind_interface(port, interface, &ports->ports[0]);
-            if (obos_is_error(status))
-            {
-                Vfs_Free(ports->ports);
-                Vfs_Free(ports);
-                return status;
-            }
-            ports->read_event = &ports->ports[0]->recv_event;
-            break;
+            Vfs_Free(ports->ports);
+            Vfs_Free(ports);
+            return status;
         }
+
+        status = bind_interface(port, interface, &ports->ports[0]);
+        if (obos_is_error(status))
+        {
+            Vfs_Free(ports->ports);
+            Vfs_Free(ports);
+            return status;
+        }
+        ports->read_event = &ports->ports[0]->recv_event;
+        
         if (!ports->ports[0])
         {
             Vfs_Free(ports->ports);
@@ -357,8 +342,11 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr_in* addr)
 
 uintptr_t mt_random();
 
-obos_status udp_connect(socket_desc* socket, struct sockaddr_in* addr)
+obos_status udp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
+    struct sockaddr_in* addr = (void*)saddr;
+    if (addrlen < sizeof(*addr))
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
@@ -404,7 +392,7 @@ obos_status udp_irp_write(irp *req)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!ports && req->socket_data)
     {
-        obos_status status = udp_connect(socket, req->socket_data);
+        obos_status status = udp_connect(socket, req->socket_data, sizeof(struct sockaddr_in));
         if (obos_is_error(status))
             return status;
         ports = socket->protocol_data;
@@ -560,7 +548,8 @@ obos_status udp_shutdown(socket_desc* desc, int how)
 }
 
 struct socket_ops Net_UDPSocketBackend = {
-    .protocol = IPPROTO_UDP,
+    .proto_type.protocol = IPPROTO_UDP,
+    .domain = AF_INET,
     .create = udp_create,
 	.free = udp_free,
 	.accept = nullptr,

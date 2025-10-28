@@ -44,6 +44,7 @@ OBOS_EXPORT void VfsH_DirentRemoveChild(dirent* parent, dirent* what);
 // the lookup
 OBOS_EXPORT dirent* VfsH_DirentLookup(const char* path);
 OBOS_EXPORT dirent* VfsH_DirentLookupFrom(const char* path, dirent* root);
+OBOS_EXPORT dirent* VfsH_DirentLookupWD(const char* path, dirent* wd);
 OBOS_EXPORT dirent* VfsH_DirentLookupFromCacheOnly(const char* path, dirent* root);
 dirent* VfsH_FollowLink(dirent* ent);
 

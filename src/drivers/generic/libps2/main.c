@@ -105,6 +105,21 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     return st;
 }
 
+obos_status ioctl_argp_size(uint32_t request, size_t* res)
+{
+    obos_status st = OBOS_STATUS_SUCCESS;
+    switch (request)
+    {
+        case 1:
+            *res = sizeof(size_t);
+            break;
+        default:
+            st = OBOS_STATUS_INVALID_IOCTL;
+            break;
+    }
+    return st;
+}
+
 static void cleanup_port_vn(ps2_port* port)
 {
     Vfs_UnlinkNode(port->ent);
@@ -171,6 +186,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .ftable = {
         .driver_cleanup_callback = cleanup,
         .ioctl = ioctl,
+        .ioctl_argp_size = ioctl_argp_size,
         .get_blk_size = get_blk_size,
         .get_max_blk_count = get_max_blk_count,
         .query_user_readable_name = query_user_readable_name,

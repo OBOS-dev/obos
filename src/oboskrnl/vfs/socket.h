@@ -26,6 +26,11 @@ struct sockaddr_in {
 	ip_addr addr;
 	uint8_t sin_zero[8];
 };
+struct sockaddr_un {
+	unsigned short sun_family;
+	char sun_path[108];
+};
+
 
 #define IPPROTO_IP  0
 #define IPPROTO_TCP 6
@@ -38,6 +43,7 @@ struct sockaddr_in {
 #define SOCK_DGRAM  2
 #define SOCK_RAW    3
 
+#define AF_UNIX 1
 #define AF_INET 2
 
 #define SHUT_RD 0
@@ -93,6 +99,7 @@ typedef struct socket_desc {
     vnode* vn;
     int protocol;
     void* protocol_data;
+    void* local_ent;
 	struct socket_ops* ops;
     size_t refs;
 	struct {
@@ -102,14 +109,18 @@ typedef struct socket_desc {
 } socket_desc;
 
 typedef struct socket_ops {
-	int protocol;
+	int domain;
+	union {
+		int protocol;
+		int type;
+	} proto_type;
 	socket_desc*(*create)();
 	void(*free)(socket_desc* socket);
-	obos_status(*accept)(socket_desc* socket, struct sockaddr_in* addr, int flags, socket_desc** out);
-	obos_status(*bind)(socket_desc* socket, struct sockaddr_in* addr /* length is checked in the higher-level socket functions */);
-	obos_status(*connect)(socket_desc* socket, struct sockaddr_in* addr);
-	obos_status(*getpeername)(socket_desc* socket, struct sockaddr_in* addr);
-	obos_status(*getsockname)(socket_desc* socket, struct sockaddr_in* addr);
+	obos_status(*accept)(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, socket_desc** out);
+	obos_status(*bind)(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
+	obos_status(*connect)(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
+	obos_status(*getpeername)(socket_desc* socket, struct sockaddr* addr, size_t *addrlen);
+	obos_status(*getsockname)(socket_desc* socket, struct sockaddr* addr, size_t *addrlen);
 	obos_status(*listen)(socket_desc* socket, int backlog);
 	obos_status(*submit_irp)(irp* req);
 	obos_status(*finalize_irp)(irp* req);

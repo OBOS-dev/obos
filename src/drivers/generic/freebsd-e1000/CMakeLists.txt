@@ -14,6 +14,7 @@ target_compile_options(e1000
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-sanitize=kernel-address>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error>
 )
 
 set_property(TARGET e1000 PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
