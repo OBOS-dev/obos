@@ -126,7 +126,7 @@ PacketProcessSignature(ICMPv4, ip_header*)
                     if (current_connection->icmp_header_ptr)
                         OBOS_SharedPtrUnref(current_connection->icmp_header_ptr);
                     current_connection->icmp_header_ptr = OBOS_SharedPtrCopy(buf);
-                    Core_EventSet(&current_connection->sig, false);
+                    Core_EventSet(&current_connection->inbound_sig, false);
                     break;
                 }
                 default: break;

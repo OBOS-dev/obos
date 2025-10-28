@@ -339,7 +339,6 @@ static void rx_dpc(dpc* d, void* udata)
                 continue;
             length = desc->wb.upper.length;
             desc->wb.upper.status_error = 0;
-            memzero(desc, sizeof(*desc));
             desc->read.buffer_addr = dev->rx_ring_buffers[i];
         }
         else
@@ -356,6 +355,7 @@ static void rx_dpc(dpc* d, void* udata)
         frame->refs = dev->refs;
         memcpy(frame->buff, MmS_MapVirtFromPhys(dev->rx_ring_buffers[i]), length);
         LIST_APPEND(e1000_frame_list, &dev->rx_frames, frame);
+        E1000_WRITE_REG(&dev->hw, E1000_RDT(0), i);
     }
     Core_EventSet(&dev->rx_evnt, false);
 }

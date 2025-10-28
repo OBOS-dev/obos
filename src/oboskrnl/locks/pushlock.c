@@ -60,7 +60,7 @@ obos_status Core_PushlockRelease(pushlock* lock, bool reader)
         return OBOS_STATUS_SUCCESS;
     }
     lock->currWriter = nullptr;
-    return lock->nWaitingReaders ? OBOS_STATUS_SUCCESS : CoreH_SignalWaitingThreads(&lock->hdr, false, true);
+    return CoreH_SignalWaitingThreads(&lock->hdr, false, true);
 }
 size_t Core_PushlockGetReaderCount(pushlock* lock)
 {

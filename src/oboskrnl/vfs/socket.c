@@ -343,7 +343,12 @@ obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t 
         VfsH_IRPUnref(req);
         return status;
     }
-    status = VfsH_IRPWait(req);
+    if (((flags & MSG_DONTWAIT) || (socket->flags & FD_FLAGS_NOBLOCK)))
+        printf("ohwowanonblockingsockethownice\n");
+    if ((req->evnt || !req->evnt->hdr.signaled) && ((flags & MSG_DONTWAIT) || (socket->flags & FD_FLAGS_NOBLOCK)))
+        status = OBOS_STATUS_WOULD_BLOCK;
+    else
+        status = VfsH_IRPWait(req);
     if (len_addr)
         *len_addr = sizeof(struct sockaddr_in);
     if (nRead)

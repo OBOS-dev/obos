@@ -339,7 +339,8 @@ void irp_on_event_set(irp* req)
         req->drvData = (void*)(uintptr_t)req->drvData + nToRead;
         tty->input_buffer.in_ptr += nToRead;
     }
-    if (nToRead < req->blkCount && ~tty->termios.lflag & ICANON)
+    size_t const vmin = tty->termios.cc[VMIN];
+    if (nToRead < OBOS_MIN(vmin, req->blkCount) && ~tty->termios.lflag & ICANON)
         req->status = OBOS_STATUS_IRP_RETRY;
     else
         req->status = OBOS_STATUS_SUCCESS;
