@@ -118,7 +118,7 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     hdr->chksum = tcp_chksum(&ip_psuedo_header, sizeof(ip_psuedo_header), hdr, sz);
     hdr->chksum = be16_to_host(hdr->chksum);
     
-    printf("tcp tx segment: hdr->flags=0x%x, hdr->ack=0x%x, hdr->seq=0x%x\n", hdr->flags, be32_to_host(hdr->ack), be32_to_host(hdr->seq));
+    // printf("tcp tx segment: hdr->flags=0x%x, hdr->ack=0x%x, hdr->seq=0x%x\n", hdr->flags, be32_to_host(hdr->ack), be32_to_host(hdr->seq));
 
     // NOTE: Keep the list locked until we append the unacked segment
     // since if we get an ACK immediately (this includes if we get preempted!),
@@ -472,11 +472,11 @@ PacketProcessSignature(TCP, ip_header*)
         {
             // This is UNACCEPTABLE!
             // (pun intended)
-            printf("received unacceptable segment! discarding\n");
-            printf("NOTE: PCKT.SEQ=%d, PCKT.ACK=%d, RCV.NXT=%d, RCV.WND=%d, PCKT.LEN=%D\n", 
-                be32_to_host(hdr->seq)-con->state.rcv.irs, be32_to_host(hdr->ack)-con->state.snd.iss,
-                con->state.rcv.nxt, con->state.rcv.wnd, segment_length
-            );
+            // printf("received unacceptable segment! discarding\n");
+            // printf("NOTE: PCKT.SEQ=%d, PCKT.ACK=%d, RCV.NXT=%d, RCV.WND=%d, PCKT.LEN=%d\n", 
+            //     be32_to_host(hdr->seq)-con->state.rcv.irs, be32_to_host(hdr->ack)-con->state.snd.iss,
+            //     con->state.rcv.nxt, con->state.rcv.wnd, segment_length
+            // );
             if (hdr->flags & TCP_RST)
                 ExitPacketHandler();
             struct tcp_pseudo_hdr resp = {};
@@ -634,8 +634,8 @@ PacketProcessSignature(TCP, ip_header*)
                     size_t nPushed = 0;
                     Net_TCPPushReceivedData(con, segment_data, segment_length, &nPushed);
                     con->state.rcv.nxt += nPushed;
-                    printf("TCP window (%d, %d) receive window %d->%d\n", con->dest.port, con->src.port, con->state.rcv.wnd, con->state.rcv.wnd-nPushed);
-                    printf("TCP: Expecting SEQ=%d next (current SEQ=%d)\n", con->state.rcv.nxt-con->state.rcv.irs, be32_to_host(hdr->seq) - con->state.rcv.irs);
+                    // printf("TCP window (%d, %d) receive window %d->%d\n", con->dest.port, con->src.port, con->state.rcv.wnd, con->state.rcv.wnd-nPushed);
+                    // printf("TCP: Expecting SEQ=%d next (current SEQ=%d)\n", con->state.rcv.nxt-con->state.rcv.irs, be32_to_host(hdr->seq) - con->state.rcv.irs);
                     con->state.rcv.wnd -= nPushed;
                     struct tcp_pseudo_hdr resp = {};
                     resp.src_port = be16_to_host(hdr->dest_port);
@@ -757,7 +757,7 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
 {
     if (state > TCP_STATE_CLOSED || state < TCP_STATE_INVALID)
         return;
-    printf("TCP: Changing from %s to %s\n", con->state.state[state_strs], state[state_strs]);
+    // printf("TCP: Changing from %s to %s\n", con->state.state[state_strs], state[state_strs]);
     con->state.state = state;
     Core_EventPulse(&con->state.state_change_event, false);
     if (state == TCP_STATE_ESTABLISHED)
@@ -797,7 +797,7 @@ bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack)
             nBytesACKed -= seg->nBytesUnACKed;
             con->state.snd.una += seg->nBytesUnACKed;
             seg->nBytesUnACKed = 0;
-            printf("remote acked packet flags=0x%x remote acked 0x%p seg.seq=0x%p\n", seg->segment.flags, ack - con->state.snd.iss, seg->segment.seq - con->state.snd.iss);
+            // printf("remote acked packet flags=0x%x remote acked 0x%p seg.seq=0x%p\n", seg->segment.flags, ack - con->state.snd.iss, seg->segment.seq - con->state.snd.iss);
         }
         else
         {
@@ -1453,8 +1453,8 @@ static void irp_on_event_set(irp* req)
     if (req->dryOp)
         return;
 
-    if (req->socket_flags)
-        printf("TCP: Possibly unrecognized recv() flags. Got 0x%p\n", req->socket_flags);
+    // if (req->socket_flags)
+    //     printf("TCP: Possibly unrecognized recv() flags. Got 0x%p\n", req->socket_flags);
 
     Core_MutexAcquire(&s->connection->recv_buffer.lock);
 
@@ -1463,8 +1463,8 @@ static void irp_on_event_set(irp* req)
     if (~req->socket_flags & MSG_PEEK)
     {
         s->connection->recv_buffer.in_ptr += read_size;
-        printf("TCP: Read %d bytes\n", read_size);
-        printf("TCP window (%d, %d) receive window %d->%d\n", s->connection->dest.port, s->connection->src.port, s->connection->state.rcv.wnd, s->connection->state.rcv.wnd+read_size);
+        // printf("TCP: Read %d bytes\n", read_size);
+        // printf("TCP window (%d, %d) receive window %d->%d\n", s->connection->dest.port, s->connection->src.port, s->connection->state.rcv.wnd, s->connection->state.rcv.wnd+read_size);
         s->connection->state.rcv.wnd += read_size;
         OBOS_ENSURE(s->connection->recv_buffer.in_ptr <= s->connection->recv_buffer.ptr);
         if (s->connection->recv_buffer.in_ptr == s->connection->recv_buffer.ptr)
