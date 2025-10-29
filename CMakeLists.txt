@@ -184,7 +184,6 @@ if (OBOS_ENABLE_UHDA)
 else()
 	set (OBOS_ENABLE_UHDA "0")
 endif()
-add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
 add_compile_definitions(OBOS_ENABLE_UHDA=${OBOS_ENABLE_UHDA})
 add_compile_definitions(OBOS_IRQL_COUNT=${OBOS_IRQL_COUNT})
 
@@ -256,6 +255,7 @@ if (OBOS_ENABLE_KASAN)
 else()
 	set (OBOS_ENABLE_KASAN "0")
 endif()
+add_compile_definitions(OBOS_KASAN_ENABLED=${OBOS_ENABLE_KASAN})
 
 # Include the kernel
 add_subdirectory("src/oboskrnl")
