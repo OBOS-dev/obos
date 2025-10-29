@@ -79,7 +79,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;
     desc->flags |= FD_FLAGS_WRITE;
-    if (desc->vn->owner_uid == Core_GetCurrentThread()->proc->currentUID)
+    if (desc->vn->owner_uid == Core_GetCurrentThread()->proc->currentUID || Core_GetCurrentThread()->proc->currentUID == 0)
     {
         // We have owner perms.
         struct vnode* const vn = desc->vn;

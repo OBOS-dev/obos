@@ -69,6 +69,7 @@ void OBOS_LoadInit()
     new->ctx = new_ctx;
     new_ctx->owner = new;
     new_ctx->workingSet.capacity = 64*1024*1024;
+    new->umask = 0022;
     Core_ProcessStart(new, nullptr);
     new->exec_file = VfsH_DirentPath(VfsH_DirentLookup(init_path), nullptr);
 

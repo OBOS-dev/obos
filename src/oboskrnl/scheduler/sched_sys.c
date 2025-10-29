@@ -463,6 +463,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                len_cmdline = strlen(Core_GetCurrentThread()->proc->cmdline);
         new->exec_file = memcpy(Allocate(OBOS_KernelAllocator, len_exec_file+1, nullptr), Core_GetCurrentThread()->proc->exec_file, len_exec_file+1);
         new->cmdline = memcpy(Allocate(OBOS_KernelAllocator, len_cmdline+1, nullptr), Core_GetCurrentThread()->proc->cmdline, len_cmdline+1);
+        new->umask = Core_GetCurrentThread()->proc->umask;
     }
 
     // If this fails then it's game over
