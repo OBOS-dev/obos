@@ -14,6 +14,11 @@
 #include <utils/string.h>
 #include <utils/list.h>
 
+enum {
+    // This dirent hard links to the controlling tty of the process
+    DIRENT_REFERS_CTTY = BIT(0),
+};
+
 typedef LIST_HEAD(dirent_list, struct dirent) dirent_list;
 typedef struct dirent
 {
@@ -31,6 +36,7 @@ typedef struct dirent
     } tree_info;
     struct vnode* vnode;
     string name;
+    int flags;
     LIST_NODE(dirent_list, struct dirent) node;
 } dirent;
 LIST_PROTOTYPE(dirent_list, dirent, node);

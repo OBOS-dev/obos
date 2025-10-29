@@ -104,6 +104,9 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
             while ((*path+(*lastMountPoint))[currentPathLen] == '/')
                 currentPathLen--;
         }
+        thread* cur_thr = Core_GetCurrentThread();
+        if (curr->flags & DIRENT_REFERS_CTTY && cur_thr && cur_thr->proc && cur_thr->proc->pgrp && cur_thr->proc->pgrp->controlling_tty)
+            return cur_thr->proc->pgrp->controlling_tty->ent;
         return curr;
     }
     if (!curr->d_children.nChildren)
@@ -332,10 +335,14 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
 
 dirent* VfsH_DirentLookupFromCacheOnly(const char* path, dirent* root_par)
 {
+    if (!root_par)
+        return nullptr;
     return lookup(path, root_par, true);
 }
 dirent* VfsH_DirentLookupFrom(const char* path, dirent* root_par)
 {
+    if (!root_par)
+        return nullptr;
     return lookup(path, root_par, false);
 }
 
@@ -404,6 +411,8 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
     LIST_REMOVE(dirent_list, &point->dirent_list, what);
 }
 
+static uint32_t devfs_inode = 3;
+
 vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev_p, uint32_t type)
 {
     static file_perm default_fileperm = {
@@ -432,6 +441,7 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->desc = desc;
     vn->filesize = filesize;
     vn->un.device = dev;
+    vn->inode = devfs_inode++;
     vn->perm = default_fileperm;
     vn->vtype = type;
     vn->group_uid = ROOT_GID;

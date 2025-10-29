@@ -198,4 +198,10 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 #endif
 
     VfsH_InitializeSocketInterface();
+
+    do {
+        vnode* dev_tty_vn = Drv_AllocateVNode(nullptr, 0, 0, nullptr, VNODE_TYPE_CHR);
+        dirent* dev_tty = Drv_RegisterVNode(dev_tty_vn, "tty");
+        dev_tty->flags |= DIRENT_REFERS_CTTY;
+    } while(0);
 }
