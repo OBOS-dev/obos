@@ -57,8 +57,18 @@ OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
 OBOS_WEAK obos_status remove_file(dev_desc desc);
-OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
+obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
+{
+    OBOS_UNUSED(desc);
+    OBOS_UNUSED(newperm);
+    return OBOS_STATUS_SUCCESS;
+}
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
+obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid)
+{
+    OBOS_UNUSED(desc && owner_uid && group_uid);
+    return OBOS_STATUS_SUCCESS;
+}
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
@@ -142,6 +152,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .remove_file = remove_file,
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
+        .set_file_owner = set_file_owner,
         .get_file_type = get_file_type,
         .get_file_inode = get_file_inode,
         .list_dir = list_dir,

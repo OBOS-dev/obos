@@ -33,7 +33,7 @@
 #define PTR_BITS 16
 #endif
 
-typedef uint32_t uid, gid;
+typedef int32_t uid, gid;
 #define ROOT_UID 0
 #define ROOT_GID 0
 

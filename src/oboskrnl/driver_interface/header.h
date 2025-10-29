@@ -203,6 +203,8 @@ typedef struct driver_ftable
 
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
+    // if an ID is -1, it means leave that field UNCHANGED
+    obos_status(*set_file_owner)(dev_desc desc, uid owner_uid, gid group_uid);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
     obos_status(*get_file_inode)(dev_desc desc, uint32_t *ino);
 

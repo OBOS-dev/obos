@@ -65,7 +65,26 @@ obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
     return OBOS_STATUS_SUCCESS;
 }
 
-OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count)
+obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid)
+{
+    ext_inode_handle* hnd = get_handle(desc);
+    Core_MutexAcquire(&hnd->lock);
+    page* pg = nullptr;
+    ext_inode* ino = ext_read_inode_pg(hnd->cache, hnd->ino, &pg);
+    MmH_RefPage(pg);
+    
+    if (owner_uid != -1)
+        ino->uid = owner_uid & 0xffff;
+    if (group_uid != -1)
+        ino->gid = group_uid & 0xffff;
+    
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+    Core_MutexRelease(&hnd->lock);
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status get_max_blk_count(dev_desc desc, size_t* count)
 {
     ext_inode_handle* hnd = (void*)desc;
     if (!hnd || !count)

@@ -18,6 +18,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+#include <scheduler/sched_sys.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -2499,4 +2500,195 @@ obos_status Sys_ShutdownSocket(handle desc, int how)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     return Net_Shutdown(fd->un.fd, how);
+}
+
+obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flags)
+{
+    obos_status status = 0;
+
+    char* pathname = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, pathname, sz_path);
+        return status;
+    }
+    pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upathname, pathname, nullptr);
+
+    dirent* parent = nullptr;
+    const char* name = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            goto fail;
+        }
+        parent = desc->un.dirent->parent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(pathname, '/') != strlen(pathname))
+        {
+            size_t last_slash = strrfind(pathname, '/');
+            char ch = pathname[last_slash];
+            pathname[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            pathname[last_slash] = ch;
+            name = pathname+last_slash+1;
+        }
+        else
+            name = pathname;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(pathname, '/') != strlen(pathname))
+        {
+            size_t last_slash = strrfind(pathname, '/');
+            char ch = pathname[last_slash];
+            pathname[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            pathname[last_slash] = ch;
+            name = pathname+last_slash+1;
+        }
+        else
+            name = pathname;
+    }
+
+    dirent* target = VfsH_DirentLookupFrom(name, parent);
+    if (!target)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+    if (~flags & AT_SYMLINK_NOFOLLOW)
+        target = VfsH_FollowLink(target);
+    // NOTE(oberrow): AT_EMPTY_PATH is the default on obos, and can actually not be
+    // changed, because of the nature of the lookup() function
+
+    if (target->vnode->owner_uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
+    {
+        status = OBOS_STATUS_ACCESS_DENIED;
+        goto fail;
+    }
+
+    file_perm real_mode = unix_to_obos_mode(mode);
+    
+    driver_header* header = Vfs_GetVnodeDriver(target->vnode);
+    if (!header)
+    {
+        status = OBOS_STATUS_INTERNAL_ERROR;
+        goto fail;
+    }
+
+    status = !header->ftable.set_file_perms ? OBOS_STATUS_UNIMPLEMENTED : header->ftable.set_file_perms(target->vnode->desc, real_mode);
+    if (obos_is_error(status))
+        goto fail;
+    
+    target->vnode->perm = real_mode;
+
+    fail:
+    Free(OBOS_KernelAllocator, pathname, sz_path);
+
+    return status;
+}
+
+obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid group, int flags)
+{
+    obos_status status = 0;
+
+    char* pathname = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, pathname, sz_path);
+        return status;
+    }
+    pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upathname, pathname, nullptr);
+
+    dirent* parent = nullptr;
+    const char* name = nullptr;
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            goto fail;
+        }
+        parent = desc->un.dirent->parent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+        if (strchr(pathname, '/') != strlen(pathname))
+        {
+            size_t last_slash = strrfind(pathname, '/');
+            char ch = pathname[last_slash];
+            pathname[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            pathname[last_slash] = ch;
+            name = pathname+last_slash+1;
+        }
+        else
+            name = pathname;
+    }
+    else 
+    {
+        parent = Core_GetCurrentThread()->proc->cwd;
+        if (strchr(pathname, '/') != strlen(pathname))
+        {
+            size_t last_slash = strrfind(pathname, '/');
+            char ch = pathname[last_slash];
+            pathname[last_slash] = 0;
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            pathname[last_slash] = ch;
+            name = pathname+last_slash+1;
+        }
+        else
+            name = pathname;
+    }
+
+    dirent* target = VfsH_DirentLookupFrom(name, parent);
+    if (!target)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+    if (~flags & AT_SYMLINK_NOFOLLOW)
+        target = VfsH_FollowLink(target);
+    // NOTE(oberrow): AT_EMPTY_PATH is the default on obos, and can actually not be
+    // changed, because of the nature of the lookup() function
+
+    if (target->vnode->owner_uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
+    {
+        status = OBOS_STATUS_ACCESS_DENIED;
+        goto fail;
+    }
+
+    driver_header* header = Vfs_GetVnodeDriver(target->vnode);
+    if (!header)
+    {
+        status = OBOS_STATUS_INTERNAL_ERROR;
+        goto fail;
+    }
+
+    status = !header->ftable.set_file_owner ? OBOS_STATUS_UNIMPLEMENTED : header->ftable.set_file_owner(target->vnode->desc, owner, group);
+    if (obos_is_error(status))
+        goto fail;
+
+    if (owner != -1)
+        target->vnode->owner_uid = owner;
+    if (group != -1)
+        target->vnode->group_uid = group;
+
+    fail:
+    Free(OBOS_KernelAllocator, pathname, sz_path);
+
+    return status;
 }

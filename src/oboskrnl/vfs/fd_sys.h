@@ -443,6 +443,26 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* path, int mode, size_t
 /// <returns>An obos_status.</returns>
 obos_status Sys_Fcntl(handle fd, int request, uintptr_t* args, size_t nArgs, int* ret);
 
+/// <summary>
+/// Modifies an inode's permissions
+/// </summary>
+/// <param name="dirfd">Parent directory of pathname, unless set to AT_FDCWD.</param>
+/// <param name="pathname">The path of the file to modify.</param>
+/// <param name="mode">The new file mode.</param>
+/// <param name="flags">Extra flags</param>
+/// <returns>An obos_status.</returns>
+obos_status Sys_FChmodAt(handle dirfd, const char* pathname, int mode, int flags);
+/// <summary>
+/// Modifies an inode's owner
+/// </summary>
+/// <param name="dirfd">Parent directory of pathname, unless set to AT_FDCWD.</param>
+/// <param name="pathname">The path of the file to modify.</param>
+/// <param name="owner">The UID of the new owner.</param>
+/// <param name="group">The GID of the new owner.</param>
+/// <param name="flags">Extra flags</param>
+/// <returns>An obos_status.</returns>
+obos_status Sys_FChownAt(handle dirfd, const char *pathname, uid owner, gid group, int flags);
+
 obos_status Sys_Socket(handle fd, int family, int type, int protocol);
 struct sys_socket_io_params {
     sockaddr* sock_addr;

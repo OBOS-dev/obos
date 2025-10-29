@@ -417,6 +417,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SetProcessGroup,
     (uintptr_t)Sys_GetProcessGroup,
     (uintptr_t)Sys_LinkAt,
+    (uintptr_t)Sys_FChmodAt,
+    (uintptr_t)Sys_FChownAt,
 };
 
 // Arch syscall table is defined per-arch

@@ -772,6 +772,11 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
         con->close_ack = true;
         Core_EventSet(&con->state.state_change_event, false);
     }
+    else if (state == TCP_STATE_FIN_WAIT2)
+    {
+        con->close_ack = true;
+        Core_EventSet(&con->state.state_change_event, false);
+    }
 }
 
 bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack)
@@ -1516,7 +1521,9 @@ obos_status tcp_submit_irp(irp* req)
     }
     if (s->connection->recv_buffer.closed && !s->connection->recv_buffer.ptr && req->op == IRP_READ)
     {
-        req->status = OBOS_STATUS_PIPE_CLOSED;
+        req->status = OBOS_STATUS_SUCCESS;
+        req->nBlkRead = 0;
+        OBOS_Warning("TCP: Read 0 bytes due to closed connection.\n");
         return OBOS_STATUS_SUCCESS;
     }
     if (s->connection->state.state == TCP_STATE_CLOSED)
