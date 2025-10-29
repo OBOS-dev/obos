@@ -148,6 +148,9 @@ obos_status PS2_InitializeController()
     if (obos_is_error(status = PS2_EnableChannel(true, true)))
         OBOS_Warning("PS2_EnableChannel(channel_two, true): %d\n", status);
 
+
+    Core_LowerIrql(oldIrql);
+
     PS2_CtlrData.ports[1].second = true;
     // Initialize the structs.
     for (int i = 0; i < 2; i++)
@@ -181,8 +184,6 @@ obos_status PS2_InitializeController()
         ctlr_config |= PS2_CTLR_CONFIG_PORT_TWO_IRQ;
     ctlr_config &= ~(BIT(4)|BIT(5)|BIT(6));
     write_ctlr_status(ctlr_config);
-
-    Core_LowerIrql(oldIrql);
 
     return OBOS_STATUS_SUCCESS;
 }
