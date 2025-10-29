@@ -182,3 +182,99 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
 
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
+{
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    // No-op
+    if (!newparent && !name)
+        return OBOS_STATUS_SUCCESS;
+
+    driver_header* header = Vfs_GetVnodeDriver(node->vnode);
+    if (!header)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    // Rename the entry
+    if (!newparent || newparent == node->d_parent)
+    {
+        if (!header->ftable.move_desc_to)
+            return OBOS_STATUS_UNIMPLEMENTED;
+        if (!name)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+        {
+            char* node_path = VfsH_DirentPath(node, Vfs_Root);
+            status = header->ftable.pmove_desc_to(node->vnode, node_path, nullptr, name);
+            Vfs_Free(node_path);
+        }
+        else
+            status = header->ftable.move_desc_to(node->vnode->desc, 0, name);
+
+        if (obos_is_success(status))
+        {
+            OBOS_FreeString(&node->name);
+            OBOS_InitString(&node->name, name);
+        }
+
+        return status;
+    }
+    // Move the entry without renaming it
+    if (newparent && !name)
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+        {
+            char* node_path = VfsH_DirentPath(node, Vfs_Root);
+            char* parent_path = VfsH_DirentPath(newparent, Vfs_Root);
+            status = header->ftable.pmove_desc_to(node->vnode, node_path, parent_path, nullptr);
+            Vfs_Free(parent_path);
+            Vfs_Free(node_path);
+        }
+        else
+            status = header->ftable.move_desc_to(node->vnode->desc, newparent->vnode->desc, nullptr);
+
+        if (obos_is_success(status))
+        {
+            // if we don't do this, the vnode might be deleted when
+            // the dirent is removed
+            node->vnode->refs++;
+            VfsH_DirentRemoveChild(node->d_parent, node);
+            VfsH_DirentAppendChild(newparent, node);
+            node->vnode->refs--;
+        }
+
+        return status;
+    }
+
+    // Move and rename the entry.
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
+    {
+        char* node_path = VfsH_DirentPath(node, Vfs_Root);
+        char* parent_path = VfsH_DirentPath(newparent, Vfs_Root);
+        status = header->ftable.pmove_desc_to(node->vnode, node_path, parent_path, name);
+        Vfs_Free(parent_path);
+        Vfs_Free(node_path);
+    }
+    else
+        status = header->ftable.move_desc_to(node->vnode->desc, newparent->vnode->desc, name);
+
+    if (obos_is_success(status))
+    {
+        // if we don't do this, the vnode might be deleted when
+        // the dirent is removed
+        node->vnode->refs++;
+        VfsH_DirentRemoveChild(node->d_parent, node);
+        VfsH_DirentAppendChild(newparent, node);
+        node->vnode->refs--;
+        OBOS_FreeString(&node->name);
+        OBOS_InitString(&node->name, name);
+    }
+
+    return status;
+}
