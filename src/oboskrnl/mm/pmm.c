@@ -78,7 +78,6 @@ obos_status Mm_InitializePMM()
 			Mm_PhysicalMemoryBoundaries = (phys + nPages * OBOS_PAGE_SIZE);
 		if (entry->pmem_map_type != PHYSICAL_MEMORY_TYPE_USABLE || !nPages)
 		{
-			Mm_TotalPhysicalPagesUsed += nPages;
 			entry = MmS_GetNextPMemMapEntry(entry, &i);
 			continue;
 		}
