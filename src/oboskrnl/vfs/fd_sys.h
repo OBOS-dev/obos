@@ -358,6 +358,8 @@ obos_status Sys_SymLinkAt(const char* target, handle dirfd, const char* link);
 
 obos_status Sys_LinkAt(handle olddirfd, const char *oldpath, handle newdirfd, const char *newpath, int flags);
 
+obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd, const char *newname);
+
 struct pselect_extra_args
 {
     /// <summary>

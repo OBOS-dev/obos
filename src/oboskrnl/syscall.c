@@ -420,6 +420,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_FChmodAt,
     (uintptr_t)Sys_FChownAt,
     (uintptr_t)Sys_UMask,
+    (uintptr_t)Sys_RenameAt,
 };
 
 // Arch syscall table is defined per-arch

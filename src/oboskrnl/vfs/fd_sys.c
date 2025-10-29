@@ -1876,6 +1876,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
             return status;
         }
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        plink = hnd->un.dirent->parent;
     }
     else
         plink = Core_GetCurrentThread()->proc->cwd;
@@ -1937,6 +1938,131 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
 
     // NOTE: DO NOT COMMIT!!!!
     return OBOS_STATUS_SUCCESS;
+
+    return status;
+}
+
+// this probably works rofl i literally just copy pasted sys linkat and changed some names
+obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd, const char *newname)
+{
+    char* target = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOSH_ReadUserString(uoldname, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    target = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uoldname, target, nullptr);
+    
+    char* link = nullptr;
+    size_t sz_path2 = 0;
+    status = OBOSH_ReadUserString(uoldname, nullptr, &sz_path2);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, target, sz_path2);
+        return status;
+    }
+    link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(newname, link, nullptr);
+
+    dirent* dtarget = nullptr;
+    dirent* ptarget = nullptr;
+
+    if (olddirfd == AT_FDCWD)
+        ptarget = Core_GetCurrentThread()->proc->cwd;
+    else
+    {
+        if (!strlen(target))
+        {
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            obos_status status = OBOS_STATUS_SUCCESS;
+            handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, HANDLE_TYPE_DIRENT, false, &status);
+            if (!hnd)
+            {
+                Free(OBOS_KernelAllocator, target, sz_path2);
+                Free(OBOS_KernelAllocator, link, sz_path2);
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                return status;
+            }
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            dtarget = hnd->un.dirent->parent;
+            goto skip_target_lookup;
+        }
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        obos_status status = OBOS_STATUS_SUCCESS;
+        handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (!dent)
+        {
+            Free(OBOS_KernelAllocator, target, sz_path);
+            Free(OBOS_KernelAllocator, link, sz_path2);
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        ptarget = dent->un.dirent->parent;
+    }
+
+    dtarget = VfsH_DirentLookupFrom(target, ptarget);
+    if (!dtarget)
+        return OBOS_STATUS_NOT_FOUND;
+    
+    skip_target_lookup:
+
+    Free(OBOS_KernelAllocator, target, sz_path);
+
+    if (!dtarget)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+
+    dirent* pnewname = nullptr;
+
+    if (newdirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        status = OBOS_STATUS_SUCCESS;
+        handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), newdirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (!hnd)
+        {
+            Free(OBOS_KernelAllocator, link, sz_path2);
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        pnewname = hnd->un.dirent->parent;
+    }
+    else
+        pnewname = Core_GetCurrentThread()->proc->cwd;
+
+    char* newfilename = nullptr;
+
+    if (strchr(link, '/') != strlen(link))
+    {
+        // frick whoever gave us this path because now i need to parse it >:(
+        newfilename = strrfind(link, '/') + link;
+        *newfilename = 0;
+        newfilename++;
+        pnewname = VfsH_DirentLookupFrom(link, pnewname);
+    }
+    else
+        newfilename = link;
+
+    if (!pnewname)
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_NOT_FOUND;
+    }
+
+    // Now we have pnewname, newfilename, target, and vtarget
+    if (VfsH_DirentLookupFrom(newfilename, pnewname))
+    {
+        Free(OBOS_KernelAllocator, link, sz_path2);
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+    }
+    
+    status = Vfs_RenameNode(dtarget, pnewname, newfilename);
+
+    Free(OBOS_KernelAllocator, link, sz_path2);
 
     return status;
 }
