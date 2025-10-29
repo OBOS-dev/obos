@@ -463,6 +463,13 @@ obos_status Sys_FChmodAt(handle dirfd, const char* pathname, int mode, int flags
 /// <returns>An obos_status.</returns>
 obos_status Sys_FChownAt(handle dirfd, const char *pathname, uid owner, gid group, int flags);
 
+/// <summary>
+/// Sets the process' current umask
+/// </summary>
+/// <param name="mask">The new umask</param>
+/// <param name="oldmask">[out, nullable] The previous umask</param>
+void Sys_UMask(int mask, int* oldmask);
+
 obos_status Sys_Socket(handle fd, int family, int type, int protocol);
 struct sys_socket_io_params {
     sockaddr* sock_addr;

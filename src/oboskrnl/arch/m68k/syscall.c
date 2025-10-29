@@ -155,6 +155,9 @@ const char *syscall_to_string[] = {
     "Sys_SetProcessGroup",
     "Sys_GetProcessGroup",
     "Sys_LinkAt",
+    "Sys_FChmodAt",
+    "Sys_FChownAt",
+    "Sys_UMask",
 };
 
 const char* status_to_string[] = {

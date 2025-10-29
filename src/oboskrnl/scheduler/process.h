@@ -56,6 +56,9 @@ typedef struct process
 	char* exec_file;
 	char* cmdline;
 
+	// Only exists for POSIX, ignored in most parts of the kernel.
+	int umask;
+
 	LIST_NODE(process_list, struct process) node;
 } process;
 typedef LIST_HEAD(process_list, process) process_list;

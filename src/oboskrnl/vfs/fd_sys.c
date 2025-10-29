@@ -64,9 +64,13 @@ static size_t strrfind(const char* str, char ch)
     return SIZE_MAX;
 }
 
-static file_perm unix_to_obos_mode(uint32_t mode)
+static file_perm unix_to_obos_mode(uint32_t mode, bool respect_umask)
 {
-    file_perm real_mode;
+    if (respect_umask)
+        mode &= ~Core_GetCurrentThread()->proc->umask;
+    // NOTE(oberrow): Whatever happened to warnings about
+    // uninitialized variables??
+    file_perm real_mode = {};
     if (mode & 001)
         real_mode.other_exec = true;
     if (mode & 002)
@@ -79,11 +83,11 @@ static file_perm unix_to_obos_mode(uint32_t mode)
         real_mode.group_write = true;
     if (mode & 040)
         real_mode.group_read = true;
-    if (mode & 100)
+    if (mode & 0100)
         real_mode.owner_exec = true;
-    if (mode & 200)
+    if (mode & 0200)
         real_mode.owner_write = true;
-    if (mode & 400)
+    if (mode & 0400)
         real_mode.owner_read = true;
     return real_mode;
 }
@@ -129,7 +133,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
             Free(OBOS_KernelAllocator, path, sz_path);
             return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
         }
-        file_perm real_mode = unix_to_obos_mode(mode);
+        file_perm real_mode = unix_to_obos_mode(mode, true);
         status = Vfs_CreateNode(parent, path+(index == 0 ? 0 : (index_bumped ? index : index+1)), VNODE_TYPE_REG, real_mode);
         if (obos_is_error(status))
             goto err;
@@ -225,7 +229,7 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
             Free(OBOS_KernelAllocator, name, sz_name);
             return OBOS_STATUS_NOT_FOUND;
         }
-        status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode));
+        status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode, true));
         if (obos_is_error(status))
         {
             Free(OBOS_KernelAllocator, name, sz_name);
@@ -935,7 +939,7 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
     if (VfsH_DirentLookupFrom(dirname, parent))
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
-    status = Vfs_CreateNode(parent, dirname, VNODE_TYPE_DIR, unix_to_obos_mode(mode));
+    status = Vfs_CreateNode(parent, dirname, VNODE_TYPE_DIR, unix_to_obos_mode(mode, true));
     Free(OBOS_KernelAllocator, name, sz_path);
 
     return status;
@@ -1255,7 +1259,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
 
-    file_perm perm = unix_to_obos_mode(mode);
+    file_perm perm = unix_to_obos_mode(mode, true);
     const char* fifo_name = nullptr;
 
     dirent* parent = nullptr;
@@ -2576,7 +2580,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
         goto fail;
     }
 
-    file_perm real_mode = unix_to_obos_mode(mode);
+    file_perm real_mode = unix_to_obos_mode(mode, true);
     
     driver_header* header = Vfs_GetVnodeDriver(target->vnode);
     if (!header)
@@ -2691,4 +2695,11 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
     Free(OBOS_KernelAllocator, pathname, sz_path);
 
     return status;
+}
+
+void Sys_UMask(int mask, int* oldmask)
+{
+    if (oldmask)
+        memcpy_k_to_usr(oldmask, &Core_GetCurrentThread()->proc->umask, sizeof(*oldmask));
+    Core_GetCurrentThread()->proc->umask = mask;
 }
