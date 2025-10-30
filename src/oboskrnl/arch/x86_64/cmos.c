@@ -75,7 +75,6 @@ obos_status Arch_CMOSGetTimeOfDay(cmos_timeofday* time)
     return OBOS_STATUS_SUCCESS;
 }
 
-
 static int days_from_civil(int y, unsigned m, unsigned d) 
 {
 	y -= m <= 2;
@@ -84,6 +83,17 @@ static int days_from_civil(int y, unsigned m, unsigned d)
 	const unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1; // [0, 365]
 	const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
 	return era * 146097 + (int)(doe) - 719468;
+}
+
+obos_status Arch_CMOSGetEpochTime(long* out)
+{
+    cmos_timeofday tm = {};
+    obos_status status = Arch_CMOSGetTimeOfDay(&tm);
+    if (obos_is_error(status)) return status;
+
+    long days = days_from_civil(tm.year, tm.month, tm.day_of_month);
+    *out = (days * 86400) + (tm.hours*60*60) + (tm.minutes * 60) + tm.seconds;
+    return OBOS_STATUS_SUCCESS;
 }
 
 obos_status SysS_ClockGet(int clock, long *secs, long *nsecs)

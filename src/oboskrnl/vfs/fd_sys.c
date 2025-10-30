@@ -660,6 +660,12 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
         st.st_blksize = fs_info.fsBlockSize;
     }
+    st.st_atim.tv_sec = to_stat->times.access;
+    st.st_mtim.tv_sec = to_stat->times.change;
+    st.st_ctim.tv_sec = to_stat->times.birth;
+    st.st_atim.tv_nsec = 0;
+    st.st_ctim.tv_nsec = 0;
+    st.st_mtim.tv_nsec = 0;
     st.st_gid = to_stat->group_uid;
     st.st_uid = to_stat->owner_uid;
     st.st_ino = to_stat->inode;   
@@ -2269,6 +2275,64 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
     Mm_VirtualMemoryFree(&Mm_KernelContext, args, nArgs*sizeof(uintptr_t));
 
     return status;
+}
+
+obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct timespec *utimes, int flags)
+{
+    struct timespec times[2] = {};
+    obos_status status = OBOS_STATUS_SUCCESS;
+    
+    status = memcpy_usr_to_k(times, utimes, sizeof(times));
+    if (obos_is_error(status))
+        return status;
+
+    vnode* target = nullptr;
+    dirent* parent = nullptr;
+
+    if (dirfd != AT_FDCWD)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        parent = desc->un.dirent->parent;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+    else
+        parent = Core_GetCurrentThread()->proc->cwd;
+
+    char* pathname = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, target, sz_path);
+        return status;
+    }
+    pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upathname, pathname, nullptr);
+
+    dirent* ent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+    
+    Free(OBOS_KernelAllocator, pathname, sz_path);
+
+    if (~flags & AT_SYMLINK_NOFOLLOW)
+        ent = VfsH_FollowLink(ent);
+
+    if (!ent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    target = ent->vnode;
+    if (!target)
+        return OBOS_STATUS_NOT_FOUND;
+
+    target->times.access = times[0].tv_sec;
+    target->times.change = times[1].tv_sec;
+
+    return Vfs_UpdateFileTime(target);
 }
 
 obos_status Sys_Socket(handle desc, int family, int type, int protocol)

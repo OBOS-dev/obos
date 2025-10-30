@@ -19,6 +19,7 @@
 #include <vfs/mount.h>
 #include <vfs/irp.h>
 #include <vfs/pipe.h>
+#include <vfs/create.h>
 
 #include <allocators/base.h>
 
@@ -63,6 +64,20 @@ obos_status Vfs_FdOpenDirent(fd* const desc, dirent* ent, uint32_t oflags)
         return OBOS_STATUS_NOT_FOUND;
     return Vfs_FdOpenVnode(desc, ent->vnode, oflags);
 }
+
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
+
+static long get_current_time()
+{
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+    return current_time;
+}
+
 OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflags)
 {
     if (!desc || !vn)
@@ -133,6 +148,10 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         if (driver->ftable.reference_device)
             driver->ftable.reference_device(&desc->desc);
     }
+
+    desc->vn->times.access = get_current_time();
+    Vfs_UpdateFileTime(desc->vn);
+
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }
@@ -163,6 +182,11 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
         VfsH_IRPUnref(req);
         if (nWritten_)
             *nWritten_ = req->nBlkRead * desc->vn->blkSize;
+        if (obos_is_success(status))
+        {
+            desc->vn->times.change = get_current_time();
+            Vfs_UpdateFileTime(desc->vn);
+        }
         return status;
     }
     VfsH_IRPUnref(req);
@@ -329,6 +353,12 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
             }
         }
         VfsH_UnlockMountpoint(point);
+
+        if (obos_is_success(status))
+        {
+            desc->vn->times.change = get_current_time();
+            Vfs_UpdateFileTime(desc->vn);
+        }
 
         if (nWritten)
             *nWritten = nBytes;

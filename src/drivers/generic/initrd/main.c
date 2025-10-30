@@ -251,6 +251,9 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->vnode->group_uid = 0;
     ino->vnode->inode = ino->ino;
     ino->vnode->perm = ino->perm;
+    ino->vnode->times.change = oct2bin(hdr->last_mod, strnlen(hdr->last_mod, 12));
+    ino->vnode->times.birth = ino->vnode->times.change;
+    ino->vnode->times.access = ino->vnode->times.change;
     switch (ino->type) {
         case FILE_TYPE_REGULAR_FILE:
             ino->vnode->vtype = VNODE_TYPE_REG;

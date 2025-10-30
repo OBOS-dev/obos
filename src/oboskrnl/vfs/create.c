@@ -18,6 +18,7 @@
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
 #include <vfs/socket.h>
+#include <vfs/create.h>
 
 #include <utils/string.h>
 #include <utils/list.h>
@@ -42,6 +43,10 @@ static bool has_write_perm(vnode* parent)
     else
         return parent->perm.other_write;
 }
+
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
 
 obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, file_perm mode)
 {
@@ -95,6 +100,16 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     vn->flags = 0;
     vn->vtype = vtype;
     vn->mount_point = parent_mnt;
+    
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+
+    vn->times.access = current_time;
+    vn->times.birth = current_time;
+    vn->times.change = current_time;
+
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
@@ -114,6 +129,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         Vfs_Free(ent);
         return status;
     }
+    Vfs_UpdateFileTime(vn);
     if (ftable->get_file_inode)
         ftable->get_file_inode(vn->desc, &vn->inode);
     VfsH_DirentAppendChild(parent, ent);
@@ -276,5 +292,19 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
         OBOS_InitString(&node->name, name);
     }
 
+    return status;
+}
+
+obos_status Vfs_UpdateFileTime(vnode* vn)
+{
+    if (!vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    driver_header* header = Vfs_GetVnodeDriver(vn);
+    if (!header)
+        return OBOS_STATUS_SUCCESS;
+    if (!header->ftable.set_file_times)
+        return OBOS_STATUS_SUCCESS;
+    obos_status status = header->ftable.set_file_times(vn->desc, &vn->times);
+    if (status == OBOS_STATUS_UNIMPLEMENTED) return OBOS_STATUS_SUCCESS;
     return status;
 }

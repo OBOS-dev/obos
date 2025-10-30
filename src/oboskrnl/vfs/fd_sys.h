@@ -204,6 +204,12 @@ enum {
     FSFDT_FD_PATH,
 };
 
+struct timespec
+{
+    int64_t tv_sec;  
+    int64_t tv_nsec;  
+};
+
 #if defined(__x86_64__)
 struct stat {
     uint64_t st_dev;
@@ -217,10 +223,9 @@ struct stat {
     off_t st_size;
     long st_blksize;
     int64_t st_blocks;
-    // struct timespec st_atim;
-    // struct timespec st_mtim;
-    // struct timespec st_ctim;
-    long resv[6];
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
     long __unused[3];
 };
 #elif defined(__m68k__)
@@ -237,7 +242,9 @@ struct OBOS_PACK stat {
 	long long st_size; /* TODO: off64_t? */
 	long st_blksize;
 	int64_t st_blocks;
-    uint64_t unused[3];
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
 	uint64_t st_ino;
 };
 OBOS_STATIC_ASSERT(sizeof(struct stat) == 92, "sizeof(struct stat) should be 92");
@@ -471,6 +478,9 @@ obos_status Sys_FChownAt(handle dirfd, const char *pathname, uid owner, gid grou
 /// <param name="mask">The new umask</param>
 /// <param name="oldmask">[out, nullable] The previous umask</param>
 void Sys_UMask(int mask, int* oldmask);
+
+// times is an array of two elements
+obos_status Sys_UTimeNSAt(handle dirfd, const char *pathname, const struct timespec *times, int flags);
 
 obos_status Sys_Socket(handle fd, int family, int type, int protocol);
 struct sys_socket_io_params {

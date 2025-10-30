@@ -201,6 +201,8 @@ typedef struct driver_ftable
     // hard links the file 'desc' to 'parent/name'
     obos_status(*hardlink_file)(dev_desc desc, dev_desc parent, const char* name);
 
+    // times is of type 'struct file_times' defined in vfs/vnode.h
+    obos_status(*set_file_times)(dev_desc desc, void* times);
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     // if an ID is -1, it means leave that field UNCHANGED

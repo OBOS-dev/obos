@@ -59,6 +59,15 @@ typedef struct vdev
     void* data;
     size_t refs;
 } vdev;
+
+// All these times are since the Unix Epoch (January 1st, 1970)
+struct file_times
+{
+    long access;
+    long change;
+    long birth;
+};
+
 typedef driver_file_perm file_perm;
 typedef struct vnode
 {
@@ -88,6 +97,8 @@ typedef struct vnode
     struct partition* partitions;
     size_t nPartitions;
     uint32_t inode;
+
+    struct file_times times;
 
     size_t blkSize;
 
