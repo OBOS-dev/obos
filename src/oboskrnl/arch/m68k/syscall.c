@@ -159,6 +159,7 @@ const char *syscall_to_string[] = {
     "Sys_FChownAt",
     "Sys_UMask",
     "Sys_RenameAt",
+    "Sys_UTimeNSAt",
 };
 
 const char* status_to_string[] = {
