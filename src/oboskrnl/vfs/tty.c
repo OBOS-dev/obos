@@ -464,30 +464,37 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
     const uint8_t *buf8 = buf;
     for (size_t i = 0; i < nBytesReady; i++) 
     {
+        char ch = buf8[i];
+        if (tty->termios.iflag & IGNCR && ch == '\r')
+            continue;
+        if (tty->termios.iflag & INLCR && ch == '\n')
+            ch = '\r';
+        if (tty->termios.iflag & ICRNL && ch == '\r')
+            ch = '\n';
         bool insert_byte = true;
         if (!tty->quoted) 
         {
             insert_byte = false;
-            if (buf8[i] == tty->termios.cc[VLNEXT] && (tty->termios.lflag & (ICANON|IEXTEN)))
+            if (ch == tty->termios.cc[VLNEXT] && (tty->termios.lflag & (ICANON|IEXTEN)))
                 insert_byte = !(tty->quoted = true);
             else
                 tty->quoted = false;
             if (tty->termios.lflag & ISIG)
             {
-                if (buf8[i] == tty->termios.cc[VINTR])
+                if (ch == tty->termios.cc[VINTR])
                     tty_kill(tty, SIGINT);
-                else if (buf8[i] == tty->termios.cc[VQUIT])
+                else if (ch == tty->termios.cc[VQUIT])
                     tty_kill(tty, SIGQUIT);
-                else if (buf8[i] == tty->termios.cc[VSUSP])
+                else if (ch == tty->termios.cc[VSUSP])
                     tty_kill(tty, SIGTSTP);
                 else
                     insert_byte = true;
             }
             else
                 insert_byte = true;
-            if ((buf8[i] == tty->termios.cc[VERASE] || buf8[i] == tty->termios.cc[VWERASE]) && ((tty->termios.lflag & (ICANON|ECHOE)) == (ICANON|ECHOE)))
+            if ((ch == tty->termios.cc[VERASE] || ch == tty->termios.cc[VWERASE]) && ((tty->termios.lflag & (ICANON|ECHOE)) == (ICANON|ECHOE)))
             {
-                size_t nBytesToErase = buf8[i] == tty->termios.cc[VERASE] ? 1 : 0;
+                size_t nBytesToErase = ch == tty->termios.cc[VERASE] ? 1 : 0;
                 if (nBytesToErase == 0)
                 {
                     size_t index_space = strrfind(tty->input_buffer.buf, ' ');
@@ -497,12 +504,12 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
                     if (last_ln > index_space && last_ln != SIZE_MAX)
                         nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - last_ln - 1;
                 }
-                if ((~tty->termios.lflag & IEXTEN) && buf8[i] == tty->termios.cc[VWERASE])
+                if ((~tty->termios.lflag & IEXTEN) && ch == tty->termios.cc[VWERASE])
                     nBytesToErase = 0;
                 erase_bytes(tty, nBytesToErase);
                 insert_byte = false;
             }
-            if (buf8[i] == tty->termios.cc[VKILL] && ((tty->termios.lflag & (ICANON|ECHOK)) == (ICANON|ECHOK)))
+            if (ch == tty->termios.cc[VKILL] && ((tty->termios.lflag & (ICANON|ECHOK)) == (ICANON|ECHOK)))
             {
                 size_t nBytesToErase = (tty->input_buffer.out_ptr % tty->input_buffer.size) - strrfind(tty->input_buffer.buf, '\n') - 1;
                 erase_bytes(tty, nBytesToErase);
@@ -514,29 +521,17 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         if (!insert_byte)
             continue;
         if (tty->termios.lflag & ECHO)
-            tty_write_sync((dev_desc)tty, buf8, 1, 0, nullptr);
+            tty_write_sync((dev_desc)tty, &ch, 1, 0, nullptr);
         if (tty->termios.lflag & ICANON)
         {
-            if (tty->termios.lflag & ECHONL && buf8[i] == '\n')
+            if (tty->termios.lflag & ECHONL && ch == '\n')
                 tty->interface.write(tty, "\n", 1);   
-        }
-        if (tty->termios.iflag & IGNCR && buf8[i] == '\r')
-            continue;
-        if (tty->termios.iflag & INLCR && buf8[i] == '\n')
-        {
-            tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\r';
-            continue;
-        }
-        if (tty->termios.iflag & ICRNL && buf8[i] == '\r')
-        {
-            tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = '\n';
-            continue;
         }
         uint8_t mask = tty->termios.iflag & ISTRIP ? 0x7f : 0xff;
         tty->input_buffer.buf[tty->input_buffer.out_ptr++ % tty->input_buffer.size] = 
             ((tty->termios.lflag & (IEXTEN|ICANON)) == (IEXTEN|ICANON) && (tty->termios.iflag & IUCLC)) ? 
-                toupper(buf8[i] & mask) : 
-                (buf8[i] & mask);
+                toupper(ch & mask) : 
+                (ch & mask);
     }
     if (tty->termios.lflag & ICANON)
         find_eol(tty, &tty->input_buffer.buf[(tty->input_buffer.out_ptr - 1) % tty->input_buffer.size]) == SIZE_MAX ? (void)0 : Core_EventSet(&tty->data_ready_evnt, true);
