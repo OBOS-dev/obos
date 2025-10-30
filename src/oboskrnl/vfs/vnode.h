@@ -97,21 +97,7 @@ typedef struct vnode
 #define F_SEAL_WRITE 0x0008
     int seals;
 } vnode;
-struct async_irp
-{
-    // This event object is set the operation is finished.
-    event* e;
-    union {
-        const void* cbuf;
-        void* buf;
-    } un;
-    size_t requestSize;
-    thread* worker;
-    bool rw : 1; // if false, the operation is a read, otherwise it is a write.
-    bool cached : 1;
-    uoff_t fileoff;
-    vnode* vn;
-};
+
 OBOS_EXPORT vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev, uint32_t type);
 
 // For files that can have I/O on them (FIFOs, regular files, CHR/BLK devices, and sockets)
