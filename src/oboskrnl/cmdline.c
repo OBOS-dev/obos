@@ -37,7 +37,6 @@ static const char* const help_message =
 "--working-set-cap=bytes: Specifies the kernel's working-set size in bytes.\n"
 "--initial-swap-size=bytes: Specifies the size (in bytes) of the initial, in-ram swap.\n"
 "--log-level=integer: Specifies the log level of the kernel, 0 meaning all, 4 meaning none.\n"
-"--disable-libc-log: Disables logs from the C library when log level <= 1\n"
 "--disable-network-error-logs: Disable error logs from the network stack\n"
 "--init-path=path: Specifies the path of init. If not present, assumes /init.\n"
 "--init-args: Special argument, makes the kernel assume all following arguments are to be passed to the init process.\n"
