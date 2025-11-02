@@ -381,6 +381,8 @@ dirent* VfsH_FollowLink(dirent* ent)
 void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 {
     OBOS_ENSURE(parent != child);
+    OBOS_ENSURE(parent);
+    OBOS_ENSURE(child);
     if(!parent->d_children.head)
         parent->d_children.head = child;
     if (parent->d_children.tail)
@@ -397,6 +399,8 @@ void VfsH_DirentAppendChild(dirent* parent, dirent* child)
 }
 void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
 {
+    OBOS_ENSURE(parent);
+    OBOS_ENSURE(what);
     if (what->d_prev_child)
         what->d_prev_child->d_next_child = what->d_next_child;
     if (what->d_next_child)
@@ -409,6 +413,19 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
     what->d_parent = nullptr; // we're now an orphan :(
     mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
     LIST_REMOVE(dirent_list, &point->dirent_list, what);
+}
+
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
+
+static long get_current_time()
+{
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+    return current_time;
 }
 
 static uint32_t devfs_inode = 3;
@@ -446,6 +463,9 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->vtype = type;
     vn->group_uid = ROOT_GID;
     vn->owner_uid = ROOT_UID;
+    vn->times.access = get_current_time();
+    vn->times.birth = vn->times.access;
+    vn->times.change = vn->times.access;
     if (dev_p)
         *dev_p = dev;
     return vn;    
@@ -727,9 +747,9 @@ driver_header* Vfs_GetVnodeDriver(vnode* vn)
     mount* point = Vfs_GetVnodeMount(vn);
     if (!point && vn->vtype != VNODE_TYPE_SOCK && vn->vtype != VNODE_TYPE_FIFO)
         return nullptr;
-    if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
+    if ((vn->vtype == VNODE_TYPE_REG || vn->vtype == VNODE_TYPE_DIR) && !point->fs_driver->driver)
         return nullptr;
-    driver_header* driver = vn->vtype == VNODE_TYPE_REG ? &point->fs_driver->driver->header : nullptr;
+    driver_header* driver = (vn->vtype == VNODE_TYPE_REG || vn->vtype == VNODE_TYPE_DIR) ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO  || vn->vtype == VNODE_TYPE_SOCK)
     {
         point = nullptr;
@@ -747,7 +767,7 @@ driver_header* Vfs_GetVnodeDriverStat(vnode* vn)
     mount* point = Vfs_GetVnodeMount(vn);
     if (!point && vn->vtype != VNODE_TYPE_SOCK && vn->vtype != VNODE_TYPE_FIFO)
         return nullptr;
-    if (vn->vtype == VNODE_TYPE_REG && !point->fs_driver->driver)
+    if ((vn->vtype == VNODE_TYPE_REG || vn->vtype == VNODE_TYPE_DIR) && !point->fs_driver->driver)
         return nullptr;
     driver_header* driver = (vn->vtype == VNODE_TYPE_REG || vn->vtype == VNODE_TYPE_DIR || vn->vtype == VNODE_TYPE_LNK) ? &point->fs_driver->driver->header : nullptr;
     if (vn->vtype == VNODE_TYPE_CHR || vn->vtype == VNODE_TYPE_BLK || vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)

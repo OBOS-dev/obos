@@ -231,13 +231,13 @@ static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
 {
     if (lhs->src.addr.addr < rhs->src.addr.addr) return -1;
     if (lhs->src.addr.addr > rhs->src.addr.addr) return 1;
-    if (lhs->src.port < rhs->src.port) return -1;
-    if (lhs->src.port > rhs->src.port) return 1;
+    if (lhs->dest.port < rhs->dest.port) return -1;
+    if (lhs->dest.port > rhs->dest.port) return 1;
     OBOS_ENSURE (lhs->is_client == rhs->is_client);
     if (lhs->is_client)
     {
-        if (lhs->dest.port < rhs->dest.port) return -1;
-        if (lhs->dest.port > rhs->dest.port) return 1;
+        if (lhs->src.port < rhs->src.port) return -1;
+        if (lhs->src.port > rhs->src.port) return 1;
     }
     return 0;
 }

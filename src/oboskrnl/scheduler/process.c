@@ -87,7 +87,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->parent->children.tail = proc;
 	proc->parent->children.nChildren++;
 	proc->refcount++;
-	proc->pgrp = proc->parent->pgrp;
+	Core_SetProcessGroup(proc, proc->parent->pgrp->pgid);
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
 	Core_SpinlockRelease(&proc->parent->children_lock, oldIrql);
 	// if (proc->controlling_tty && proc->controlling_tty->fg_job == proc->parent)

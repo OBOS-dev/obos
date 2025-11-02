@@ -62,7 +62,7 @@ static void dispatcher(vnode* nic)
                 status
             );
             VfsH_IRPUnref(req);
-            continue;
+            break;
         }
         // nic_irp_data* data = req->nic_data;
         req->evnt = nullptr;
@@ -87,6 +87,8 @@ static void dispatcher(vnode* nic)
         
         VfsH_IRPUnref(req);
     }
+    if (obos_is_error(status))
+        OBOS_Error("%s@%02x:%02x:%02x:%02x:%02x:%02x: Aborting duing to previous failure. Status: %d\n", status);
     Core_ExitCurrentThread();
 }
 
@@ -115,7 +117,7 @@ obos_status Net_Initialize(vnode* nic)
     CoreS_SetupThreadContext(&ctx, (uintptr_t)dispatcher, (uintptr_t)nic, false, stack, 0x4000);
     nic->net_tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
     nic->net_tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
-    CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_HIGH, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
     Core_ProcessAppendThread(OBOS_KernelProcess, nic->net_tables->dispatch_thread);
     CoreH_ThreadReady(nic->net_tables->dispatch_thread);
 

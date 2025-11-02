@@ -184,6 +184,7 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     // at->vnode->mount_point = mountpoint;
     at->vnode->flags |= VFLAGS_MOUNTPOINT;
     mountpoint->root = at;
+    mountpoint->lock = MUTEX_INITIALIZE();
     // uintptr_t udata[3] = {
     //     (uintptr_t)mountpoint,
     //     (uintptr_t)fs_driver,

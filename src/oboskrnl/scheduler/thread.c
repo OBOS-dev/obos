@@ -233,18 +233,10 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 	CoreS_FreeThreadContext(&currentThread->context);
 	if (node->free)
 		node->free(node);
-	if (currentThread->stackFree)
-	{
-		currentThread->stackFree(CoreS_GetThreadStack(&currentThread->context), 
-								 CoreS_GetThreadStackSize(&currentThread->context),
-								currentThread->stackFreeUserdata);
-	}
-	if (currentThread->kernelStack)
-		Mm_VirtualMemoryFree(&Mm_KernelContext, currentThread->kernelStack, 0x10000);
-	if (currentThread->userStack)
-		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
-	CoreS_GetCPULocalPtr()->currentThread = nullptr;
-	currentThread->kernelStack = nullptr;
+	
+	// Do this before freeing any stacks as it's very possible
+	// for an object to be *stack* allocated and waited on, and
+	// for it to (somehow) be in this list. 
 	if (currentThread->waiting_objects.nObjs)
 	{
 		if (currentThread->waiting_objects.is_array)
@@ -263,6 +255,19 @@ OBOS_NORETURN OBOS_PAGEABLE_FUNCTION __attribute__((no_instrument_function)) sta
 		else
 			CoreH_ThreadListRemove(&currentThread->waiting_objects.waitingObject->waiting, &currentThread->lock_node);
 	}
+
+	if (currentThread->stackFree)
+	{
+		currentThread->stackFree(CoreS_GetThreadStack(&currentThread->context), 
+								 CoreS_GetThreadStackSize(&currentThread->context),
+								currentThread->stackFreeUserdata);
+	}
+	if (currentThread->kernelStack)
+		Mm_VirtualMemoryFree(&Mm_KernelContext, currentThread->kernelStack, 0x10000);
+	if (currentThread->userStack)
+		Mm_VirtualMemoryFree(currentThread->proc->ctx, currentThread->userStack, 0x10000);
+	CoreS_GetCPULocalPtr()->currentThread = nullptr;
+	currentThread->kernelStack = nullptr;
 	if (!(--currentThread->references) && currentThread->free)
 		currentThread->free(currentThread);
 	if (CoreS_SetKernelStack)

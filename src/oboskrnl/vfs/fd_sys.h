@@ -477,7 +477,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *pathname, uid owner, gid grou
 /// </summary>
 /// <param name="mask">The new umask</param>
 /// <param name="oldmask">[out, nullable] The previous umask</param>
-void Sys_UMask(int mask, int* oldmask);
+void Sys_UMask(uint32_t mask, uint32_t* oldmask);
 
 // times is an array of two elements
 obos_status Sys_UTimeNSAt(handle dirfd, const char *pathname, const struct timespec *times, int flags);

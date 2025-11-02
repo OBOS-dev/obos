@@ -57,7 +57,7 @@ typedef struct process
 	char* cmdline;
 
 	// Only exists for POSIX, ignored in most parts of the kernel.
-	int umask;
+	uint32_t umask;
 
 	LIST_NODE(process_list, struct process) node;
 } process;
@@ -75,7 +75,6 @@ typedef struct process_group {
 typedef RB_HEAD(process_group_tree, process_group) process_group_tree;
 RB_PROTOTYPE(process_group_tree, process_group, node, pgrp_cmp);
 extern process_group_tree Core_ProcessGroups;
-// be careful! this is not initialized until OBOS_LoadInit
 extern mutex Core_ProcessGroupTreeLock;
 
 extern uint32_t Core_NextPID;

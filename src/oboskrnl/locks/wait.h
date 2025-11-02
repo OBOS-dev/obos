@@ -20,9 +20,16 @@ struct waitable_header
     bool signaled : 1;
     bool use_signaled : 1;
     bool interrupted : 1;
+#if OBOS_DEBUG
+    bool initialized : 1;
+#endif
 };
 
+#if !OBOS_DEBUG
 #define WAITABLE_HEADER_INITIALIZE(s, use) (struct waitable_header){ .waiting={}, .signaled=(s), .use_signaled=(use) }
+#else
+#define WAITABLE_HEADER_INITIALIZE(s, use) (struct waitable_header){ .waiting={}, .signaled=(s), .use_signaled=(use), .initialized=true }
+#endif
 
 // obj must be a type with `struct waitable_header` as its first member
 // otherwise, this will not work, and will corrupt stuff.

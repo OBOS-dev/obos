@@ -152,7 +152,7 @@ obos_status submit_irp(void* req_)
     irp* req = req_;
     if (!req)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!req->buff || !req->refs || !req->desc)
+    if ((!req->buff && !req->dryOp) || !req->refs || !req->desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     if (req->op == IRP_WRITE)

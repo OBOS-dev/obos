@@ -456,6 +456,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
             }
         }
         new->handles.last_handle = new->handles.size;
+        new->handles.lock = MUTEX_INITIALIZE();
 
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
@@ -607,6 +608,8 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
     Core_GetCurrentThread()->inWaitProcess = true;
     status = Core_WaitOnObjects(nWaitees, waitees, &signaled);
     Core_GetCurrentThread()->inWaitProcess = false;
+    if (!signaled)
+        status = OBOS_STATUS_ABORTED;
     if (obos_is_error(status) && status != OBOS_STATUS_ABORTED)
         goto done;
 

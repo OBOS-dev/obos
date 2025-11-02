@@ -370,6 +370,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         data.completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         port->dev_name = DeviceNames[i];
         port->lock = SEMAPHORE_INITIALIZE((((HBA->cap >> 8) & 0b11111)+1));
+        port->bitmask_lock = MUTEX_INITIALIZE();
         size_t tries = 0;
         retry:
         HBA->ghc &= ~BIT(1);

@@ -26,6 +26,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+    OBOS_ASSERT(obj->initialized == true);
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
@@ -107,6 +108,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
     for (size_t i = 0; i < nObjects; i++)
     {
         struct waitable_header* const obj = objs[i];
+        OBOS_ASSERT(obj->initialized == true);
         irql spinlockIrql = Core_SpinlockAcquire(&obj->lock);
         if (obj->signaled)
         {
@@ -170,6 +172,7 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(obj->initialized == true);
 
     OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
     if (Core_GetIrql() > IRQL_DISPATCH)
@@ -207,6 +210,7 @@ obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj)
 {
     if (!obj)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    OBOS_ASSERT(obj->initialized == true);
     obj->interrupted = 1;
     return CoreH_SignalWaitingThreads(obj, true, false);
 }
@@ -215,6 +219,7 @@ void CoreH_ClearSignaledState(struct waitable_header* obj)
 {
     if (!obj || !obj->use_signaled)
         return;
+    OBOS_ASSERT(obj->initialized == true);
     irql oldIrql = Core_SpinlockAcquire(&obj->lock);
     obj->signaled = false;
     Core_SpinlockRelease(&obj->lock, oldIrql);

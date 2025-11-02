@@ -35,8 +35,6 @@ static struct exec_aux_values aux;
 
 void OBOS_LoadInit()
 {
-    Core_ProcessGroupTreeLock = MUTEX_INITIALIZE();
-
     if (!Core_GetCurrentThread()->proc->pgrp || !Core_GetCurrentThread()->proc->pgrp->controlling_tty)
     {
         OBOS_Error("%s: Cannot load init due to non-existent controlling tty.\n", __func__);
@@ -69,8 +67,8 @@ void OBOS_LoadInit()
     new->ctx = new_ctx;
     new_ctx->owner = new;
     new_ctx->workingSet.capacity = 64*1024*1024;
-    new->umask = 0022;
     Core_ProcessStart(new, nullptr);
+    new->umask = 0002;
     new->exec_file = VfsH_DirentPath(VfsH_DirentLookup(init_path), nullptr);
 
     void* buf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, init_fd.vn->filesize, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &init_fd, nullptr);
@@ -135,7 +133,7 @@ void OBOS_LoadInit()
     CoreS_SetupThreadContext(&thr_ctx, (uintptr_t)OBOSS_HandOffToInit, (uintptr_t)&aux, false, thr->kernelStack, 0x10000);
 
     // init takes the process group of the kernel.
-    Core_SetProcessGroup(new, 0);
+    Core_SetProcessGroup(new, 1);
     if (new->pgrp->controlling_tty)
         new->pgrp->controlling_tty->fg_job = new->pgrp;
 

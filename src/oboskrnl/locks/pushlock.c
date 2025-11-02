@@ -23,7 +23,8 @@ obos_status Core_PushlockAcquire(pushlock* lock, bool reader /* false: writer, t
         if (lock->currWriter)
         {
             lock->nWaitingReaders++;
-            while(lock->currWriter);
+            while(lock->currWriter)
+                Core_Yield();
             lock->nWaitingReaders--;
         }
         lock->nReaders++;

@@ -394,6 +394,7 @@ pipe_desc* alloc_pipe_desc(size_t pipesize)
     desc->buf = Vfs_Malloc(pipesize);
     desc->data_evnt = EVENT_INITIALIZE(EVENT_SYNC);
     desc->empty_evnt = EVENT_INITIALIZE(EVENT_SYNC);
+    desc->write_evnt = EVENT_INITIALIZE(EVENT_SYNC);
     desc->buffer_lock = PUSHLOCK_INITIALIZE();
     Core_EventSet(&desc->empty_evnt, false);
     return desc;

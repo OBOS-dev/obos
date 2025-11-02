@@ -253,7 +253,7 @@ static socket_desc* stream_create();
 static void stream_free(socket_desc* socket);
 
 static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
-static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, socket_desc** out);
+static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, bool nonblocking, socket_desc** out);
 static obos_status stream_connect(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
 static obos_status stream_getpeername(socket_desc* socket, struct sockaddr* addr, size_t *addrlen);
 static obos_status stream_getsockname(socket_desc* socket, struct sockaddr* addr, size_t *addrlen);
@@ -327,7 +327,7 @@ static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_
     memcpy(&cpy_addr, addr, addrlen);
     char* name = cpy_addr.sun_path;
 
-    dirent* parent = Core_GetCurrentThread()->proc->cwd;
+    dirent* parent = *name == '/' ? Vfs_Root : Core_GetCurrentThread()->proc->cwd;
     size_t index = strrfind(name, '/');
     char* dirname = name;
     if (index != SIZE_MAX)
@@ -337,6 +337,8 @@ static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_
         dirname++;
         parent = VfsH_DirentLookupFrom(name, parent);
     }
+    if (!parent)
+        return OBOS_STATUS_NOT_FOUND;
     if (VfsH_DirentLookupFrom(dirname, parent))
         return OBOS_STATUS_ADDRESS_IN_USE;
 
@@ -350,7 +352,7 @@ static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_
     return OBOS_STATUS_SUCCESS;
 }
 
-static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, socket_desc** out)
+static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, bool nonblocking, socket_desc** out)
 {
     OBOS_UNUSED(flags);
     if (!socket)
@@ -366,6 +368,8 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
     size_t addr_max = addrlen ? (*addrlen)-2 : 0;
     struct open_local_socket* con = nullptr;
     
+    if (!Core_EventGetState(&s->serv.doorbell) && nonblocking)
+        return OBOS_STATUS_WOULD_BLOCK;
     Core_WaitOnObject(WAITABLE_OBJECT(s->serv.doorbell));
     Core_EventClear(&s->serv.doorbell);
 

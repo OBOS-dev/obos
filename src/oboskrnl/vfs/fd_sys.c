@@ -433,7 +433,6 @@ uoff_t Sys_FdTellOff(const handle desc)
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    OBOS_ENSURE(fd->un.fd);
     return Vfs_FdTellOff(fd->un.fd);
 }
 
@@ -1483,6 +1482,8 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         Core_WaitOnObjects(nWaitableObjects, waitable_list, nullptr);
         if (tm.mode == TIMER_EXPIRED)
         {
+            // Just In Case
+            Core_CancelTimer(&tm);
             CoreH_FreeDPC(&tm.handler_dpc, false);
             status = OBOS_STATUS_SUCCESS;
             goto timeout;
@@ -1572,30 +1573,30 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         irp* read_irp = nullptr;
         irp* write_irp = nullptr;
         bool events_satisified = true;
+        curr->revents = 0;
         if (curr->events & POLLIN)
         {
             events_satisified = events_satisified && fd_avaliable_for(IRP_READ, curr->fd, &status, &read_irp);
             if (obos_is_error(status))
             {
-                if (obos_is_error(status))
+                if (status == OBOS_STATUS_PIPE_CLOSED)
                 {
-                    if (status == OBOS_STATUS_PIPE_CLOSED)
-                    {
-                        curr->revents |= POLLERR;
-                        break;
-                    }
-                    else if (status == OBOS_STATUS_INVALID_ARGUMENT)
-                    {
-                        curr->revents |= POLLNVAL;
-                        break;
-                    }
-                    else
-                        break;
+                    curr->revents |= POLLERR;
+                    break;
                 }
+                else if (status == OBOS_STATUS_INVALID_ARGUMENT)
+                {
+                    curr->revents |= POLLNVAL;
+                    break;
+                }
+                else
+                    break;
             }
             if (events_satisified)
+            {
                 num_events++;
-            curr->revents |= POLLIN;
+                curr->revents |= POLLIN;
+            }
         }
         if (curr->events & POLLOUT)
         {
@@ -1616,8 +1617,10 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                     break;
             }
             if (events_satisified)
+            {
                 num_events++;
-            curr->revents |= POLLOUT;
+                curr->revents |= POLLOUT;
+            }
         }
         if (events_satisified)
             continue;
@@ -1649,6 +1652,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         Core_WaitOnObjects(n_waitable_objects, waitable_list, &signaled);
         if (signaled == WAITABLE_OBJECT(tm_evnt))
         {
+            Core_CancelTimer(&tm);
             CoreH_FreeDPC(&tm.handler_dpc, false);
             status = OBOS_STATUS_SUCCESS;
             goto out;
@@ -1741,6 +1745,9 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
         else
             link_name = link;
     }
+
+    if (*link == '/')
+        parent = Vfs_Root;
 
     if (!parent)
     {
@@ -1851,6 +1858,9 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         ptarget = dent->un.dirent->parent;
     }
 
+    if (*target == '/')
+        ptarget = Vfs_Root;
+
     dtarget = VfsH_DirentLookupFrom(target, ptarget);
     if (!dtarget)
         return OBOS_STATUS_NOT_FOUND;
@@ -1885,7 +1895,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         plink = hnd->un.dirent->parent;
     }
     else
-        plink = Core_GetCurrentThread()->proc->cwd;
+        plink = *link == '/' ? Vfs_Root : Core_GetCurrentThread()->proc->cwd;
 
     char* linkname = nullptr;
 
@@ -2007,9 +2017,16 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         ptarget = dent->un.dirent->parent;
     }
 
+    if (*target == '/')
+        ptarget = Vfs_Root;
+
     dtarget = VfsH_DirentLookupFrom(target, ptarget);
     if (!dtarget)
+    {
+        Free(OBOS_KernelAllocator, target, sz_path);
+        Free(OBOS_KernelAllocator, link, sz_path2);
         return OBOS_STATUS_NOT_FOUND;
+    }
     
     skip_target_lookup:
 
@@ -2039,6 +2056,9 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
     }
     else
         pnewname = Core_GetCurrentThread()->proc->cwd;
+
+    if (*link == '/')
+        pnewname = Vfs_Root;
 
     char* newfilename = nullptr;
 
@@ -2277,20 +2297,53 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
     return status;
 }
 
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
+
+static long get_current_time()
+{
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+    return current_time;
+}
+
 obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct timespec *utimes, int flags)
 {
     struct timespec times[2] = {};
     obos_status status = OBOS_STATUS_SUCCESS;
     
-    status = memcpy_usr_to_k(times, utimes, sizeof(times));
-    if (obos_is_error(status))
-        return status;
+    if (utimes)
+    {
+        status = memcpy_usr_to_k(times, utimes, sizeof(times));
+        if (obos_is_error(status))
+            return status;
+    }
+    else
+    {
+        times[0].tv_sec = get_current_time();
+        times[1].tv_sec = times[0].tv_sec;
+    }
 
     vnode* target = nullptr;
     dirent* parent = nullptr;
 
     if (dirfd != AT_FDCWD)
     {
+        if (flags & AT_EMPTY_PATH || !upathname)
+        {
+            handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_FD, false, &status);
+            if (!desc)
+            {
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                return status;
+            }
+            target = desc->un.fd->vn;
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            goto have_target;
+        }
         OBOS_LockHandleTable(OBOS_CurrentHandleTable());
         handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), dirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!desc)
@@ -2326,6 +2379,7 @@ obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct time
         return OBOS_STATUS_NOT_FOUND;
 
     target = ent->vnode;
+    have_target:
     if (!target)
         return OBOS_STATUS_NOT_FOUND;
 
@@ -2887,7 +2941,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
     return status;
 }
 
-void Sys_UMask(int mask, int* oldmask)
+void Sys_UMask(uint32_t mask, uint32_t* oldmask)
 {
     if (oldmask)
         memcpy_k_to_usr(oldmask, &Core_GetCurrentThread()->proc->umask, sizeof(*oldmask));

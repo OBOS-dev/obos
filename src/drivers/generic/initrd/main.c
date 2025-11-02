@@ -377,14 +377,73 @@ OBOS_PAGEABLE_FUNCTION obos_status query_path(dev_desc desc, const char** path)
     *path = inode->path;
     return OBOS_STATUS_SUCCESS;
 }
+
 OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** found)
 {
     initrd_inode* ino = (void*)desc;
-    if (ino->type == FILE_TYPE_SYMBOLIC_LINK)
+    if (ino->type != FILE_TYPE_SYMBOLIC_LINK)
         return OBOS_STATUS_INVALID_ARGUMENT;
     *found = ino->linked_path;
     return OBOS_STATUS_SUCCESS;
 }
+
+obos_status move_desc_to(dev_desc desc, dev_desc dnew_parent, const char* name)
+{
+    initrd_inode* ino = (void*)desc;
+    initrd_inode* new_parent = (void*)dnew_parent;
+    if (dnew_parent == UINTPTR_MAX)
+        new_parent = InitrdRoot;
+    
+    if (!ino) return OBOS_STATUS_INVALID_ARGUMENT;
+
+    // FIXME: This does not handle persistent inodes.
+    // This is problematic because if the old name is accessed,
+    // then it will be recreated.
+    if (new_parent)
+    {
+        if (ino->next)
+            ino->next->prev = ino->prev;
+        if (ino->prev)
+            ino->prev->next = ino->next;
+        if (ino->parent->children.head)
+            ino->parent->children.head = ino->next;
+        if (ino->parent->children.tail)
+            ino->parent->children.tail = ino->prev;
+        ino->parent->children.nChildren--;
+        ino->parent = new_parent;
+        if (!ino->parent->children.head)
+            ino->parent->children.head = ino;
+        if (ino->parent->children.tail)
+            ino->parent->children.tail->next = ino;
+        ino->prev = ino->parent->children.tail;
+        ino->parent->children.tail = ino;
+        ino->parent->children.nChildren++;
+    }
+    if (name)
+    {
+        ino->name_len = 0;
+        Free(OBOS_KernelAllocator, ino->name, ino->name_size);
+        ino->name_size = ino->name_len = strlen(name);
+        ino->name_size++;
+        ino->name = memcpy(Allocate(OBOS_KernelAllocator, ino->name_size, nullptr), name, ino->name_len);
+        
+        ino->path_len = 0;
+        Free(OBOS_KernelAllocator, ino->name, ino->path_size);
+        ino->path_len = snprintf(nullptr, 0, "%.*s%c%s", 
+            ino->parent->path_len, ino->parent->path,
+            (ino->parent->path[ino->parent->path_len-1] == '/' ? '\0' : '/'),
+            ino->name);
+        ino->path_size = ino->path_len + 1;
+        ino->path = Allocate(OBOS_KernelAllocator, ino->path_size, nullptr);
+        snprintf(ino->path, ino->path_size, "%.*s%c%s", 
+            ino->parent->path_len, ino->parent->path,
+            (ino->parent->path[ino->parent->path_len-1] == '/' ? '\0' : '/'),
+            ino->name);
+    }
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 static char* fullpath(dev_desc parent, const char* what)
 {
     char *ret = nullptr;
@@ -436,13 +495,15 @@ initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
             initrd_inode* found = DirentLookupFrom(ino->path, InitrdRoot);
             if (found)
             {
+                if (found->dead)
+                    found->dead = false;
                 ino->parent = found;
                 goto down;
             }
 
             const ustar_hdr *sub_hdr = GetFile(ino->path, nullptr);
             if (!sub_hdr && ((iter + off) >= end))
-                goto down; // NOTE: bugggy?
+                goto down; // NOTE: buggy?
             if (sub_hdr == hdr)
                 goto down;
             
@@ -484,6 +545,11 @@ OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, co
     initrd_inode* ino = DirentLookupFrom(what, parent == UINTPTR_MAX ? InitrdRoot : (initrd_inode*)parent);
     if (ino)
     {
+        if (ino->dead)
+        {
+            *found = 0;
+            return OBOS_STATUS_NOT_FOUND;
+        }
         *found = (dev_desc)ino;
         return OBOS_STATUS_SUCCESS;
     }
@@ -552,6 +618,8 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
                     initrd_inode *ino = DirentLookupFrom(hdr_path, dir);
                     if (!ino)
                         ino = create_inode_with_parents(hdr_path, hdr);
+                    if (ino->dead)
+                        goto down;
                     if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
                     {
                         Free(OBOS_KernelAllocator, hdr_path, hdr_path_len+1);
@@ -571,8 +639,11 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     {
         for (initrd_inode* ino = dir->children.head; ino; )
         {
+            if (ino->dead)
+                goto next;
             if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
                 break;
+            next:
             ino = ino->next;
         }
     }
@@ -687,18 +758,25 @@ obos_status remove_file(dev_desc desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (inode->parent)
     {
-        if (inode->next)
-            inode->next->prev = inode->prev;
-        if (inode->prev)
-            inode->prev->next = inode->next;
-        if (!inode->prev)
-            inode->parent->children.head = inode->next;
-        if (!inode->next)
-            inode->parent->children.tail = inode->prev;
-        inode->parent->children.nChildren--;
+        if (!inode->persistent)
+        {
+            if (inode->next)
+                inode->next->prev = inode->prev;
+            if (inode->prev)
+                inode->prev->next = inode->next;
+            if (!inode->prev)
+                inode->parent->children.head = inode->next;
+            if (!inode->next)
+                inode->parent->children.tail = inode->prev;
+            inode->parent->children.nChildren--;
+        }
+        else
+            inode->dead = true;
     }
     if (!inode->persistent)
+    {
         Free(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize);
-    Free(OBOS_KernelAllocator, inode, sizeof(*inode));
+        Free(OBOS_KernelAllocator, inode, sizeof(*inode));
+    }
     return OBOS_STATUS_SUCCESS;
 }

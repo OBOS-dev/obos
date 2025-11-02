@@ -446,7 +446,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     OBOS_ENSURE(desc->vn);
     if (desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK || desc->vn->vtype == VNODE_TYPE_CHR)
         return OBOS_STATUS_SUCCESS; // act like it worked
-    size_t finalOff = 0;
+    off_t finalOff = 0;
     driver_header* driver = Vfs_GetVnodeDriver(desc->vn);
     size_t blkSize = 0;
     driver->ftable.get_blk_size(desc->desc, &blkSize);
@@ -461,17 +461,17 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
             if (off % blkSize)
                 return OBOS_STATUS_INVALID_ARGUMENT;
             finalOff = (off_t)desc->vn->filesize - 1 + off;
-            finalOff -= finalOff % blkSize;
             break;
         case SEEK_CUR:
             if (off % blkSize)
                 return OBOS_STATUS_INVALID_ARGUMENT;
             finalOff = (off_t)desc->offset + off;
-            finalOff -= finalOff % blkSize;
             break;
     }
-    // if (is_eof(desc->vn, finalOff) && desc->vn->vtype != VNODE_TYPE_FIFO)
-    //     return OBOS_STATUS_EOF;
+    if (finalOff < 0)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (is_eof(desc->vn, finalOff) && desc->vn->vtype == VNODE_TYPE_BLK)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     desc->offset = finalOff;
     return OBOS_STATUS_SUCCESS;
 }

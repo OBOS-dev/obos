@@ -116,7 +116,7 @@ typedef struct socket_ops {
 	} proto_type;
 	socket_desc*(*create)();
 	void(*free)(socket_desc* socket);
-	obos_status(*accept)(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, socket_desc** out);
+	obos_status(*accept)(socket_desc* socket, struct sockaddr* addr, size_t* addrlen, int flags, bool nonblocking, socket_desc** out);
 	obos_status(*bind)(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
 	obos_status(*connect)(socket_desc* socket, struct sockaddr* addr, size_t addrlen);
 	obos_status(*getpeername)(socket_desc* socket, struct sockaddr* addr, size_t *addrlen);

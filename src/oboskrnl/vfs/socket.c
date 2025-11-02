@@ -332,7 +332,9 @@ obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags,
     {
         status = OBOS_STATUS_SUCCESS;
         socket_desc* new_desc = nullptr;
-        status = desc->ops->accept(desc, oaddr, addr_len, flags, &new_desc);
+        status = desc->ops->accept(desc, oaddr, addr_len, flags, socket->flags & FD_FLAGS_NOBLOCK, &new_desc);
+        if (obos_is_error(status))
+            return status;
         int type = 0;
         switch (desc->ops->proto_type.protocol) {
             case IPPROTO_TCP: type = SOCK_STREAM; break;
@@ -340,11 +342,21 @@ obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags,
             default: break;
         }
         make_fd(out, AF_INET, type, desc->ops->proto_type.protocol, new_desc);
-        if (flags & SOCK_NONBLOCK)
-            out->flags |= FD_FLAGS_NOBLOCK;
-        if (flags & SOCK_CLOEXEC)
-            out->flags |= FD_FLAGS_NOEXEC;
     }
+    else if (desc->ops->domain == AF_UNIX)
+    {
+        status = OBOS_STATUS_SUCCESS;
+        socket_desc* new_desc = nullptr;
+        status = desc->ops->accept(desc, oaddr, addr_len, flags, socket->flags & FD_FLAGS_NOBLOCK, &new_desc);
+        if (obos_is_error(status))
+            return status;
+        int type = desc->ops->proto_type.type;
+        make_fd(out, AF_UNIX, type, 0, new_desc);
+    }
+    if (flags & SOCK_NONBLOCK)
+        out->flags |= FD_FLAGS_NOBLOCK;
+    if (flags & SOCK_CLOEXEC)
+        out->flags |= FD_FLAGS_NOEXEC;
     return status;
 }
 
@@ -373,6 +385,7 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
     socket_desc* desc = (void*)socket->vn->desc;
     if (desc->ops->domain != AF_INET)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    return OBOS_STATUS_INVALID_ARGUMENT;
     switch (optname) {
         case IP_TTL:
             if (optlen < sizeof(uint8_t))
@@ -384,7 +397,9 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
                 return OBOS_STATUS_INVALID_ARGUMENT;
             desc->opts.hdrincl = *(bool*)optval;
             break;
-        default: return OBOS_STATUS_INVALID_ARGUMENT;
+        default: 
+            OBOS_Warning("Unrecognized sockopt %d:%d\n", level, optname);
+            return OBOS_STATUS_INVALID_ARGUMENT;
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -395,6 +410,7 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
     socket_desc* desc = (void*)socket->vn->desc;
     if (desc->ops->domain != AF_INET)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    return OBOS_STATUS_INVALID_ARGUMENT;
     switch (optname) {
         case IP_TTL:
             if (*optlen < sizeof(uint8_t))
@@ -408,9 +424,9 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
             *(bool*)optval = desc->opts.hdrincl;
             *optlen = sizeof(bool);
             break;
-        // TODO(oberrow): Support more SOCK opts, until then always say that we support it, even if we don't
-        // default: return OBOS_STATUS_INVALID_ARGUMENT;
-        default: return OBOS_STATUS_SUCCESS;
+        default: 
+            OBOS_Warning("%s: Unrecognized sockopt %d:%d.\n", __func__, level, optname);
+            return OBOS_STATUS_INVALID_ARGUMENT;
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -430,7 +446,7 @@ obos_status Net_GetSockName(fd* socket, sockaddr* oaddr, size_t* addr_len)
     socket_desc* desc = (void*)socket->vn->desc;
     if (!desc->ops->getsockname)
         return OBOS_STATUS_INVALID_OPERATION;
-    return desc->ops->getpeername(desc, oaddr, addr_len);
+    return desc->ops->getsockname(desc, oaddr, addr_len);
 }
 
 obos_status Net_Listen(fd* socket, int backlog)

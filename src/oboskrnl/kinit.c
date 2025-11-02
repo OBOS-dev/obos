@@ -330,6 +330,8 @@ void OBOS_KernelInit()
 
     Net_InitializeLoopbackDevice();
 
+    Core_ProcessGroupTreeLock = MUTEX_INITIALIZE();
+
     if (OBOSS_MakeTTY)
         OBOSS_MakeTTY();
     

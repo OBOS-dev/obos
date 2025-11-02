@@ -122,7 +122,6 @@ int main(int argc, char** argv)
                 return opt != 'h';
         }
     }
-    syscall1(Sys_SetKLogLevel, final_log_level);
     if (optind >= argc)
     {
         fprintf(stderr, "Usage: %s [-c sigchld/powerbutton_action] [-s swap_dev] [-l kernel_log_level] handoff_path [handoff program arguments]", argv[0]);
@@ -152,19 +151,17 @@ int main(int argc, char** argv)
     nm_initialize_hostname();
     nm_initialize_interfaces("/etc/interfaces.json");
 
+    syscall1(Sys_SetKLogLevel, final_log_level);
+
     // Start a shell, I guess.
     pid_t pid = fork();
     if (pid == 0)
     {
-        while (tcgetpgrp(0) != getpgid(0))
-            syscall0(Sys_Yield);
+        setpgrp();
+        tcsetpgrp(0, getpgrp());
         execvp(handoff_process, &argv[optind]);
         perror("execvp");
         exit(EXIT_FAILURE);
-    }
-    else 
-    {
-        tcsetpgrp(0, getpgid(pid));
     }
     int power_button = open("/dev/power_button", O_RDONLY);
     if (power_button != -1 && fork() == 0)

@@ -143,16 +143,20 @@ const uintptr_t Arch_cpu_local_curr_offset = offsetof(cpu_local, curr);
 const uintptr_t Arch_cpu_local_currentIrql_offset = offsetof(cpu_local, currentIrql);
 
 struct flanterm_context* OBOS_FlantermContext = nullptr;
+static bool disable_flanterm_backend = false;
 static void flanterm_cb_set_color(color c, void*)
 {
+    if (disable_flanterm_backend) return;
     flanterm_write(OBOS_FlantermContext, color_to_ansi[c], strlen(color_to_ansi[c]));
 }
 static void flanterm_cb_reset_color(void*)
 {
+    if (disable_flanterm_backend) return;
     flanterm_write(OBOS_FlantermContext, "\x1b[0m", 4);
 }
 static void flanterm_cb_out(const char* str, size_t sz, void*)
 {
+    if (disable_flanterm_backend) return;
     flanterm_write(OBOS_FlantermContext, str, sz);
 }
 static void init_flanterm_backend()
@@ -579,7 +583,9 @@ void OBOSS_MakeTTY()
         VfsH_MakeScreenTTY(&i, ps2k1->vnode, nullptr, OBOS_FlantermContext);
         dirent* tty = nullptr;
         Vfs_RegisterTTY(&i, &tty, false);
-        Core_GetCurrentThread()->proc->pgrp->controlling_tty = tty->vnode->data;
+        process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
+        ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
+        pgrp->controlling_tty = (void*)tty->vnode->desc;
     }
 }
 
@@ -593,5 +599,9 @@ static bool isnum(char ch)
 void Arch_KernelMainBootstrap()
 {
     OBOS_KernelInit();
+    // No longer receive logs on the TTY, if the option is set
+    // Do __not__ document this option.
+    if (OBOS_GetOPTF("disable-flanterm-logging"))
+        disable_flanterm_backend = true;
     Core_ExitCurrentThread();
 }

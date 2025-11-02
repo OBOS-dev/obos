@@ -51,6 +51,7 @@ typedef struct initrd_inode {
     file_type type;
     uint32_t ino;
     bool persistent : 1;
+    bool dead : 1;
     driver_file_perm perm;
     vnode* vnode;
 } initrd_inode;
