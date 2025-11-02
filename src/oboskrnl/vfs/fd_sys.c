@@ -1560,9 +1560,23 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     }
 
     int num_events = 0;
+    int nTotalEvents = 0;
 
-    struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nFds + (timeout != UINTPTR_MAX), sizeof(struct waitable_header*)*2, nullptr);
+    for (size_t i = 0; i < nFds; i++)
+    {
+        struct pollfd* curr = &fds[i];
+        // TODO: is this a problem with different handle types?
+        if ((int)curr->fd < 0)
+            continue;
+        nTotalEvents += (curr->events & POLLIN);
+        nTotalEvents += (curr->events & POLLOUT);
+    }
+    nTotalEvents += (timeout != UINTPTR_MAX);
+    struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nTotalEvents, sizeof(struct waitable_header*)*2, nullptr);
     size_t n_waitable_objects = 0;
+
+    // FIXME: The IRPs are leaked
+    
     up:
     for (size_t i = 0; i < nFds; i++)
     {
@@ -1576,7 +1590,8 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         curr->revents = 0;
         if (curr->events & POLLIN)
         {
-            events_satisified = events_satisified && fd_avaliable_for(IRP_READ, curr->fd, &status, &read_irp);
+            bool res = fd_avaliable_for(IRP_READ, curr->fd, &status, &read_irp);
+            events_satisified = events_satisified && res;
             if (obos_is_error(status))
             {
                 if (status == OBOS_STATUS_PIPE_CLOSED)
@@ -1600,7 +1615,8 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         }
         if (curr->events & POLLOUT)
         {
-            events_satisified = events_satisified && fd_avaliable_for(IRP_WRITE, curr->fd, &status, &write_irp);
+            bool res = fd_avaliable_for(IRP_WRITE, curr->fd, &status, &write_irp);
+            events_satisified = events_satisified && res;
             if (obos_is_error(status))
             {
                 if (status == OBOS_STATUS_PIPE_CLOSED)
@@ -1639,7 +1655,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         }
 
         timer tm = {};
-        event tm_evnt = {};
+        event tm_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         if (timeout != UINTPTR_MAX)
         {
             tm.handler = pselect_tm_handler;
@@ -1669,7 +1685,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     memcpy_k_to_usr(nEvents, &num_events, sizeof(int));
 
     if (waitable_list)
-        Free(OBOS_KernelAllocator, waitable_list, nFds + (timeout!=UINTPTR_MAX));
+        Free(OBOS_KernelAllocator, waitable_list, nTotalEvents);
     OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
 
