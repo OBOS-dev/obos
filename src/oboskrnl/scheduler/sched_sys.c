@@ -460,8 +460,8 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
 
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-        size_t len_exec_file = strlen(Core_GetCurrentThread()->proc->exec_file), 
-               len_cmdline = strlen(Core_GetCurrentThread()->proc->cmdline);
+        size_t len_exec_file = Core_GetCurrentThread()->proc->exec_file ? 0 : strlen(Core_GetCurrentThread()->proc->exec_file), 
+               len_cmdline = Core_GetCurrentThread()->proc->cmdline ? 0 : strlen(Core_GetCurrentThread()->proc->cmdline);
         new->exec_file = memcpy(Allocate(OBOS_KernelAllocator, len_exec_file+1, nullptr), Core_GetCurrentThread()->proc->exec_file, len_exec_file+1);
         new->cmdline = memcpy(Allocate(OBOS_KernelAllocator, len_cmdline+1, nullptr), Core_GetCurrentThread()->proc->cmdline, len_cmdline+1);
         new->umask = Core_GetCurrentThread()->proc->umask;
