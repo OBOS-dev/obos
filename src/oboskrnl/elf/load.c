@@ -228,7 +228,7 @@ obos_status OBOS_LoadELF(context* ctx, const void* file, size_t szFile, elf_info
         VfsH_UnlockMountpoint(interp_fd.vn->mount_point);
 
         status = OBOS_STATUS_SUCCESS;
-        void* buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, buff_size, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE, &interp_fd, &status);
+        void* buff = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, buff_size, OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE|VMA_FLAGS_PREFAULT, &interp_fd, &status);
         if (obos_is_error(status))
         {
             Vfs_FdClose(&interp_fd);
