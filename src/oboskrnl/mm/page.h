@@ -118,10 +118,6 @@ inline static int phys_page_cmp(struct page* lhs, struct page* rhs)
 }
 inline static int pagecache_tree_cmp(struct page* lhs, struct page* rhs)
 {
-    if (lhs->backing_vn < rhs->backing_vn)
-        return -1;
-    if (lhs->backing_vn > rhs->backing_vn)
-        return 1;
     return (lhs->file_offset < rhs->file_offset) ? -1 : (lhs->file_offset == rhs->file_offset ? 0 : 1);
 }
 
@@ -131,7 +127,7 @@ OBOS_EXPORT page* MmH_AllocatePage(uintptr_t phys, bool huge);
 OBOS_EXPORT void MmH_RefPage(page* buf);
 OBOS_EXPORT void MmH_DerefPage(page* buf);
 OBOS_EXPORT extern phys_page_tree Mm_PhysicalPages;
-OBOS_EXPORT extern pagecache_tree Mm_Pagecache;
+// OBOS_EXPORT extern pagecache_tree Mm_Pagecache;
 OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
 
 typedef struct page_range

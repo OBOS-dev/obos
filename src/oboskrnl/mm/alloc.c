@@ -353,7 +353,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             {
                 // File page.
                 page what = {.backing_vn=file->vn,.file_offset=currFileOff};
-                phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &what);
+                phys = RB_FIND(pagecache_tree, &file->vn->cache, &what);
                 if (flags & VMA_FLAGS_PREFAULT && !phys)
                     phys = VfsH_PageCacheCreateEntry(file->vn, currFileOff);
                 if (phys)

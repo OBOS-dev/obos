@@ -31,7 +31,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
     page* phys = MmH_PgAllocatePhysical(false, false);
     phys->backing_vn = vn;
     phys->file_offset = offset;
-    RB_INSERT(pagecache_tree, &Mm_Pagecache, phys);
+    RB_INSERT(pagecache_tree, &vn->cache, phys);
     driver_header* driver = Vfs_GetVnodeDriver(vn);
     if (!driver) return nullptr;
     if (!vn->blkSize)
@@ -56,7 +56,7 @@ static inline void* VfsH_PageCacheGetEntry(vnode* vn, size_t offset, page** ent)
     offset -= (offset % OBOS_PAGE_SIZE);
     offset /= vn->blkSize;
     page key = {.file_offset=offset, .backing_vn=vn};
-    page* phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &key);
+    page* phys = RB_FIND(pagecache_tree, &vn->cache, &key);
     if (!phys)
     {
         phys = VfsH_PageCacheCreateEntry(vn, offset);

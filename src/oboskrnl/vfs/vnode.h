@@ -15,6 +15,8 @@
 
 #include <utils/list.h>
 
+#include <mm/page.h>
+
 #include <locks/mutex.h>
 
 enum
@@ -107,6 +109,8 @@ typedef struct vnode
 #define F_SEAL_GROW 0x0004
 #define F_SEAL_WRITE 0x0008
     int seals;
+
+    pagecache_tree cache;
 } vnode;
 
 OBOS_EXPORT vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev, uint32_t type);

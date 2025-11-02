@@ -92,7 +92,7 @@ RB_GENERATE_INTERNAL(phys_page_tree, page, rb_node, phys_page_cmp, OBOS_EXPORT);
 RB_GENERATE_INTERNAL(pagecache_tree, page, pc_rb_node, pagecache_tree_cmp, OBOS_EXPORT);
 LIST_GENERATE(phys_page_list, struct page, lnk_node);
 phys_page_tree Mm_PhysicalPages;
-pagecache_tree Mm_Pagecache;
+// pagecache_tree Mm_Pagecache;
 size_t Mm_PhysicalMemoryUsage;
 
 page* MmH_PgAllocatePhysical(bool phys32, bool huge)
@@ -144,7 +144,7 @@ void MmH_DerefPage(page* buf)
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
 		if (buf->backing_vn)
 		{
-			RB_REMOVE(pagecache_tree, &Mm_Pagecache, buf);
+			RB_REMOVE(pagecache_tree, &buf->backing_vn->cache, buf);
 			if (!(--buf->backing_vn->refs))
 			{
 				if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO || buf->backing_vn->vtype == VNODE_TYPE_SOCK)

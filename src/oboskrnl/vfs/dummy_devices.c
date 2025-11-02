@@ -457,7 +457,7 @@ static void init_desc(dev_desc desc)
             pg->flags |= PHYS_PAGE_MMIO;
             pg->backing_vn = vn;
             pg->file_offset = i;
-            RB_INSERT(pagecache_tree, &Mm_Pagecache, pg);
+            RB_INSERT(pagecache_tree, &vn->cache, pg);
         }
     }
 

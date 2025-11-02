@@ -44,7 +44,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         return;
     }
     page what = {.backing_vn=rng->un.mapped_vn,.file_offset=addr-rng->virt};
-    page* phys = RB_FIND(pagecache_tree, &Mm_Pagecache, &what);
+    page* phys = RB_FIND(pagecache_tree, &rng->un.mapped_vn->cache, &what);
     if (!phys)
     {
         *type = HARD_FAULT;
