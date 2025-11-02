@@ -128,6 +128,7 @@ struct open_local_socket {
     };
     struct local_socket* server;
     dirent* bound_ent;
+    struct local_socket* lsckt;
     LIST_NODE(open_local_socket_list, struct open_local_socket) node;
 };
 typedef LIST_HEAD(open_local_socket_list, struct open_local_socket) open_local_socket_list;
@@ -344,7 +345,7 @@ static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_
 
     vnode* vn = socket->vn;
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
-    OBOS_InitString(&ent->name, name);
+    OBOS_InitString(&ent->name, dirname);
     ent->vnode = vn;
     VfsH_DirentAppendChild(parent, ent);
     socket->local_ent = ent;
@@ -390,21 +391,25 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
 
     scon->incoming_stream = &con->stream.server_bound;
     scon->outgoing_stream = &con->stream.client_bound;
-    do {
-        socket_desc* desc = (void*)con->bound_ent->vnode->desc;
-        struct local_socket* lsckt = desc->protocol_data;
-        scon->peer = lsckt;
-    } while(0);
-
+    scon->peer = con->lsckt;
+        
     if (addr)
     {
-        struct sockaddr_un* laddr = (void*)addr;
-        laddr->sun_family = AF_UNIX;
-        char* bound_path = VfsH_DirentPath(scon->open->bound_ent, Vfs_Root);
-        size_t bound_path_len = bound_path ? 0 : strlen(bound_path);
-        memcpy(laddr->sun_path, bound_path, OBOS_MIN(addr_max - sizeof(laddr->sun_family), bound_path_len+1));
-        *addrlen = bound_path_len;
-        Vfs_Free(bound_path);
+        if (scon->open->bound_ent)
+        {
+            struct sockaddr_un* laddr = (void*)addr;
+            laddr->sun_family = AF_UNIX;
+            char* bound_path = VfsH_DirentPath(scon->open->bound_ent, Vfs_Root);
+            size_t bound_path_len = bound_path ? 0 : strlen(bound_path);
+            memcpy(laddr->sun_path, bound_path, OBOS_MIN(addr_max - sizeof(laddr->sun_family), bound_path_len+1));
+            *addrlen = bound_path_len;
+            Vfs_Free(bound_path);
+        }
+        else
+        {
+            addr->family = AF_UNIX;
+            *addrlen = 2;
+        }
     }
 
     *out = res;
@@ -414,8 +419,6 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
 
 static obos_status stream_connect(socket_desc* socket, struct sockaddr* addr, size_t addrlen)
 {
-    if (!socket->local_ent)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     if (socket->protocol_data)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
@@ -451,6 +454,7 @@ static obos_status stream_connect(socket_desc* socket, struct sockaddr* addr, si
     struct local_socket* sock_data = Vfs_Calloc(1, sizeof(struct local_socket));
 
     sock_data->open = Vfs_Calloc(1, sizeof(struct open_local_socket));
+    sock_data->is_open = true;
     sock_data->open->server = serv;
     sock_data->open->bound_ent = socket->local_ent;
     ringbuffer_initialize(&sock_data->open->stream.server_bound);
@@ -464,6 +468,7 @@ static obos_status stream_connect(socket_desc* socket, struct sockaddr* addr, si
     sock_data->incoming_stream = &sock_data->open->stream.client_bound;
     sock_data->outgoing_stream = &sock_data->open->stream.server_bound;
     sock_data->peer = sock_data->open->server;
+    sock_data->open->lsckt = sock_data;
 
     socket->protocol_data = sock_data;
 
@@ -488,6 +493,13 @@ static obos_status stream_getpeername(socket_desc* socket, struct sockaddr* addr
     else
         peer = lsckt->open->server->serv.file;
 
+    if (!peer)
+    {
+        addr->family = AF_UNIX;
+        *addrlen = sizeof(addr->family);
+        return OBOS_STATUS_SUCCESS;
+    }
+
     size_t addr_max = (*addrlen) - 2;
     
     struct sockaddr_un* laddr = (void*)addr;
@@ -504,8 +516,14 @@ static obos_status stream_getsockname(socket_desc* socket, struct sockaddr* addr
 {
     if (!addr || !addrlen)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!socket || !socket->local_ent)
+    if (!socket)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!socket->local_ent)
+    {
+        addr->family = AF_UNIX;
+        *addrlen = sizeof(addr->family);
+        return OBOS_STATUS_SUCCESS;
+    }
 
     size_t addr_max = (*addrlen) - 2;
     
