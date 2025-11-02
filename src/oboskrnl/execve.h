@@ -32,6 +32,8 @@ struct exec_aux_values {
     char** envp;
     size_t argc;
     size_t envpc;
+    
+    bool at_secure;
 };
 
 OBOS_NORETURN OBOS_WEAK void OBOSS_HandControlTo(struct context* ctx, struct exec_aux_values* aux);

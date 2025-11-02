@@ -142,8 +142,10 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPath(VfsH_DirentLookup(path), nullptr);
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE|VMA_FLAGS_PREFAULT, &file, nullptr);
-    uid target_uid = file.vn->perm.set_uid ? file.vn->owner_uid : Core_GetCurrentThread()->proc->currentUID;
-    gid target_gid = file.vn->perm.set_gid ? file.vn->group_uid : Core_GetCurrentThread()->proc->currentGID;
+    bool set_uid = file.vn->perm.set_uid;
+    bool set_gid = file.vn->perm.set_gid;
+    uid target_uid = set_uid ? file.vn->owner_uid : Core_GetCurrentThread()->proc->currentUID;
+    gid target_gid = set_gid ? file.vn->group_uid : Core_GetCurrentThread()->proc->currentGID;
     Vfs_FdClose(&file);
 
     char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
@@ -304,6 +306,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     aux.envp = knvp;
     aux.envpc = envpc;
+
+    aux.at_secure = set_gid || set_uid;
 
     Core_GetCurrentThread()->proc->currentUID = target_uid;
     Core_GetCurrentThread()->proc->currentGID = target_gid;

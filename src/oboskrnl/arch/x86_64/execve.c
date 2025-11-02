@@ -113,9 +113,7 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
     Core_GetCurrentThread()->context.extended_ctx_ptr = Arch_AllocateXSAVERegion();
 
     Core_GetCurrentThread()->context.frame.rsp = (uintptr_t)Core_GetCurrentThread()->context.stackBase + Core_GetCurrentThread()->context.stackSize;
-    // 1+argc+char*[argc]+NULL+char*[envpc]+NULL+4(aux)+1
-    // 1+1+argc+1+envpc+1+8+1=9+envpc+argc
-    size_t szAllocation = (13+aux->envpc+aux->argc)*sizeof(uint64_t);
+    size_t szAllocation = (15+aux->envpc+aux->argc)*sizeof(uint64_t);
     allocate_string_vector_on_stack(aux->argv, aux->argc);
     allocate_string_vector_on_stack(aux->envp, aux->envpc);
     Core_GetCurrentThread()->context.frame.rsp &= ~0xf;
@@ -142,6 +140,10 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
 
     (*auxv).a_type = AT_ENTRY;
     (*auxv).a_un.a_ptr = (void*)aux->elf.entry;
+    auxv++;
+    
+    (*auxv).a_type = AT_SECURE;
+    (*auxv).a_un.a_val = aux->at_secure;
     auxv++;
 
     (*auxv).a_type = AT_NULL;
