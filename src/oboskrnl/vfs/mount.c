@@ -183,6 +183,8 @@ obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMoun
     at->vnode->un.mounted = mountpoint;
     // at->vnode->mount_point = mountpoint;
     at->vnode->flags |= VFLAGS_MOUNTPOINT;
+    mountpoint->old_root_desc = at->vnode->desc;
+    at->vnode->desc = UINTPTR_MAX;
     mountpoint->root = at;
     mountpoint->lock = MUTEX_INITIALIZE();
     // uintptr_t udata[3] = {
@@ -313,6 +315,7 @@ obos_status Vfs_Unmount(mount* what)
         Vfs_Root->vnode->mount_point = nullptr;
         Vfs_Root->vnode->un.mounted = nullptr;
     }
+    what->root->vnode->desc = what->old_root_desc;
     what->awaitingFree = true;
     if (!what->nWaiting)
         Vfs_Free(what);

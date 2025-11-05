@@ -23,6 +23,7 @@ typedef struct mount
     LIST_NODE(mount_list, struct mount) node;
     mutex lock;
     dirent* root;
+    dev_desc old_root_desc;
     vdev* fs_driver;
     vnode* device; // the block device the filesystem is situated on.
     vnode* mounted_on;

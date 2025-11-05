@@ -42,6 +42,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
         obos_status status = mountpoint->fs_driver->driver->header.ftable.vnode_search((void**)&vn, desc, mountpoint->fs_driver);
         if (obos_is_success(status))
         {
+            OBOS_ENSURE(vn);
             vn->mount_point = mountpoint;
             if (t)
             {
@@ -303,6 +304,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             if (!last)
                 break;
             mountpoint = last->vnode->flags & VFLAGS_MOUNTPOINT ? last->vnode->un.mounted : last->vnode->mount_point;
+            fs_driver = mountpoint->fs_driver;
             currentPath = VfsH_DirentPath(last, mountpoint->root);
             currentPathLen = strlen(currentPath);
             if (currentPath[currentPathLen-1] != '/')
@@ -311,6 +313,11 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
                 currentPath[currentPathLen] = '/';
                 currentPath[++currentPathLen] = 0;
             }
+        }
+        else
+        {
+            mountpoint = last->vnode->flags & VFLAGS_MOUNTPOINT ? last->vnode->un.mounted : last->vnode->mount_point;
+            fs_driver = mountpoint->fs_driver;
         }
 
         tok += str_search(tok, '/');
@@ -512,7 +519,8 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
 
         child = child->d_next_child;
     }
-    mount* point = dent->vnode->mount_point ? dent->vnode->mount_point : dent->vnode->un.mounted;
+
+    mount* point = Vfs_GetVnodeMount(dent->vnode);
     vnode* vn = create_vnode(point, desc, nullptr);
     dirent* new = Vfs_Calloc(1, sizeof(dirent));
     OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
@@ -525,12 +533,16 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
 
 void Vfs_PopulateDirectory(dirent* dent)
 {
-    mount* point = dent->vnode->mount_point ? dent->vnode->mount_point : dent->vnode->un.mounted;
-    const driver_header* driver = &point->fs_driver->driver->header;
+    mount* point = Vfs_GetVnodeMount(dent->vnode);
+    driver_header* driver = Vfs_GetVnodeDriver(dent->vnode);
     if (dent->vnode->vtype != VNODE_TYPE_DIR)
         return;
     if (driver->ftable.list_dir)
-        OBOS_ENSURE(obos_is_success(driver->ftable.list_dir(dent->vnode->desc, point->device, populate_cb, dent)));
+    {
+        obos_status status = driver->ftable.list_dir(dent->vnode->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : dent->vnode->desc, point->device, populate_cb, dent);
+        if (obos_is_error(status))
+            OBOS_Error("list_dir returned %d!\n", status);
+    }
     else
         OBOS_Error("driver->ftable.list_dir == nullptr!\n");
 }
@@ -785,5 +797,5 @@ mount* Vfs_GetVnodeMount(vnode* vn)
         return nullptr;
     if (vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         return nullptr;
-    return vn->mount_point ? vn->mount_point : vn->un.mounted;
+    return vn->flags & VFLAGS_MOUNTPOINT ? vn->un.mounted : vn->mount_point;
 }

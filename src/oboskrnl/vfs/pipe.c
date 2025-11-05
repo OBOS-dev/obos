@@ -148,7 +148,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         else
         {
             OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
-            return OBOS_STATUS_SUCCESS;
+            return OBOS_STATUS_PIPE_CLOSED;
         }
     }
 
