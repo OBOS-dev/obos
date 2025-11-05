@@ -290,19 +290,19 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         }
         case TTY_IOCTL_FLOW:
             switch (*(uint32_t*)argp) {
-                case TCION:
+                case TCOON:
                     tty->paused = true;
                     break;
-                case TCIOFF:
+                case TCOOFF:
                     tty->paused = false;
                     break;
-                case TCOOFF:
+                case TCIOFF:
                 {
                     char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTOP] : '\023' /* assume it is this */;
                     tty->interface.write(tty, &ch, 1);
                     break;
                 }
-                case TCOON:
+                case TCION:
                 {
                     char ch = tty->termios.iflag & IXON ? tty->termios.cc[VSTART] : '\021' /* assume it is this */;
                     tty->interface.write(tty, &ch, 1);
@@ -641,7 +641,7 @@ static void poll_keyboard(struct screen_tty* data)
     while (1)
     {
         while (data->input_paused)
-            OBOSS_SpinlockHint();
+            Core_Yield();
         size_t nReady = 1;
         irp* req = VfsH_IRPAllocate();
         req->vn = data->keyboard.vn;
