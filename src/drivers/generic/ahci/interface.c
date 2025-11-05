@@ -51,15 +51,6 @@ obos_status get_max_blk_count(dev_desc desc, size_t* count)
 static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data);
 // #pragma GCC push_options
 // #pragma GCC optimize ("-O0")
-static OBOS_NO_KASAN void page_in(uintptr_t base, size_t sz)
-{
-    uintptr_t curr_base = base;
-    for (size_t i = 0; i < sz; i += OBOS_PAGE_SIZE)
-    {
-        volatile char prev = ((char*)curr_base)[i];
-        ((volatile char*)curr_base)[i] = prev;
-    }
-}
 static obos_status populate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
 {
     // obos_status status = 
@@ -68,7 +59,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     //         OBOS_STATUS_SUCCESS;
     // if (obos_is_error(status))
     //     return status;
-    page_in(base, size);
+
     base &= ~1;
     const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
 /*
@@ -94,6 +85,9 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
             return OBOS_STATUS_INTERNAL_ERROR;
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+        page key = {.phys=info.phys};
+        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        MmH_RefPage(pg);
         if ((lastPhys + pgSize) != info.phys)
         {
             if (addr != base)
@@ -133,12 +127,25 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
     OBOS_ASSERT(data);
     OBOS_ASSERT(base);
     OBOS_ASSERT(size);
-    // obos_status status =
-    //     wasPageable ?
-    //         Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)base, size, OBOS_PROTECTION_SAME_AS_BEFORE|(!wasUC ? OBOS_PROTECTION_CACHE_ENABLE : OBOS_PROTECTION_CACHE_DISABLE), true) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
+    context* ctx = CoreS_GetCPULocalPtr()->currentContext;
+#ifndef __x86_64__
+    if (base >= OBOS_KERNEL_ADDRESS_SPACE_BASE && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
+        ctx = &Mm_KernelContext;
+#else
+    if (base >= 0xffff800000000000 && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
+        ctx = &Mm_KernelContext;
+#endif
+    size_t pgSize = 0;
+    for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
+    {
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+        page key = {.phys=info.phys};
+        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        MmH_DerefPage(pg);
+        pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
+    Mm_Allocator->Free(Mm_Allocator, data->phys_regions, data->physRegionCount*sizeof(struct ahci_phys_region));
     return OBOS_STATUS_SUCCESS;
 }
 // #pragma GCC pop_options
@@ -351,8 +358,8 @@ obos_status submit_irp(void* request_)
             data->direction = COMMAND_DIRECTION_READ;
             break;
         case IRP_WRITE:
-            data->cmd = port->supports48bitLBA ? ATA_READ_DMA_EXT : ATA_READ_DMA;
-            data->direction = COMMAND_DIRECTION_READ;
+            data->cmd = port->supports48bitLBA ? ATA_WRITE_DMA_EXT : ATA_WRITE_DMA;
+            data->direction = COMMAND_DIRECTION_WRITE;
             break;
     }
     data->completionEvent = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -378,6 +385,7 @@ obos_status finalize_irp(void* request_)
         request->nBlkRead = request->blkCount;
     else
         request->nBlkRead = 0;
+    unpopulate_physical_regions((uintptr_t)request->buff, request->blkCount, data);
     Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
     return OBOS_STATUS_SUCCESS;
 }
