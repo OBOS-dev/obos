@@ -213,8 +213,7 @@ void ext_ino_foreach_block(ext_cache* cache,
 }
 
 struct read_block_packet {
-    void* buffer;
-    size_t buffer_offset;
+    uint32_t* blocks;
     size_t count;
     size_t start_offset;
     size_t current_offset;
@@ -233,18 +232,7 @@ static iterate_decision read_cb(ext_cache* cache, ext_inode* inode, uint32_t *bl
         decision = ITERATE_DECISION_STOP;
         goto out1;
     }
-    void* const buff = (void*)((uintptr_t)packet->buffer + packet->buffer_offset);
-    if (!block)
-        memzero(buff, cache->block_size); // sparse block
-    else
-    {
-        page* pg = nullptr;
-        void* data = ext_read_block(cache, *block, &pg);
-        MmH_RefPage(pg);
-        memcpy(buff, data, OBOS_MIN(packet->count - packet->buffer_offset, cache->block_size));
-        MmH_DerefPage(pg);
-    }
-    packet->buffer_offset += cache->block_size;
+    packet->blocks[(packet->current_offset - packet->start_offset) / cache->block_size] = block ? *block : UINT32_MAX;
 
     out1:
     packet->current_offset += cache->block_size;
@@ -262,11 +250,97 @@ obos_status ext_ino_read_blocks(ext_cache* cache, uint32_t ino, size_t offset, s
         return OBOS_STATUS_INVALID_ARGUMENT;
     if ((offset + count) > inode->blocks*512)
         count = (offset + count) - inode->blocks*512;
-    struct read_block_packet userdata = {.buffer=buffer,.start_offset=offset,.count=count,.buffer_offset=0};
+    uint32_t nBlocks = count /= cache->block_size;
+    uint32_t* blocks = ZeroAllocate(OBOS_KernelAllocator, nBlocks, sizeof(uint32_t), nullptr);
+    struct read_block_packet userdata = {.blocks=blocks,.start_offset=offset,.count=count};
     ext_ino_foreach_block(cache, ino, read_cb, &userdata);
     MmH_DerefPage(pg);
+    uint32_t current_block_base = 0;
+    uint32_t current_block_index = 0;
+    uint32_t current_block_count = 0;
+    bool read_current = false;
+    irp** irps = nullptr;
+    size_t nIrps = 0;
+    bool refresh_next = true;
+    for (uint32_t i = 0; i < nBlocks; i++)
+    {
+        if (blocks[i] == UINT32_MAX)
+        {
+            // TODO: Make that asynchronous?
+            memzero((void*)((uintptr_t)buffer + i*cache->block_size), cache->block_size);
+            refresh_next = true;
+            continue;
+        }
+        if (refresh_next)
+        {
+            read_current = false;
+            refresh_next = false;
+            current_block_base = blocks[i];
+            ++current_block_count;
+            current_block_index = i;
+            continue;
+        }
+        if (blocks[i] == (current_block_base + current_block_count))
+        {
+            read_current = false;
+            ++current_block_count;
+            continue;
+        }
+        irp* req = VfsH_IRPAllocate();
+        VfsH_IRPBytesToBlockCount(cache->vn, current_block_count*cache->block_size, &req->blkCount);
+        VfsH_IRPBytesToBlockCount(cache->vn, current_block_base*cache->block_size, &req->blkOffset);
+        req->vn = cache->vn;
+        req->buff = (void*)((uintptr_t)buffer + current_block_index*cache->block_size);
+        req->op = IRP_READ;
+        VfsH_IRPSubmit(req, nullptr);
+        read_current = true;
+        if (req->evnt && !Core_EventGetState(req->evnt))
+        {
+            size_t oldsize = nIrps*sizeof(irp*);
+            nIrps++;
+            irps = Reallocate(OBOS_KernelAllocator, irps, nIrps*sizeof(irp*), oldsize, nullptr);
+            irps[nIrps-1] = req;
+        }
+        if (blocks[i] == UINT32_MAX)
+            continue;
+        current_block_index = i;
+        current_block_base = blocks[i];
+        current_block_count++;
+    }
+    if (!read_current)
+    {
+        irp* req = VfsH_IRPAllocate();
+        VfsH_IRPBytesToBlockCount(cache->vn, current_block_count*cache->block_size, &req->blkCount);
+        VfsH_IRPBytesToBlockCount(cache->vn, current_block_base*cache->block_size, &req->blkOffset);
+        req->vn = cache->vn;
+        req->buff = (void*)((uintptr_t)buffer + current_block_index*cache->block_size);
+        req->op = IRP_READ;
+        VfsH_IRPSubmit(req, nullptr);
+        read_current = true;
+        if (req->evnt && !Core_EventGetState(req->evnt))
+        {
+            size_t oldsize = nIrps*sizeof(irp*);
+            nIrps++;
+            irps = Reallocate(OBOS_KernelAllocator, irps, nIrps*sizeof(irp*), oldsize, nullptr);
+            irps[nIrps-1] = req;
+        }
+        else
+        {
+            VfsH_IRPWait(req);
+            VfsH_IRPUnref(req);
+        }
+    }
+    for (size_t i = 0; i < nIrps; i++)
+    {
+        VfsH_IRPWait(irps[i]);
+        VfsH_IRPUnref(irps[i]);
+        irps[i] = nullptr;
+    }
+    Free(OBOS_KernelAllocator, irps, nIrps*sizeof(irp*));
+
+    Free(OBOS_KernelAllocator, blocks, nBlocks*sizeof(uint32_t));
     if (nRead)
-        *nRead = userdata.buffer_offset;
+        *nRead = count;
     return userdata.status;
 }
 
@@ -663,7 +737,13 @@ uint32_t allocate_bmp(ext_cache* cache, const uint32_t* block_group_ptr, int wha
 
 uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
 {
-    return allocate_bmp(cache, block_group_ptr, ALLOC_INODE);
+    uint32_t ret = allocate_bmp(cache, block_group_ptr, ALLOC_INODE);
+    ext_bgd* bgd = &cache->bgdt[ext_ino_get_block_group(cache, ret)];
+    bgd->free_inodes--;
+    cache->superblock.free_inode_count--;
+    ext_writeback_sb(cache);
+    ext_writeback_bgd(cache, ext_ino_get_block_group(cache, ret));
+    return ret;
 }
 
 void ext_ino_free(ext_cache* cache, uint32_t ino)
@@ -706,7 +786,13 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
 
 uint32_t ext_blk_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
 {
-    return allocate_bmp(cache, block_group_ptr, ALLOC_BLOCK);
+    uint32_t blk = allocate_bmp(cache, block_group_ptr, ALLOC_BLOCK);
+    ext_bgd* bgd = &cache->bgdt[blk/cache->blocks_per_group];
+    bgd->free_blocks--;
+    cache->superblock.free_block_count--;
+    ext_writeback_sb(cache);
+    ext_writeback_bgd(cache, blk/cache->blocks_per_group);
+    return blk;
 }
 
 void ext_blk_free(ext_cache* cache, uint32_t blk)

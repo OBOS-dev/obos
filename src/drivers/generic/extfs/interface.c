@@ -210,6 +210,7 @@ obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn)
         ext_inode_handle* hnd = (void*)desc;
         cache = hnd->cache;
         ino = hnd->ino;
+        OBOS_ENSURE(cache);
     }
     
     *vn_found = ext_make_vnode(cache, ino, nullptr);
@@ -322,11 +323,14 @@ static void on_match(ext_inode** const inode,
                      ext_cache* const cache)
 {
     uint32_t ino = dent->ino;
-    size_t old_size = *nToRead;
-    *nToRead = le32_to_host((*inode)->blocks) * 512;
-    *buffer = Reallocate(EXT_Allocator, *buffer, *nToRead, old_size, nullptr);
-    ext_ino_read_blocks(cache, ino, 0, *nToRead, *buffer, nullptr);
-    *offset = 0;
+    if (dent->file_type == EXT2_FT_DIR)
+    {
+        size_t old_size = *nToRead;
+        *nToRead = le32_to_host((*inode)->blocks) * 512;
+        *buffer = Reallocate(EXT_Allocator, *buffer, *nToRead, old_size, nullptr);
+        ext_ino_read_blocks(cache, ino, 0, *nToRead, *buffer, nullptr);
+        *offset = 0;
+    }
     MmH_DerefPage(*pg);
     *inode = ext_read_inode_pg(cache, ino, pg);
     MmH_RefPage(*pg);
@@ -334,7 +338,7 @@ static void on_match(ext_inode** const inode,
 
 obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc parent)
 {
-    if (!found || !vn || !path)
+    if (!found || (!vn && parent == UINTPTR_MAX) || !path)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
     uint32_t parent_ino  = 0;
@@ -410,7 +414,10 @@ obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc pa
             {
                 get_next_tok();
                 if (tok == (path + path_len))
+                {
                     *found = get_desc(cache, ent->ino);
+                    break;
+                }
                 on_match(&inode,
                          &pg,
                          &buffer,
@@ -418,10 +425,6 @@ obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc pa
                          &offset,
                          ent,
                          cache);
-                if (!(*found))
-                    continue;
-                else
-                    break;
             }
         }
         
