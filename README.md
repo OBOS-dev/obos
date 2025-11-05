@@ -1,5 +1,8 @@
 # OBOS
-OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing ✨*** 
+OBOS uses ***✨ state of the art technology ✨*** to do ***✨  almost nothing ✨***
+## Downloads
+- ISO Downloads can currently be found at http://obos-dev.ddns.net/images/
+- An XBPS binary package repository exists at http://obos-dev.ddns.net/current for x86_64-obos **only**.
 ## Building
 ### Prerequisites
 - (For an x86-64 build) NASM
