@@ -285,6 +285,39 @@ obos_status Sys_IsATTY(handle desc)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status Sys_ThreadGetStack(handle thr, void** stack_base, size_t *stack_size)
+{
+    thread* thread = HANDLE_TYPE(thr) == HANDLE_TYPE_CURRENT ? Core_GetCurrentThread() : nullptr;
+    if (!thread)
+    {
+        obos_status status = OBOS_STATUS_SUCCESS;
+        handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), thr, HANDLE_TYPE_THREAD, false, &status);
+        if (obos_is_error(status))
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        thread = hnd->un.thread;
+    }
+
+    if (!stack_base && !stack_size)
+        return OBOS_STATUS_SUCCESS;
+
+    void* res_base = nullptr;
+    size_t res_size = 0;
+
+    res_base = CoreS_GetThreadStack(&thread->context);
+    res_size = CoreS_GetThreadStackSize(&thread->context);
+
+    if (stack_base)
+        memcpy_k_to_usr(stack_base, &res_base, sizeof(*stack_base));
+    if (stack_base)
+        memcpy_k_to_usr(stack_base, &res_size, sizeof(*stack_size));
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
@@ -422,6 +455,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_UMask,
     (uintptr_t)Sys_RenameAt,
     (uintptr_t)Sys_UTimeNSAt,
+    (uintptr_t)Sys_ThreadGetStack,
 };
 
 // Arch syscall table is defined per-arch

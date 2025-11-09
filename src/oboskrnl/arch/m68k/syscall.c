@@ -160,6 +160,7 @@ const char *syscall_to_string[] = {
     "Sys_UMask",
     "Sys_RenameAt",
     "Sys_UTimeNSAt",
+    "Sys_ThreadGetStack",
 };
 
 const char* status_to_string[] = {
