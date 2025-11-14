@@ -62,9 +62,6 @@ call launch_qemu.bat
 - x86_64-obos: Working, not all ported programs work
 - m68k-obos: Userspace is unstable, but the port works otherwise
 - For information on ported programs, go to the obos-pkgs repository
-## Credits
-- My friend [@LemurLord16](https://github.com/LemurLord16) (@sigsbeedrive on discord) for listening to me yap about new features.
-- My cousin Ali because why not.
 ## License Notice
 Most code in this repository is licensed under the MIT license.<br>
 Any code from other projects that require a license notice will be put below.
