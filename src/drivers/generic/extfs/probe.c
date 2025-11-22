@@ -140,7 +140,10 @@ vnode* ext_make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
     }
 
     ext_inode* inode = ext_read_inode(cache, ino);
-    
+    OBOS_ASSERT(inode);
+    if (!inode)
+        return nullptr;
+
     uint32_t vtype = 0;
     if (ext_ino_test_type(inode, EXT2_S_IFDIR))
         vtype = VNODE_TYPE_DIR;
