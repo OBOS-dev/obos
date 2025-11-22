@@ -119,6 +119,7 @@ Arch_SyscallTrapHandler:
     pop rcx
     mov cr3, r9
 
+    cli
     mov rsp, r10
     swapgs
     o64 sysret
