@@ -41,6 +41,8 @@
 
 #include <power/suspend.h>
 
+#include <limine.h>
+
 struct {
     HPET_Timer timer0;
     uint64_t mainCounterValue;
@@ -111,6 +113,23 @@ void OBOSS_SuspendSavePlatformState()
 
         index = 0;
         size_t nvs_index = 0;
+#   if OBOS_USE_LIMINE
+        for (obos_pmem_map_entry* entry = MmS_GetFirstPMemMapEntry(&index); entry; )
+        {
+            if (entry->type == LIMINE_MEMMAP_ACPI_NVS)
+            {
+                saved_nvs[nvs_index].region_address = Arch_MapToHHDM(entry->base);
+                saved_nvs[nvs_index].size = entry->length;
+                saved_nvs[nvs_index].saved_region = Allocate(OBOS_NonPagedPoolAllocator,
+                                                                saved_nvs[nvs_index].size,
+                                                                nullptr);
+                memcpy(saved_nvs[nvs_index].saved_region, saved_nvs[nvs_index].region_address, saved_nvs[nvs_index].size);
+                nvs_index++;
+            }
+
+            entry = MmS_GetNextPMemMapEntry(entry, &index);
+        }
+#   else
         for (obos_pmem_map_entry* entry = MmS_GetFirstPMemMapEntry(&index); entry; )
         {
             if (entry->type == ULTRA_MEMORY_TYPE_NVS)
@@ -118,14 +137,15 @@ void OBOSS_SuspendSavePlatformState()
                 saved_nvs[nvs_index].region_address = Arch_MapToHHDM(entry->physical_address);
                 saved_nvs[nvs_index].size = entry->size;
                 saved_nvs[nvs_index].saved_region = Allocate(OBOS_NonPagedPoolAllocator,
-                                                                                         saved_nvs[nvs_index].size,
-                                                                                         nullptr);
+                                                            saved_nvs[nvs_index].size,
+                                                            nullptr);
                 memcpy(saved_nvs[nvs_index].saved_region, saved_nvs[nvs_index].region_address, saved_nvs[nvs_index].size);
                 nvs_index++;
             }
 
             entry = MmS_GetNextPMemMapEntry(entry, &index);
         }
+#   endif
     }
 #endif
 }

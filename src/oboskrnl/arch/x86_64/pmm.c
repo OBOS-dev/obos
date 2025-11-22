@@ -11,6 +11,7 @@
 
 #include <arch/x86_64/pmm.h>
 
+#if !OBOS_USE_LIMINE
 #include <UltraProtocol/ultra_protocol.h>
 
 extern struct ultra_memory_map_attribute* Arch_MemoryMap;
@@ -33,6 +34,32 @@ obos_pmem_map_entry* MmS_GetNextPMemMapEntry(obos_pmem_map_entry* current, uintp
 }
 #define MAP_TO_HHDM(addr, type) ((type*)(Arch_LdrPlatformInfo->higher_half_base + (uintptr_t)(addr)))
 #define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LdrPlatformInfo->higher_half_base)
+
+#else
+
+#include <arch/x86_64/boot_info.h>
+
+obos_pmem_map_entry* MmS_GetFirstPMemMapEntry(uintptr_t* index)
+{
+	*index = 0;
+	return Arch_LimineMemmapRequest.response->entries[0];
+}
+// returns nullptr at the end of the list.
+obos_pmem_map_entry* MmS_GetNextPMemMapEntry(obos_pmem_map_entry* current, uintptr_t* index)
+{
+	OBOS_UNUSED(current);
+	size_t nEntries = Arch_LimineMemmapRequest.response->entry_count;
+	if (!nEntries)
+		OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "No memory map entries.\n");
+	if ((*index) >= nEntries)
+		return nullptr;
+	return Arch_LimineMemmapRequest.response->entries[++(*index)];
+}
+
+#define MAP_TO_HHDM(addr, type) ((type*)(Arch_LimineHHDMRequest.response->offset + (uintptr_t)(addr)))
+#define UNMAP_FROM_HHDM(addr) ((uintptr_t)(addr) - Arch_LimineHHDMRequest.response->offset)
+
+#endif
 
 OBOS_NO_KASAN OBOS_NO_UBSAN __attribute__((no_instrument_function)) void* Arch_MapToHHDM(uintptr_t phys)
 {

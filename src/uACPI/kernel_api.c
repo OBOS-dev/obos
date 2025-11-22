@@ -571,7 +571,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr* out)
 {
     uintptr_t rsdp = 0;
 #ifdef __x86_64__
-    rsdp = Arch_LdrPlatformInfo->acpi_rsdp_address;
+    rsdp = Arch_RSDPBase;
 #endif
     *out = rsdp;
     return UACPI_STATUS_OK;

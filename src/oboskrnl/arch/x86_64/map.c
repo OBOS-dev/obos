@@ -373,6 +373,7 @@ obos_status Arch_InitializeKernelPageTable()
 	Elf64_Ehdr* ehdr = (Elf64_Ehdr*)Arch_KernelBinary->address;
 	Elf64_Phdr* phdrs = (Elf64_Phdr*)(Arch_KernelBinary->address + ehdr->e_phoff);
 	size_t i = 0;
+	uintptr_t kernel_limit = 0;
 	for (; i < ehdr->e_phnum; i++)
 	{
 		Elf64_Phdr* phdr = phdrs + i;
@@ -386,8 +387,10 @@ obos_status Arch_InitializeKernelPageTable()
 		if (phdr->p_flags & PF_W)
 			flags |= 2;
 		uintptr_t base = phdr->p_vaddr & ~0xfff;
+#if !OBOS_USE_LIMINE
 		if (base < Arch_KernelInfo->virtual_base)
 			OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Fatal error. Bootloader made a whoopsie! (line %d in file %s). Expression: base < Arch_KernelInfo->virtual_base.\n", __LINE__, __FILE__);
+#endif
 		uintptr_t limit = phdr->p_vaddr + phdr->p_memsz;
 		if (limit & 0xfff)
 			limit = (limit + 0xfff) & ~0xfff;
@@ -397,6 +400,7 @@ obos_status Arch_InitializeKernelPageTable()
 			OBOS_ASSERT(phys);
 			Arch_MapPage(newCR3, (void*)virt, phys, flags, false);
 		}
+		kernel_limit = kernel_limit > limit ? kernel_limit : limit;
 	}
 	OBOS_Debug("%s: Mapping HHDM.\n", __func__);
 	for (uintptr_t off = 0; off < Mm_PhysicalMemoryBoundaries; off += 0x200000)
@@ -406,8 +410,16 @@ obos_status Arch_InitializeKernelPageTable()
 	uint32_t indices[4] = { 0,0,0,0 };
 	FreePageTables((uintptr_t*)oldCR3, 3, AddressToIndex(0xffff800000000000, 3), indices);
 	Mm_FreePhysicalPages((uintptr_t)oldCR3, 1);
+#if OBOS_USE_LIMINE
+	OBOSH_BasicMMAddRegion(
+		&kernel_region, 
+		(void*)Arch_LimineKernelAddressRequest.response->virtual_base, 
+		kernel_limit - Arch_LimineKernelAddressRequest.response->virtual_base);
+	OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_LimineHHDMRequest.response->offset, Mm_PhysicalMemoryBoundaries);
+#else
 	OBOSH_BasicMMAddRegion(&kernel_region, (void*)Arch_KernelInfo->virtual_base, Arch_KernelInfo->size);
 	OBOSH_BasicMMAddRegion(&hhdm_region, (void*)Arch_LdrPlatformInfo->higher_half_base, Mm_PhysicalMemoryBoundaries);
+#endif
 	Arch_KernelCR3 = newCR3;
 	return OBOS_STATUS_SUCCESS;
 }

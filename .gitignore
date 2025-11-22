@@ -8,9 +8,9 @@
 /dependencies/uACPI
 /dependencies/uHDA
 /dependencies/flanterm/
-/dependencies/freebsd-e1000/
-/dependencies/include/
 /dependencies/freebsd-e1000
+/dependencies/limine
+/dependencies/include/
 /dependencies/needs_download.cmake
 /qemu_log.txt
 /tar

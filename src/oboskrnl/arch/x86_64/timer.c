@@ -80,7 +80,7 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_UBSAN void InitializeHPET()
 {
     static basicmm_region hpet_region;
     hpet_region.mmioRange = true;
-    ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_LdrPlatformInfo->acpi_rsdp_address);
+    ACPIRSDPHeader* rsdp = (ACPIRSDPHeader*)Arch_MapToHHDM(Arch_RSDPBase);
     bool tables32 = rsdp->Revision < 2;
     ACPISDTHeader* xsdt = tables32 ? (ACPISDTHeader*)(uintptr_t)rsdp->RsdtAddress : (ACPISDTHeader*)rsdp->XsdtAddress;
     xsdt = (ACPISDTHeader*)Arch_MapToHHDM((uintptr_t)xsdt);
