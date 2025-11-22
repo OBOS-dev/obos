@@ -324,6 +324,7 @@ void Core_ExitProcessGroup()
 		Core_MutexRelease(&Core_ProcessGroupTreeLock);
 	}
 	Core_MutexRelease(&pgrp->lock);
+	proc->refcount--;
 }
 
 obos_status Core_SetProcessGroup(process* proc, uint32_t pgid)
@@ -363,6 +364,7 @@ obos_status Core_SetProcessGroup(process* proc, uint32_t pgid)
 
 	Core_MutexAcquire(&pgrp->lock);
 	LIST_APPEND(process_list, &pgrp->processes, proc);
+	proc->refcount++;
 	proc->pgrp = pgrp;
 	Core_MutexRelease(&pgrp->lock);
 
