@@ -300,7 +300,7 @@ void e1000_tx_reap(e1000_device* dev);
 event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool dry)
 {
     e1000_tx_reap(dev);
-    struct e1000_tx_desc* desc = &((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring))[dev->tx_index % TX_QUEUE_SIZE];
+    volatile struct e1000_tx_desc* desc = &((volatile struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring))[dev->tx_index % TX_QUEUE_SIZE];
     if (dry)
         return nullptr;
     irql oldIrql = Core_RaiseIrql(IRQL_E1000);
@@ -373,7 +373,7 @@ static void tx_event_set_dpc(dpc* d, void* udata)
 }
 void e1000_tx_reap(e1000_device* dev)
 {
-    struct e1000_tx_desc* desc = &((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring))[0];
+    volatile struct e1000_tx_desc* desc = &((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring))[0];
     size_t i = dev->tx_index;
     for (; ; )
     {
@@ -381,7 +381,8 @@ void e1000_tx_reap(e1000_device* dev)
             break;
         desc[i].upper.fields.status = 0;   
         desc[i].lower.data = 0;   
-        desc[i].buffer_addr = 0;   
+        desc[i].buffer_addr = 0;
+        i++;
     }
     dev->tx_index = i;
 }
