@@ -744,20 +744,20 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
     return;
 }
 
-static const char* state_strs[] = {
-    "INVALID",
-    "LISTEN",
-    "SYN_SENT",
-    "SYN_RECEIVED",
-    "ESTABLISHED",
-    "FIN_WAIT1",
-    "FIN_WAIT2",
-    "CLOSE_WAIT",
-    "CLOSING",
-    "LAST_ACK",
-    "TIME_WAIT",
-    "CLOSED",
-};
+// static const char* state_strs[] = {
+//     "INVALID",
+//     "LISTEN",
+//     "SYN_SENT",
+//     "SYN_RECEIVED",
+//     "ESTABLISHED",
+//     "FIN_WAIT1",
+//     "FIN_WAIT2",
+//     "CLOSE_WAIT",
+//     "CLOSING",
+//     "LAST_ACK",
+//     "TIME_WAIT",
+//     "CLOSED",
+// };
 
 void Net_TCPChangeConnectionState(tcp_connection* con, int state)
 {
@@ -1502,7 +1502,7 @@ static void irp_on_event_set(irp* req)
     if (req->dryOp)
         return;
 
-    if (req->socket_flags)
+    // if (req->socket_flags)
         // OBOS_Debug("TCP: Recv got 0x%p for flags\n", req->socket_flags);
 
     Core_MutexAcquire(&s->connection->recv_buffer.lock);
