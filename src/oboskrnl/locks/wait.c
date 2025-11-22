@@ -24,7 +24,7 @@
 #if OBOS_DEBUG
 #   define assert_initialized() OBOS_ASSERT(obj->initialized == true)
 #else
-#   define assert_initialized() (true)
+#   define assert_initialized() (void)(true)
 #endif
 
 obos_status Core_WaitOnObject(struct waitable_header* obj)
