@@ -41,7 +41,9 @@
 
 #include <power/suspend.h>
 
-#include <limine.h>
+#if OBOS_USE_LIMINE
+#   include <limine.h>
+#endif
 
 struct {
     HPET_Timer timer0;
