@@ -26,8 +26,6 @@ endif()
 # All symbols exported, except for the kernel api of course.
 set_source_files_properties("kernel_api.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=hidden")
 
-message(${OBOSKRNL_EXTERNAL_INCLUDES})
-
 target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/oboskrnl")
 target_include_directories(uacpi PRIVATE "${CMAKE_SOURCE_DIR}/src/sanitizers")
 target_include_directories(uacpi PRIVATE ${OBOSKRNL_EXTERNAL_INCLUDES})

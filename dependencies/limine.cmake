@@ -11,13 +11,13 @@ FetchContent_Declare(Limine
 )
 FetchContent_MakeAvailable(Limine)
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-execute_process(
-    COMMAND "make"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/dependencies/limine
-    )
-    set (limine_exe ${CMAKE_SOURCE_DIR}/dependencies/limine/limine CACHE INTERNAL "x")
-# elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_HOST_SYSTEM_NAME STREQUAL "MSYS")
-#     set (limine_exe ${CMAKE_SOURCE_DIR}/dependencies/limine/limine.exe CACHE INTERNAL "x")
+    execute_process(
+        COMMAND "make"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/dependencies/limine
+        )
+        set (limine_exe ${CMAKE_SOURCE_DIR}/dependencies/limine/limine CACHE INTERNAL "x")
+    # elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_HOST_SYSTEM_NAME STREQUAL "MSYS")
+    #     set (limine_exe ${CMAKE_SOURCE_DIR}/dependencies/limine/limine.exe CACHE INTERNAL "x")
 else()
 	message(FATAL_ERROR "You must be on to compile OBOS with Limine.")
 endif()
