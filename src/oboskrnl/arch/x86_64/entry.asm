@@ -25,29 +25,34 @@ Arch_KernelEntryBootstrap:
 	push rsi
 ; Get a hardware-generated random value.
 ; If both methods are unsupported, it will fallback to using the default value used.
-.rdrand:
-	mov eax, 1
-	xor ecx,ecx
-	cpuid
-	bt ecx, 30
-	jnc .rdseed
-	rdrand rax
-	jnc .rdrand
-	jmp .move
-.rdseed:
-	mov eax, 7
-	xor ecx,ecx
-	cpuid
-	bt ebx, 18
-	jnc .done
-	rdseed rax
-	jnc .rdseed
-.move:
-	; Move the (likely) random value into the stack guard variable.
-	mov [__stack_chk_guard], rax
-.done:
-	call Arch_disablePIC
-	; Turn on cr0.WP (write protect)
+ 	mov rcx, 10
+ .rdrand:
+ 	mov eax, 1
+ 	xor ecx,ecx
+ 	cpuid
+ 	bt ecx, 30
+ 	jnc .rdseed
+ 	rdrand rax
+ 	jc .move
+ 	loop .rdrand
+ 	mov rcx, 10
+ .rdseed:
+ 	mov eax, 7
+ 	xor ecx,ecx
+ 	cpuid
+ 	bt ebx, 18
+ 	jnc .done
+ 	rdseed rax
+ 	jc .move
+ 	loop .rdseed
+ 	test rcx, rcx
+ 	jz .done
+ .move:
+ 	; Move the (likely) random value into the stack guard variable.
+ 	mov [__stack_chk_guard], rax
+ .done:
+ 	call Arch_disablePIC
+ 	; Turn on cr0.WP (write protect)
 	mov rax, cr0
 	or rax, (1<<16) ; WP
 	mov cr0, rax
