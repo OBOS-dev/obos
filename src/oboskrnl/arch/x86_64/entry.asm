@@ -14,10 +14,12 @@ extern Arch_disablePIC
 extern Arch_KernelEntry
 global Arch_KernelEntryBootstrap:function hidden
 Arch_KernelEntryBootstrap:
+%if !OBOS_USE_LIMINE
 	cmp rsi, 0x554c5442
 	je .ok ; should triple fault on failure
 	xor rax,rax
 	jmp rax ; All hope is lost.
+%endif
 .ok:
 	push rdi
 	push rsi

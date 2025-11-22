@@ -10,6 +10,8 @@
 #include <klog.h>
 #include <cmdline.h>
 #include <font.h>
+#include <stddef.h>
+#include <memmanip.h>
 #include <text.h>
 
 #define FLANTERM_IN_FLANTERM
@@ -47,11 +49,13 @@
 #include <arch/x86_64/cmos.h>
 #include <arch/x86_64/interrupt_frame.h>
 
-#include "gdbstub/connection.h"
-#include "gdbstub/gdb_udp_backend.h"
-#include "gdbstub/debug.h"
-
 #include <uacpi_libc.h>
+
+#include <arch/x86_64/pmm.h>
+
+#if OBOS_USE_LIMINE
+#   include <limine.h>
+#endif
 
 extern void Arch_InitBootGDT();
 
@@ -168,15 +172,16 @@ static void init_flanterm_backend()
     OBOS_AddLogSource(&backend);
 }
 
-static struct ultra_module_info_attribute* Arch_FlantermBumpAllocator;
+static struct {
+    uintptr_t address;
+    uintptr_t size;
+} Arch_FlantermBumpAllocator = {};
 static void *flanterm_malloc(size_t sz)
 {
-    if (!Arch_FlantermBumpAllocator)
-        return nullptr;
     static size_t bump_off = 0;
-    if ((bump_off + sz) > Arch_FlantermBumpAllocator->size)
+    if ((bump_off + sz) > Arch_FlantermBumpAllocator.size)
         return nullptr;
-    void* ret = (void*)(Arch_FlantermBumpAllocator->address + bump_off);
+    void* ret = (void*)(Arch_FlantermBumpAllocator.address + bump_off);
     bump_off += sz;
     return ret;
 }
@@ -186,7 +191,51 @@ static void flanterm_free(void* blk, size_t sz)
     return;
 }
 
+#if OBOS_USE_LIMINE
+volatile struct limine_framebuffer_request Arch_LimineFBRequest = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
+    .revision = 1,
+};
+volatile struct limine_memmap_request Arch_LimineMemmapRequest = {
+    .id = LIMINE_MEMMAP_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct limine_module_request Arch_LimineModuleRequest = {
+    .id = LIMINE_MODULE_REQUEST_ID,
+    .revision = 1,
+};
+volatile struct limine_hhdm_request Arch_LimineHHDMRequest = {
+    .id = LIMINE_HHDM_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct limine_executable_file_request Arch_LimineKernelInfoRequest = {
+    .id = LIMINE_EXECUTABLE_FILE_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct limine_executable_address_request Arch_LimineKernelAddressRequest = {
+    .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct limine_executable_cmdline_request Arch_LimineKernelCmdlineRequest = {
+    .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct limine_rsdp_request Arch_LimineRSDPRequest = {
+    .id = LIMINE_RSDP_REQUEST_ID,
+    .revision = 0,
+};
+volatile struct ultra_framebuffer limine_fb0 = {};
+volatile struct ultra_framebuffer* Arch_Framebuffer = &limine_fb0;
+struct limine_file* Arch_KernelBinary = nullptr;
+#endif
+
+uintptr_t Arch_RSDPBase = 0;
+
+#if !OBOS_USE_LIMINE
 OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry(struct ultra_boot_context* bcontext)
+#else
+OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry()
+#endif
 {
     bsp_cpu.id = 0;
     bsp_cpu.isBSP = true;
@@ -199,18 +248,6 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     Core_CpuInfo->arch_specific.stack_check_guard = __stack_chk_guard;
 
     wrmsr(0xC0000101, (uintptr_t)&Core_CpuInfo[0]);
-
-    ParseBootContext(bcontext);
-    Arch_BootContext = bcontext;
-    OBOS_ParseCMDLine();
-    asm("sti");
-
-    uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_LOG);
-    if (log_level > 4)
-        log_level = LOG_LEVEL_DEBUG;
-    OBOS_SetLogLevel(log_level);
-    extern uint64_t Arch_KernelCR3;
-    Arch_KernelCR3 = getCR3();
 
 #if !OBOS_ENABLE_PROFILING
     {
@@ -225,30 +262,62 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     }
 #endif
 
+#if !OBOS_USE_LIMINE
+    ParseBootContext(bcontext);
+    Arch_BootContext = bcontext;
+#else
+    OBOS_KernelCmdLine = Arch_LimineKernelCmdlineRequest.response->cmdline;
+    Arch_KernelBinary = Arch_LimineKernelInfoRequest.response->executable_file;
+    Arch_RSDPBase = Arch_UnmapFromHHDM(Arch_LimineRSDPRequest.response->address);
+#endif
+
+    struct boot_module flanterm_buff = {};
+    OBOSS_GetModule(&flanterm_buff, "FLANTERM_BUFF");
+    if (!flanterm_buff.address)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find FLANTERM_BUFF kernel module\n");
+    Arch_FlantermBumpAllocator.address = (uintptr_t)flanterm_buff.address;
+    Arch_FlantermBumpAllocator.size = flanterm_buff.size;
+    
+    OBOS_ParseCMDLine();
+    asm("sti");
+
+    uint64_t log_level = OBOS_GetOPTD_Ex("log-level", LOG_LEVEL_LOG);
+    if (log_level > 4)
+        log_level = LOG_LEVEL_DEBUG;
+    OBOS_SetLogLevel(log_level);
+    extern uint64_t Arch_KernelCR3;
+    Arch_KernelCR3 = getCR3();
+
 #if 0
     init_serial_log_backend();
 #endif
 
+    static uint32_t ansi_colors[8] = {
+        __builtin_bswap32(0x000000) >> 8,
+        __builtin_bswap32(0xbb0000) >> 8,
+        __builtin_bswap32(0x00bb00) >> 8,
+        __builtin_bswap32(0xbbbb00) >> 8,
+        __builtin_bswap32(0x0000bb) >> 8,
+        __builtin_bswap32(0xbb00bb) >> 8,
+        __builtin_bswap32(0x00bbbb) >> 8,
+        __builtin_bswap32(0xbbbbbb) >> 8,
+    };
+    static uint32_t ansi_bright_colors[8] = {
+        __builtin_bswap32(0x555555) >> 8,
+        __builtin_bswap32(0xff5555) >> 8,
+        __builtin_bswap32(0x55ff55) >> 8,
+        __builtin_bswap32(0xffff55) >> 8,
+        __builtin_bswap32(0x5555aa) >> 8,
+        __builtin_bswap32(0xff55ff) >> 8,
+        __builtin_bswap32(0x55ffff) >> 8,
+        __builtin_bswap32(0xffffff) >> 8,
+
+    };
+#if !OBOS_USE_LIMINE
     if (!Arch_Framebuffer)
         OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
     else
     {
-        // OBOS_TextRendererState.fg_color = 0xffffffff;
-        // OBOS_TextRendererState.fb.base = Arch_MapToHHDM(Arch_Framebuffer->physical_address);
-        // OBOS_TextRendererState.fb.bpp = Arch_Framebuffer->bpp;
-        // OBOS_TextRendererState.fb.format = Arch_Framebuffer->format;
-        // OBOS_TextRendererState.fb.height = Arch_Framebuffer->height;
-        // OBOS_TextRendererState.fb.width = Arch_Framebuffer->width;
-        // OBOS_TextRendererState.fb.pitch = Arch_Framebuffer->pitch;
-        // for (size_t y = 0; y < Arch_Framebuffer->height; y++)
-        //     for (size_t x = 0; x < Arch_Framebuffer->width; x++)
-        //         OBOS_PlotPixel(OBOS_TEXT_BACKGROUND, &((uint8_t*)OBOS_TextRendererState.fb.base)[y*Arch_Framebuffer->pitch+x*Arch_Framebuffer->bpp/8], OBOS_TextRendererState.fb.format);
-        // OBOS_TextRendererState.column = 0;
-        // OBOS_TextRendererState.row = 0;
-        // OBOS_TextRendererState.font = font_bin;
-        // OBOS_AddLogSource(&OBOS_ConsoleOutputCallback);
-        // if (Arch_Framebuffer->format == ULTRA_FB_FORMAT_INVALID)
-        //     return;
         uint8_t red_mask_size = 8, red_mask_shift = 0;
         uint8_t green_mask_size = 8, green_mask_shift = 0;
         uint8_t blue_mask_size = 8, blue_mask_shift = 0;
@@ -276,29 +345,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
                 blue_mask_shift = 16;
                 bg = bg >> 8;
                 break;
-
         }
-        static uint32_t ansi_colors[8] = {
-            __builtin_bswap32(0x000000) >> 8,
-            __builtin_bswap32(0xbb0000) >> 8,
-            __builtin_bswap32(0x00bb00) >> 8,
-            __builtin_bswap32(0xbbbb00) >> 8,
-            __builtin_bswap32(0x0000bb) >> 8,
-            __builtin_bswap32(0xbb00bb) >> 8,
-            __builtin_bswap32(0x00bbbb) >> 8,
-            __builtin_bswap32(0xbbbbbb) >> 8,
-        };
-        static uint32_t ansi_bright_colors[8] = {
-            __builtin_bswap32(0x555555) >> 8,
-            __builtin_bswap32(0xff5555) >> 8,
-            __builtin_bswap32(0x55ff55) >> 8,
-            __builtin_bswap32(0xffff55) >> 8,
-            __builtin_bswap32(0x5555aa) >> 8,
-            __builtin_bswap32(0xff55ff) >> 8,
-            __builtin_bswap32(0x55ffff) >> 8,
-            __builtin_bswap32(0xffffff) >> 8,
-
-        };
         OBOS_FlantermContext = flanterm_fb_init(
             flanterm_malloc, flanterm_free, 
             Arch_MapToHHDM(Arch_Framebuffer->physical_address), Arch_Framebuffer->width, Arch_Framebuffer->height, Arch_Framebuffer->pitch, 
@@ -318,6 +365,53 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
 
     if (Arch_LdrPlatformInfo->page_table_depth != 4)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "5-level paging is unsupported by oboskrnl.\n");
+#else
+    if (Arch_LimineFBRequest.response->framebuffer_count)
+    {
+        struct limine_framebuffer *fb = Arch_LimineFBRequest.response->framebuffers[0];
+        OBOS_FlantermContext = flanterm_fb_init(
+            flanterm_malloc, flanterm_free, 
+            fb->address, fb->width, fb->height, fb->pitch, 
+            fb->red_mask_size, fb->red_mask_shift, 
+            fb->green_mask_size, fb->green_mask_shift, 
+            fb->blue_mask_size, fb->blue_mask_shift, 
+            nullptr, ansi_colors, 
+            ansi_bright_colors, nullptr, 
+            nullptr, nullptr,
+            nullptr, 
+            (void*)font_bin, 8, 16, 0, 
+            0,0,
+            0);
+        init_flanterm_backend();
+        limine_fb0.physical_address = Arch_UnmapFromHHDM(fb->address);
+        limine_fb0.bpp = fb->bpp;
+        limine_fb0.width = fb->width;
+        limine_fb0.height = fb->height;
+        limine_fb0.pitch = fb->pitch;
+        do {
+            if (limine_fb0.bpp == 24)
+            {
+                if (fb->blue_mask_shift == 0 && fb->green_mask_shift == 8 && fb->red_mask_shift == 16)
+                    limine_fb0.format = ULTRA_FB_FORMAT_RGB888;
+                if (fb->red_mask_shift == 0 && fb->green_mask_shift == 8 && fb->blue_mask_shift == 16)
+                    limine_fb0.format = ULTRA_FB_FORMAT_BGR888;
+                break;
+            } 
+            else if (limine_fb0.bpp == 32) 
+            {
+                uint8_t x_shift = 0;
+                if (fb->red_mask_shift == 16) x_shift = 24;
+                else if (fb->red_mask_shift == 24) x_shift = 0;
+                if (x_shift == 0 && fb->blue_mask_shift == 8 && fb->green_mask_shift == 16 && fb->red_mask_shift == 24)
+                    limine_fb0.format = ULTRA_FB_FORMAT_RGBX8888;
+                if (fb->blue_mask_shift == 0 && fb->green_mask_shift == 8 && fb->red_mask_shift == 16 && x_shift == 24)
+                    limine_fb0.format = ULTRA_FB_FORMAT_XRGB8888;
+                break;
+            }
+        } while(0);
+    }
+#endif
+
 
 #if OBOS_RELEASE
     OBOS_Log("Booting OBOS %s committed on %s. Build time: %s.\n", GIT_SHA1, GIT_DATE, __DATE__ " " __TIME__);
@@ -391,6 +485,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         asm volatile("nop" : : :);
 }
 
+#if !OBOS_USE_LIMINE
 volatile struct ultra_memory_map_attribute* Arch_MemoryMap;
 volatile struct ultra_platform_info_attribute* Arch_LdrPlatformInfo;
 volatile struct ultra_kernel_info_attribute* Arch_KernelInfo;
@@ -437,8 +532,6 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
             struct ultra_module_info_attribute* module = (struct ultra_module_info_attribute*)header;
             if (strcmp(module->name, "__KERNEL__"))
                 Arch_KernelBinary = module;
-            else if (strcmp(module->name, "FLANTERM_BUFF"))
-                Arch_FlantermBumpAllocator = module;
             break;
         }
         case ULTRA_ATTRIBUTE_INVALID:
@@ -458,9 +551,9 @@ static OBOS_PAGEABLE_FUNCTION OBOS_NO_KASAN OBOS_NO_UBSAN void ParseBootContext(
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Invalid partition type %d.\n", Arch_KernelInfo->partition_type);
     if (!Arch_KernelBinary)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the kernel module in boot context!\nDo you set kernel-as-module to true in the hyper.cfg?\n");
-    if (!Arch_FlantermBumpAllocator)
-        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find the FLANTERM_BUFF module in boot context!\nMake sure to pass a module named FLANTERM_BUFF with a size big enough for width*pitch?\n");
+    Arch_RSDPBase = Arch_LdrPlatformInfo->acpi_rsdp_address;
 }
+#endif
 
 extern obos_status Arch_InitializeKernelPageTable();
 
@@ -548,6 +641,7 @@ void OBOSS_InitializeSMP()
     Core_GetCurrentThread()->masterCPU = CoreS_GetCPULocalPtr();
 }
 
+#if !OBOS_USE_LIMINE
 static void ultra_module_to_boot_module(const struct ultra_module_info_attribute *ultra_module, struct boot_module* out_module)
 {
     if (!ultra_module || !out_module)
@@ -572,6 +666,42 @@ void OBOSS_GetKernelModule(struct boot_module *module)
 {
     ultra_module_to_boot_module((void*)Arch_KernelBinary, module);
 }
+#else
+static void limine_file_to_boot_module(const struct limine_file *file, struct boot_module* out_module)
+{
+    if (!file || !out_module)
+        return;
+    out_module->address = file->address;
+    out_module->size = file->size;
+    out_module->name = file->string;
+    out_module->is_memory = false;
+    out_module->is_kernel = file == Arch_LimineKernelInfoRequest.response->executable_file;
+    return;
+}
+static struct limine_file* find_module(const char* name, size_t name_len)
+{
+    for (size_t i = 0; i < Arch_LimineModuleRequest.response->module_count; i++)
+    {
+        struct limine_file* cur = Arch_LimineModuleRequest.response->modules[i];
+        if (strncmp(cur->string, name, name_len))
+            return cur;
+    }
+    return nullptr;
+}
+
+void OBOSS_GetModule(struct boot_module *module, const char* name)
+{
+    limine_file_to_boot_module(find_module(name, strlen(name)), module);
+}
+void OBOSS_GetModuleLen(struct boot_module *module, const char* name, size_t name_len)
+{
+    limine_file_to_boot_module(find_module(name, name_len), module);
+}
+void OBOSS_GetKernelModule(struct boot_module *module)
+{
+    limine_file_to_boot_module(Arch_LimineKernelInfoRequest.response->executable_file, module);
+}
+#endif
 
 void OBOSS_MakeTTY()
 {
