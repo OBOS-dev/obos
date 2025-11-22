@@ -472,6 +472,7 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
 
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle_desc* desc = nullptr;
+    new->refcount++;
     handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_PROCESS, &desc);
     desc->un.process = new;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
