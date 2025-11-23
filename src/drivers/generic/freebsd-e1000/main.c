@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <error.h>
 
 #include <e1000/e1000_hw.h>
 
@@ -29,6 +30,7 @@
 #include <driver_interface/driverId.h>
 
 #include "dev.h"
+#include "e1000/e1000_defines.h"
 
 OBOS_PAGEABLE_FUNCTION obos_status get_blk_size(dev_desc desc, size_t* blkSize)
 {
@@ -124,9 +126,11 @@ static void irp_on_tx_event_set(irp* req)
     e1000_handle* hnd = (void*)req->desc;
     if (req->evnt)
         Core_EventClear(req->evnt);
-    req->evnt = e1000_tx_packet(hnd->dev, req->cbuff,req->blkCount, req->dryOp);
+    req->status = OBOS_STATUS_SUCCESS;
+    req->evnt = e1000_tx_packet(hnd->dev, req->cbuff,req->blkCount, req->dryOp, &req->status);
     req->on_event_set = nullptr;
-    req->status = req->evnt ? OBOS_STATUS_IRP_RETRY : OBOS_STATUS_SUCCESS;
+    if (obos_is_success(req->status))
+        req->status = req->evnt ? OBOS_STATUS_IRP_RETRY : OBOS_STATUS_SUCCESS;
     if (req->status)
         req->nBlkWritten = req->blkCount;
 }
@@ -152,9 +156,9 @@ obos_status submit_irp(void* request)
     }
     else
     {
-        req->evnt = e1000_tx_packet(hnd->dev, req->cbuff, req->blkCount, req->dryOp);
+        req->status = OBOS_STATUS_SUCCESS;
+        req->evnt = e1000_tx_packet(hnd->dev, req->cbuff, req->blkCount, req->dryOp, &req->status);
         req->on_event_set = irp_on_tx_event_set;
-        req->status = req->evnt ? OBOS_STATUS_IRP_RETRY : OBOS_STATUS_SUCCESS;
         if (obos_is_success(req->status))
             req->nBlkWritten = req->blkCount;
     }
@@ -393,16 +397,6 @@ static void search_bus(pci_bus* bus)
 
             e1000_get_bus_info(&Devices[nDevices-1].hw);
 
-            if (e1000_reset_hw(&Devices[nDevices-1].hw) != E1000_SUCCESS)
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-
             Devices[nDevices-1].hw.mac.autoneg = 1;
             Devices[nDevices-1].hw.phy.autoneg_wait_to_complete = false;
             Devices[nDevices-1].hw.phy.autoneg_advertised = (ADVERTISE_10_HALF | ADVERTISE_10_FULL | ADVERTISE_100_HALF | ADVERTISE_100_FULL | ADVERTISE_1000_FULL);
@@ -414,6 +408,26 @@ static void search_bus(pci_bus* bus)
             }
 
             Devices[nDevices-1].hw.mac.report_tx_early = true;
+
+            if (e1000_reset_hw(&Devices[nDevices-1].hw) != E1000_SUCCESS)
+            {
+                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
+                nDevices--;
+                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+                continue;
+            }
+
+            if (e1000_validate_nvm_checksum(&Devices[nDevices-1].hw) != E1000_SUCCESS)
+            {
+                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
+                nDevices--;
+                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+                continue;
+            }
             
             // if (e1000_init_hw(&Devices[nDevices-1].hw) != E1000_SUCCESS)
             // {
@@ -444,8 +458,8 @@ static void search_bus(pci_bus* bus)
             Devices[nDevices-1].irq.irqCheckerUserdata = Devices + nDevices - 1;
             Devices[nDevices-1].irq.handlerUserdata = Devices + nDevices - 1;
 
-            e1000_init_tx(&Devices[nDevices-1]);
             e1000_init_rx(&Devices[nDevices-1]);
+            e1000_init_tx(&Devices[nDevices-1]);
 
             e1000_clear_hw_cntrs_base_generic(&Devices[nDevices-1].hw);
             E1000_WRITE_REG(&Devices[nDevices-1].hw, E1000_IMS, IMS_ENABLE_MASK);
