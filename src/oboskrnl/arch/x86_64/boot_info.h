@@ -29,6 +29,7 @@ extern volatile struct limine_hhdm_request Arch_LimineHHDMRequest;
 extern volatile struct limine_executable_file_request Arch_LimineKernelInfoRequest;
 extern volatile struct limine_executable_address_request Arch_LimineKernelAddressRequest;
 extern volatile struct limine_executable_cmdline_request Arch_LimineKernelCmdlineRequest;
+extern volatile struct limine_bootloader_info_request Arch_LimineBtldrInfoRequest;
 extern volatile struct ultra_framebuffer* Arch_Framebuffer; // Artificially created
 extern struct limine_file* Arch_KernelBinary;
 #endif
