@@ -224,6 +224,10 @@ volatile struct limine_rsdp_request Arch_LimineRSDPRequest = {
     .id = LIMINE_RSDP_REQUEST_ID,
     .revision = 0,
 };
+volatile struct limine_bootloader_info_request Arch_LimineBtldrInfoRequest = {
+    .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID,
+    .revision = 0,
+};
 volatile struct ultra_framebuffer limine_fb0 = {};
 volatile struct ultra_framebuffer* Arch_Framebuffer = &limine_fb0;
 struct limine_file* Arch_KernelBinary = nullptr;
@@ -427,8 +431,15 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     __cpuid__(0x80000003, 0, (uint32_t*)&brand_string[16], (uint32_t*)&brand_string[20], (uint32_t*)&brand_string[24], (uint32_t*)&brand_string[28]);
     __cpuid__(0x80000004, 0, (uint32_t*)&brand_string[32], (uint32_t*)&brand_string[36], (uint32_t*)&brand_string[40], (uint32_t*)&brand_string[44]);
     OBOS_Log("Running on a %s processor, cpu brand string, %s. We are currently %srunning on a hypervisor\n", cpu_vendor, brand_string, isHypervisor ? "" : "not ");
+
+#if OBOS_USE_LIMINE
+    OBOS_Log("Bootloader is %s-%s\n", Arch_LimineBtldrInfoRequest.response->name, Arch_LimineBtldrInfoRequest.response->version);
+#else
+    OBOS_Log("Bootloader is %.32s\n", Arch_LdrPlatformInfo->loader_name, Arch_LdrPlatformInfo->loader_major, Arch_LdrPlatformInfo->loader_minor);
 #endif
 
+#endif
+    
     OBOS_Debug("%s: Initializing the Boot GDT.\n", __func__);
     Arch_InitBootGDT();
 
