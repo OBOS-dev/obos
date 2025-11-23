@@ -1,6 +1,7 @@
 #pragma once
 
 #include <int.h>
+#include <error.h>
 
 #include <vfs/vnode.h>
 
@@ -19,7 +20,8 @@
 #include <utils/list.h>
 
 #define RX_QUEUE_SIZE (32)
-#define TX_QUEUE_SIZE (8)
+#define TX_QUEUE_SIZE (32)
+#define TX_BUFFER_PAGES (4)
 
 typedef struct e1000_frame {
     void* buff;
@@ -51,6 +53,7 @@ typedef struct e1000_device {
     page* tx_ring_phys_pg;
     size_t tx_index;
     event tx_done_evnt;
+    uintptr_t tx_buffers[TX_QUEUE_SIZE];
 
     size_t refs;
 
@@ -80,7 +83,7 @@ typedef struct e1000_handle {
 
 void e1000_init_rx(e1000_device* dev);
 void e1000_init_tx(e1000_device* dev);
-event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool dry);
+event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool dry, obos_status* status);
 
 void e1000_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
 bool e1000_check_irq_callback(struct irq* i, void* userdata);

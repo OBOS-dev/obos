@@ -7,6 +7,7 @@
 */
 
 #include <int.h>
+#include <error.h>
 
 #include <e1000/e1000_hw.h>
 
@@ -17,6 +18,7 @@
 #include <mm/context.h>
 
 #include <irq/dpc.h>
+#include <irq/timer.h>
 
 #include <locks/event.h>
 
@@ -24,7 +26,10 @@
 
 #include <utils/list.h>
 
+#include <scheduler/schedule.h>
+
 #include "dev.h"
+
 
 LIST_GENERATE(e1000_frame_list, e1000_frame, node);
 
@@ -194,7 +199,8 @@ void e1000_init_tx(e1000_device* dev)
     struct e1000_tx_desc* desc = ((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring));
     for (size_t i = 0; i < TX_QUEUE_SIZE; i++)
     {
-        desc[i].buffer_addr = 0;
+        dev->tx_buffers[i] = Mm_AllocatePhysicalPages(TX_BUFFER_PAGES, 1, nullptr);
+        desc[i].buffer_addr = dev->tx_buffers[i];
         desc[i].lower.data = 0;
         desc[i].upper.fields.status = E1000_TXD_STAT_DD;
     }
@@ -297,7 +303,7 @@ void e1000_init_tx(e1000_device* dev)
 
 void e1000_tx_reap(e1000_device* dev);
 
-event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool dry)
+event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool dry, obos_status* status)
 {
     e1000_tx_reap(dev);
     volatile struct e1000_tx_desc* desc = &((volatile struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring))[dev->tx_index % TX_QUEUE_SIZE];
@@ -308,18 +314,23 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
     size_t nPages = size / OBOS_PAGE_SIZE;
     if (size % OBOS_PAGE_SIZE)
         nPages++;
-    uintptr_t buff = Mm_AllocatePhysicalPages(nPages, 1, nullptr);
+    if (nPages > TX_BUFFER_PAGES)
+        return nullptr;
+    uintptr_t buff = dev->tx_buffers[dev->tx_index];
     memcpy(MmS_MapVirtFromPhys(buff), buffer, size);
     desc->buffer_addr = buff;
     desc->upper.data = 0;
     desc->lower.data = size | E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
     E1000_WRITE_REG(&dev->hw, E1000_TDT(0), ++dev->tx_index % TX_QUEUE_SIZE);
     
-    while (~desc->upper.data & E1000_TXD_STAT_DD)
-        continue;
     // printf("ret from %s, upper.data=0x%x, lower.data=0x%x, buffer=0x%p\n", __func__, desc->upper.data, desc->lower.data, desc->buffer_addr);
-
     Core_LowerIrql(oldIrql);
+    
+    uintptr_t deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1*1000*1000);
+    while (~desc->upper.data & E1000_TXD_STAT_DD && CoreS_GetTimerTick() < deadline)
+        Core_Yield();
+    if (~desc->upper.data & E1000_TXD_STAT_DD)
+        *status = OBOS_STATUS_TIMED_OUT;
 
     return nullptr;
 }
