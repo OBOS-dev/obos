@@ -146,6 +146,8 @@ bool nm_initialize_interface(cJSON* top_level)
         pid_t pid = 0;
         if ((pid = fork()) == 0)
         {
+            setpgrp();
+            tcsetpgrp(0, getpgrp());
             char *argv[3] = {
                 "obos_dhcpc",
                 (char*)interface_name,
