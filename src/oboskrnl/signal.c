@@ -120,7 +120,8 @@ obos_status OBOS_SigSuspend(sigset_t mask)
     Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
     sigset_t old = Core_GetCurrentThread()->signal_info->mask;
     Core_GetCurrentThread()->signal_info->mask = mask;
-    Core_WaitOnObject(WAITABLE_OBJECT(Core_GetCurrentThread()->signal_info->event));
+    obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(Core_GetCurrentThread()->signal_info->event));
+    if (obos_is_error(status)) return status;
     Core_GetCurrentThread()->signal_info->mask = old;
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
     return OBOS_STATUS_SUCCESS;

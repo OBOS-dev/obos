@@ -35,7 +35,9 @@ obos_status Core_SemaphoreAcquire(semaphore* sem)
     }
     Core_SpinlockRelease(&sem->lock, oldIrql);
     // Add the current thread to the waiting list.
-    Core_WaitOnObject(&sem->hdr);
+    obos_status status = Core_WaitOnObject(&sem->hdr);
+    if (obos_is_error(status))
+        return status;
     oldIrql = Core_SpinlockAcquire(&sem->lock);
     sem->count--;
     Core_SpinlockRelease(&sem->lock, oldIrql);

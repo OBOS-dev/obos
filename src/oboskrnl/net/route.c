@@ -262,7 +262,9 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
         shared_ptr data = {};
         OBOS_SharedPtrConstruct(&data, &hdr);
         NetH_SendIPv4Packet(curr->iface->interface, curr->ent, destination, 0x11, curr->ttl, 0, OBOS_SharedPtrCopy(&data));
-        Core_WaitOnObject(WAITABLE_OBJECT(port->recv_event));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(port->recv_event));
+        if (obos_is_error(status))
+            return status;
 
         icmp_header* icmp_hdr = port->icmp_header;
         shared_ptr* icmp_hdr_ptr = port->icmp_header_ptr;

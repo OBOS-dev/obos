@@ -35,9 +35,11 @@ struct waitable_header
 // otherwise, this will not work, and will corrupt stuff.
 #define WAITABLE_OBJECT(obj) (struct waitable_header*)(&(obj))
 
-OBOS_EXPORT obos_status Core_WaitOnObject(struct waitable_header* obj);
+OBOS_EXPORT
+ OBOS_NODISCARD_REASON("Handle errors from Core_WaitOnObject") obos_status Core_WaitOnObject(struct waitable_header* obj);
 // Waits until at least one object is signaled.
-OBOS_EXPORT obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, struct waitable_header** signaled);
+OBOS_EXPORT 
+ OBOS_NODISCARD_REASON("Handle errors from Core_WaitOnObjects") obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, struct waitable_header** signaled);
 OBOS_EXPORT obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bool boostPriority);
 OBOS_EXPORT void        CoreH_ClearSignaledState(struct waitable_header* obj);
 OBOS_EXPORT obos_status CoreH_AbortWaitingThreads(struct waitable_header* obj);

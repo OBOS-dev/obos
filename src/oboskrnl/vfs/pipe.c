@@ -171,7 +171,9 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         pipe_ready_count(pipe, &ready_count);
         if ((pipe->size - ready_count) >= blkCount)
             break;
-        Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_evnt));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(pipe->write_evnt));
+        if (obos_is_error(status))
+            return status;
     }
     pipe_write(pipe, buf, blkCount, nBlkWritten);
 

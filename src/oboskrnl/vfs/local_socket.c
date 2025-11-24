@@ -371,7 +371,9 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
     
     if (!Core_EventGetState(&s->serv.doorbell) && nonblocking)
         return OBOS_STATUS_WOULD_BLOCK;
-    Core_WaitOnObject(WAITABLE_OBJECT(s->serv.doorbell));
+    obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(s->serv.doorbell));
+    if (obos_is_error(status))
+        return status;
     Core_EventClear(&s->serv.doorbell);
 
     Core_MutexAcquire(&s->serv.lock);

@@ -1479,7 +1479,13 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
             waitable_list[unsignaledIRPIndex] = WAITABLE_OBJECT(tm_evnt);
         }
 
-        Core_WaitOnObjects(nWaitableObjects, waitable_list, nullptr);
+        status = Core_WaitOnObjects(nWaitableObjects, waitable_list, nullptr);
+        if (obos_is_error(status))
+        {
+            Core_CancelTimer(&tm);
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            goto timeout;
+        }
         if (tm.mode == TIMER_EXPIRED)
         {
             // Just In Case
@@ -1665,7 +1671,13 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         }
 
         struct waitable_header* signaled = nullptr;
-        Core_WaitOnObjects(n_waitable_objects, waitable_list, &signaled);
+        status = Core_WaitOnObjects(n_waitable_objects, waitable_list, &signaled);
+        if (obos_is_error(status))
+        {
+            Core_CancelTimer(&tm);
+            CoreH_FreeDPC(&tm.handler_dpc, false);
+            goto out;
+        }
         if (signaled == WAITABLE_OBJECT(tm_evnt))
         {
             Core_CancelTimer(&tm);

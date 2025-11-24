@@ -264,7 +264,8 @@ void fd_fill_worker(void* user)
     struct fd_fill_userdata *udata = user;
     while (!udata->request_thread_kill)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(udata->wake_thr));
+        if (obos_is_error(Core_WaitOnObject(WAITABLE_OBJECT(udata->wake_thr))))
+            break;
         Core_EventClear(&udata->wake_thr);
         if (udata->request_thread_kill)
             break;

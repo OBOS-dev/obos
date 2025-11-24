@@ -36,7 +36,9 @@ static obos_status read_pckt(void* handle, mouse_packet* out, bool block)
         if (!Core_EventGetState(port->data_ready_event) && !block)
             return OBOS_STATUS_WOULD_BLOCK;
 
-        Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
+        if (obos_is_error(status))
+            return status;
     }
 
     return PS2_RingbufferFetchMousePacket(&data->packets, &hnd->in_ptr, out);

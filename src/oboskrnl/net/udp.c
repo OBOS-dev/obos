@@ -231,7 +231,12 @@ static void internal_read_thread(void* userdata)
     while (!ports->read_closed)
     {
         struct waitable_header* signaled = nullptr;
-        Core_WaitOnObjects(1+ports->nPorts, events, &signaled);
+        obos_status status = Core_WaitOnObjects(1+ports->nPorts, events, &signaled);
+        if (obos_is_error(status))
+        {
+            NetError("Net: %s: Core_WaitOnObjects returned %d, aborting.\n", __func__, status);
+            break;
+        }
         if (signaled == WAITABLE_OBJECT(ports->wake_read_thread))
             break;
         for (size_t i = 0; i < ports->nPorts; i++)

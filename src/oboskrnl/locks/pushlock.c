@@ -33,7 +33,10 @@ obos_status Core_PushlockAcquire(pushlock* lock, bool reader /* false: writer, t
     // Hopefully this is right.
     // maybe a possible race condition.
     try_again:
-    Core_WaitOnObject(&lock->hdr);
+    (void)0;
+    obos_status status = Core_WaitOnObject(&lock->hdr);
+    if (obos_is_error(status))
+        return status;    
     CoreH_ClearSignaledState(&lock->hdr);
     if (lock->nWaitingReaders)
         goto try_again;
