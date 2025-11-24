@@ -177,9 +177,9 @@ int main(int argc, char** argv)
     }
     int status;
     top:
-    waitpid(pid, &status, 0);
+    waitpid(pid, &status, pid);
     if (WIFSIGNALED(status))
-        printf("Child exitted due to signal %d\n", WTERMSIG(status));
+        printf("Handoff process exited due to signal %d\n", WTERMSIG(status));
     if (!WIFEXITED(status) && !WIFSIGNALED(status))
         goto top;
     sigchld_handler(SIGCHLD);
