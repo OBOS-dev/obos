@@ -155,7 +155,9 @@ static obos_status read_code(void* handle, keycode* out, bool block)
         if (!Core_EventGetState(port->data_ready_event) && !block)
             return OBOS_STATUS_WOULD_BLOCK;
 
-        Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*port->data_ready_event));
+        if (obos_is_error(status))
+            return status;
     }
 
     return PS2_RingbufferFetchKeycode(&data->input, &hnd->in_ptr, out);

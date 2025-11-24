@@ -4,6 +4,7 @@
  * Copyright (c) 2025 Omar Berrow
 */
 
+#include "error.h"
 #include <int.h>
 #include <struct_packing.h>
 #include <memmanip.h>
@@ -1174,9 +1175,16 @@ static void internal_listen_thread(void* udata)
         objs[i] = WAITABLE_OBJECT(s->serv.bound_ports[i-1]->connection_event);
     while (1)
     {
-        Core_WaitOnObjects(s->serv.bound_port_count+1, objs, &signaled);
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (obos_is_error(status = Core_WaitOnObjects(s->serv.bound_port_count+1, objs, &signaled)))
+        {
+            NetError("Net: %s: Core_WaitOnObjects returned %d, aborting.\n", __func__, status);
+            break;
+        }
+
         if (signaled == objs[0])
             break;
+        
         for (size_t i = 0; i < s->serv.bound_port_count; i++)
         {
             if (signaled == WAITABLE_OBJECT(s->serv.bound_ports[i]->connection_event))
@@ -1387,8 +1395,8 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
 
     while (s->connection->state.state != TCP_STATE_ESTABLISHED)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(s->connection->state.state_change_event));
-        if (s->connection->reset)
+        status = Core_WaitOnObject(WAITABLE_OBJECT(s->connection->state.state_change_event));
+        if (s->connection->reset || obos_is_error(status))
         {
             Core_PushlockAcquire(&iface->tcp_connections_lock, false);
             RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
@@ -1684,15 +1692,15 @@ socket_ops Net_TCPSocketBackend = {
     .proto_type.protocol = IPPROTO_TCP,
     .domain = AF_INET,
     .create = tcp_create,
-	.free = tcp_free,
-	.accept = tcp_accept,
-	.bind = tcp_bind,
-	.connect = tcp_connect,
-	.getpeername = tcp_getpeername,
-	.getsockname = tcp_getsockname,
-	.listen = tcp_listen,
-	.submit_irp = tcp_submit_irp,
-	.finalize_irp = tcp_finalize_irp,
-	.shutdown = tcp_shutdown,
-	.sockatmark = tcp_sockatmark
+    .free = tcp_free,
+    .accept = tcp_accept,
+    .bind = tcp_bind,
+    .connect = tcp_connect,
+    .getpeername = tcp_getpeername,
+    .getsockname = tcp_getsockname,
+    .listen = tcp_listen,
+    .submit_irp = tcp_submit_irp,
+    .finalize_irp = tcp_finalize_irp,
+    .shutdown = tcp_shutdown,
+    .sockatmark = tcp_sockatmark
 };

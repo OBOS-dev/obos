@@ -79,7 +79,9 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     
     while (!hnd->curr_rx)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(hnd->bound_port->recv_event));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(hnd->bound_port->recv_event));
+        if (obos_is_error(status))
+            return status;
 		Core_EventClear(&hnd->bound_port->recv_event);
 		udp_recv_packet* recv_packet = LIST_GET_HEAD(frame_queue, &hnd->bound_port->packets);
         if (!recv_packet)

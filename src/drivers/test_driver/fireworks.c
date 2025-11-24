@@ -290,7 +290,7 @@ void particle_handler(void* udata)
 		udata[3] = t.lastTimeTicked;
 		if (obos_is_error(status))
 			goto die;
-		Core_WaitOnObject(WAITABLE_OBJECT(e));
+		status = Core_WaitOnObject(WAITABLE_OBJECT(e));
 		goto die;
 	}
 	int t = 0;

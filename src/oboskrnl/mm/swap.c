@@ -176,7 +176,8 @@ static __attribute__((no_instrument_function)) void page_writer()
     // const char* const This = "Page Writer";
     while (1)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
+        OBOS_ENSURE(obos_is_success(status));
         Core_EventClear(&page_writer_done);
         if (!Mm_PageWriterOperation)
             Mm_PageWriterOperation = PAGE_WRITER_SYNC_ALL;
@@ -365,8 +366,10 @@ void Mm_WakePageWriter(bool wait)
 {
     OBOS_ASSERT(page_writer_thread.status);
     Core_EventPulse(&page_writer_wake, true);
+    obos_status status = OBOS_STATUS_SUCCESS;
     if (wait)
-        Core_WaitOnObject(WAITABLE_OBJECT(page_writer_done));
+        status = Core_WaitOnObject(WAITABLE_OBJECT(page_writer_done));
+    OBOS_UNUSED(status);
 }
 
 irql Mm_TakeSwapLock()

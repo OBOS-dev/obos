@@ -432,7 +432,5 @@ obos_status SysS_GDBStubStart()
     CoreH_ThreadInitialize(&gdb_thread, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
     Core_ProcessAppendThread(OBOS_KernelProcess, &gdb_thread);
     CoreH_ThreadReady(&gdb_thread);
-    Core_WaitOnObject(WAITABLE_OBJECT(gdb_connected));
-    
-    return OBOS_STATUS_SUCCESS;
+    return Core_WaitOnObject(WAITABLE_OBJECT(gdb_connected));
 }

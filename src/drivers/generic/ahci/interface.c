@@ -220,7 +220,12 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
         // irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
         SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount);
         // Core_LowerIrql(oldIrql);
-        Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
+        if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent))))
+        {
+            Core_SemaphoreRelease(&port->lock);
+            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
+            break;
+        }
         Core_EventClear(&data.completionEvent);
         if (!port->works)
         {
@@ -280,7 +285,12 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
     {
         SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount);
         HBA->ghc |= BIT(1) /* GhcIE */;
-        Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent));
+        if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent))))
+        {
+            Core_SemaphoreRelease(&port->lock);
+            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
+            break;
+        }
         Core_EventClear(&data.completionEvent);
         if (!port->works)
         {

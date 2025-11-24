@@ -4,6 +4,7 @@
  * Copyright (c) 2025 Omar Berrow
 */
 
+#include "error.h"
 #include <int.h>
 #include <klog.h>
 
@@ -92,7 +93,8 @@ static void poll_gf_tty(struct gf_tty_iface* iface)
     // struct gf_tty* dev = (void*)Arch_TTYBase;
     while (1)
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(iface->data_ready_evnt));
+        if (obos_is_error(Core_WaitOnObject(WAITABLE_OBJECT(iface->data_ready_evnt))))
+            continue;
         irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
         if (iface->data_ready)
         {

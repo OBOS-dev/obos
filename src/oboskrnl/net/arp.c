@@ -47,9 +47,12 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     address_table_entry* ent = RB_FIND(address_table, &nic->net_tables->arp_cache, &what);
     Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
     
+    obos_status status = OBOS_STATUS_SUCCESS;
     if (ent) 
     {
-        Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+        status = Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
+        if (obos_is_error(status))
+            return status;
         if (memcmp_b(ent->phys, 0, sizeof(mac_address)))
         {
             Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
@@ -91,7 +94,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     memzero(payload->target_mac, sizeof(payload->target_mac));
     
     shared_ptr *eth = NetH_FormatEthernetPacket(nic, MAC_BROADCAST, hdr, sz_hdr, ETHERNET2_TYPE_ARP);
-    obos_status status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
+    status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
     if (obos_is_error(status))
     {
         Core_PushlockAcquire(&nic->net_tables->table_lock, false);
