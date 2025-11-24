@@ -219,3 +219,10 @@ OBOS_EXPORT thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId);
 /// Exits the current thread.
 /// </summary>
 OBOS_NORETURN OBOS_EXPORT void Core_ExitCurrentThread();
+
+/// <summary>
+/// Forces a yield on syscall return. Should only be called before the syscall returns.<br/>
+/// This function exists so that blocking syscalls can give any signals a chance to run<br/>
+/// if it was interrupted by a signal.
+/// </summary>
+OBOS_WEAK void CoreS_ForceYieldOnSyscallReturn();

@@ -287,6 +287,9 @@ obos_status Sys_FdWrite(handle desc, const void* buf, size_t nBytes, size_t* nWr
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
 
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -323,6 +326,9 @@ obos_status Sys_FdRead(handle desc, void* buf, size_t nBytes, size_t* nRead)
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
     
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -366,6 +372,9 @@ obos_status Sys_FdPWrite(handle desc, const void* buf, size_t nBytes, size_t* nW
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
 
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -399,7 +408,10 @@ obos_status Sys_FdPRead(handle desc, void* buf, size_t nBytes, size_t* nRead, si
     }
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, nBytes);
-
+    
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+    
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -2478,6 +2490,9 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     OBOS_MAYBE_UNUSED fail1:
     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)params, sizeof(*params));
 
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return status;
 }
 
@@ -2529,6 +2544,9 @@ obos_status Sys_RecvFrom(handle desc, void* buffer, size_t size, int flags, stru
     Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, size);
     OBOS_MAYBE_UNUSED fail1:
     Mm_VirtualMemoryFree(&Mm_KernelContext, params, sizeof(*params));
+
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
 
     return status;
 }
@@ -2586,6 +2604,9 @@ obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t
     OBOS_MAYBE_UNUSED fail1:
     Free(OBOS_KernelAllocator, buf, addr_length);
 
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return status;
 }
 
@@ -2637,6 +2658,9 @@ obos_status Sys_Connect(handle desc, const sockaddr *uaddr, size_t addr_length)
 
     OBOS_MAYBE_UNUSED fail1:
     Free(OBOS_KernelAllocator, buf, addr_length);
+
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
 
     return status;
 }

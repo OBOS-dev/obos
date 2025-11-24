@@ -165,6 +165,8 @@ obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
     timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
     while (deadline > CoreS_GetTimerTick())
         OBOSS_SpinlockHint();
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
     return OBOS_STATUS_SUCCESS;
 }
 

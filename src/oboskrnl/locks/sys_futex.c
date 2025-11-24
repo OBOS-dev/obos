@@ -92,6 +92,8 @@ obos_status Sys_FutexWait(uint32_t *futex, uint32_t cmp_with, uint64_t timeout)
         // Mm_VirtualMemoryUnlock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
         obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*obj));
         deref_futex(obj);
+        if (CoreS_ForceYieldOnSyscallReturn)
+            CoreS_ForceYieldOnSyscallReturn();
         return status;
     }
 

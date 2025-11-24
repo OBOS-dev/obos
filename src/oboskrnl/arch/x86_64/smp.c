@@ -353,3 +353,17 @@ void CoreS_SetKernelStack(void* stck)
 	if (!stck) return;
 	CoreS_GetCPULocalPtr()->arch_specific.tss.rsp0 = (uintptr_t)stck+0x10000;
 }
+
+void CoreS_ForceYieldOnSyscallReturn()
+{
+	ipi_vector_info vector = {
+		.deliveryMode = LAPIC_DELIVERY_MODE_FIXED,
+		.info.vector = Core_SchedulerIRQ->vector->id + 0x20
+	};
+	asm volatile ("cli");
+	static ipi_lapic_info self = {
+		.isShorthand=true,
+		.info.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF
+	};
+    Arch_LAPICSendIPI(self, vector);    
+}
