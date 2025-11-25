@@ -454,8 +454,7 @@ void erase_bytes(tty* tty, size_t nBytesToErase)
 
 static void tty_kill(tty* tty, int sigval)
 {
-    if (tty->termios.lflag & ISIG)
-        OBOS_KillProcessGroup(tty->fg_job, sigval);
+    OBOS_KillProcessGroup(tty->fg_job, sigval);
 }
 
 static void data_ready(void *tty_, const void *buf, size_t nBytesReady) 
@@ -518,10 +517,10 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         }
         else
             tty->quoted = false;
-        if (!insert_byte)
-            continue;
         if (tty->termios.lflag & ECHO)
             tty_write_sync((dev_desc)tty, &ch, 1, 0, nullptr);
+        if (!insert_byte)
+            continue;
         if (tty->termios.lflag & ICANON)
         {
             if (tty->termios.lflag & ECHONL && ch == '\n')

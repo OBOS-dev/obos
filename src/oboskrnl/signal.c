@@ -79,6 +79,11 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
         Core_MutexRelease(&thr->signal_info->lock);
         return OBOS_STATUS_SUCCESS;
     }
+    if (thr->signal_info->signals[sigval-1].un.handler == SIG_IGN)
+    {
+        Core_MutexRelease(&thr->signal_info->lock);
+        return OBOS_STATUS_SUCCESS;
+    }
     thr->signal_info->pending |= BIT(sigval - 1);
     // set these up before the call to kill.
     // thr->signal_info->signals[sigval].addr = nullptr;
