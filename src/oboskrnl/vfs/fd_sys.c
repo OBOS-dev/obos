@@ -15,6 +15,7 @@
 
 #include <allocators/base.h>
 
+#include <scheduler/thread.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
@@ -1400,7 +1401,6 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         return status;
     }
 
-
     sigset_t sigmask = 0, oldmask = 0;
     if (extra.sigmask)
     {
@@ -1527,6 +1527,10 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     out2:
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
     Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
+
     return status;
 }
 
@@ -1712,6 +1716,9 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         Free(OBOS_KernelAllocator, waitable_list, nTotalEvents);
     OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
+
+    if (CoreS_ForceYieldOnSyscallReturn)
+        CoreS_ForceYieldOnSyscallReturn();
 
     return status;
 }
