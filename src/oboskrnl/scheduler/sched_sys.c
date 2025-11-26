@@ -184,7 +184,6 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     thr->references++;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    memcpy(thr->signal_info->signals, Core_GetCurrentThread()->signal_info->signals, sizeof(thr->signal_info->signals));
     thr->signal_info->mask = Core_GetCurrentThread()->signal_info->mask;
 
     return hnd;

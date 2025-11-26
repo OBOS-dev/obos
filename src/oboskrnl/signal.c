@@ -11,6 +11,7 @@
 #include <error.h>
 #include <klog.h>
 #include <signal.h>
+#include <signal_def.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/thread.h>
@@ -74,27 +75,27 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     else if (sigval == SIGSTOP)
     {
         // Stop the thread.
-        thr->signal_info->signals[sigval].sender = as;
+        thr->proc->signal_handlers[sigval].sender = as;
         CoreH_ThreadBlock(thr, true);
         Core_MutexRelease(&thr->signal_info->lock);
         return OBOS_STATUS_SUCCESS;
     }
-    if (thr->signal_info->signals[sigval-1].un.handler == SIG_IGN)
+    if (thr->proc->signal_handlers[sigval-1].un.handler == SIG_IGN)
     {
         Core_MutexRelease(&thr->signal_info->lock);
         return OBOS_STATUS_SUCCESS;
     }
     thr->signal_info->pending |= BIT(sigval - 1);
     // set these up before the call to kill.
-    // thr->signal_info->signals[sigval].addr = nullptr;
-    // thr->signal_info->signals[sigval].status = 0;
-    // thr->signal_info->signals[sigval].udata = 0;
-    // thr->signal_info->signals[sigval].sigcode = 0;
-    thr->signal_info->signals[sigval].sender = as;
+    // thr->proc->signal_handlers[sigval].addr = nullptr;
+    // thr->proc->signal_handlers[sigval].status = 0;
+    // thr->proc->signal_handlers[sigval].udata = 0;
+    // thr->proc->signal_handlers[sigval].sigcode = 0;
+    thr->proc->signal_handlers[sigval].sender = as;
     Core_MutexRelease(&thr->signal_info->lock);
     if (thr->status == THREAD_STATUS_BLOCKED)
     {
-        if (sigval == SIGTSTP && thr->signal_info->mask & BIT(SIGTSTP - 1))
+        if (thr->signal_info->mask & BIT(SIGTSTP - 1))
             return OBOS_STATUS_SUCCESS;
         // TODO: Use CoreH_AbortWaitingThreads instead of this?
         thr->interrupted = true;
@@ -109,13 +110,13 @@ obos_status OBOS_SigAction(int signum, const sigaction* act, sigaction* oldact)
     if (!(signum >= 0 && signum < SIGMAX))
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (oldact)
-        *oldact = Core_GetCurrentThread()->signal_info->signals[signum];
+        *oldact = Core_GetCurrentThread()->proc->signal_handlers[signum];
     if (act)
     {
         Core_MutexAcquire(&Core_GetCurrentThread()->signal_info->lock);
-        Core_GetCurrentThread()->signal_info->signals[signum - 1] = *act;
+        Core_GetCurrentThread()->proc->signal_handlers[signum - 1] = *act;
         // what.
-        // Core_GetCurrentThread()->signal_info->signals[signum].un.handler = SIG_DFL /* default handler is the kernel */;
+        // Core_GetCurrentThread()->proc->signal_handlers[signum].un.handler = SIG_DFL /* default handler is the kernel */;
         Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
     }
     return OBOS_STATUS_SUCCESS;
@@ -276,7 +277,7 @@ obos_status OBOS_KillProcessGroup(process_group* pgrp, int sigval)
 
 void OBOS_RunSignal(int sigval, interrupt_frame* frame)
 {
-    sigaction* sig = &Core_GetCurrentThread()->signal_info->signals[sigval];
+    sigaction* sig = &Core_GetCurrentThread()->proc->signal_handlers[sigval];
     if (!(sig->flags & SA_NODEFER))
         Core_GetCurrentThread()->signal_info->mask |= BIT_TYPE(sigval-1, L);
     Core_EventSet(&Core_GetCurrentThread()->signal_info->event, false);
@@ -301,7 +302,7 @@ OBOS_NO_UBSAN bool OBOS_SyncPendingSignal(interrupt_frame* frame)
     sigval += 1;
     Core_MutexRelease(&Core_GetCurrentThread()->signal_info->lock);
     OBOS_RunSignal(sigval, frame);
-    return Core_GetCurrentThread()->signal_info->signals[sigval-1].un.handler != SIG_IGN;
+    return Core_GetCurrentThread()->proc->signal_handlers[sigval-1].un.handler != SIG_IGN;
 }
 
 #define T SIGNAL_DEFAULT_TERMINATE_PROC,
