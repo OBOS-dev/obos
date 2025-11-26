@@ -235,7 +235,12 @@ spinlock g_tlb_shootdown_queue_lock;
 static void deref_tlb_shootdown_pckt(tlb_shootdown_packet* pckt)
 {
 	if (!--pckt->refcount)
+	{
+		irql oldIrql = Core_SpinlockAcquire(&g_tlb_shootdown_queue_lock);
+		LIST_REMOVE(tlb_shootdown_queue, &g_tlb_shootdown_queue, pckt);
+		Core_SpinlockRelease(&g_tlb_shootdown_queue_lock, oldIrql);
 		Free(Mm_Allocator, pckt, sizeof(*pckt));
+	}
 }
 
 bool Arch_InvlpgIPI(interrupt_frame* frame)
