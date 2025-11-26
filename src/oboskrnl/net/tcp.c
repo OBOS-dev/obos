@@ -999,6 +999,19 @@ void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t siz
     
 }
 
+void Net_TCPReset(tcp_connection* con)
+{
+    struct tcp_pseudo_hdr hdr = {};
+    hdr.ack = con->state.rcv.nxt;
+    hdr.seq = ++con->state.snd.nxt;
+    hdr.flags = TCP_RST;
+    hdr.src_port = con->src.port;
+    hdr.dest_port = con->dest.port;
+    hdr.ttl = con->ttl;
+    NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &hdr);
+    Net_TCPChangeConnectionState(con, TCP_STATE_CLOSED);
+}
+
 // LIST_GENERATE(tcp_incoming_list, tcp_incoming_packet, node);
 RB_GENERATE(tcp_connection_tree, tcp_connection, node, tcp_connection_cmp);
 RB_GENERATE(tcp_port_tree, tcp_port, node, tcp_port_cmp);
@@ -1036,7 +1049,10 @@ void tcp_free(socket_desc* socket)
 
     if (!s->is_server)
     {
-        Net_TCPSocketBackend.shutdown(socket, SHUT_RDWR);
+        // Net_TCPSocketBackend.shutdown(socket, SHUT_RDWR);
+        // Reset the connection.
+        if (s->connection->state.state < TCP_STATE_TIME_WAIT)
+            Net_TCPReset(s->connection);
         
         net_tables* iface = s->connection->nic->net_tables;
         Core_PushlockAcquire(&iface->tcp_connections_lock, false);
