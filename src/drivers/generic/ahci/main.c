@@ -158,7 +158,7 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
         page.phys = phys+offset;
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
-    MmS_TLBShootdown(Mm_KernelContext.pt, (uintptr_t)virt, size);
+    Drv_TLBShootdown(Mm_KernelContext.pt, (uintptr_t)virt, size);
     return virt+phys_page_offset;
 }
 

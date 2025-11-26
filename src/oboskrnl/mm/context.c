@@ -210,3 +210,10 @@ void Mm_ConstructContext(context* ctx)
 	ctx->pt = MmS_AllocatePageTable();
 	ctx->lock = Core_SpinlockCreate();
 }
+
+OBOS_EXPORT obos_status Drv_TLBShootdown(page_table pt, uintptr_t base, size_t size)
+{
+	if (MmS_TLBShootdown)
+		return MmS_TLBShootdown(pt, base, size);
+	return OBOS_STATUS_UNIMPLEMENTED;
+}
