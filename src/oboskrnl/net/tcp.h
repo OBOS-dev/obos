@@ -226,6 +226,7 @@ void Net_TCPCancelAllOutstandingSegments(tcp_connection* con);
 void Net_TCPChangeConnectionState(tcp_connection* con, int state);
 void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t size, size_t *nPushed);
 void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t size, bool oob);
+void Net_TCPReset(tcp_connection* con);
 
 static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
 {
