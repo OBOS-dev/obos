@@ -9,6 +9,7 @@
 #include <int.h>
 #include <error.h>
 #include <handle.h>
+#include <signal_def.h>
 
 #include <vfs/dirent.h>
 
@@ -58,6 +59,8 @@ typedef struct process
 
 	// Only exists for POSIX, ignored in most parts of the kernel.
 	uint32_t umask;
+
+    sigaction signal_handlers[64];
 
 	LIST_NODE(process_list, struct process) node;
 } process;
