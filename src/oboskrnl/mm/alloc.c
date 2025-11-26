@@ -576,6 +576,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         }
         MmS_SetPageMapping(ctx->pt, &pg, 0, true);
     }
+    MmS_TLBShootdown(ctx->pt, base, size);
 
     if (rng)
     {
@@ -817,6 +818,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
         pg.prot.present = info.prot.present;
         MmS_SetPageMapping(ctx->pt, &pg, info.phys, false);
     }
+    MmS_TLBShootdown(ctx->pt, base, size);
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     return OBOS_STATUS_SUCCESS;
 }

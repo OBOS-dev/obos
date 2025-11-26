@@ -90,6 +90,7 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                 down:
                 MmS_SetPageMapping(into->pt, &info, info.phys, false);
             }
+            MmS_TLBShootdown(toFork->pt, curr->virt, curr->size);
         }
     }
     Core_SpinlockRelease(&toFork->lock, oldIrql);

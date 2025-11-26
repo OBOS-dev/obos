@@ -43,6 +43,8 @@ OBOS_EXPORT page_table MmS_GetCurrentPageTable();
 /// <returns>The status of the function.</returns>
 OBOS_EXPORT obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t phys, bool free_pte);
 
+OBOS_WEAK obos_status MmS_TLBShootdown(page_table pt, uintptr_t base, size_t size);
+
 typedef struct working_set
 {
     struct {

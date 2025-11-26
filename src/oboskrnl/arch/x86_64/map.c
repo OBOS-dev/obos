@@ -144,8 +144,6 @@ bool Arch_FreePageMapAt(uintptr_t pml4Base, uintptr_t at, uint8_t maxDepth)
 	return true;
 }
 
-static obos_status invlpg_impl(uintptr_t at);
-
 static bool has_xd()
 {
 	static bool ret = false, init = false;
@@ -166,14 +164,11 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
 	uintptr_t entry = phys | flags;
-	bool shouldInvplg = pm[AddressToIndex(at, 0)] != entry;
 	// for (volatile bool b = !(flags & 1); b; )
 	// 	;
 	pm[AddressToIndex(at, 0)] = entry;
 	if (free_pte && ~flags & BIT_TYPE(0, UL))
 		Arch_FreePageMapAt(cr3, at, 3);
-	if (shouldInvplg)
-		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
 }
 obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t flags, bool free_pte)
@@ -191,17 +186,15 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 2);
 	uintptr_t entry = phys | flags | ((uintptr_t)1 << 7);
-	bool shouldInvplg = (entry != pm[AddressToIndex(at, 1)]);
 	pm[AddressToIndex(at, 1)] = entry;
 	if (free_pte && ~flags & BIT_TYPE(0, UL))
 		Arch_FreePageMapAt(cr3, at, 2);
-	if (shouldInvplg)
-		invlpg_impl(at);
 	return OBOS_STATUS_SUCCESS;
 }
 static struct {
 	spinlock lock;
 	uintptr_t addr;
+	size_t size;
 	uintptr_t cr3;
 	atomic_size_t nCPUsRan;
 	bool active;
@@ -214,7 +207,8 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (!invlpg_ipi_packet.active)
 		return false;
 	if (getCR3() == invlpg_ipi_packet.cr3)
-		invlpg(invlpg_ipi_packet.addr);
+		for (uintptr_t addr = invlpg_ipi_packet.addr; addr < (invlpg_ipi_packet.addr + invlpg_ipi_packet.size); addr += OBOS_PAGE_SIZE)
+			invlpg(addr);
 	invlpg_ipi_packet.nCPUsRan++;
 	if (invlpg_ipi_packet.nCPUsRan >= Core_CpuCount)
 		invlpg_ipi_packet.active = false;
@@ -242,7 +236,7 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_, bool free_pte)
 	pt[AddressToIndex(at, (uint8_t)isHugePage)] &= ~BIT(0);
 	if (free_pte)
 		Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
-	return invlpg_impl(at);
+	return OBOS_STATUS_SUCCESS;
 }
 static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql) 
 {
@@ -251,9 +245,12 @@ static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* us
 	OBOS_UNUSED(oldIrql);
 	Arch_InvlpgIPI(frame);
 }
-static obos_status invlpg_impl(uintptr_t at)
+
+obos_status MmS_TLBShootdown(page_table pt, uintptr_t base, size_t size)
 {
-	invlpg(at);
+	for (uintptr_t addr = base; addr < (base + size); addr += OBOS_PAGE_SIZE)
+		invlpg(addr);
+
 #ifndef OBOS_UP
 	if (!Arch_SMPInitialized || Core_CpuCount == 1)
 		return OBOS_STATUS_SUCCESS;
@@ -298,8 +295,9 @@ static obos_status invlpg_impl(uintptr_t at)
 		vector.info.vector = 0;
 	}
 	invlpg_ipi_packet.active = true;
-	invlpg_ipi_packet.addr = at;
-	invlpg_ipi_packet.cr3 = getCR3();
+	invlpg_ipi_packet.addr = base;
+	invlpg_ipi_packet.size = size;
+	invlpg_ipi_packet.cr3 = pt;
 	invlpg_ipi_packet.nCPUsRan = 1;
 	invlpg_ipi_packet.sender = CoreS_GetCPULocalPtr();
 	obos_status status = Arch_LAPICSendIPI(lapic, vector);
@@ -312,6 +310,7 @@ static obos_status invlpg_impl(uintptr_t at)
 #endif
 	return OBOS_STATUS_SUCCESS;
 }
+
 obos_status OBOSS_MapPage_RW_XD(void* at_, uintptr_t phys)
 {
 	return Arch_MapPage(getCR3(), at_, phys, 0x8000000000000003, false);
