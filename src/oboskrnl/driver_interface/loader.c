@@ -308,6 +308,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
         OBOS_Log("%s: Loaded driver '%s' at 0x%p.\n", __func__, driver->header.driverName, driver->base);
     else
         OBOS_Log("%s: Loaded driver at 0x%p.\n", __func__, driver->header.driverName, driver->base);
+    driver->refCnt++;
     return driver;
 }
 
