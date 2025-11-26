@@ -68,3 +68,5 @@ void OBOSH_BasicMMAddRegion(basicmm_region* nodeBase, void* base, size_t sz);
 /// <param name="callback">The call back. Returns true to continue iteration, otherwise false. Takes in the current region, and the passed user data.</param>
 /// <param name="udata">The user data to pass.</param>
 void OBOSH_BasicMMIterateRegions(bool(*callback)(basicmm_region*, void*), void* udata);
+
+void OBOSH_BasicMMSetBumpRegion(basicmm_region* region);

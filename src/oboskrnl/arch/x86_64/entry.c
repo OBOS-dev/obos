@@ -51,6 +51,8 @@
 
 #include <uacpi_libc.h>
 
+#include <mm/bare_map.h>
+
 #include <arch/x86_64/pmm.h>
 
 #if OBOS_USE_LIMINE
@@ -275,6 +277,15 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     Arch_RSDPBase = Arch_UnmapFromHHDM(Arch_LimineRSDPRequest.response->address);
 #endif
 
+    basicmm_region bump_region = {};
+    struct boot_module bump_region_module = {};
+    OBOSS_GetModule(&bump_region_module, "BUMP_REGION");
+    if (!bump_region_module.address)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find BUMP_REGION kernel module\n");
+    bump_region.addr = (uintptr_t)bump_region_module.address;
+    bump_region.size = bump_region_module.size;
+    OBOSH_BasicMMSetBumpRegion(&bump_region);
+
     struct boot_module flanterm_buff = {};
     OBOSS_GetModule(&flanterm_buff, "FLANTERM_BUFF");
     if (!flanterm_buff.address)
@@ -315,8 +326,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
         __builtin_bswap32(0xff55ff) >> 8,
         __builtin_bswap32(0x55ffff) >> 8,
         __builtin_bswap32(0xffffff) >> 8,
-
     };
+    OBOS_UNUSED(ansi_bright_colors && ansi_colors);
 #if !OBOS_USE_LIMINE
     if (!Arch_Framebuffer)
         OBOS_Warning("No framebuffer passed by the bootloader. All kernel logs will be on port 0xE9.\n");
@@ -379,8 +390,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
             fb->red_mask_size, fb->red_mask_shift, 
             fb->green_mask_size, fb->green_mask_shift, 
             fb->blue_mask_size, fb->blue_mask_shift, 
-            nullptr, ansi_colors, 
-            ansi_bright_colors, nullptr, 
+            nullptr, nullptr, 
+            nullptr, nullptr, 
             nullptr, nullptr,
             nullptr, 
             (void*)font_bin, 8, 16, 0, 
