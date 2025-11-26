@@ -4,12 +4,15 @@
 
 include(FetchContent)
 
-FetchContent_Declare(Limine
-	GIT_REPOSITORY https://github.com/limine-bootloader/limine.git
-	GIT_TAG v10.3.0-binary
-	SOURCE_DIR ${CMAKE_SOURCE_DIR}/dependencies/limine
-)
-FetchContent_MakeAvailable(Limine)
+if (OBOS_REFRESH_DEPENDENCIES)
+    FetchContent_Declare(Limine
+	    GIT_REPOSITORY https://github.com/limine-bootloader/limine.git
+    	GIT_TAG v10.3.0-binary
+	    SOURCE_DIR ${CMAKE_SOURCE_DIR}/dependencies/limine
+    )
+    FetchContent_MakeAvailable(Limine)
+    file (COPY_FILE "${CMAKE_SOURCE_DIR}/dependencies/limine/limine.h" "${CMAKE_SOURCE_DIR}/dependencies/include/limine.h")
+endif()
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     execute_process(
         COMMAND "make"
@@ -21,4 +24,3 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
 else()
 	message(FATAL_ERROR "You must be on to compile OBOS with Limine.")
 endif()
-file (COPY_FILE "${CMAKE_SOURCE_DIR}/dependencies/limine/limine.h" "${CMAKE_SOURCE_DIR}/dependencies/include/limine.h")
