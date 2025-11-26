@@ -45,6 +45,8 @@ OBOS_EXPORT obos_status MmS_SetPageMapping(page_table pt, const page_info* page,
 
 OBOS_WEAK obos_status MmS_TLBShootdown(page_table pt, uintptr_t base, size_t size);
 
+OBOS_EXPORT obos_status Drv_TLBShootdown(page_table pt, uintptr_t base, size_t size);
+
 typedef struct working_set
 {
     struct {
