@@ -14,7 +14,7 @@
 
 #include <mm/bare_map.h>
 #include <mm/context.h>
-
+#include <mm/alloc.h>
 #include <mm/pmm.h>
 
 #include <elf/elf.h>
@@ -29,7 +29,11 @@
 #include <arch/x86_64/interrupt_frame.h>
 #include <arch/x86_64/lapic.h>
 
+#include <utils/list.h>
+
 #include <mm/page.h>
+
+#include <allocators/base.h>
 
 #include <irq/irq.h>
 #include <irq/irql.h>
@@ -191,30 +195,7 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 		Arch_FreePageMapAt(cr3, at, 2);
 	return OBOS_STATUS_SUCCESS;
 }
-static struct {
-	spinlock lock;
-	uintptr_t addr;
-	size_t size;
-	uintptr_t cr3;
-	atomic_size_t nCPUsRan;
-	bool active;
-	irq* irq;
-	cpu_local* sender;
-} invlpg_ipi_packet;
-bool Arch_InvlpgIPI(interrupt_frame* frame)
-{
-	OBOS_UNUSED(frame);
-	if (!invlpg_ipi_packet.active)
-		return false;
-	if (getCR3() == invlpg_ipi_packet.cr3)
-		for (uintptr_t addr = invlpg_ipi_packet.addr; addr < (invlpg_ipi_packet.addr + invlpg_ipi_packet.size); addr += OBOS_PAGE_SIZE)
-			invlpg(addr);
-	invlpg_ipi_packet.nCPUsRan++;
-	if (invlpg_ipi_packet.nCPUsRan >= Core_CpuCount)
-		invlpg_ipi_packet.active = false;
-	// Arch_LAPICAddress->eoi = 0;
-	return true;
-}
+
 extern bool Arch_SMPInitialized;
 obos_status Arch_UnmapPage(uintptr_t cr3, void* at_, bool free_pte)
 {
@@ -238,6 +219,54 @@ obos_status Arch_UnmapPage(uintptr_t cr3, void* at_, bool free_pte)
 		Arch_FreePageMapAt(cr3, at, 3 - (uint8_t)isHugePage);
 	return OBOS_STATUS_SUCCESS;
 }
+
+static irq* invlpg_irq;
+typedef struct tlb_shootdown_packet {
+	uintptr_t base;
+	size_t size;
+	atomic_size_t refcount;
+	LIST_NODE(tlb_shootdown_queue, struct tlb_shootdown_packet) node;
+} tlb_shootdown_packet;
+typedef LIST_HEAD(tlb_shootdown_queue, tlb_shootdown_packet) tlb_shootdown_queue;
+LIST_GENERATE_STATIC(tlb_shootdown_queue, tlb_shootdown_packet, node);
+tlb_shootdown_queue g_tlb_shootdown_queue;
+spinlock g_tlb_shootdown_queue_lock;
+
+static void deref_tlb_shootdown_pckt(tlb_shootdown_packet* pckt)
+{
+	if (!--pckt->refcount)
+		Free(Mm_Allocator, pckt, sizeof(*pckt));
+}
+
+bool Arch_InvlpgIPI(interrupt_frame* frame)
+{
+	OBOS_UNUSED(frame);
+	if (!LIST_GET_NODE_COUNT(tlb_shootdown_queue, &g_tlb_shootdown_queue))
+		return false;
+	tlb_shootdown_packet* curr = CoreS_GetCPULocalPtr()->arch_specific.curr_pckt;
+	if (!curr)
+		curr = LIST_GET_HEAD(tlb_shootdown_queue, &g_tlb_shootdown_queue);
+	else
+	 	curr = LIST_GET_NEXT(tlb_shootdown_queue, &g_tlb_shootdown_queue, curr);
+
+	while (curr)
+	{
+		for (uintptr_t addr = curr->base; addr <= (curr->base+curr->size); addr += OBOS_PAGE_SIZE)
+		{
+			OBOS_ENSURE(addr >= curr->base);
+			invlpg(addr);
+		}
+
+		if (curr != LIST_GET_TAIL(tlb_shootdown_queue, &g_tlb_shootdown_queue))
+			deref_tlb_shootdown_pckt(curr);
+		else
+			CoreS_GetCPULocalPtr()->arch_specific.curr_pckt = curr;
+		curr = LIST_GET_NEXT(tlb_shootdown_queue, &g_tlb_shootdown_queue, curr);
+	}
+
+	return true;
+}
+
 static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql) 
 {
 	OBOS_UNUSED(i);
@@ -246,68 +275,64 @@ static void invlpg_ipi_bootstrap(struct irq* i, interrupt_frame* frame, void* us
 	Arch_InvlpgIPI(frame);
 }
 
+#define issue_nmi() \
+	Arch_LAPICSendIPI((ipi_lapic_info){.isShorthand=true,.info.shorthand=LAPIC_DESTINATION_SHORTHAND_ALL}, \
+					  (ipi_vector_info){.deliveryMode=LAPIC_DELIVERY_MODE_NMI})
+
+
+extern uintptr_t Arch_KernelCR3;
+
+enum { IRQL_INVLPG_IPI=15 };
+
 obos_status MmS_TLBShootdown(page_table pt, uintptr_t base, size_t size)
 {
-	for (uintptr_t addr = base; addr < (base + size); addr += OBOS_PAGE_SIZE)
-		invlpg(addr);
-
-#ifndef OBOS_UP
-	if (!Arch_SMPInitialized || Core_CpuCount == 1)
+	if (Core_CpuCount == 1 || !Arch_SMPInitialized)
+	{
+		for (uintptr_t addr = base; addr < (base + size); addr += OBOS_PAGE_SIZE)
+			invlpg(addr);
 		return OBOS_STATUS_SUCCESS;
-	enum { IRQL_INVLPG_IPI=15 };
-	if (!invlpg_ipi_packet.irq && Core_IrqInterfaceInitialized())
-	{
-		static irq irq;
-		invlpg_ipi_packet.irq = &irq;
-		Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
-		irq.handler = invlpg_ipi_bootstrap;
-		irq.handlerUserdata = nullptr;
 	}
-	extern bool Arch_HaltCPUs;
-	if (Arch_LAPICAddress->interruptRequest224_255 & (1<<16))
-	{
-		irql oldIrql = Core_GetIrql();
-		if (oldIrql >= IRQL_INVLPG_IPI)
-		{
-			Core_LowerIrql(IRQL_DISPATCH);
-			irql unused = Core_RaiseIrql(oldIrql);
-			OBOS_UNUSED(unused);
-		}
-	}
-	size_t spin = 0;
-	while (invlpg_ipi_packet.active && ++spin <= 10000)
-		pause();
-	Arch_HaltCPUs = false;
-	irql oldIrql = Core_SpinlockAcquireExplicit(&invlpg_ipi_packet.lock, IRQL_MASKED, false);
-	ipi_lapic_info lapic = {
-		.isShorthand=true,
-		.info.shorthand = LAPIC_DESTINATION_SHORTHAND_ALL_BUT_SELF
-	};
-	ipi_vector_info vector = {};
-	if (invlpg_ipi_packet.irq)
-	{
-		vector.deliveryMode = LAPIC_DELIVERY_MODE_FIXED;
-		vector.info.vector = invlpg_ipi_packet.irq->vector->id+0x20;
-	}
-	else 
-	{
-		vector.deliveryMode = LAPIC_DELIVERY_MODE_NMI;
-		vector.info.vector = 0;
-	}
-	invlpg_ipi_packet.active = true;
-	invlpg_ipi_packet.addr = base;
-	invlpg_ipi_packet.size = size;
-	invlpg_ipi_packet.cr3 = pt;
-	invlpg_ipi_packet.nCPUsRan = 1;
-	invlpg_ipi_packet.sender = CoreS_GetCPULocalPtr();
-	obos_status status = Arch_LAPICSendIPI(lapic, vector);
-	OBOS_ASSERT(obos_is_success(status));
-	OBOS_UNUSED(status);
-	// This can be done async.
-	// while (invlpg_ipi_packet.nCPUsRan != Core_CpuCount)
-	// 	pause();
-	Core_SpinlockRelease(&invlpg_ipi_packet.lock, oldIrql);
+
+#if OBOS_UP
+	return OBOS_STATUS_SUCCESS;	
 #endif
+
+	if (pt != Arch_KernelCR3)
+		goto ipi;
+
+	// Can this allocation cause problems?
+	// i sure do hope not...
+	tlb_shootdown_packet* pckt = ZeroAllocate(Mm_Allocator, 1, sizeof(tlb_shootdown_packet), nullptr);
+	pckt->base = base;
+	pckt->size = size;
+	pckt->refcount = Core_CpuCount;
+	irql oldIrql = Core_SpinlockAcquire(&g_tlb_shootdown_queue_lock);
+	LIST_APPEND(tlb_shootdown_queue, &g_tlb_shootdown_queue, pckt);
+	Core_SpinlockRelease(&g_tlb_shootdown_queue_lock, oldIrql);
+
+	ipi:	
+	// Issue the IPI.
+
+	if (Core_IrqInterfaceInitialized())
+	{
+		static ipi_vector_info vec = {};
+		static ipi_lapic_info dest = {.isShorthand=true,.info.shorthand=LAPIC_DESTINATION_SHORTHAND_ALL};
+		if (!invlpg_irq)
+		{
+			static irq irq;
+			invlpg_irq = &irq;
+			Core_IrqObjectInitializeIRQL(&irq, IRQL_INVLPG_IPI, false, true);
+			irq.handler = invlpg_ipi_bootstrap;
+			irq.handlerUserdata = nullptr;
+			
+			vec.deliveryMode = LAPIC_DELIVERY_MODE_FIXED;
+			vec.info.vector = irq.vector->id + 0x20;
+		}
+		Arch_LAPICSendIPI(dest, vec);		
+	}
+	else if (pt != Arch_KernelCR3)
+		issue_nmi();
+
 	return OBOS_STATUS_SUCCESS;
 }
 
@@ -359,7 +384,6 @@ static void FreePageTables(uintptr_t* pm, uint8_t level, uint32_t beginIndex, ui
 }
 uintptr_t MmS_KernelBaseAddress;
 uintptr_t MmS_KernelEndAddress;
-extern uintptr_t Arch_KernelCR3;
 obos_status Arch_InitializeKernelPageTable()
 {
 	obos_status status = OBOS_STATUS_SUCCESS;
