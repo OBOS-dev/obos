@@ -60,6 +60,7 @@ obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
         return status;
     page.prot.present = false;
     status = MmS_SetPageMapping(rng->ctx->pt, &page, phys, false);
+    MmS_TLBShootdown(rng->ctx->pt, page.virt, page.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     if (obos_is_error(status))
         return status;
     if (page.dirty)

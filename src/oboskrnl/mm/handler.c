@@ -65,6 +65,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);
 
     MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
+    MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 }
 
 static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
@@ -77,6 +78,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
         info->prot.rw = true;
         info->prot.ro = false;
         MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+        MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         pg->cow_type = COW_DISABLED;
         return true;
     }
@@ -86,6 +88,7 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
     info->prot.rw = true;
     info->prot.ro = false;
     MmS_SetPageMapping(ctx->pt, info, new->phys, false);
+    MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     MmH_DerefPage(pg);
     return true;
 }
@@ -168,6 +171,7 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     }
     done:
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+    MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->range = rng;
     if (ec & PF_EC_RW)
         Mm_MarkAsDirtyPhys(pg);

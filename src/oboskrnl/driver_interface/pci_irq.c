@@ -40,6 +40,7 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
         page.prot.uc = uc;
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
+    MmS_TLBShootdown(Mm_KernelContext.pt, (uintptr_t)virt, size);
     return virt+phys_page_offset;
 }
 static void pci_irq_move_callback(struct irq* i, struct irq_vector* from, struct irq_vector* to, void* userdata)
