@@ -526,7 +526,13 @@ static void map_range(uintptr_t cached_root, uintptr_t base, uintptr_t top, uint
 	top &= ~0xfff;
 	for (uintptr_t addr = base; addr < top; addr += 0x1000)
 	{
-		uintptr_t phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+		uintptr_t phys = 0;
+		uintptr_t pml2ent = Arch_GetPML2Entry(Arch_KernelCR3, addr);
+		if (pml2ent & BIT_TYPE(7, UL))
+			phys = Arch_MaskPhysicalAddressFromEntry(pml2ent) + (addr & (OBOS_HUGE_PAGE_SIZE-1));
+		else
+		 	phys = Arch_MaskPhysicalAddressFromEntry(Arch_GetPML1Entry(Arch_KernelCR3, addr));
+		OBOS_ENSURE(phys != 0);
 		Arch_MapPage(cached_root, (void*)addr, phys, flags, false);
 	}
 }

@@ -49,28 +49,18 @@ static OBOS_PAGEABLE_FUNCTION void Unlock(irql oldIrql)
 	Core_SpinlockRelease(&s_regionListLock, oldIrql);
 }
 
+void OBOSH_BasicMMSetBumpRegion(basicmm_region* region)
+{
+	irql oldIrql = Lock();
+	bump_region = *region;
+	Unlock(oldIrql);
+}
+
 OBOS_NO_KASAN OBOS_PAGEABLE_FUNCTION void* OBOS_BasicMMAllocatePages(size_t sz, obos_status* status)
 {
 	irql oldIrql = Lock();
 	if (!bump_region.addr)
-	{
-		// OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[256*1024*1024]; // 256M
-		OBOS_ALIGNAS(OBOS_PAGE_SIZE) static uint8_t region[4*1024*1024]; // 4M
-		bump_region.size = sizeof(region);
-		bump_region.addr = (uintptr_t)region;
-		// for (uintptr_t addr = bump_region.addr; addr < (bump_region.addr + bump_region.size); addr += OBOS_PAGE_SIZE)
-		// {
-		// 	obos_status stat = OBOS_STATUS_SUCCESS;
-		// 	uintptr_t mem = Mm_AllocatePhysicalPages(1, 1, &stat);
-		// 	if (stat != OBOS_STATUS_SUCCESS)
-		// 	{
-		// 		if (status)
-		// 			*status = stat;
-		// 		return nullptr;
-		// 	}
-		// 	OBOSS_MapPage_RW_XD((void*)addr, mem);
-		// }
-	}
+		OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "BasicMM: No region specified by platform code.\n");
 	sz += (OBOS_PAGE_SIZE-(sz%OBOS_PAGE_SIZE));
 	if ((bump_offset + sz) >= bump_region.size)
 		OBOS_Panic(OBOS_PANIC_NO_MEMORY, "BasicMM: No more space in bump allocator.\n");
