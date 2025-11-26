@@ -201,8 +201,6 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->name = Allocate(OBOS_KernelAllocator, ino->name_len+1, nullptr);
     memcpy(ino->name, ino->path+index, ino->name_len);
     ino->name[ino->name_len] = 0;
-    ino->filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
-    ino->data = (char*)hdr + 512;
     // ino->data = Allocate(OBOS_NonPagedPoolAllocator, ino->filesize, nullptr);
     // if (!ino->data)
     // {
@@ -213,6 +211,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     //     return nullptr;
     // }
     // memcpy(ino->data, (char*)hdr + 512, ino->filesize);
+    back:
     switch (hdr->type) {
         case AREGTYPE:
         case REGTYPE:
@@ -221,13 +220,24 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
         case DIRTYPE:
             ino->type = FILE_TYPE_DIRECTORY;
             break;
-        case LNKTYPE:
         case SYMTYPE:
             ino->type = FILE_TYPE_SYMBOLIC_LINK;
             break;
+        case LNKTYPE:
+        {
+            obos_status status = OBOS_STATUS_SUCCESS;
+            hdr = GetFile(hdr->linked, &status);
+            if (obos_is_error(status))
+                return nullptr;
+            goto back;
+            break;
+        }
         default:
             OBOS_ENSURE(!"Unrecognized header type");
     }
+    ino->filesize = oct2bin(hdr->filesize, strnlen(hdr->filesize, 12));
+    ino->data = (char*)hdr + 512;
+    
     uint16_t filemode = oct2bin(hdr->filemode, strnlen(hdr->filemode, 8));
     ino->perm.group_read = filemode & FILEMODE_GROUP_READ;
     ino->perm.owner_read = filemode & FILEMODE_OWNER_READ;
@@ -241,7 +251,6 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->perm.set_uid = filemode & 04000;
     ino->perm.set_gid = filemode & 02000;
     ino->linked_path = hdr->linked;
-
 
     ino->vnode = Vfs_Calloc(1, sizeof(vnode));
     ino->vnode->desc = (uintptr_t)ino;
@@ -270,6 +279,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     }
 
     ino->hdr = hdr;
+
     return ino;
 }
 driver_init_status OBOS_DriverEntry(driver_id* this)
