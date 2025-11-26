@@ -394,7 +394,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
             nullptr, nullptr, 
             nullptr, nullptr,
             nullptr, 
-            (void*)font_bin, 8, 16, 0, 
+            // (void*)font_bin, 8, 16, 0, 
+            nullptr, 8, 16, 0, 
             0,0,
             0);
         init_flanterm_backend();

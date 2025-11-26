@@ -1,7 +1,7 @@
 /*
-	oboskrnl/arch/x86_64/cpu_local_arch.h
-
-	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/arch/x86_64/cpu_local_arch.h
+ *
+ * Copyright (c) 2024 Omar Berrow
 */
 
 #pragma once
@@ -13,6 +13,8 @@
 #include <arch/x86_64/gdbstub/connection.h>
 
 #include <irq/dpc.h>
+
+#include <utils/list.h>
 
 typedef struct cpu_local_arch
 {
@@ -45,4 +47,5 @@ typedef struct cpu_local_arch
 	dpc dbg_dpc;
 	uint64_t stack_check_guard;
 	uint8_t lapicId;
+	struct tlb_shootdown_packet* curr_pckt;
 } cpu_local_arch;

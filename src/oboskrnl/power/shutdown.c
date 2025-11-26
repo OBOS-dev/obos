@@ -41,6 +41,7 @@ OBOS_NORETURN void OBOS_Reboot()
 {
     if (Mm_SwapProvider->deinit_dev)
         Mm_SwapProvider->deinit_dev(Mm_SwapProvider);
+    irql oldIrql = Core_RaiseIrql(IRQL_MASKED);
     Core_SuspendScheduler(true);
     Core_WaitForSchedulerSuspend();
     uacpi_reboot();
@@ -55,6 +56,7 @@ OBOS_NORETURN void OBOS_Reboot()
     // We should not be here anymore.
     OBOS_UNREACHABLE;
 #endif
+    (void)oldIrql;
     while(1)
         asm volatile("");
 }
