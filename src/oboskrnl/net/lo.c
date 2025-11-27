@@ -138,6 +138,7 @@ static obos_status finalize_irp(void* req_)
         memcpy(pckt->buffer, req->cbuff, req->blkCount);
         pckt->refs = hnd->dev->refs;
         pckt->size = req->blkCount;
+        // printf("LO: TX Packet (size: %d)\n", pckt->size);
 
         Core_MutexAcquire(&hnd->dev->lock);
         LIST_APPEND(lo_packet_queue, &hnd->dev->recv, pckt);
@@ -165,6 +166,7 @@ static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     switch (request) {
         case IOCTL_IFACE_MAC_REQUEST:
             memzero(argp, sizeof(mac_address));
+            ((uint8_t*)argp)[0] |= BIT(1);
             return OBOS_STATUS_SUCCESS;
         default:
             return Net_InterfaceIoctl(Net_LoopbackDevice, request, argp);
