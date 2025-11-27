@@ -297,12 +297,7 @@ PacketProcessSignature(TCP, ip_header*)
             resp.seq = be32_to_host(hdr->ack);
         else
         {
-            // TODO: Is this check valid?
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
             uint8_t header_length = (hdr->data_offset >> 4) * 4;
-#else
-            uint8_t header_length = (hdr->data_offset & 0xf) * 4;
-#endif
             uint32_t segment_length = be16_to_host(ip_hdr->packet_length)-IPv4_GET_HEADER_LENGTH(ip_hdr) - header_length;   
             resp.seq = 0;
             resp.ack = be32_to_host(hdr->seq)+segment_length+1;
