@@ -284,10 +284,9 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     // 'true' is not an error, see PS2_StartKeyboard
     port->suppress_irqs = true;
 
-
-
     data->set = set;
 
+    data->input.e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     port->data_ready_event = &data->input.e;
     port->read_code = read_code;
     port->make_handle = make_handle;
