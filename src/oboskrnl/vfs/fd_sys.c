@@ -1392,7 +1392,9 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     if (!uread_set && !uwrite_set && !uexcept_set)
         return OBOS_STATUS_SUCCESS; // We waited for nothing, so assume success.
     OBOS_UNUSED(uexcept_set && "We can't really monitor exceptional cases...");
-    
+    if (uexcept_set)
+        return OBOS_STATUS_UNIMPLEMENTED;
+
     uint8_t *read_set = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, uread_set, nullptr, 128, 0, true, &status);
     if (obos_is_error(status) && uread_set)
         return status;
