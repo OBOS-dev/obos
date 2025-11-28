@@ -331,7 +331,10 @@ static void search_bus(pci_bus* bus)
             Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices-1)*sizeof(e1000_device), nullptr);
             memzero(&Devices[nDevices-1], sizeof(Devices[nDevices-1]));
 
-            dev->resource_cmd_register->cmd_register |= 0x7; // io space + memspace + bus master
+            // for (volatile bool b = true; b;)
+            //     OBOSS_SpinlockHint();
+
+            dev->resource_cmd_register->cmd_register |= 0x7;
             Drv_PCISetResource(dev->resource_cmd_register);
             
             Devices[nDevices-1].hw.back = &Devices[nDevices-1].osdep;
@@ -419,6 +422,7 @@ static void search_bus(pci_bus* bus)
                 dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
                 continue;
             }
+            e1000_power_up_phy(&Devices[nDevices-1].hw);
 
             if (e1000_validate_nvm_checksum(&Devices[nDevices-1].hw) != E1000_SUCCESS)
             {
@@ -440,7 +444,6 @@ static void search_bus(pci_bus* bus)
             //     continue;
             // }
 
-            e1000_power_up_phy(&Devices[nDevices-1].hw);
             e1000_disable_ulp_lpt_lp(&Devices[nDevices-1].hw, true);
 
             Devices[nDevices-1].rx_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
