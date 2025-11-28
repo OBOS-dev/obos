@@ -225,7 +225,7 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	}
 
 	MmS_FreePageTable(proc->ctx->pt);
-	Mm_Allocator->Free(Mm_Allocator, proc->ctx, sizeof(context));
+	Free(Mm_Allocator, proc->ctx, sizeof(context));
 
 	thread* ready = nullptr;
 	thread* running = nullptr;

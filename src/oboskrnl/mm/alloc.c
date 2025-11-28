@@ -289,7 +289,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
 
     if (!rng)
     {
-        rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+        rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
 
         present = rng->prot.present = !(flags & VMA_FLAGS_RESERVE);
         rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
@@ -493,8 +493,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             // We need two ranges, one for the range behind base, and another for the range after.
-            page_range* before = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
-            page_range* after = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* before = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* after = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             memcpy(before, rng, sizeof(*before));
             memcpy(after, rng, sizeof(*before));
             before->size = base-before->virt;
@@ -510,7 +510,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
                 {
                     curr->data->free = true; // mark for deletion.
-                    Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+                    Free(Mm_Allocator, curr, sizeof(*curr));
                     curr = next;
                     continue;
                 }
@@ -532,7 +532,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
             rng->ctx = nullptr;
-            Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
+            Free(Mm_Allocator, rng, sizeof(*rng));
             rng = nullptr;
         }
         else if (rng->virt == base || rng->size == size)
@@ -547,7 +547,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                     curr->data->free = true;
-                    Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+                    Free(Mm_Allocator, curr, sizeof(*curr));
                 }
                 curr = next;
             }
@@ -615,11 +615,11 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         //     working_set_node* next = curr->next;
         //     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
         //     curr->data->free = true;
-        //     Mm_Allocator->Free(Mm_Allocator, curr, sizeof(*curr));
+        //     Free(Mm_Allocator, curr, sizeof(*curr));
         //     curr = next;
         // }
         RB_REMOVE(page_tree, &ctx->pages, rng);
-        Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
+        Free(Mm_Allocator, rng, sizeof(*rng));
     }
 
     Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -690,9 +690,9 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             // We need three ranges, one for the range behind base, another for the range after, and another for the new protection flags.
-            page_range* before = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
-            page_range* after = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
-            page_range* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* before = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* after = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* new = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             memcpy(new, rng, sizeof(*rng));
             memcpy(before, rng, sizeof(*rng));
             memcpy(after, rng, sizeof(*rng));
@@ -747,16 +747,16 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             if (before->size)
                 RB_INSERT(page_tree, &ctx->pages, before);
             else
-                Mm_Allocator->Free(Mm_Allocator, before, sizeof(page_range));
+                Free(Mm_Allocator, before, sizeof(page_range));
             if (after->size)
                 RB_INSERT(page_tree, &ctx->pages, after);
             else
-                Mm_Allocator->Free(Mm_Allocator, after, sizeof(page_range));
+                Free(Mm_Allocator, after, sizeof(page_range));
             if (new->size)
                 RB_INSERT(page_tree, &ctx->pages, new);
             else
-                Mm_Allocator->Free(Mm_Allocator, before, sizeof(page_range));
-            Mm_Allocator->Free(Mm_Allocator, rng, sizeof(*rng));
+                Free(Mm_Allocator, before, sizeof(page_range));
+            Free(Mm_Allocator, rng, sizeof(*rng));
             rng = new;
         }
         else if (rng->virt == base || rng->size == size)
@@ -767,7 +767,7 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             //     "0x%p-0x%p\n",
             //     rng->virt, rng->virt+rng->size
             // );
-            page_range* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+            page_range* new = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             memcpy(new, rng, sizeof(*rng));
             new->size = size;
             rng->size = (rng->size-size);
@@ -870,7 +870,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         }
     }
 
-    page_range* rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+    page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->virt = kbase;
     rng->ctx = &Mm_KernelContext;
     rng->phys32 = false;
@@ -993,7 +993,7 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     uintptr_t base = (uintptr_t)blk;
 
-    page_range* rng = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+    page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->ctx = ctx;
     rng->size = sz;
     rng->virt = base;

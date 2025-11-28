@@ -110,14 +110,14 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     bool allocated_ent = false;
     if (!ent)
     {
-        ent = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
+        ent = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
         ent->info.virt = curr->virt;
         ent->info.prot = curr->prot;
         ent->info.range = rng;
         allocated_ent = true;
     }
     ent->refs++;
-    working_set_node* node = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_node), nullptr);
+    working_set_node* node = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_node), nullptr);
     node->data = ent;
 #if defined(OBOS_PAGE_REPLACEMENT_AGING)
     status = Mm_AgingReferencePage(ctx, node);
@@ -126,9 +126,9 @@ static obos_status ref_page(context* ctx, const page_info *curr)
 #endif
     if (obos_is_error(status))
     {
-        Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
+        Free(Mm_Allocator, node, sizeof(*node));
         if (allocated_ent)
-            Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
+            Free(Mm_Allocator, ent, sizeof(*ent));
         return status;
     }
     APPEND_WORKINGSET_PAGE_NODE(ctx->referenced, node);
@@ -336,7 +336,7 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
         }
         if (!ent->free)
             REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
-        Mm_Allocator->Free(Mm_Allocator, ent, sizeof(*ent));
+        Free(Mm_Allocator, ent, sizeof(*ent));
     }
-    Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
+    Free(Mm_Allocator, node, sizeof(*node));
 }

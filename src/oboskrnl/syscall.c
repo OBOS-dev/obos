@@ -89,7 +89,7 @@ void Sys_LibCLog(const char* ustr)
 static handle Sys_MmFork()
 {
     // Zeroed in Mm_ConstructContext
-    context* ctx = Mm_Allocator->Allocate(Mm_Allocator, sizeof(context), nullptr);
+    context* ctx = Allocate(Mm_Allocator, sizeof(context), nullptr);
     Mm_ConstructContext(ctx);
     Mm_ForkContext(ctx, Core_GetCurrentThread()->proc->ctx);
     ctx->workingSet.capacity = Core_GetCurrentThread()->proc->ctx->workingSet.capacity;

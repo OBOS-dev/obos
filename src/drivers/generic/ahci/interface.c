@@ -64,7 +64,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     base &= ~1;
     const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
 /*
-    data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
+    data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
     struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
 */
     long bytesLeft = size;
@@ -98,7 +98,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
             if (addr != base)
             {
                 size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
-                data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
+                data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
                 struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
                 *reg = curr;
                 wroteback = true;
@@ -121,7 +121,7 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     if (!wroteback && curr.phys)
     {
         size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
-        data->phys_regions = Mm_Allocator->Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
+        data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
         struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
         *reg = curr;
     }
@@ -150,7 +150,7 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
         MmH_DerefPage(pg);
         pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
-    Mm_Allocator->Free(Mm_Allocator, data->phys_regions, data->physRegionCount*sizeof(struct ahci_phys_region));
+    Free(Mm_Allocator, data->phys_regions, data->physRegionCount*sizeof(struct ahci_phys_region));
     return OBOS_STATUS_SUCCESS;
 }
 // #pragma GCC pop_options
