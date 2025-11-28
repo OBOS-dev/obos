@@ -322,6 +322,7 @@ static void initialize_irq_resources(pci_device* dev)
     pci_resource* resource = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_resource), nullptr);
     resource->type = PCI_RESOURCE_IRQ;
 
+    resource->owner = dev;
     resource->irq = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(pci_irq_handle), nullptr);
 
     resource->owner = dev;
@@ -341,6 +342,7 @@ static void initialize_cmd_register_resource(pci_device* dev)
     resource->cmd_register = cmd_register & 0xffff;
 
     LIST_APPEND(pci_resource_list, &dev->resources, resource);
+    resource->owner = dev;
     dev->resource_cmd_register = resource;
 }
 
