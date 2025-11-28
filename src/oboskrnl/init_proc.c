@@ -61,7 +61,7 @@ void OBOS_LoadInit()
     if (obos_is_error(status))
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not open %s. Status: %d\n", init_path, status);
 
-    context* new_ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
+    context* new_ctx = ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
     Mm_ConstructContext(new_ctx);
     process* new = Core_ProcessAllocate(nullptr);
     new->ctx = new_ctx;

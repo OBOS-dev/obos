@@ -116,7 +116,7 @@ handle Sys_MakeNewContext(size_t ws_capacity)
         ws_capacity = OBOS_DEFAULT_WS_CAPACITY;
     if (ws_capacity % OBOS_HUGE_PAGE_SIZE)
         ws_capacity += (OBOS_HUGE_PAGE_SIZE-(ws_capacity%OBOS_HUGE_PAGE_SIZE));
-    context* ctx = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
+    context* ctx = ZeroAllocate(Mm_Allocator, 1, sizeof(context), nullptr);
     Mm_ConstructContext(ctx);
     ctx->workingSet.capacity = ws_capacity;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());

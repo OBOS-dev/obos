@@ -107,7 +107,7 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 {
 	if (!phys)
 		return nullptr;
-	page* buf = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
+	page* buf = ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
 		buf->flags |= PHYS_PAGE_HUGE_PAGE;
@@ -154,7 +154,7 @@ void MmH_DerefPage(page* buf)
 			}
 		}
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-		Mm_Allocator->Free(Mm_Allocator, buf, sizeof(*buf));
+		Free(Mm_Allocator, buf, sizeof(*buf));
 	}
 }
 memstat Mm_GlobalMemoryUsage;
@@ -173,7 +173,7 @@ OBOS_NODISCARD swap_allocation* MmH_LookupSwapAllocation(uintptr_t id)
 }
 swap_allocation* MmH_AddSwapAllocation(uintptr_t id)
 {
-	swap_allocation* new = Mm_Allocator->ZeroAllocate(Mm_Allocator, 1, sizeof(swap_allocation), nullptr);
+	swap_allocation* new = ZeroAllocate(Mm_Allocator, 1, sizeof(swap_allocation), nullptr);
 	new->id = id;
 	new->provider = Mm_SwapProvider;
 	new->refs = 0;
@@ -198,7 +198,7 @@ void MmH_DerefSwapAllocation(swap_allocation* alloc)
 			if (alloc->provider->free_obj)
 				alloc->provider->free_obj(alloc->provider);
 		}
-		Mm_Allocator->Free(Mm_Allocator, alloc, sizeof(*alloc));
+		Free(Mm_Allocator, alloc, sizeof(*alloc));
 	}
 }
 LIST_GENERATE(swap_allocation_list, struct swap_allocation, node);

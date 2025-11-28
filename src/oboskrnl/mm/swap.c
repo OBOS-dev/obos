@@ -107,7 +107,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         node->pagedCount++;
         page->prot.present = true;
         obos_status status = MmS_SetPageMapping(page->range->ctx->pt, page, node->phys, false);
-        // Mm_Allocator->Free(Mm_Allocator, node, sizeof(*node));
+        // Free(Mm_Allocator, node, sizeof(*node));
         if (obos_expect(obos_is_error(status), false))
         {
             // Unlikely error.
