@@ -185,14 +185,17 @@ void Arch_SMPStartup()
 	Arch_SaveMTRRs();
 	Arch_RawRegisterInterrupt(0x2, (uintptr_t)nmiHandler);
 	ParseMADT();
+	bool up = false;
 #ifdef OBOS_UP
 	OBOS_Log("Uniprocessor-build of OBOS. No other cores will be initialized.\n");
-	s_nLAPICIDs = 1;
+	// s_nLAPICIDs = 1;
+	up = true;
 #else
 	if (OBOS_GetOPTF("no-smp"))
 	{
 		OBOS_Log("Running OBOS as Uniprocessor. No other cores will be initialized.\n");
-		s_nLAPICIDs = 1;
+		up = true;
+		// s_nLAPICIDs = 1;
 	}
 #endif
 	// if (s_nLAPICIDs == 1)
@@ -206,7 +209,7 @@ void Arch_SMPStartup()
 	Arch_MapPage(getCR3(), (void*)0x1000, 0x1000, 0x3, false);
 	Arch_SMPTrampolineCR3 = getCR3();
 	Core_CpuInfo = cpu_info;
-	Core_CpuCount = s_nLAPICIDs;
+	Core_CpuCount = up ? 1 : s_nLAPICIDs;
 	// irql oldIrql = Core_RaiseIrql(0xf);
 	for (size_t i = 0; i < s_nLAPICIDs; i++)
 	{
