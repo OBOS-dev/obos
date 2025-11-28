@@ -196,14 +196,6 @@ void e1000_init_tx(e1000_device* dev)
 {
     dev->tx_ring_phys_pg = MmH_PgAllocatePhysical(false, false);
     dev->tx_ring = dev->tx_ring_phys_pg->phys;
-    struct e1000_tx_desc* desc = ((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring));
-    for (size_t i = 0; i < TX_QUEUE_SIZE; i++)
-    {
-        dev->tx_buffers[i] = Mm_AllocatePhysicalPages(TX_BUFFER_PAGES, 1, nullptr);
-        desc[i].buffer_addr = dev->tx_buffers[i];
-        desc[i].lower.data = 0;
-        desc[i].upper.fields.status = E1000_TXD_STAT_DD;
-    }
 
     // Copied from managarm
     E1000_WRITE_REG(&dev->hw, E1000_TDLEN(0), TX_QUEUE_SIZE * sizeof(struct e1000_tx_desc));
@@ -211,8 +203,8 @@ void e1000_init_tx(e1000_device* dev)
     E1000_WRITE_REG(&dev->hw, E1000_TDBAL(0), (u32)dev->tx_ring);
 
     /* Init the HEAD/TAIL indices */
-    E1000_WRITE_REG(&dev->hw, E1000_TDT(0), 0);
     E1000_WRITE_REG(&dev->hw, E1000_TDH(0), 0);
+    E1000_WRITE_REG(&dev->hw, E1000_TDT(0), 0);
 
     u32 txdctl = 0; /* clear txdctl */
     txdctl |= 0x1f; /* PTHRESH */
@@ -279,7 +271,7 @@ void e1000_init_tx(e1000_device* dev)
     /* Program the Transmit Control Register */
     u32 tctl = E1000_READ_REG(&dev->hw, E1000_TCTL);
     tctl &= ~E1000_TCTL_CT;
-    tctl |= (E1000_TCTL_RTLC | E1000_TCTL_EN | (E1000_COLLISION_THRESHOLD << E1000_CT_SHIFT));
+    tctl |= (E1000_TCTL_RTLC | E1000_TCTL_EN | E1000_TCTL_PSP | (E1000_COLLISION_THRESHOLD << E1000_CT_SHIFT));
 
     if (dev->hw.mac.type >= e1000_82571)
         tctl |= E1000_TCTL_MULR;
@@ -299,6 +291,16 @@ void e1000_init_tx(e1000_device* dev)
         reg |= E1000_TARC0_CB_MULTIQ_2_REQ;
         E1000_WRITE_REG(&dev->hw, E1000_TARC(0), reg);
     }
+
+    struct e1000_tx_desc* desc = ((struct e1000_tx_desc*)MmS_MapVirtFromPhys(dev->tx_ring));
+    for (size_t i = 0; i < TX_QUEUE_SIZE; i++)
+    {
+        dev->tx_buffers[i] = Mm_AllocatePhysicalPages(TX_BUFFER_PAGES, 1, nullptr);
+        desc[i].buffer_addr = dev->tx_buffers[i];
+        desc[i].lower.data = 0;
+        desc[i].upper.data = 0;
+    }
+    OBOS_ENSURE(memcmp_b(desc, 0, sizeof(*desc)*TX_QUEUE_SIZE) == false);
 }
 
 void e1000_tx_reap(e1000_device* dev);
@@ -316,14 +318,15 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
         nPages++;
     if (nPages > TX_BUFFER_PAGES)
         return nullptr;
-    uintptr_t buff = dev->tx_buffers[dev->tx_index];
+    uintptr_t buff = dev->tx_buffers[dev->tx_index % TX_QUEUE_SIZE];
     memcpy(MmS_MapVirtFromPhys(buff), buffer, size);
     desc->buffer_addr = buff;
     desc->upper.data = 0;
     desc->lower.data = size | E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+    E1000_WRITE_REG(&dev->hw, E1000_TDBAH(0), (u32)(dev->tx_ring >> 32));
+    E1000_WRITE_REG(&dev->hw, E1000_TDBAL(0), (u32)dev->tx_ring);
     E1000_WRITE_REG(&dev->hw, E1000_TDT(0), ++dev->tx_index % TX_QUEUE_SIZE);
-    
-    // printf("ret from %s, upper.data=0x%x, lower.data=0x%x, buffer=0x%p\n", __func__, desc->upper.data, desc->lower.data, desc->buffer_addr);
+  
     Core_LowerIrql(oldIrql);
     
     uintptr_t deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(1*1000*1000);
@@ -388,10 +391,10 @@ void e1000_tx_reap(e1000_device* dev)
     size_t i = dev->tx_index;
     for (; ; )
     {
-        if (~desc[i].upper.fields.status & E1000_TXD_STAT_DD)
+        if (~desc[i].upper.data & E1000_TXD_STAT_DD)
             break;
         desc[i].upper.fields.status = 0;   
-        desc[i].lower.data = 0;   
+        desc[i].lower.data = 0;
         desc[i].buffer_addr = 0;
         i++;
     }
