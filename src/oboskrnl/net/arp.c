@@ -4,6 +4,8 @@
  * Copyright (c) 2025 Omar Berrow
  */
 
+#include "irq/timer.h"
+#include "locks/wait.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -92,26 +94,61 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     memcpy(payload->sender_mac, nic->net_tables->mac, sizeof(mac_address));
     payload->target_ip = addr;
     memzero(payload->target_mac, sizeof(payload->target_mac));
-    
-    shared_ptr *eth = NetH_FormatEthernetPacket(nic, MAC_BROADCAST, hdr, sz_hdr, ETHERNET2_TYPE_ARP);
-    status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
-    if (obos_is_error(status))
-    {
-        Core_PushlockAcquire(&nic->net_tables->table_lock, false);
-        RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);    
-        Core_PushlockRelease(&nic->net_tables->table_lock, false);
-        Free(OBOS_KernelAllocator, ent, sizeof(*ent));
-        return status; // hdr_ptr isn't leaked, as we never reference it
-    }
 
-    status = Core_WaitOnObject(WAITABLE_OBJECT(ent->sync));
-    if (obos_is_error(status))
+    event tm_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    timer* tm = nullptr;
+    CoreH_MakeTimerEvent(&tm, 1000*1000, &tm_evnt, true);
+
+    struct waitable_header* signaled = nullptr;
+    struct waitable_header* objs[2] = {
+        WAITABLE_OBJECT(tm_evnt),
+        WAITABLE_OBJECT(ent->sync)
+    };
+
+    size_t nTimeouts = 0;
+
+    do
     {
+        shared_ptr *eth = NetH_FormatEthernetPacket(nic, MAC_BROADCAST, hdr, sz_hdr, ETHERNET2_TYPE_ARP);
+        status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
+        if (obos_is_error(status))
+        {
+            Core_PushlockAcquire(&nic->net_tables->table_lock, false);
+            RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);    
+            Core_PushlockRelease(&nic->net_tables->table_lock, false);
+            Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            return status; // hdr_ptr isn't leaked, as we never reference it
+        }
+
+        status = Core_WaitOnObjects(2, objs, &signaled);
+        if (obos_is_error(status))
+        {
+            Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
+            RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
+            Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+            Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            return status;
+        }
+        if (signaled == WAITABLE_OBJECT(ent->sync))
+            break;
+        Core_EventClear(&tm_evnt);
+        // We timed out.
+        continue;
+    } while (++nTimeouts <= 10);
+
+    Core_CancelTimer(tm);
+    Core_TimerObjectFree(tm);
+
+    if (signaled != WAITABLE_OBJECT(ent->sync))
+    {
+        status = OBOS_STATUS_TIMED_OUT;
         Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
         RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
         Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
+        Free(OBOS_KernelAllocator, ent, sizeof(*ent));
         return status;
     }
+
     if (out)
         memcpy(*out, ent->phys, sizeof(mac_address));
     if (address_table_ent)
