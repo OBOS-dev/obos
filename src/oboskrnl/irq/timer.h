@@ -13,6 +13,8 @@
 #include <irq/irq.h>
 #include <irq/dpc.h>
 
+#include <locks/event.h>
+
 typedef uint64_t timer_tick;
 typedef uint64_t timer_frequency;
 
@@ -111,6 +113,15 @@ OBOS_EXPORT timer_tick CoreH_TimeFrameToTick(uint64_t us);
 /// <returns>The tick count in nanoseconds..</returns>
 OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, bool native_tick);
 
+/// <summary>
+/// Starts a timer for 'us' microseconds, setting evnt when it is triggered.<br/>
+/// Useful for timeouts.
+/// </summary>
+/// <param name="otm">[out] The timer object used.</param>
+/// <param name="us">The time period to start the timer for</param>
+/// <param name="evnt">The event to set when the timer finishes</param>
+/// <param name="recurring">Whether the timer should be an interval or deadline timer</param>
+OBOS_EXPORT void CoreH_MakeTimerEvent(timer** otm, uint64_t us, event* evnt, bool recurring);
 
 uint64_t CoreS_TimerTickToNS(timer_tick tp);
 

@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Omar Berrow
 */
 
+#include "locks/event.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -239,4 +240,19 @@ OBOS_EXPORT uint64_t CoreH_TickToNS(timer_tick tick, bool native_tick)
         }
         return tick * cached_rate;
     }
+}
+
+static void tm_evnt_hnd(void* udata)
+{
+    event* evnt = udata;
+    Core_EventSet(evnt, false);
+}
+
+void CoreH_MakeTimerEvent(timer** otm, uint64_t us, event* evnt, bool recurring)
+{
+    OBOS_ASSERT(otm);
+    *otm = Core_TimerObjectAllocate(nullptr);
+    (*otm)->handler = tm_evnt_hnd;
+    (*otm)->userdata = (void*)evnt;
+    Core_TimerObjectInitialize(*otm, recurring ? TIMER_MODE_INTERVAL : TIMER_MODE_DEADLINE, us);
 }
