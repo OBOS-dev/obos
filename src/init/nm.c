@@ -191,19 +191,37 @@ bool nm_initialize_interface(cJSON* top_level)
     for (size_t i = 0; i < ip_table_len; i++)
     {
         if (ip_table[i].address.addr && ip_table[i].broadcast.addr && ip_table[i].subnet)
-            ioctl(fd, IOCTL_IFACE_ADD_IP_TABLE_ENTRY, &ip_table[i]);
+        {
+            if (ioctl(fd, IOCTL_IFACE_ADD_IP_TABLE_ENTRY, &ip_table[i]) != 0)
+            {
+                fprintf(stderr, "ioctl(IOCTL_IFACE_ADD_IP_TABLE_ENTRY): %s\nIs the interface already configured?\n", strerror(errno));
+                return false;
+            }
+        }
         else
             fprintf(stderr, "NM: %s: Skipping invalid ip table entry\n", interface_name);
     }
     for (size_t i = 0; i < nGateways; i++)
     {
         if (gateways[i].src.addr && gateways[i].dest.addr)
-            ioctl(fd, IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY, &gateways[i]);
+        {
+            if (ioctl(fd, IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY, &gateways[i]) != 0)
+            {
+                fprintf(stderr, "ioctl(IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY): %s\nIs the router up, or is the interface already configured?\n", strerror(errno));
+                return false;
+            }
+        }
         else
             fprintf(stderr, "NM: %s: Skipping invalid static route\n", interface_name);
     }
     if (default_gateway.addr)
-        ioctl(fd, IOCTL_IFACE_SET_DEFAULT_GATEWAY, &default_gateway);
+    {
+        if (ioctl(fd, IOCTL_IFACE_SET_DEFAULT_GATEWAY, &default_gateway) != 0)
+        {
+            fprintf(stderr, "ioctl(IOCTL_IFACE_SET_DEFAULT_GATEWAY): %s\nIs the router up, or is the interface already configured?\n", strerror(errno));
+            return false;
+        }
+    }
     else
         fprintf(stderr, "NM: %s: Skipping default gateway\n", interface_name);
 
