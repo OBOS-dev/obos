@@ -5,6 +5,7 @@
 */
 
 #include "error.h"
+#include "irq/irql.h"
 #include <int.h>
 #include <struct_packing.h>
 #include <memmanip.h>
@@ -126,6 +127,7 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     // and the TCP handler sees no unACKed segment, then this segment will be
     // spuriously retransmitted, which is probably bad.
     
+    irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     if (con)
         Core_PushlockAcquire(&con->unacked_segments.lock, false);    
 
@@ -144,13 +146,17 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     
     if (obos_is_error(status))
     {
+        Core_LowerIrql(oldIrql);
         if (con)
             Core_PushlockRelease(&con->unacked_segments.lock, false);
         return status;
     }
 
     if (!con)
+    {
+        Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
+    }
     
     tcp_unacked_segment* seg = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(tcp_unacked_segment), nullptr);
     OBOS_SharedPtrConstructSz(&seg->ptr, seg, sizeof(*seg));
@@ -186,6 +192,8 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     dat->unacked_seg = seg;
 
     Core_PushlockRelease(&con->unacked_segments.lock, false);
+
+    Core_LowerIrql(oldIrql);
 
     return OBOS_STATUS_SUCCESS;
 }
