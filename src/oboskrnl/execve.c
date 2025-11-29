@@ -141,7 +141,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         return status;
     Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPath(VfsH_DirentLookup(path), nullptr);
     size_t szBuf = file.vn->filesize;
-    void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, 0, VMA_FLAGS_PRIVATE|VMA_FLAGS_PREFAULT, &file, nullptr);
+    void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, OBOS_PROTECTION_READ_ONLY, 0, &file, nullptr);
     bool set_uid = file.vn->perm.set_uid;
     bool set_gid = file.vn->perm.set_gid;
     uid target_uid = set_uid ? file.vn->owner_uid : Core_GetCurrentThread()->proc->currentUID;

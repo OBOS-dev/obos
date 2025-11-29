@@ -875,6 +875,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     rng->ctx = &Mm_KernelContext;
     rng->phys32 = false;
     rng->hasGuardPage = false;
+    rng->pageable = false;
     rng->size = size;
     rng->prot.huge_page = false;
     rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
@@ -911,6 +912,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             if (~prot & OBOS_PROTECTION_READ_ONLY)
                 Mm_MarkAsDirtyPhys(phys);
         }
+        OBOS_ENSURE(phys);
 
         if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
         {
@@ -936,7 +938,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         info.accessed = false;
         info.range = rng;
         info.prot = rng->prot;
-        info.prot.present = !!phys;
+        info.prot.present = info.phys != 0;
         info.prot.rw = rng->prot.rw;
         OBOS_ENSURE(info.phys);
         MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
