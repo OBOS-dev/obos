@@ -159,7 +159,11 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         const char* write_buf = buf;
         obos_status status = OBOS_STATUS_SUCCESS;
         while ((written_count += tmp) < blkCount && obos_is_success(status))
+        {
+            if (Core_GetCurrentThread()->signal_info && Core_GetCurrentThread()->signal_info->pending & BIT(SIGPIPE-1))
+                break;
             status = write_sync(desc, write_buf + written_count, (blkCount - written_count) % pipe->size, 0, &tmp);
+        }
         if (nBlkWritten)
             *nBlkWritten = written_count;
         return status;
