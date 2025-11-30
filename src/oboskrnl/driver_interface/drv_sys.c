@@ -62,7 +62,7 @@ handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 }
 
 #define perm_check_impl(ret) do {\
-    if (Core_GetCurrentThread()->proc->currentUID != ROOT_UID)\
+    if (Core_GetCurrentThread()->proc->euid != ROOT_UID)\
         return (ret);\
 } while(0)
 #define perm_check() perm_check_impl(OBOS_STATUS_ACCESS_DENIED)
