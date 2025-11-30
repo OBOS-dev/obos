@@ -37,8 +37,8 @@ typedef struct process
 
 	struct process_group* pgrp;
 
-	uid currentUID;
-	gid currentGID;
+	uid euid, ruid, suid;
+	gid egid, rgid, sgid;
 	
 	uint32_t exitCode;
 	bool dead;
