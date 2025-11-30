@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <netinet/in.h>
+#include <abi-bits/socket.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
