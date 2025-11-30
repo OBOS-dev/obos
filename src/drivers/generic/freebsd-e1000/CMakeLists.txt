@@ -17,6 +17,10 @@ target_compile_options(e1000
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error>
 )
 
+if (OBOS_ENABLE_FANALYZER)
+	target_compile_options(e1000 PRIVATE "-fno-analyzer")
+endif()
+
 set_property(TARGET e1000 PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})
 
 target_include_directories(e1000

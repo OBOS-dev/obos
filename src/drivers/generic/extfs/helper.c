@@ -628,6 +628,7 @@ uint32_t allocate_bmp(ext_cache* cache, const uint32_t* block_group_ptr, int wha
                 buffer = ext_read_block(cache, block, &pg);
                 MmH_RefPage(pg);
             }
+            OBOS_ENSURE(buffer);
             if (buffer[i] != 0xff)
             {
                 uint8_t bit = __builtin_ctz(~buffer[i]);

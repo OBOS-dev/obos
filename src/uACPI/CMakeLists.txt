@@ -23,6 +23,10 @@ if (OBOS_ENABLE_PROFILER)
 	target_compile_options(uacpi PRIVATE $<$<COMPILE_LANGUAGE:C>:-finstrument-functions>)
 endif()
 
+if (OBOS_ENABLE_FANALYZER)
+	target_compile_options(uacpi PRIVATE "-fno-analyzer")
+endif()
+
 # All symbols exported, except for the kernel api of course.
 set_source_files_properties("kernel_api.c" PROPERTIES COMPILE_OPTIONS "-fvisibility=hidden")
 

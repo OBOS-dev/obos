@@ -66,8 +66,8 @@ typedef struct allocator_info
 
 OBOS_EXPORT obos_status Free(struct allocator_info* This, void* base, size_t nBytes);
 #ifndef __clang__
-OBOS_EXPORT __attribute__((malloc, malloc(Free, 2))) void* Allocate(struct allocator_info* This, size_t nBytes, obos_status* status);
-OBOS_EXPORT __attribute__((malloc, malloc(Free, 2))) void* ZeroAllocate(struct allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status);
+OBOS_EXPORT __attribute__((malloc, malloc(Free, 2), returns_nonnull)) void* Allocate(struct allocator_info* This, size_t nBytes, obos_status* status);
+OBOS_EXPORT __attribute__((malloc, malloc(Free, 2), returns_nonnull)) void* ZeroAllocate(struct allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status);
 #else
 OBOS_EXPORT void* Allocate(struct allocator_info* This, size_t nBytes, obos_status* status);
 OBOS_EXPORT void* ZeroAllocate(struct allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status);
