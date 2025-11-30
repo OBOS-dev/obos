@@ -663,29 +663,121 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
     return status;
 }
 
-
-obos_status Sys_SetUid(uid to)
-{
-    process* proc = Core_GetCurrentThread()->proc;
-    if (proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
-    proc->euid = to;
-    return OBOS_STATUS_SUCCESS;
-}
-
-obos_status Sys_SetGid(gid to)
-{
-    process* proc = Core_GetCurrentThread()->proc;
-    if (proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
-    proc->egid = to;
-    return OBOS_STATUS_SUCCESS;
-}
-
 uid Sys_GetUid()
-{ return Core_GetCurrentThread()->proc->euid; }
+{ return Core_GetCurrentThread()->proc->ruid; }
 gid Sys_GetGid()
-{ return Core_GetCurrentThread()->proc->egid; }
+{ return Core_GetCurrentThread()->proc->rgid; }
+
+static bool check_unpriv_uid(uid uid)
+{
+    return (uid != Core_GetCurrentThread()->proc->ruid) && 
+           (uid != Core_GetCurrentThread()->proc->euid) && 
+           (uid != Core_GetCurrentThread()->proc->suid);
+}
+static bool check_unpriv_gid(gid gid)
+{
+    return (gid != Core_GetCurrentThread()->proc->rgid) && 
+           (gid != Core_GetCurrentThread()->proc->egid) && 
+           (gid != Core_GetCurrentThread()->proc->sgid);
+}
+
+obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid)
+{
+    if (Core_GetCurrentThread()->proc->euid != 0)
+    {
+        if ((ruid != -1) && !check_unpriv_uid(ruid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if ((euid != -1) && !check_unpriv_uid(euid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if ((suid != -1) && !check_unpriv_uid(suid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if (ruid != -1)
+            Core_GetCurrentThread()->proc->ruid = ruid;
+        if (euid != -1)
+            Core_GetCurrentThread()->proc->euid = euid;
+        if (suid != -1)
+            Core_GetCurrentThread()->proc->suid = suid;
+    }
+    else
+    {
+        if (ruid != -1) Core_GetCurrentThread()->proc->ruid = ruid;
+        if (euid != -1) Core_GetCurrentThread()->proc->euid = euid;
+        if (suid != -1) Core_GetCurrentThread()->proc->suid = suid;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_SetRESGid(gid rgid, gid egid, gid sgid)
+{
+    if (Core_GetCurrentThread()->proc->euid != 0)
+    {
+        if ((rgid != -1) && !check_unpriv_gid(rgid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if ((egid != -1) && !check_unpriv_gid(egid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if ((sgid != -1) && !check_unpriv_gid(sgid))
+            return OBOS_STATUS_ACCESS_DENIED;
+        if (rgid != -1)
+            Core_GetCurrentThread()->proc->rgid = rgid;
+        if (egid != -1)
+            Core_GetCurrentThread()->proc->egid = egid;
+        if (sgid != -1)
+            Core_GetCurrentThread()->proc->sgid = sgid;
+    }
+    else
+    {
+        if (rgid != -1) Core_GetCurrentThread()->proc->rgid = rgid;
+        if (egid != -1) Core_GetCurrentThread()->proc->egid = egid;
+        if (sgid != -1) Core_GetCurrentThread()->proc->sgid = sgid;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_GetRESUid(uid* ruid, uid* euid, uid* suid)
+{
+    if (ruid)
+        memcpy_k_to_usr(ruid, &Core_GetCurrentThread()->proc->ruid, sizeof(uid));
+    if (euid)
+        memcpy_k_to_usr(euid, &Core_GetCurrentThread()->proc->euid, sizeof(uid));
+    if (suid)
+        memcpy_k_to_usr(suid, &Core_GetCurrentThread()->proc->suid, sizeof(uid));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_GetRESGid(gid* rgid, gid* egid, gid* sgid)
+{
+    if (rgid)
+        memcpy_k_to_usr(rgid, &Core_GetCurrentThread()->proc->rgid, sizeof(gid));
+    if (egid)
+        memcpy_k_to_usr(egid, &Core_GetCurrentThread()->proc->egid, sizeof(gid));
+    if (sgid)
+        memcpy_k_to_usr(sgid, &Core_GetCurrentThread()->proc->sgid, sizeof(gid));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Sys_SetUid(uid uid)
+{
+    if (Core_GetCurrentThread()->proc->euid == 0)
+    {
+        Core_GetCurrentThread()->proc->ruid = uid;
+        Core_GetCurrentThread()->proc->euid = uid;
+        Core_GetCurrentThread()->proc->suid = uid;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_ACCESS_DENIED;
+}
+
+obos_status Sys_SetGid(gid gid)
+{
+    if (Core_GetCurrentThread()->proc->euid == 0)
+    {
+        Core_GetCurrentThread()->proc->rgid = gid;
+        Core_GetCurrentThread()->proc->egid = gid;
+        Core_GetCurrentThread()->proc->sgid = gid;
+        return OBOS_STATUS_SUCCESS;
+    }
+    return OBOS_STATUS_ACCESS_DENIED;
+}
 
 obos_status Sys_SetProcessGroup(handle process, uint32_t pgid)
 {
