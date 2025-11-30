@@ -805,6 +805,8 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
     if (length)
         memcpy_k_to_usr(length, &len, sizeof(size_t));
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, buff, max_size);
+
     return OBOS_STATUS_SUCCESS;
 }
 
