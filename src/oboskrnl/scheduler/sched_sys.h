@@ -66,10 +66,14 @@ handle Sys_ProcessGetChildHandle();
 // If HANDLE_ANY to make it choose an arbitrary child process.
 obos_status Sys_WaitProcess(handle proc, int* status, int options, uint32_t* ret_pid);
 
-obos_status Sys_SetUid(uid to);
-obos_status Sys_SetGid(gid to);
 uid Sys_GetUid();
 gid Sys_GetGid();
+obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid);
+obos_status Sys_SetRESGid(gid rgid, gid egid, gid sgid);
+obos_status Sys_GetRESUid(uid* ruid, uid* euid, uid* suid);
+obos_status Sys_GetRESGid(gid* rgid, gid* egid, gid* sgid);
+obos_status Sys_SetUid(uid uid);
+obos_status Sys_SetGid(gid gid);
 
 obos_status Sys_SetProcessGroup(handle proc, uint32_t pgid);
 obos_status Sys_GetProcessGroup(handle proc, uint32_t* pgid);
