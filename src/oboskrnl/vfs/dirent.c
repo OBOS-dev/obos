@@ -468,8 +468,8 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->inode = devfs_inode++;
     vn->perm = default_fileperm;
     vn->vtype = type;
-    vn->group_uid = ROOT_GID;
-    vn->owner_uid = ROOT_UID;
+    vn->gid = ROOT_GID;
+    vn->uid = ROOT_UID;
     vn->times.access = get_current_time();
     vn->times.birth = vn->times.access;
     vn->times.change = vn->times.access;
@@ -662,12 +662,12 @@ char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 
 static bool check_chdir_perms(dirent* ent)
 {
-    uid uid = Core_GetCurrentThread()->proc->currentUID;
-    gid gid = Core_GetCurrentThread()->proc->currentGID;
+    uid uid = Core_GetCurrentThread()->proc->euid;
+    gid gid = Core_GetCurrentThread()->proc->egid;
 
-    if (uid == ent->vnode->owner_uid)
+    if (uid == ent->vnode->uid)
         return ent->vnode->perm.owner_exec;
-    else if (gid == ent->vnode->group_uid)
+    else if (gid == ent->vnode->gid)
         return ent->vnode->perm.group_exec;
     else
         return ent->vnode->perm.other_exec;

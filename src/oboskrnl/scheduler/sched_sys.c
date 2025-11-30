@@ -667,25 +667,25 @@ obos_status Sys_WaitProcess(handle proc, int* wstatus, int options, uint32_t* pi
 obos_status Sys_SetUid(uid to)
 {
     process* proc = Core_GetCurrentThread()->proc;
-    if (proc->currentUID != 0)
+    if (proc->euid != 0)
         return OBOS_STATUS_ACCESS_DENIED;
-    proc->currentUID = to;
+    proc->euid = to;
     return OBOS_STATUS_SUCCESS;
 }
 
 obos_status Sys_SetGid(gid to)
 {
     process* proc = Core_GetCurrentThread()->proc;
-    if (proc->currentUID != 0)
+    if (proc->euid != 0)
         return OBOS_STATUS_ACCESS_DENIED;
-    proc->currentGID = to;
+    proc->egid = to;
     return OBOS_STATUS_SUCCESS;
 }
 
 uid Sys_GetUid()
-{ return Core_GetCurrentThread()->proc->currentUID; }
+{ return Core_GetCurrentThread()->proc->euid; }
 gid Sys_GetGid()
-{ return Core_GetCurrentThread()->proc->currentGID; }
+{ return Core_GetCurrentThread()->proc->egid; }
 
 obos_status Sys_SetProcessGroup(handle process, uint32_t pgid)
 {

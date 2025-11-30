@@ -24,7 +24,7 @@
 
 handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 {
-    if (Core_GetCurrentThread()->proc->currentUID != ROOT_UID)
+    if (Core_GetCurrentThread()->proc->euid != ROOT_UID)
     {
         if (ustatus) *ustatus = OBOS_STATUS_ACCESS_DENIED;
         return HANDLE_INVALID;

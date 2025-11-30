@@ -680,8 +680,8 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
     st.st_atim.tv_nsec = 0;
     st.st_ctim.tv_nsec = 0;
     st.st_mtim.tv_nsec = 0;
-    st.st_gid = to_stat->group_uid;
-    st.st_uid = to_stat->owner_uid;
+    st.st_gid = to_stat->gid;
+    st.st_uid = to_stat->uid;
     st.st_ino = to_stat->inode;   
     if (to_stat->flags & VFLAGS_EVENT_DEV && ~to_stat->flags & VFLAGS_DRIVER_DEAD)
         goto done;
@@ -1326,8 +1326,8 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
             fifo_name = path;
     }
 
-    gid current_gid = Core_GetCurrentThread()->proc->currentGID;
-    uid current_uid = Core_GetCurrentThread()->proc->currentUID;
+    gid current_gid = Core_GetCurrentThread()->proc->egid;
+    uid current_uid = Core_GetCurrentThread()->proc->euid;
     status = Vfs_CreateNamedPipe(perm, current_gid, current_uid, parent, fifo_name, pipesize);
     Free(OBOS_KernelAllocator, path, sz_path);
     
@@ -2910,7 +2910,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
 
     have_target:
 
-    if (target->owner_uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
+    if (target->uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
     {
         status = OBOS_STATUS_ACCESS_DENIED;
         goto fail;
@@ -3030,7 +3030,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
     have_target:
     OBOS_ENSURE(target);
 
-    if (target->owner_uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
+    if (target->uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
     {
         status = OBOS_STATUS_ACCESS_DENIED;
         goto fail;
@@ -3048,9 +3048,9 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
         goto fail;
 
     if (owner != -1)
-        target->owner_uid = owner;
+        target->uid = owner;
     if (group != -1)
-        target->group_uid = group;
+        target->gid = group;
 
     fail:
     Free(OBOS_KernelAllocator, pathname, sz_path);

@@ -442,8 +442,8 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, di
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     desc->vn = vn;
-    vn->owner_uid = owner_uid;
-    vn->group_uid = group_uid;
+    vn->uid = owner_uid;
+    vn->gid = group_uid;
     vn->desc = (uintptr_t)desc;
     vn->perm = perm;
     vn->vtype = VNODE_TYPE_FIFO;
