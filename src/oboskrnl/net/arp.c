@@ -113,6 +113,8 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         status = NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(eth));
         if (obos_is_error(status))
         {
+            Core_CancelTimer(tm);
+            Core_TimerObjectFree(tm);
             Core_PushlockAcquire(&nic->net_tables->table_lock, false);
             RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);    
             Core_PushlockRelease(&nic->net_tables->table_lock, false);
@@ -123,6 +125,8 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         status = Core_WaitOnObjects(2, objs, &signaled);
         if (obos_is_error(status))
         {
+            Core_CancelTimer(tm);
+            Core_TimerObjectFree(tm);
             Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
             RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
             Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
