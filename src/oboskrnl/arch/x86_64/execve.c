@@ -160,6 +160,8 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
     // Core_GetCurrentThread()->context.fs_base = 0;
     // Core_GetCurrentThread()->context.gs_base = 0;
 
+    Mm_VirtualMemoryFree(&Mm_KernelContext, init_vals, szAllocation);
+
     OBOS_Debug("Handing off control to user program.\n");
     OBOS_Debug("NOTE: RSP=0x%p.\n", Core_GetCurrentThread()->context.frame.rsp);
 
@@ -180,6 +182,8 @@ void OBOSS_HandOffToInit(struct exec_aux_values* aux)
 
     Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
     Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
+    Core_GetCurrentThread()->stackFree = CoreH_VMAStackFree;
+    Core_GetCurrentThread()->stackFreeUserdata = ctx;
 
     CoreS_SetThreadPageTable(&Core_GetCurrentThread()->context, ctx->pt);
 
