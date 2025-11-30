@@ -246,6 +246,10 @@ const char* syscall_to_string[] = {
     "Sys_RenameAt",
     "Sys_UTimeNSAt",
     "Sys_ThreadGetStack",
+    "Sys_SetRESUid",
+    "Sys_SetRESGid",
+    "Sys_GetRESUid",
+    "Sys_GetRESGid",
 };
 
 const char* status_to_string[] = {
