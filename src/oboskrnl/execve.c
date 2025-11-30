@@ -144,8 +144,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, OBOS_PROTECTION_READ_ONLY, 0, &file, nullptr);
     bool set_uid = file.vn->perm.set_uid;
     bool set_gid = file.vn->perm.set_gid;
-    uid target_uid = set_uid ? file.vn->uid : Core_GetCurrentThread()->proc->euid;
-    gid target_gid = set_gid ? file.vn->gid : Core_GetCurrentThread()->proc->egid;
+    uid target_euid = set_uid ? file.vn->uid : Core_GetCurrentThread()->proc->euid;
+    gid target_egid = set_gid ? file.vn->gid : Core_GetCurrentThread()->proc->egid;
     Vfs_FdClose(&file);
 
     char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
@@ -309,8 +309,10 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     aux.at_secure = set_gid || set_uid;
 
-    Core_GetCurrentThread()->proc->euid = target_uid;
-    Core_GetCurrentThread()->proc->egid = target_gid;
+    Core_GetCurrentThread()->proc->euid = target_euid;
+    Core_GetCurrentThread()->proc->egid = target_egid;
+    Core_GetCurrentThread()->proc->sgid = -1;
+    Core_GetCurrentThread()->proc->sgid = -1;
 
     OBOSS_HandControlTo(ctx, &aux);
 }

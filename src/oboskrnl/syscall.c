@@ -458,6 +458,10 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_RenameAt,
     (uintptr_t)Sys_UTimeNSAt,
     (uintptr_t)Sys_ThreadGetStack,
+    (uintptr_t)Sys_SetRESUid,
+    (uintptr_t)Sys_SetRESGid,
+    (uintptr_t)Sys_GetRESUid,
+    (uintptr_t)Sys_GetRESGid,
 };
 
 // Arch syscall table is defined per-arch
