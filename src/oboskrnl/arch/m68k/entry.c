@@ -175,6 +175,7 @@ void Arch_KernelEntryBootstrap()
     CoreH_ThreadInitialize(&idle_thread, THREAD_PRIORITY_IDLE, Core_DefaultThreadAffinity, &ctx);
     CoreH_ThreadReadyNode(&kmain_thread, &kmain_node);
     CoreH_ThreadReadyNode(&idle_thread, &idle_thread_node);
+    bsp_cpu.nReadyThreads--;
     Core_LowerIrql(oldIrql);
     
     // Finally, yield.
