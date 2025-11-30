@@ -25,20 +25,20 @@
 
 static bool has_write_perm(vnode* parent)
 {
-    uid current_uid = Core_GetCurrentThread()->proc->currentUID;
-    uid current_gid = Core_GetCurrentThread()->proc->currentGID;
+    uid current_uid = Core_GetCurrentThread()->proc->euid;
+    uid current_gid = Core_GetCurrentThread()->proc->egid;
     if (parent->flags & VFLAGS_MOUNTPOINT)
     {
         drv_fs_info info = {};
         parent->un.mounted->fs_driver->driver->header.ftable.stat_fs_info(parent->un.mounted->device, &info);
-        if (parent->owner_uid == current_uid || parent->group_uid == current_gid)
+        if (parent->uid == current_uid || parent->gid == current_gid)
             return ~info.flags & FS_FLAGS_RDONLY;
         else
             return false; 
     }
-    if (parent->owner_uid == current_uid)
+    if (parent->uid == current_uid)
         return parent->perm.owner_write;
-    else if (parent->group_uid == current_gid)
+    else if (parent->gid == current_gid)
         return parent->perm.group_write;
     else
         return parent->perm.other_write;
@@ -94,8 +94,8 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
             return OBOS_STATUS_INVALID_ARGUMENT;
     }
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
-    vn->group_uid = Core_GetCurrentThread()->proc->currentGID;
-    vn->owner_uid = Core_GetCurrentThread()->proc->currentUID;
+    vn->gid = Core_GetCurrentThread()->proc->egid;
+    vn->uid = Core_GetCurrentThread()->proc->euid;
     vn->perm = mode;
     vn->flags = 0;
     vn->vtype = vtype;

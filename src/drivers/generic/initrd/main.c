@@ -260,8 +260,8 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     ino->vnode->desc = (uintptr_t)ino;
     ino->vnode->filesize = ino->filesize;
     ino->vnode->blkSize = 1;
-    ino->vnode->owner_uid = 0;
-    ino->vnode->group_uid = 0;
+    ino->vnode->uid = 0;
+    ino->vnode->gid = 0;
     ino->vnode->inode = ino->ino;
     ino->vnode->perm = ino->perm;
     ino->vnode->times.change = oct2bin(hdr->last_mod, strnlen(hdr->last_mod, 12));

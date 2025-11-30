@@ -90,8 +90,8 @@ typedef struct vnode
     size_t refs;
     file_perm perm;
     size_t filesize; // filesize.
-    uid owner_uid; // the owner's UID.
-    gid group_uid; // the group's GID.
+    uid uid; // the owner's UID.
+    gid gid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
     fd_list opened;
     size_t nMappedRegions;

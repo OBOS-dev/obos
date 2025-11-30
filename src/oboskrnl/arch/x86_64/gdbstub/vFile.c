@@ -197,8 +197,8 @@ static obos_status common_stat(vnode* vn, struct gdb_stat* out)
     out->st_dev = 0;
     out->st_ino = vn->inode;
     out->st_nlink = vn->refs;
-    out->st_uid = vn->owner_uid;
-    out->st_gid = vn->group_uid;
+    out->st_uid = vn->uid;
+    out->st_gid = vn->gid;
     out->st_rdev = 0;
     out->st_size = vn->filesize;
     out->st_blksize = vn->blkSize;

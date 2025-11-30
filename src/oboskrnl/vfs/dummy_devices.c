@@ -417,8 +417,8 @@ static void init_desc(dev_desc desc)
     dirent* ent = Vfs_Calloc(1, sizeof(dirent));
     vnode* vn = Vfs_Calloc(1, sizeof(vnode));
 
-    vn->owner_uid = 0;
-    vn->group_uid = 0;
+    vn->uid = 0;
+    vn->gid = 0;
     vn->desc = desc;
     get_max_blk_count(desc, &vn->filesize);
 
