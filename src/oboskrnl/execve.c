@@ -311,8 +311,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     Core_GetCurrentThread()->proc->euid = target_euid;
     Core_GetCurrentThread()->proc->egid = target_egid;
-    Core_GetCurrentThread()->proc->sgid = -1;
-    Core_GetCurrentThread()->proc->sgid = -1;
+    Core_GetCurrentThread()->proc->sgid = target_euid;
+    Core_GetCurrentThread()->proc->sgid = target_egid;
 
     OBOSS_HandControlTo(ctx, &aux);
 }
