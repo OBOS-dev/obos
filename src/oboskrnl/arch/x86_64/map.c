@@ -372,18 +372,18 @@ obos_status OBOSS_GetPagePhysicalAddress(void* at_, uintptr_t* oPhys)
 
 static basicmm_region kernel_region;
 static basicmm_region hhdm_region;
-static void FreePageTables(uintptr_t* pm, uint8_t level, uint32_t beginIndex, uint32_t* indices)
+static void FreePageTables(uintptr_t* pm, uint8_t level, uint32_t beginIndex, bool user, uint32_t* indices)
 {
 	if (!pm)
 		return;
 	pm = (uintptr_t*)MmS_MapVirtFromPhys((uintptr_t)pm);
-	for (indices[level] = beginIndex; indices[level] < 512; indices[level]++)
+	for (indices[level] = beginIndex; indices[level] < (user ? 256 : 512); indices[level]++)
 	{
 		if (!pm[indices[level]])
 			continue;
 		if (pm[indices[level]] & ((uintptr_t)1<<7) || level == 0)
 			continue;
-		FreePageTables((uintptr_t*)Arch_MaskPhysicalAddressFromEntry(pm[indices[level]]), level - 1, 0, indices);
+		FreePageTables((uintptr_t*)Arch_MaskPhysicalAddressFromEntry(pm[indices[level]]), level - 1, 0, false, indices);
 		Mm_FreePhysicalPages(Arch_MaskPhysicalAddressFromEntry(pm[indices[level]]), 1);
 	}
 }
@@ -436,7 +436,7 @@ obos_status Arch_InitializeKernelPageTable()
 	asm volatile("mov %0, %%cr3;" : :"r"(newCR3));
 	// Reclaim old page tables.
 	uint32_t indices[4] = { 0,0,0,0 };
-	FreePageTables((uintptr_t*)oldCR3, 3, AddressToIndex(0xffff800000000000, 3), indices);
+	FreePageTables((uintptr_t*)oldCR3, 3, AddressToIndex(0xffff800000000000, 3), false, indices);
 	Mm_FreePhysicalPages((uintptr_t)oldCR3, 1);
 #if OBOS_USE_LIMINE
 	OBOSH_BasicMMAddRegion(
@@ -600,7 +600,8 @@ page_table MmS_AllocatePageTable()
 }
 void MmS_FreePageTable(page_table pt)
 {
-	// uint32_t indices[4] = {};
-	// FreePageTables(MmS_MapVirtFromPhys(pt), 3, 0, indices);
+	OBOS_ENSURE(pt != Arch_KernelCR3);
+	uint32_t indices[4] = {};
+	FreePageTables((uintptr_t*)pt, 3, 0, true, indices);
 	Mm_FreePhysicalPages(pt, 1);
 }
