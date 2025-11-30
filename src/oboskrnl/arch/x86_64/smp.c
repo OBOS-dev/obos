@@ -157,6 +157,8 @@ void __attribute__((no_stack_protector)) Arch_APEntry(cpu_local* info)
 	thread* idleThread = CoreH_ThreadAllocate(nullptr);
 	CoreH_ThreadInitialize(idleThread, THREAD_PRIORITY_IDLE, ((thread_affinity)1<<info->id), &ctx);
 	CoreH_ThreadReady(idleThread);
+	info->nReadyThreads--;
+	Core_ReadyThreadCount--;
 	Core_ProcessAppendThread(OBOS_KernelProcess, idleThread);
 	info->idleThread = idleThread;
 	Arch_LAPICInitialize(false);

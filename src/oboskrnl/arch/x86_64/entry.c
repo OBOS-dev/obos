@@ -490,6 +490,8 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     CoreH_ThreadReady(&kernelMainThread);
     CoreH_ThreadReady(&bsp_idleThread);
     Core_CpuInfo->idleThread = &bsp_idleThread;
+    Core_CpuInfo->nReadyThreads--;
+    Core_ReadyThreadCount--;
 
     // Initialize the CPU's GDT.
     Arch_CPUInitializeGDT(&Core_CpuInfo[0], (uintptr_t)Arch_InitialISTStack, sizeof(Arch_InitialISTStack));
