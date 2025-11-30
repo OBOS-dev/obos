@@ -177,7 +177,6 @@ static int64_t strrfind(const char* str, char ch)
 initrd_inode* create_inode_boot(const ustar_hdr* hdr)
 {
     initrd_inode* ino = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(initrd_inode), nullptr);
-    ino->ino = CurrentInodeNumber++;
 
     bool path_needs_slash = hdr->filename[0] != '/' && (*hdr->prefix && hdr->prefix[strnlen(hdr->prefix, 155)-1] != '/');
     ino->path_len = strnlen(hdr->filename, 100) + strnlen(hdr->prefix, 155) + path_needs_slash;
@@ -228,7 +227,12 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
             obos_status status = OBOS_STATUS_SUCCESS;
             hdr = GetFile(hdr->linked, &status);
             if (obos_is_error(status))
+            {
+                Free(OBOS_KernelAllocator, ino->name, ino->name_size);
+                Free(OBOS_KernelAllocator, ino->path, ino->path_size);
+                Free(OBOS_KernelAllocator, ino, sizeof(*ino));
                 return nullptr;
+            }
             goto back;
             break;
         }
@@ -279,6 +283,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
     }
 
     ino->hdr = hdr;
+    ino->ino = CurrentInodeNumber++;
 
     return ino;
 }
@@ -325,6 +330,8 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
             goto down;
 
         initrd_inode* ino = create_inode_boot(hdr);
+        if (!ino)
+            return (driver_init_status){.status=OBOS_STATUS_INTERNAL_ERROR,.fatal=false};
         ino->parent = InitrdRoot;
         if (!ino->parent->children.head)
             ino->parent->children.head = ino;
@@ -482,6 +489,8 @@ initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
         return nullptr;
     
     initrd_inode* ino = create_inode_boot(hdr);
+    if (!ino)
+        return nullptr;
     // Get our parent.
     int64_t index = strrfind(ino->path, '/');
     if (index == -1)
@@ -518,6 +527,13 @@ initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
                 goto down;
             
             initrd_inode* sub_ino = create_inode_boot(sub_hdr);
+            if (!sub_ino)
+            {
+                Free(OBOS_KernelAllocator, ino->name, ino->name_size);
+                Free(OBOS_KernelAllocator, ino->path, ino->path_size);
+                Free(OBOS_KernelAllocator, ino, sizeof(*ino));
+                return nullptr;
+            }
             sub_ino->parent = ino->parent;
             // printf("%s %s\n", iter, sub_ino->parent->name);
             if (!sub_ino->parent->children.head)
@@ -628,7 +644,7 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
                     initrd_inode *ino = DirentLookupFrom(hdr_path, dir);
                     if (!ino)
                         ino = create_inode_with_parents(hdr_path, hdr);
-                    if (ino->dead)
+                    if (!ino || ino->dead)
                         goto down;
                     if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
                     {
