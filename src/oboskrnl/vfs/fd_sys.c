@@ -93,7 +93,7 @@ static file_perm unix_to_obos_mode(uint32_t mode, bool respect_umask)
     if (mode & 04000)
         real_mode.set_uid = true;
     if (mode & 02000)
-        real_mode.set_uid = true;
+        real_mode.set_gid = true;
     return real_mode;
 }
 obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32_t mode)
