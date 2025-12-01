@@ -151,9 +151,6 @@ int main()
 
     gethostname(g_hostname, sizeof(g_hostname));
 
-    // oh god forgive me.
-    system("reset");
-
     while (1)
     {
         char* username = NULL;
