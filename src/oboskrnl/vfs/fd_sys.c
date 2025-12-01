@@ -626,6 +626,10 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         return status;
     st.st_size = to_stat->filesize;
     st.st_mode = 0;
+    if (to_stat->perm.set_uid)
+        st.st_mode |= 04000;
+    if (to_stat->perm.set_gid)
+        st.st_mode |= 02000;
     if (to_stat->perm.owner_read)
         st.st_mode |= 0400;
     if (to_stat->perm.owner_write)
