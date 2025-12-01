@@ -120,3 +120,5 @@ OBOS_EXPORT driver_header* Vfs_GetVnodeDriver(vnode* vn);
 // For files that can and can't have I/O on them (directories, symbolic links, FIFOs, regular files, CHR/BLK devices, and sockets)
 OBOS_EXPORT driver_header* Vfs_GetVnodeDriverStat(vnode* vn);
 OBOS_EXPORT struct mount* Vfs_GetVnodeMount(vnode* vn);
+
+OBOS_EXPORT obos_status Vfs_Access(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec);
