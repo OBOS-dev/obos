@@ -864,6 +864,18 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
 
     dent = VfsH_FollowLink(dent);
 
+    if (dent->vnode)
+    {
+        obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
+                                    Core_GetCurrentThread()->proc->egid,
+                                    dent->vnode, 
+                                    true,
+                                    false,
+                                    false);
+        if (obos_is_error(status))
+            return status;
+    }
+
     Vfs_PopulateDirectory(dent);
     
     handle_desc* desc = nullptr;
@@ -2918,7 +2930,8 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
 
     file_perm real_mode = unix_to_obos_mode(mode, true);
     
-    driver_header* header = Vfs_GetVnodeDriver(target);
+    mount* mount = Vfs_GetVnodeMount(target);
+    driver_header* header = Vfs_GetVnodeDriver(mount->root->vnode);
     if (!header)
     {
         status = OBOS_STATUS_INTERNAL_ERROR;

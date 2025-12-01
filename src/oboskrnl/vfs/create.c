@@ -23,27 +23,6 @@
 #include <utils/string.h>
 #include <utils/list.h>
 
-static bool has_write_perm(vnode* parent)
-{
-    uid current_uid = Core_GetCurrentThread()->proc->euid;
-    uid current_gid = Core_GetCurrentThread()->proc->egid;
-    if (parent->flags & VFLAGS_MOUNTPOINT)
-    {
-        drv_fs_info info = {};
-        parent->un.mounted->fs_driver->driver->header.ftable.stat_fs_info(parent->un.mounted->device, &info);
-        if (parent->uid == current_uid || parent->gid == current_gid)
-            return ~info.flags & FS_FLAGS_RDONLY;
-        else
-            return false; 
-    }
-    if (parent->uid == current_uid)
-        return parent->perm.owner_write;
-    else if (parent->gid == current_gid)
-        return parent->perm.group_write;
-    else
-        return parent->perm.other_write;
-}
-
 #ifdef __x86_64__
 #   include <arch/x86_64/cmos.h>
 #endif
@@ -54,13 +33,21 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         parent = Vfs_Root;
     if (!name || !vtype || vtype >= VNODE_TYPE_BAD)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
+    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
+                                    Core_GetCurrentThread()->proc->egid,
+                                    parent->vnode, 
+                                    false,
+                                    true,
+                                    false);
+    if (obos_is_error(status))
+        return status;
+
     vnode* parent_vn = parent->vnode;
     if (!parent_vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (parent_vn->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!has_write_perm(parent_vn))
-        return OBOS_STATUS_ACCESS_DENIED;
     mount *parent_mnt = parent_vn->flags & VFLAGS_MOUNTPOINT ? 
         parent_vn->un.mounted:
         parent_vn->mount_point;
@@ -114,7 +101,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     OBOS_InitString(&ent->name, name);
     ent->vnode = vn;
     vnode* mount_vn = parent_mnt->device;
-    obos_status status = OBOS_STATUS_SUCCESS;
+    status = OBOS_STATUS_SUCCESS;
     if (parent_mnt->fs_driver->driver->header.flags & DRIVER_HEADER_DIRENT_CB_PATHS)
     {
         char* parent_path = VfsH_DirentPath(parent, parent_mnt->root);
@@ -144,8 +131,14 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
         return OBOS_STATUS_SUCCESS;
     if (node->d_children.nChildren)
         return OBOS_STATUS_IN_USE; // cannot remove a directory with children
-    if (!has_write_perm(node->d_parent->vnode))
-        return OBOS_STATUS_ACCESS_DENIED;
+    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
+                                    Core_GetCurrentThread()->proc->egid,
+                                    node->d_parent->vnode, 
+                                    false,
+                                    true,
+                                    false);
+    if (obos_is_error(status))
+        return status;
 
     mount *parent_mnt = node->vnode->flags & VFLAGS_MOUNTPOINT ? 
         node->vnode->un.mounted:
@@ -156,7 +149,7 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
     if (LIST_GET_NODE_COUNT(fd_list, &node->vnode->opened))
         return OBOS_STATUS_IN_USE; // TODO: Handle correctly (when the last FD is closed, then free+delete the vnode)
 
-    obos_status status = OBOS_STATUS_SUCCESS;
+    status = OBOS_STATUS_SUCCESS;
 
     if (node->vnode->vtype == VNODE_TYPE_DIR || node->vnode->vtype == VNODE_TYPE_REG || node->vnode->vtype == VNODE_TYPE_LNK)
     {
@@ -211,6 +204,15 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
     driver_header* header = Vfs_GetVnodeDriver(node->vnode);
     if (!header)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
+    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
+                                Core_GetCurrentThread()->proc->egid,
+                                (newparent ? newparent : node->d_parent)->vnode, 
+                                false,
+                                true,
+                                false);
+    if (obos_is_error(status))
+        return status;
 
     // Rename the entry
     if (!newparent || newparent == node->d_parent)
@@ -268,7 +270,7 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
 
     // Move and rename the entry.
 
-    obos_status status = OBOS_STATUS_SUCCESS;
+    status = OBOS_STATUS_SUCCESS;
     if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
     {
         char* node_path = VfsH_DirentPath(node, Vfs_Root);

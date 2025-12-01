@@ -653,12 +653,7 @@ static bool check_chdir_perms(dirent* ent)
     uid uid = Core_GetCurrentThread()->proc->euid;
     gid gid = Core_GetCurrentThread()->proc->egid;
 
-    if (uid == ent->vnode->uid)
-        return ent->vnode->perm.owner_exec;
-    else if (gid == ent->vnode->gid)
-        return ent->vnode->perm.group_exec;
-    else
-        return ent->vnode->perm.other_exec;
+    return Vfs_Access(uid, gid, ent->vnode, false, false, true) == OBOS_STATUS_SUCCESS;
 }
 
 obos_status VfsH_Chdir(void* target_, const char *path)
@@ -786,4 +781,52 @@ mount* Vfs_GetVnodeMount(vnode* vn)
     if (vn->vtype == VNODE_TYPE_FIFO || vn->vtype == VNODE_TYPE_SOCK)
         return nullptr;
     return vn->mount_point ? vn->mount_point : vn->un.mounted;
+}
+
+obos_status Vfs_Access(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec)
+{
+    if (write)
+    {
+        drv_fs_info info = {};
+        driver_header* header = Vfs_GetVnodeDriver(vn);
+        mount* mount = Vfs_GetVnodeMount(vn);
+        if (header && mount && header->ftable.stat_fs_info)
+            header->ftable.stat_fs_info(mount->device, &info);
+        if (info.flags & FS_FLAGS_RDONLY)
+            return OBOS_STATUS_READ_ONLY;
+    }
+    
+    if (vn->uid == asUid || asUid == 0)
+    {
+        if (!vn->perm.owner_read && read)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else if (!vn->perm.owner_write && write)
+            return OBOS_STATUS_ACCESS_DENIED; 
+        else if (!vn->perm.owner_exec && exec)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else
+            return OBOS_STATUS_SUCCESS;
+    }
+    else if (vn->gid == asGid)
+    {
+        if (!vn->perm.group_read && read)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else if (!vn->perm.group_write && write)
+            return OBOS_STATUS_ACCESS_DENIED; 
+        else if (!vn->perm.group_exec && exec)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else
+            return OBOS_STATUS_SUCCESS;
+    }
+    else
+    {
+        if (!vn->perm.other_read && read)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else if (!vn->perm.other_write && write)
+            return OBOS_STATUS_ACCESS_DENIED; 
+        else if (!vn->perm.other_exec && exec)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else
+            return OBOS_STATUS_SUCCESS;
+    }
 }
