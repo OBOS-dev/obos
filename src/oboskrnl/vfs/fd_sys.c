@@ -874,9 +874,7 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
 
     if (dent->vnode)
     {
-        obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
-                                    Core_GetCurrentThread()->proc->egid,
-                                    dent->vnode, 
+        obos_status status = Vfs_Access(dent->vnode, 
                                     true,
                                     false,
                                     false);

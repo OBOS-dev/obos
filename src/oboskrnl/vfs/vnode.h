@@ -121,4 +121,5 @@ OBOS_EXPORT driver_header* Vfs_GetVnodeDriver(vnode* vn);
 OBOS_EXPORT driver_header* Vfs_GetVnodeDriverStat(vnode* vn);
 OBOS_EXPORT struct mount* Vfs_GetVnodeMount(vnode* vn);
 
-OBOS_EXPORT obos_status Vfs_Access(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec);
+OBOS_EXPORT obos_status Vfs_Access(vnode* vn, bool read, bool write, bool exec);
+OBOS_EXPORT obos_status Vfs_AccessAs(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec);
