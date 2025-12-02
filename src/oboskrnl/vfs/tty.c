@@ -441,7 +441,9 @@ static size_t strrfind(const char* str, char ch)
 
 static bool char_is_nl(tty* tty, char ch)
 {
-    return ch == '\n' || ch == '\r' || tty->termios.cc[VEOL] == ch || tty->termios.cc[VEOL2] == ch;
+    return ch == '\n' || ch == '\r' || 
+           (tty->termios.cc[VEOL] == ch && tty->termios.cc[VEOL]) ||
+           (tty->termios.cc[VEOL2] == ch && tty->termios.cc[VEOL2]);
 }
 
 void erase_bytes(tty* tty, size_t nBytesToErase)
