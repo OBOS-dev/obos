@@ -113,6 +113,8 @@ static obos_status reference_device(dev_desc* pdesc)
 static obos_status unreference_device(dev_desc desc) 
 {
     socket_desc* socket = (void*)desc;
+    if (!socket)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (!(--socket->refs))
         socket->ops->free(socket);
     return OBOS_STATUS_SUCCESS;
