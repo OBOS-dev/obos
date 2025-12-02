@@ -3051,7 +3051,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
     have_target:
     OBOS_ENSURE(target);
 
-    if (target->uid != Sys_GetUid() && Sys_GetUid() != ROOT_UID)
+    if (Sys_GetUid() != ROOT_UID)
     {
         status = OBOS_STATUS_ACCESS_DENIED;
         goto fail;
