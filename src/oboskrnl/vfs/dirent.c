@@ -796,7 +796,20 @@ obos_status Vfs_Access(vnode* vn, bool read, bool write, bool exec)
 {
     uid euid = Core_GetCurrentThread() && Core_GetCurrentThread()->proc ? Core_GetCurrentThread()->proc->euid : 0;
     gid egid = Core_GetCurrentThread() && Core_GetCurrentThread()->proc ? Core_GetCurrentThread()->proc->egid : 0;
-    return Vfs_AccessAs(euid, egid, vn, read, write, exec);
+    obos_status status = Vfs_AccessAs(euid, egid, vn, read, write, exec);
+    if (obos_is_success(status))
+        return OBOS_STATUS_SUCCESS;
+    if (!Core_GetCurrentThread() || !Core_GetCurrentThread()->proc)
+        return status;
+    if (status == OBOS_STATUS_READ_ONLY)
+        return OBOS_STATUS_READ_ONLY;
+    for (size_t i = 0; i < Core_GetCurrentThread()->proc->groups.nEntries; i++)
+    {
+        status = Vfs_AccessAs(euid, Core_GetCurrentThread()->proc->groups.list[i], vn, read, write, exec);
+        if (obos_is_success(status))
+            return OBOS_STATUS_SUCCESS;
+    }
+    return status;
 }
 
 obos_status Vfs_AccessAs(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec)

@@ -39,6 +39,10 @@ typedef struct process
 
 	uid euid, ruid, suid;
 	gid egid, rgid, sgid;
+	struct {
+		gid *list;
+		size_t nEntries;
+	} groups;
 	
 	uint32_t exitCode;
 	bool dead;
