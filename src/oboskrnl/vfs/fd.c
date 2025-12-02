@@ -94,9 +94,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     desc->flags |= FD_FLAGS_OPEN;
     desc->flags |= FD_FLAGS_READ;
     desc->flags |= FD_FLAGS_WRITE;
-    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
-                                    Core_GetCurrentThread()->proc->egid,
-                                    vnode, 
+    obos_status status = Vfs_Access(vnode, 
                                     oflags & FD_OFLAGS_READ,
                                     oflags & FD_OFLAGS_WRITE,
                                     oflags & FD_OFLAGS_EXECUTE);

@@ -34,9 +34,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
     if (!name || !vtype || vtype >= VNODE_TYPE_BAD)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
-                                    Core_GetCurrentThread()->proc->egid,
-                                    parent->vnode, 
+    obos_status status = Vfs_Access(parent->vnode, 
                                     false,
                                     true,
                                     false);
@@ -137,9 +135,7 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
         return OBOS_STATUS_SUCCESS;
     if (node->d_children.nChildren)
         return OBOS_STATUS_IN_USE; // cannot remove a directory with children
-    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
-                                    Core_GetCurrentThread()->proc->egid,
-                                    node->d_parent->vnode, 
+    obos_status status = Vfs_Access(node->d_parent->vnode, 
                                     false,
                                     true,
                                     false);
@@ -217,12 +213,10 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
     if (!header)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    obos_status status = Vfs_Access(Core_GetCurrentThread()->proc->euid, 
-                                Core_GetCurrentThread()->proc->egid,
-                                (newparent ? newparent : node->d_parent)->vnode, 
-                                false,
-                                true,
-                                false);
+    obos_status status = Vfs_Access((newparent ? newparent : node->d_parent)->vnode, 
+                                    false,
+                                    true,
+                                    false);
     if (obos_is_error(status))
         return status;
 
