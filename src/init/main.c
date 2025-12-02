@@ -144,12 +144,12 @@ int main(int argc, char** argv)
 
     setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin", 1);
 
+    nm_initialize_hostname();
+    nm_initialize_interfaces("/etc/interfaces.json");
+
     int ret = print_motd();
     if (ret != 0)
         return ret;
-
-    nm_initialize_hostname();
-    nm_initialize_interfaces("/etc/interfaces.json");
 
     syscall1(Sys_SetKLogLevel, final_log_level);
 

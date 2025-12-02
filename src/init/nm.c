@@ -284,7 +284,7 @@ void nm_initialize_interfaces(const char* config_file)
         if (nm_initialize_interface(obj))
             nInterfacesInitialized++;
     }
-    printf("NM: Initialized %ld interfaces (%ld failed)\n", nInterfacesInitialized, nInterfaces-nInterfacesInitialized);
+    printf("NM: Initialized %ld interfaces (%ld failed)\n\n", nInterfacesInitialized, nInterfaces-nInterfacesInitialized);
 
     cJSON_Delete(top_level);
 }
