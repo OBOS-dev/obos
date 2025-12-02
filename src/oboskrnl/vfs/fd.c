@@ -91,19 +91,19 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     if (vnode->vtype == VNODE_TYPE_DIR || vnode->vtype == VNODE_TYPE_LNK)
         return OBOS_STATUS_NOT_A_FILE;
     desc->vn = vnode;
-    desc->flags |= FD_FLAGS_OPEN;
-    desc->flags |= FD_FLAGS_READ;
-    desc->flags |= FD_FLAGS_WRITE;
+
     obos_status status = Vfs_Access(vnode, 
                                     oflags & FD_OFLAGS_READ,
                                     oflags & FD_OFLAGS_WRITE,
                                     oflags & FD_OFLAGS_EXECUTE);
     if (obos_is_error(status))
         return status;
-    if (~oflags & FD_OFLAGS_READ)
-        desc->flags &= ~FD_FLAGS_READ;
-    if (~oflags & FD_OFLAGS_WRITE)
-        desc->flags &= ~FD_FLAGS_WRITE;
+
+    if (oflags & FD_OFLAGS_READ)
+        desc->flags |= FD_FLAGS_READ;
+    if (oflags & FD_OFLAGS_WRITE)
+        desc->flags |= FD_FLAGS_WRITE;
+
     if (oflags & FD_OFLAGS_UNCACHED)
         desc->flags |= FD_FLAGS_UNCACHED;
     if (oflags & FD_OFLAGS_NOEXEC)
@@ -112,6 +112,11 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         desc->flags |= FD_FLAGS_UNCACHED;
     if (vnode->flags & VFLAGS_EVENT_DEV)
         desc->flags &= ~(FD_FLAGS_READ|FD_FLAGS_WRITE);
+    else 
+    {
+        if (!(desc->flags & (FD_FLAGS_WRITE|FD_FLAGS_READ)))
+            return OBOS_STATUS_ACCESS_DENIED;
+    }
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
     if (~desc->vn->flags & VFLAGS_EVENT_DEV)

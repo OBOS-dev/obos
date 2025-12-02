@@ -4,7 +4,6 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "vfs/mount.h"
 #include <int.h>
 #include <error.h>
 #include <signal.h>
@@ -23,6 +22,8 @@
 
 #include <mm/context.h>
 #include <mm/alloc.h>
+
+#include <vfs/mount.h>
 
 #include <locks/pushlock.h>
 #include <locks/wait.h>
