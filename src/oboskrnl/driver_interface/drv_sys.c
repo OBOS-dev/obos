@@ -26,7 +26,8 @@ handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 {
     if (Core_GetCurrentThread()->proc->euid != ROOT_UID)
     {
-        if (ustatus) *ustatus = OBOS_STATUS_ACCESS_DENIED;
+        obos_status status = OBOS_STATUS_ACCESS_DENIED;
+        if (ustatus) memcpy_k_to_usr(ustatus, &status, sizeof(obos_status));
         return HANDLE_INVALID;
     }
 
