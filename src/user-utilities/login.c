@@ -149,6 +149,7 @@ int main()
     }
 
     signal(SIGINT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);
 
     gethostname(g_hostname, sizeof(g_hostname));
 
