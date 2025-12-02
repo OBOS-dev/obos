@@ -45,8 +45,14 @@ static void prompt(char** ousername, char** opassword)
     tc.c_iflag |= ICRNL;
     tcsetattr(0, 0, &tc);
     
+    retry_uname_prompt:
     fprintf(stderr, "%.*s login: ", (int)sizeof(g_hostname), g_hostname);
     *ousername = readline();
+    if (!strlen(*ousername))
+    {
+        free(*ousername);
+        goto retry_uname_prompt;
+    }
     fprintf(stderr, "%s password: ", *ousername);
     struct termios old_tc = tc;
     tc.c_lflag &= ~ECHO;
