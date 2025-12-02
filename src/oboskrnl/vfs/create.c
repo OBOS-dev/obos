@@ -48,10 +48,16 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (parent_vn->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    mount *parent_mnt = parent_vn->flags & VFLAGS_MOUNTPOINT ? 
-        parent_vn->un.mounted:
-        parent_vn->mount_point;
-    driver_ftable* ftable = &parent_mnt->fs_driver->driver->header.ftable;
+
+    mount *parent_mnt = Vfs_GetVnodeMount(parent->vnode);
+    driver_header* header = Vfs_GetVnodeDriver(parent_mnt->root->vnode);
+    if (!header)
+        return OBOS_STATUS_INTERNAL_ERROR;
+
+    driver_ftable* ftable = &header->ftable;
+    if (!ftable->remove_file)
+        return OBOS_STATUS_UNIMPLEMENTED;
+
     if (!ftable->mk_file)
         return OBOS_STATUS_UNIMPLEMENTED;
 
@@ -140,12 +146,18 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
     if (obos_is_error(status))
         return status;
 
-    mount *parent_mnt = node->vnode->flags & VFLAGS_MOUNTPOINT ? 
-        node->vnode->un.mounted:
-        node->vnode->mount_point;
-    driver_ftable* ftable = &parent_mnt->fs_driver->driver->header.ftable;
+    mount *parent_mnt = Vfs_GetVnodeMount(node->vnode);
+    if (!parent_mnt)
+        return OBOS_STATUS_INTERNAL_ERROR;
+    OBOS_ENSURE(parent_mnt->root);
+    driver_header* header = Vfs_GetVnodeDriver(parent_mnt->root->vnode);
+    if (!header)
+        return OBOS_STATUS_INTERNAL_ERROR;
+
+    driver_ftable* ftable = &header->ftable;
     if (!ftable->remove_file)
         return OBOS_STATUS_UNIMPLEMENTED;
+    
     if (LIST_GET_NODE_COUNT(fd_list, &node->vnode->opened))
         return OBOS_STATUS_IN_USE; // TODO: Handle correctly (when the last FD is closed, then free+delete the vnode)
 
