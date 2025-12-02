@@ -211,6 +211,7 @@ int main()
             groups = calloc(ngroups, sizeof(gid_t));
             getgrouplist(user->pw_name, user->pw_gid, groups, &ngroups);
 
+            setgroups(0, NULL);
             int ret = setgroups(ngroups, groups);
             if (ret == -1)
             {
