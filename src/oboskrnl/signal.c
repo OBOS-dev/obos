@@ -45,6 +45,8 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
         return OBOS_STATUS_INVALID_OPERATION;
     if (thr->proc->pid == 0)
         return OBOS_STATUS_INVALID_OPERATION;
+    if (thr->proc->euid != as->proc->euid && as->proc->euid != 0)
+        return OBOS_STATUS_ACCESS_DENIED;
     if (sigval == 0)
         return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
 
@@ -207,8 +209,12 @@ obos_status OBOS_KillProcess(struct process* proc, int sigval)
             case SIGCONT:
             case SIGSTOP:
             case SIGTSTP:
-                OBOS_Kill(Core_GetCurrentThread(), thr, sigval);
+            {
+                obos_status status = OBOS_Kill(Core_GetCurrentThread(), thr, sigval);
+                if (obos_is_error(status))
+                    return status;    
                 continue;
+            }
             default:
                 break;
         }
