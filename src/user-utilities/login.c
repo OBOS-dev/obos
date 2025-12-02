@@ -42,6 +42,7 @@ static void prompt(char** ousername, char** opassword)
     struct termios tc = {};
     tcgetattr(0, &tc);
     tc.c_lflag |= ECHO;
+    tc.c_iflag |= ICRNL;
     tcsetattr(0, 0, &tc);
     
     fprintf(stderr, "%.*s login: ", (int)sizeof(g_hostname), g_hostname);
