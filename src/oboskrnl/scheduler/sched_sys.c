@@ -779,6 +779,72 @@ obos_status Sys_SetGid(gid gid)
     return OBOS_STATUS_ACCESS_DENIED;
 }
 
+obos_status Sys_SetGroups(handle process, size_t size, gid* ulist)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (!proc)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    gid* list = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, 
+                                ulist, nullptr, 
+                                size * sizeof(gid), 
+                                OBOS_PROTECTION_READ_ONLY, true, 
+                                &status);
+    if (obos_is_error(status) && size)
+        return status;
+
+    proc->groups.list = Reallocate(OBOS_KernelAllocator, proc->groups.list, size*sizeof(gid), proc->groups.nEntries*sizeof(gid), nullptr);
+    if (list)
+        memcpy(proc->groups.list, list, size * sizeof(gid));
+    proc->groups.nEntries = size;
+    
+    if (size)
+        Mm_VirtualMemoryFree(&Mm_KernelContext, list, size*sizeof(gid));
+    return OBOS_STATUS_SUCCESS;
+}
+obos_status Sys_GetGroups(handle process, size_t *size, gid* list)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (!proc)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+    size_t sz = 0;
+    status = memcpy_usr_to_k(&sz, size, sizeof(sz));
+    if (obos_is_error(status))
+        return status;
+    status = memcpy_k_to_usr(list, proc->groups.list, OBOS_MIN(sz, proc->groups.nEntries) * sizeof(gid));
+    if (obos_is_error(status))
+        return status;
+    return memcpy_k_to_usr(size, &proc->groups.nEntries, sizeof(size_t));
+}
+
 obos_status Sys_SetProcessGroup(handle process, uint32_t pgid)
 {
     struct process* proc =

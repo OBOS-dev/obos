@@ -75,5 +75,8 @@ obos_status Sys_GetRESGid(gid* rgid, gid* egid, gid* sgid);
 obos_status Sys_SetUid(uid uid);
 obos_status Sys_SetGid(gid gid);
 
+obos_status Sys_SetGroups(handle proc, size_t size, gid* list);
+obos_status Sys_GetGroups(handle proc, size_t *size, gid* list);
+
 obos_status Sys_SetProcessGroup(handle proc, uint32_t pgid);
 obos_status Sys_GetProcessGroup(handle proc, uint32_t* pgid);

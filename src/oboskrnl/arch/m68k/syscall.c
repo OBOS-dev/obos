@@ -166,6 +166,8 @@ const char *syscall_to_string[] = {
     "Sys_GetRESUid",
     "Sys_GetRESGid",
     "Sys_SigPending",
+    "Sys_SetGroups",
+    "Sys_GetGroups",
 };
 
 const char* status_to_string[] = {
