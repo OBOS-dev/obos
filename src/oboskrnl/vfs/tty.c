@@ -439,16 +439,29 @@ static size_t strrfind(const char* str, char ch)
     return SIZE_MAX;
 }
 
+static bool char_is_nl(tty* tty, char ch)
+{
+    return ch == '\n' || ch == '\r' || tty->termios.cc[VEOL] == ch || tty->termios.cc[VEOL2] == ch;
+}
+
 void erase_bytes(tty* tty, size_t nBytesToErase)
 {
     if (nBytesToErase == SIZE_MAX)
         nBytesToErase = tty->input_buffer.out_ptr % tty->input_buffer.size;
     for (size_t j = 0; j < nBytesToErase && tty->input_buffer.out_ptr > 0; j++)
     {
+        if (char_is_nl(tty, tty->input_buffer.buf[tty->input_buffer.out_ptr]) || char_is_nl(tty, tty->input_buffer.buf[tty->input_buffer.out_ptr-1]))
+        {
+            if (tty->input_buffer.buf[tty->input_buffer.out_ptr] != '\n' && tty->input_buffer.buf[tty->input_buffer.out_ptr-1] == '\n')
+                tty->input_buffer.out_ptr--;
+            if (tty->input_buffer.in_ptr > tty->input_buffer.out_ptr)
+                tty->input_buffer.in_ptr = tty->input_buffer.out_ptr;    
+            break;
+        }
         if (tty->input_buffer.out_ptr == tty->input_buffer.in_ptr)
             tty->input_buffer.in_ptr--;
         tty->input_buffer.buf[tty->input_buffer.out_ptr-- % tty->input_buffer.size] = 0;
-        tty->interface.write(tty, "\b", 1);
+        tty->interface.write(tty, "\b \b", 3);
     }
 }
 
@@ -461,6 +474,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
 {
     tty *tty = (struct tty *)tty_;
     const uint8_t *buf8 = buf;
+    bool inserted_any_bytes = false;
     for (size_t i = 0; i < nBytesReady; i++) 
     {
         char ch = buf8[i];
@@ -517,10 +531,11 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         }
         else
             tty->quoted = false;
-        if (tty->termios.lflag & ECHO)
-            tty_write_sync((dev_desc)tty, &ch, 1, 0, nullptr);
         if (!insert_byte)
             continue;
+        inserted_any_bytes = true;
+        if (tty->termios.lflag & ECHO)
+            tty_write_sync((dev_desc)tty, &ch, 1, 0, nullptr);
         if (tty->termios.lflag & ICANON)
         {
             if (tty->termios.lflag & ECHONL && ch == '\n')
@@ -532,6 +547,8 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
                 toupper(ch & mask) : 
                 (ch & mask);
     }
+    if (!inserted_any_bytes)
+        return;
     if (tty->termios.lflag & ICANON)
         find_eol(tty, &tty->input_buffer.buf[(tty->input_buffer.out_ptr - 1) % tty->input_buffer.size]) == SIZE_MAX ? (void)0 : Core_EventSet(&tty->data_ready_evnt, true);
     else
