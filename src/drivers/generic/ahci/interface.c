@@ -84,15 +84,19 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     {
         if (data->physRegionCount >= MAX_PRDT_COUNT)
             return OBOS_STATUS_INTERNAL_ERROR;
+
+        Mm_HandlePageFault(ctx, addr, (data->direction == COMMAND_DIRECTION_WRITE ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
+        
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
-        if (!info.prot.present)
-            Mm_HandlePageFault(ctx, addr, (data->direction == COMMAND_DIRECTION_READ ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
+
         page key = {.phys=info.phys};
         page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
-        if (pg->cow_type != COW_DISABLED)
-            Mm_HandlePageFault(ctx, addr, PF_EC_PRESENT | (data->direction == COMMAND_DIRECTION_READ ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
+        OBOS_ENSURE(pg != Mm_AnonPage);
+        OBOS_ENSURE(pg != Mm_UserAnonPage);
+        
         MmH_RefPage(pg);
+        
         if ((lastPhys + pgSize) != info.phys)
         {
             if (addr != base)
