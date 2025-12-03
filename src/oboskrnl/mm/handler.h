@@ -54,7 +54,7 @@ typedef enum {
 /// <param name="addr">The virtual address that faulted.</param>
 /// <param name="ec">The page fault's error code.</param>
 /// <returns>OBOS_STATUS_SUCCESS if the page fault was handled, OBOS_STATUS_UNHANDLED if the page fault went unhandled, otherwise an error.</returns>
-obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec);
+OBOS_EXPORT obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec);
 /// <summary>
 /// Runs the page replacement algorithm on pages in a context.<para/>
 /// This essentially chooses pages from within the context, and puts them within the working-set of the context.

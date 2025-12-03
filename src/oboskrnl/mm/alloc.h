@@ -95,21 +95,10 @@ OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t
 // NOTE: The returned address is not aligned down to the page size.
 OBOS_EXPORT void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool respectUserProtection, obos_status* status);
 
-typedef enum unmap_behavior {
-	// Default behavior.
-	// Allow the pages to be unmapped from the address space, but do not unlock the backing memory.
-	UNMAP_FLAGS_ALLOW = 0,
-	// Defers the unmap until the pages are unlocked manually.
-	UNMAP_FLAGS_DEFER,
-	// Unlocks the pages on unmap, then unmaps them.
-	UNMAP_FLAGS_UNLOCK,
-} unmap_behavior;
-
 // Locks pages from base to base+sz in the working-set.
 // If space is not avaliable in the working-set, pages are removed until space can be satisified.
 // If the working-set's capacity is too small, then it can be inflated until the pages are unlocked.
-// The unmap_
-OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz, unmap_behavior unmap_action);
+OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz);
 // Unlocks pages from base to base+sz from the working-set.
 // If the pages caused the working-set capacity to be inflated, then it is deflated once again.
 OBOS_EXPORT obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base, size_t sz);
