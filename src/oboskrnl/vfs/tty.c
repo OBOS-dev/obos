@@ -585,8 +585,7 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
                                     VNODE_TYPE_CHR);
     vn->flags |= VFLAGS_IS_TTY;
     vn->data = tty;
-    vn->perm.other_read = true;
-    vn->perm.other_write = true;
+    vn->gid = 5; // tty
     size_t index = pty ? last_pty_index++ : last_tty_index++;
     size_t szName = snprintf(nullptr, 0, "tty%ld", index);
     char *name = nullptr;
