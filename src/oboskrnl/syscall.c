@@ -88,24 +88,6 @@ void Sys_LibCLog(const char* ustr)
     Free(OBOS_KernelAllocator, buf, str_len+1);
 }
 
-static handle Sys_MmFork()
-{
-    // Zeroed in Mm_ConstructContext
-    context* ctx = Allocate(Mm_Allocator, sizeof(context), nullptr);
-    Mm_ConstructContext(ctx);
-    Mm_ForkContext(ctx, Core_GetCurrentThread()->proc->ctx);
-    ctx->workingSet.capacity = Core_GetCurrentThread()->proc->ctx->workingSet.capacity;
-
-    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-    handle_desc* desc = nullptr;
-    handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_VMM_CONTEXT, &desc);
-    desc->un.vmm_context = ctx;
-    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-
-    return hnd;
-
-}
-
 void Sys_ExitCurrentProcess(uint32_t exitCode)
 {
     Core_ExitCurrentProcess((exitCode & 0xff) << 8);

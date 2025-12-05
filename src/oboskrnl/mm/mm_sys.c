@@ -4,10 +4,10 @@
  * Copyright (c) 2024-2025 Omar Berrow
  */
 
-#include "mm/swap.h"
 #include <int.h>
 #include <memmanip.h>
 #include <klog.h>
+#include <perm.h>
 #include <error.h>
 #include <syscall.h>
 #include <handle.h>
@@ -23,6 +23,7 @@
 #include <mm/mm_sys.h>
 #include <mm/disk_swap.h>
 #include <mm/fork.h>
+#include <mm/swap.h>
 
 #include <vfs/dirent.h>
 
@@ -81,6 +82,16 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
     prot &= ~OBOS_PROTECTION_CACHE_DISABLE;
     flags &= ~VMA_FLAGS_32BITPHYS; // userspace doesn't need this as much as kernel mode
 
+    if (flags & VMA_FLAGS_NON_PAGED)
+    {
+        obos_status status = OBOS_CapabilityCheck("mm/allocate-non-paged", false);
+        if (obos_is_error(status))
+        {
+            if (pstatus) memcpy_k_to_usr(pstatus, &status, sizeof(status));
+            return nullptr;
+        }
+    }
+
     void* ret = Mm_VirtualMemoryAllocEx(vmm_ctx, base, size, prot, flags, file, args.offset, &status);
     if (pstatus)
         memcpy_k_to_usr(pstatus, &status, sizeof(status));
@@ -99,10 +110,12 @@ obos_status Sys_VirtualMemoryProtect(handle ctx, void* base, size_t size, prot_f
 }
 obos_status Sys_VirtualMemoryLock(handle ctx, void* base, size_t size)
 {
+    OBOS_UNUSED(ctx && base && size);
     return OBOS_STATUS_UNIMPLEMENTED;
 }
 obos_status Sys_VirtualMemoryUnlock(handle ctx, void* base, size_t size)
 {
+    OBOS_UNUSED(ctx && base && size);
     return OBOS_STATUS_UNIMPLEMENTED;
 }
 
@@ -157,6 +170,10 @@ size_t Sys_GetUsedPhysicalMemoryCount()
 
 obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info)
 {
+    obos_status status = OBOS_CapabilityCheck("mm/query-page-info", false);
+    if (obos_is_error(status))
+        return status;
+
     context* vmm_ctx = context_from_handle(ctx, false, 0, true);
     // Search the page in the RB-Tree.
     irql oldIrql = Core_SpinlockAcquire(&vmm_ctx->lock);
@@ -198,9 +215,13 @@ obos_status Sys_MakeDiskSwap(const char* upath)
 
 obos_status Sys_SwitchSwap(const char* upath)
 {
+    obos_status status = OBOS_CapabilityCheck("mm/switch-swap", false);
+    if (obos_is_error(status))
+        return status;
+
     char* path = nullptr;
     size_t sz_path = 0;
-    obos_status status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -236,6 +257,26 @@ obos_status Sys_SwitchSwap(const char* upath)
 
 void Sys_SyncAnonPages()
 {
+    obos_status status = OBOS_CapabilityCheck("mm/sync-anon", true);
+    if (obos_is_error(status))
+        return;
     Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
     Mm_WakePageWriter(true);
+}
+
+handle Sys_MmFork()
+{
+    // Zeroed in Mm_ConstructContext
+    context* ctx = Allocate(Mm_Allocator, sizeof(context), nullptr);
+    Mm_ConstructContext(ctx);
+    Mm_ForkContext(ctx, Core_GetCurrentThread()->proc->ctx);
+    ctx->workingSet.capacity = Core_GetCurrentThread()->proc->ctx->workingSet.capacity;
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    handle_desc* desc = nullptr;
+    handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_VMM_CONTEXT, &desc);
+    desc->un.vmm_context = ctx;
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    return hnd;
 }
