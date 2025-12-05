@@ -10,6 +10,7 @@
 #include <int.h>
 #include <error.h>
 #include <klog.h>
+#include <perm.h>
 #include <signal.h>
 #include <signal_def.h>
 
@@ -46,7 +47,11 @@ obos_status OBOS_Kill(struct thread* as, struct thread* thr, int sigval)
     if (thr->proc->pid == 0)
         return OBOS_STATUS_INVALID_OPERATION;
     if (thr->proc->euid != as->proc->euid && as->proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
+    {
+        obos_status status = OBOS_CapabilityCheck("kill-arbitrary", true);
+        if (obos_is_error(status))
+            return status;
+    }
     if (sigval == 0)
         return OBOS_STATUS_SUCCESS; // see man fork.2, "If sig is 0, then no signal is sent, but existence and permission checks are still performed"
 
