@@ -7,6 +7,7 @@
 #include <int.h>
 #include <error.h>
 #include <signal.h>
+#include <perm.h>
 #include <klog.h>
 #include <handle.h>
 #include <memmanip.h>
@@ -103,6 +104,10 @@ handle Sys_ThreadOpen(handle proc_hnd, uintptr_t tid)
     if (tid <= (Core_CpuCount + 1))
         return HANDLE_INVALID; // you cannot open any CPU's idle thread
 
+    obos_status status = OBOS_CapabilityCheck("core/thread-open", true);
+    if (obos_is_error(status))
+        return status;
+
     process* parent = HANDLE_TYPE(proc_hnd) == HANDLE_TYPE_CURRENT ? Core_GetCurrentThread()->proc : nullptr;
 
     if (!parent)
@@ -116,6 +121,12 @@ handle Sys_ThreadOpen(handle proc_hnd, uintptr_t tid)
         }
         parent = proc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        if (parent->euid != Core_GetCurrentThread()->proc->euid)
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-arbitrary-open", false);
+            if (obos_is_error(status))
+                return status;
+        }
     }
 
     thread* thr = nullptr;
@@ -141,6 +152,7 @@ handle Sys_ThreadOpen(handle proc_hnd, uintptr_t tid)
 
     return hnd;
 }
+
 handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, handle thread_context)
 {
     if (priority < 0 || priority > THREAD_PRIORITY_MAX_VALUE)
@@ -208,6 +220,7 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     }\
     result__;\
 })
+
 obos_status Sys_ThreadReady(handle thread)
 {
     struct thread* thr = thread_object_from_handle(thread, true, false);
@@ -218,12 +231,14 @@ obos_status Sys_ThreadReady(handle thread)
         thr->kernelStack = Mm_AllocateKernelStack(thr->proc->ctx, nullptr);
     return CoreH_ThreadReady(thr);
 }
+
 obos_status Sys_ThreadBlock(handle thread)
 {
     struct thread* thr = thread_object_from_handle(thread, true, true);
     OBOS_ASSERT(thr);
     return CoreH_ThreadBlock(thr, true);
 }
+
 obos_status Sys_ThreadBoostPriority(handle thread, int reserved /* ignored as of now */)
 {
     OBOS_UNUSED(reserved);
@@ -231,6 +246,7 @@ obos_status Sys_ThreadBoostPriority(handle thread, int reserved /* ignored as of
     OBOS_ASSERT(thr);
     return CoreH_ThreadBoostPriority(thr);
 }
+
 obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, thread_priority* old)
 {
     struct thread* thr = thread_object_from_handle(thread_hnd, true, true);
@@ -239,8 +255,59 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
         memcpy_k_to_usr(old, &thr->priority, sizeof(thr->priority));
     if (new)
     {
+        obos_status status = OBOS_CapabilityCheck("core/thread-set-priority", true);
+        if (obos_is_error(status))
+            return status;
+        thread_priority new_priority = 0;
         thread_priority old_priority = thr->priority;
-        memcpy_usr_to_k(&thr->priority, new, sizeof(thr->priority));
+        memcpy_usr_to_k(&new_priority, new, sizeof(thr->priority));
+        switch (new_priority) {
+            case THREAD_PRIORITY_IDLE:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-idle-priority", true);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            case THREAD_PRIORITY_LOW:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-low-priority", true);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            case THREAD_PRIORITY_NORMAL:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-normal-priority", true);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            case THREAD_PRIORITY_HIGH:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-high-priority", true);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            case THREAD_PRIORITY_URGENT:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-urgent-priority", false);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            case THREAD_PRIORITY_REAL_TIME:
+            {
+                obos_status status = OBOS_CapabilityCheck("core/thread-realtime-priority", false);
+                if (obos_is_error(status))
+                    return status;
+                break;
+            }
+            default: return OBOS_STATUS_INVALID_ARGUMENT;
+        }
+
+        thr->priority = new_priority;
         if (thr->priority != old_priority && thr->masterCPU) 
         {
             CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[old_priority].list, &thr->snode);
@@ -249,6 +316,7 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
     }
     return OBOS_STATUS_SUCCESS;
 }
+
 obos_status Sys_ThreadAffinity(handle thread_hnd, const thread_affinity *new, thread_affinity* old)
 {
     struct thread* thr = thread_object_from_handle(thread_hnd, true, true);
@@ -256,9 +324,36 @@ obos_status Sys_ThreadAffinity(handle thread_hnd, const thread_affinity *new, th
     if (old)
         memcpy_k_to_usr(old, &thr->affinity, sizeof(thr->affinity));
     if (new)
+    {
+        obos_status status = OBOS_CapabilityCheck("core/thread-set-affinity", false);
+        if (obos_is_error(status))
+            return status;
+        thread_affinity old = thr->affinity;
         memcpy_usr_to_k(&thr->affinity, new, sizeof(thr->affinity));
+        thr->affinity &= ~Core_DefaultThreadAffinity;
+        if (!thr->affinity)
+        {
+            thr->affinity = old;
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        }
+        if (thr->status != THREAD_STATUS_BLOCKED)
+        {
+            if (~thr->affinity & CoreH_CPUIdToAffinity(thr->masterCPU->id))
+            {
+                irql oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
+                bool yield_after = thr->masterCPU == CoreS_GetCPULocalPtr();
+                CoreH_ThreadBlock(thr, false);
+                CoreH_ThreadReady(thr);
+                if (yield_after)
+                    Core_Yield();
+                else
+                    Core_LowerIrqlNoThread(oldIrql);
+            }
+        }
+    }
     return OBOS_STATUS_SUCCESS;
 }
+
 // Can only be called once per thread-object, and must be called before readying a thread.
 obos_status Sys_ThreadSetOwner(handle thr_hnd, handle proc_hnd)
 {
@@ -283,6 +378,13 @@ obos_status Sys_ThreadSetOwner(handle thr_hnd, handle proc_hnd)
         }
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    if (proc_hnd != HANDLE_CURRENT)
+    {
+        obos_status status = OBOS_CapabilityCheck("core/set-thread-owner-arbitrary", false);
+        if (obos_is_error(status))
+            return status;
     }
 
     thr->stackFreeUserdata = proc->ctx;
@@ -366,9 +468,18 @@ handle Sys_ProcessOpen(uintptr_t pid)
     OBOS_UNUSED(pid);
     if (pid > Core_NextPID)
         return HANDLE_INVALID;
+    obos_status status = OBOS_CapabilityCheck("core/process-open", true);
+    if (obos_is_error(status))
+        return HANDLE_INVALID;
     process* proc = Core_LookupProc(pid);
     if (!proc)
         return HANDLE_INVALID;
+    if (proc->euid != Core_GetCurrentThread()->proc->euid)
+    {
+        obos_status status = OBOS_CapabilityCheck("core/process-open-arbitrary", true);
+        if (obos_is_error(status))
+            return HANDLE_INVALID;
+    }
     proc->refcount++;
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle_desc* desc = nullptr;
@@ -684,7 +795,7 @@ static bool check_unpriv_gid(gid gid)
 
 obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid)
 {
-    if (Core_GetCurrentThread()->proc->euid != 0)
+    if (OBOS_CapabilityCheck("core/set-uid", false) == OBOS_STATUS_SUCCESS)
     {
         if ((ruid != -1) && !check_unpriv_uid(ruid))
             return OBOS_STATUS_ACCESS_DENIED;
@@ -710,7 +821,7 @@ obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid)
 
 obos_status Sys_SetRESGid(gid rgid, gid egid, gid sgid)
 {
-    if (Core_GetCurrentThread()->proc->euid != 0)
+    if (OBOS_CapabilityCheck("core/set-gid", false) == OBOS_STATUS_SUCCESS)
     {
         if ((rgid != -1) && !check_unpriv_gid(rgid))
             return OBOS_STATUS_ACCESS_DENIED;
@@ -758,7 +869,7 @@ obos_status Sys_GetRESGid(gid* rgid, gid* egid, gid* sgid)
 
 obos_status Sys_SetUid(uid uid)
 {
-    if (Core_GetCurrentThread()->proc->euid == 0)
+    if (OBOS_CapabilityCheck("core/set-uid", false) == OBOS_STATUS_SUCCESS)
     {
         Core_GetCurrentThread()->proc->ruid = uid;
         Core_GetCurrentThread()->proc->euid = uid;
@@ -770,7 +881,7 @@ obos_status Sys_SetUid(uid uid)
 
 obos_status Sys_SetGid(gid gid)
 {
-    if (Core_GetCurrentThread()->proc->euid == 0)
+    if (OBOS_CapabilityCheck("core/set-uid", false) == OBOS_STATUS_SUCCESS)
     {
         Core_GetCurrentThread()->proc->rgid = gid;
         Core_GetCurrentThread()->proc->egid = gid;
