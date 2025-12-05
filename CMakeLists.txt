@@ -35,6 +35,7 @@ endif()
 set (OUTPUT_DIR ${CMAKE_SOURCE_DIR}/out CACHE STRING "The output directory.")
 set (OBOS_PAGE_REPLACEMENT_ALGORITHM "Aging" CACHE STRING "(Kernel developers only) The page replacement algorithm used by the MM.")
 set (OBOS_DEV_PREFIX "/dev" CACHE STRING "Directory where the kernel places devices.")
+set (OBOS_PERM_PREFIX "/sys/perm" CACHE STRING "Directory where the kernel checks for capabilities")
 set (OBOS_CLANG_SUFFIX "" CACHE STRING "Some Linux distributions add a suffix to various clang and LLVM commands, such as the version used. Specify that suffix, if needed")
 
 file (TO_CMAKE_PATH "${OUTPUT_DIR}" OUTPUT_DIR)
@@ -249,6 +250,7 @@ configure_file(${CMAKE_SOURCE_DIR}/src/inc/dev_prefix.h.in ${CMAKE_SOURCE_DIR}/s
 add_compile_definitions(
 	OBOS_ARCHITECTURE_HAS_ACPI=${OBOS_ARCHITECTURE_HAS_ACPI}
 	OBOS_ARCHITECTURE_HAS_PCI=${OBOS_ARCHITECTURE_HAS_PCI}
+	OBOS_PERM_PREFIX="${OBOS_PERM_PREFIX}"
 )
 
 if (OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_UTILS)

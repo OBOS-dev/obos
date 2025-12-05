@@ -22,7 +22,7 @@ list (APPEND oboskrnl_sources
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
 	"net/icmp.c" "net/tcp.c" "vfs/socket.c" "net/lo.c"
-	"kinit.c" "vfs/local_socket.c"
+	"kinit.c" "vfs/local_socket.c" "perm.c"
 )
 
 add_executable(oboskrnl)
