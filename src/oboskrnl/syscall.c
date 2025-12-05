@@ -12,6 +12,7 @@
 #include <handle.h>
 #include <partition.h>
 #include <signal.h>
+#include <perm.h>
 #include <execve.h>
 
 #include <scheduler/schedule.h>
@@ -322,24 +323,45 @@ obos_status Sys_ThreadGetStack(handle thr, void** stack_base, size_t *stack_size
 
 obos_status Sys_Shutdown()
 {
-    if (Core_GetCurrentThread()->proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
+    obos_status status = OBOS_CapabilityCheck("power/shutdown");
+    if (obos_is_error(status))
+    {
+        if (status == OBOS_STATUS_ACCESS_DENIED)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else
+        {
+            OBOS_Error("%s: OBOS_CapabilityCheck returned %d! It is safe to forcefully shutdown your PC\nThis could be a bug, report it\n", __func__, status);
+            return status;
+        }
+    }
     OBOS_Shutdown();
+    
     OBOS_UNREACHABLE;
 }
 obos_status Sys_Reboot()
 {
-    if (Core_GetCurrentThread()->proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
+    obos_status status = OBOS_CapabilityCheck("power/reboot");
+    if (obos_is_error(status))
+    {
+        if (status == OBOS_STATUS_ACCESS_DENIED)
+            return OBOS_STATUS_ACCESS_DENIED;
+        else
+        {
+            OBOS_Error("%s: OBOS_CapabilityCheck returned %d! It is safe to forcefully reboot your PC\nThis could be a bug, report it\n", __func__, status);
+            return status;
+        }
+    }
     OBOS_Reboot();
+
     OBOS_UNREACHABLE;
 }
 obos_status Sys_Suspend()
 {
-    if (Core_GetCurrentThread()->proc->euid != 0)
-        return OBOS_STATUS_ACCESS_DENIED;
-    OBOS_Suspend();
-    OBOS_UNREACHABLE;
+    obos_status status = OBOS_CapabilityCheck("power/suspend");
+    if (obos_is_error(status))
+        return status;
+
+    return OBOS_Suspend();
 }
 
 uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
