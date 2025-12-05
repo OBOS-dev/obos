@@ -476,7 +476,7 @@ handle Sys_ProcessOpen(uintptr_t pid)
         return HANDLE_INVALID;
     if (proc->euid != Core_GetCurrentThread()->proc->euid)
     {
-        obos_status status = OBOS_CapabilityCheck("core/process-open-arbitrary", true);
+        obos_status status = OBOS_CapabilityCheck("core/process-open-arbitrary", false);
         if (obos_is_error(status))
             return HANDLE_INVALID;
     }
@@ -795,7 +795,7 @@ static bool check_unpriv_gid(gid gid)
 
 obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid)
 {
-    if (OBOS_CapabilityCheck("core/set-uid", false) == OBOS_STATUS_SUCCESS)
+    if (OBOS_CapabilityCheck("core/set-uid", false) == OBOS_STATUS_ACCESS_DENIED)
     {
         if ((ruid != -1) && !check_unpriv_uid(ruid))
             return OBOS_STATUS_ACCESS_DENIED;
@@ -821,7 +821,7 @@ obos_status Sys_SetRESUid(uid ruid, uid euid, uid suid)
 
 obos_status Sys_SetRESGid(gid rgid, gid egid, gid sgid)
 {
-    if (OBOS_CapabilityCheck("core/set-gid", false) == OBOS_STATUS_SUCCESS)
+    if (OBOS_CapabilityCheck("core/set-gid", false) == OBOS_STATUS_ACCESS_DENIED)
     {
         if ((rgid != -1) && !check_unpriv_gid(rgid))
             return OBOS_STATUS_ACCESS_DENIED;
