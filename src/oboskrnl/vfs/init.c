@@ -10,6 +10,7 @@
 #include <memmanip.h>
 #include <partition.h>
 #include <cmdline.h>
+#include <perm.h>
 
 #include <vfs/init.h>
 #include <vfs/dirent.h>
@@ -111,6 +112,7 @@ void Vfs_Initialize()
     Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!Vfs_DevRoot)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    OBOS_CapabilityInitialize();
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
     if (root_uuid)
