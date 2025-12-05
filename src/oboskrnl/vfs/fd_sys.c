@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <signal.h>
+#include <perm.h>
 #include <klog.h>
 #include <error.h>
 #include <handle.h>
@@ -485,8 +486,11 @@ obos_status Sys_FdEOF(const handle desc)
 
 obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_argp)
 {
+    obos_status status = OBOS_CapabilityCheck("fs/ioctl", true);
+    if (obos_is_error(status))
+        return status;
+
     OBOS_LockHandleTable(OBOS_CurrentHandleTable());
-    obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_FD, false, &status);
     if (!fd)
     {
@@ -1026,6 +1030,10 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
 // makes new dirty pages.
 void Sys_Sync()
 {
+    obos_status status = OBOS_CapabilityCheck("fs/sync", true);
+    if (obos_is_error(status))
+        return;
+
     Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(true);
     Mm_WakePageWriter(true);
@@ -1044,9 +1052,13 @@ obos_status Sys_Mount(const char* uat, const char* uon)
     if (!uat || !uon)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    obos_status status = OBOS_CapabilityCheck("fs/mount", false);
+    if (obos_is_error(status))
+        return status;
+
     char* at = nullptr;
     size_t sz_path = 0;
-    obos_status status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
     at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -1086,9 +1098,13 @@ obos_status Sys_Mount(const char* uat, const char* uon)
 
 obos_status Sys_Unmount(const char* uat)
 {
+    obos_status status = OBOS_CapabilityCheck("fs/unmount", false);
+    if (obos_is_error(status))
+        return status;
+
     char* at = nullptr;
     size_t sz_path = 0;
-    obos_status status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
     at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -1846,9 +1862,13 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
 
 obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, const char *ulink, int flags)
 {
+    obos_status status = OBOS_CapabilityCheck("fs/hardlink", false);
+    if (obos_is_error(status))
+        return status;
+
     char* target = nullptr;
     size_t sz_path = 0;
-    obos_status status = OBOSH_ReadUserString(utarget, nullptr, &sz_path);
+    status = OBOSH_ReadUserString(utarget, nullptr, &sz_path);
     if (obos_is_error(status))
         return status;
     target = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -2837,6 +2857,10 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
 {
     obos_status status = 0;
 
+    status = OBOS_CapabilityCheck("fs/chmod", true);
+    if (obos_is_error(status))
+        return status;
+
     char* pathname = nullptr;
     size_t sz_path = 0;
     status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
@@ -2958,7 +2982,9 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
 
 obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid group, int flags)
 {
-    obos_status status = 0;
+    obos_status status = OBOS_CapabilityCheck("fs/chown", false);
+    if (obos_is_error(status))
+        return status;
 
     char* pathname = nullptr;
     size_t sz_path = 0;
@@ -3048,12 +3074,6 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
 
     have_target:
     OBOS_ENSURE(target);
-
-    if (Sys_GetUid() != ROOT_UID)
-    {
-        status = OBOS_STATUS_ACCESS_DENIED;
-        goto fail;
-    }
 
     driver_header* header = Vfs_GetVnodeDriver(target);
     if (!header)
