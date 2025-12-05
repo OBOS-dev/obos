@@ -29,6 +29,11 @@
 
 obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, file_perm mode)
 {
+    return Vfs_CreateNodeOwner(parent, name, vtype, mode, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->egid);
+}
+
+obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype, file_perm mode, uid uid, gid gid)
+{
     if (!parent)
         parent = Vfs_Root;
     if (!name || !vtype || vtype >= VNODE_TYPE_BAD)
@@ -120,6 +125,16 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
         Vfs_Free(ent);
         return status;
     }
+    if (ftable->set_file_owner)
+    {
+        status = ftable->set_file_owner(vn->desc, uid, gid);
+        if (obos_is_error(status))
+        {
+            Vfs_Free(vn);
+            Vfs_Free(ent);
+            return status;
+        }
+    }   
     Vfs_UpdateFileTime(vn);
     if (ftable->get_file_inode)
         ftable->get_file_inode(vn->desc, &vn->inode);

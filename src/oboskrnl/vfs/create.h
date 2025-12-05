@@ -26,6 +26,7 @@
 })
 
 obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, file_perm mode);
+obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype, file_perm mode, uid uid, gid gid);
 
 OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node);
 
