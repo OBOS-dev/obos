@@ -42,5 +42,5 @@ void OBOS_CapabilityInitialize();
 
 obos_status OBOS_CapabilityFetch(const char* id, capability* res, bool create);
 obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool overwrite);
-obos_status OBOS_CapabilityCheck(const char* id);
-obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group);
+obos_status OBOS_CapabilityCheck(const char* id, bool def_other_allow);
+obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group, bool def_other_allow);

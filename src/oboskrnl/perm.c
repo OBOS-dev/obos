@@ -187,14 +187,14 @@ obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool over
     return Vfs_CreateNodeOwner(parent, name, VNODE_TYPE_REG, mode, perm->owner, perm->group);
 }
 
-obos_status OBOS_CapabilityCheck(const char* id)
+obos_status OBOS_CapabilityCheck(const char* id, bool def_other_allow)
 {
-    obos_status res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->egid);
+    obos_status res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->egid, def_other_allow);
     if (res)
         return OBOS_STATUS_SUCCESS;
     for (size_t i = 0; i < Core_GetCurrentThread()->proc->groups.nEntries; i++)
     {
-        res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->groups.list[i]);
+        res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->groups.list[i], def_other_allow);
         if (res == OBOS_STATUS_SUCCESS)
             return OBOS_STATUS_SUCCESS;
         else if (res == OBOS_STATUS_ACCESS_DENIED)
@@ -205,7 +205,7 @@ obos_status OBOS_CapabilityCheck(const char* id)
     return OBOS_STATUS_ACCESS_DENIED;
 }
 
-obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group)
+obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group, bool def_other_allow)
 {
     capability res = {};
     obos_status status = OBOS_CapabilityFetch(id, &res, false);
@@ -214,7 +214,7 @@ obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group)
         if (status == OBOS_STATUS_NOT_FOUND)
         {
             if (user == ROOT_UID || group == ROOT_GID) return OBOS_STATUS_SUCCESS;
-            return OBOS_STATUS_ACCESS_DENIED;
+            return def_other_allow ? OBOS_STATUS_SUCCESS : OBOS_STATUS_ACCESS_DENIED;
         }
         return status;
     }

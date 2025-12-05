@@ -52,7 +52,7 @@
 
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
-    obos_status status = OBOS_CapabilityCheck("fs/part-probe");
+    obos_status status = OBOS_CapabilityCheck("fs/part-probe", false);
     if (obos_is_error(status))
         return status;
 
@@ -324,7 +324,7 @@ obos_status Sys_ThreadGetStack(handle thr, void** stack_base, size_t *stack_size
 
 obos_status Sys_Shutdown()
 {
-    obos_status status = OBOS_CapabilityCheck("power/shutdown");
+    obos_status status = OBOS_CapabilityCheck("power/shutdown", false);
     if (obos_is_error(status))
     {
         if (status == OBOS_STATUS_ACCESS_DENIED)
@@ -341,7 +341,7 @@ obos_status Sys_Shutdown()
 }
 obos_status Sys_Reboot()
 {
-    obos_status status = OBOS_CapabilityCheck("power/reboot");
+    obos_status status = OBOS_CapabilityCheck("power/reboot", false);
     if (obos_is_error(status))
     {
         if (status == OBOS_STATUS_ACCESS_DENIED)
@@ -358,7 +358,7 @@ obos_status Sys_Reboot()
 }
 obos_status Sys_Suspend()
 {
-    obos_status status = OBOS_CapabilityCheck("power/suspend");
+    obos_status status = OBOS_CapabilityCheck("power/suspend", false);
     if (obos_is_error(status))
         return status;
 
