@@ -188,12 +188,12 @@ obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool over
 obos_status OBOS_CapabilityCheck(const char* id, bool def_other_allow)
 {
     obos_status res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->egid, def_other_allow);
-    if (res)
+    if (obos_is_success(res))
         return OBOS_STATUS_SUCCESS;
     for (size_t i = 0; i < Core_GetCurrentThread()->proc->groups.nEntries; i++)
     {
         res = OBOS_CapabilityCheckAs(id, Core_GetCurrentThread()->proc->euid, Core_GetCurrentThread()->proc->groups.list[i], def_other_allow);
-        if (res == OBOS_STATUS_SUCCESS)
+        if (obos_is_success(res))
             return OBOS_STATUS_SUCCESS;
         else if (res == OBOS_STATUS_ACCESS_DENIED)
             continue;
