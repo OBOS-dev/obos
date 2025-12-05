@@ -25,7 +25,7 @@
 
 handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 {        
-    obos_status status = OBOS_CapabilityCheck("drv/load");
+    obos_status status = OBOS_CapabilityCheck("drv/load", false);
     if (obos_is_error(status))
         return status;
 
@@ -61,7 +61,7 @@ handle Sys_LoadDriver(const void* file, size_t szFile, obos_status* ustatus)
 
 obos_status Sys_StartDriver(handle driver, handle* mainThread)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/start");
+    obos_status status = OBOS_CapabilityCheck("drv/start", false);
     if (obos_is_error(status))
         return status;
 
@@ -96,7 +96,7 @@ obos_status Sys_StartDriver(handle driver, handle* mainThread)
 
 obos_status Sys_UnloadDriver(handle driver)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/unload");
+    obos_status status = OBOS_CapabilityCheck("drv/unload", false);
     if (obos_is_error(status))
         return status;
     
@@ -119,7 +119,7 @@ obos_status Sys_UnloadDriver(handle driver)
 
 obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/load-pnp");
+    obos_status status = OBOS_CapabilityCheck("drv/load-pnp", false);
     if (obos_is_error(status))
         return status;
     
@@ -138,7 +138,7 @@ obos_status Sys_PnpLoadDriversAt(handle dent, bool wait)
 // Finds a loaded driver by its name, and returns a handle to it.
 handle Sys_FindDriverByName(const char* uname /* assumed to be 64-bytes at max */)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/open-name");
+    obos_status status = OBOS_CapabilityCheck("drv/open-name", false);
     if (obos_is_error(status))
         return HANDLE_INVALID;
 
@@ -182,7 +182,7 @@ handle Sys_FindDriverByName(const char* uname /* assumed to be 64-bytes at max *
 // If 'curr' is HANDLE_INVALID, the first item in the list is returned.
 handle Sys_EnumerateLoadedDrivers(handle curr)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/enumerate");
+    obos_status status = OBOS_CapabilityCheck("drv/enumerate", false);
     if (obos_is_error(status))
         return HANDLE_INVALID;
     
@@ -219,7 +219,7 @@ handle Sys_EnumerateLoadedDrivers(handle curr)
 // Queries the name of the driver in 'drv'.
 obos_status Sys_QueryDriverName(handle driver, char* namebuf, size_t *sznamebuf /* need not be over 64 */)
 {
-    obos_status status = OBOS_CapabilityCheck("drv/query-name");
+    obos_status status = OBOS_CapabilityCheck("drv/query-name", false);
     if (obos_is_error(status))
         return status;
     
