@@ -6,8 +6,6 @@
  * Syscall permission checking utilities
  */
 
-#pragma once
-
 #include <int.h>
 #include <error.h>
 #include <klog.h>
