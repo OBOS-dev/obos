@@ -92,6 +92,12 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->rgid = proc->parent->rgid;
 	proc->egid = proc->parent->egid;
 	proc->sgid = proc->parent->sgid;
+	proc->groups.nEntries = proc->parent->groups.nEntries;
+	proc->groups.list = memcpy(
+		Allocate(OBOS_KernelAllocator, proc->parent->groups.nEntries * sizeof(gid), nullptr), 
+		proc->parent->groups.list, 
+		proc->parent->groups.nEntries*sizeof(gid)
+	);
 	proc->refcount++;
 	Core_SetProcessGroup(proc, proc->parent->pgrp->pgid);
 	proc->waiting_threads = WAITABLE_HEADER_INITIALIZE(false, true);
