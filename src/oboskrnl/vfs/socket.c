@@ -9,6 +9,7 @@
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
+#include <perm.h>
 
 #include <net/ip.h>
 #include <net/tcp.h>
@@ -271,6 +272,19 @@ static obos_status inet_socket(int type, int protocol, fd* out)
     if (protocol == IPPROTO_UDP && type != SOCK_DGRAM)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    if (protocol == IPPROTO_TCP)
+    {
+        obos_status status = OBOS_CapabilityCheck("net/tcp", true);
+        if (obos_is_error(status))
+            return status;
+    }
+    if (protocol == IPPROTO_UDP)
+    {
+        obos_status status = OBOS_CapabilityCheck("net/udp", true);
+        if (obos_is_error(status))
+            return status;
+    }
+
     if (!get_sock_ops(AF_INET, type, protocol))
         return OBOS_STATUS_INVALID_ARGUMENT;
 
@@ -306,9 +320,15 @@ obos_status Net_Socket(int domain, int type, int protocol, fd* out)
     obos_status status = OBOS_STATUS_UNIMPLEMENTED;
     switch (domain) {
         case AF_INET:
+            status = OBOS_CapabilityCheck("net/ipv4", true);
+            if (obos_is_error(status))
+                return status;
             status = inet_socket(type, protocol, out);
             break;
         case AF_UNIX:
+            status = OBOS_CapabilityCheck("unix-socket", true);
+            if (obos_is_error(status))
+                return status;
             status = local_socket(type, protocol, out);
             break;
         default: break;
