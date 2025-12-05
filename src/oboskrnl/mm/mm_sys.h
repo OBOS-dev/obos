@@ -38,3 +38,5 @@ obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info);
 obos_status Sys_MakeDiskSwap(const char* path);
 obos_status Sys_SwitchSwap(const char* path);
 void Sys_SyncAnonPages();
+
+handle Sys_MmFork();
