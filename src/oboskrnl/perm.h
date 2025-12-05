@@ -27,6 +27,19 @@ typedef struct capability {
 
 void OBOS_CapabilityInitialize();
 
+// NOTE: If a filesystem is unmounted, and remounted, any default values
+// WILL be lost
+
+// NOTE: OBOS_CapabilityCheckAs treats a capability like the following,
+// if it cannot be found
+// capability cap = {
+//     .owner=ROOT_UID,
+//     .group=ROOT_GID,
+//     .allow_user=true,
+//     .allow_group=true,
+//     .allow_other=false
+// };
+
 obos_status OBOS_CapabilityFetch(const char* id, capability* res, bool create);
 obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool overwrite);
 obos_status OBOS_CapabilityCheck(const char* id);

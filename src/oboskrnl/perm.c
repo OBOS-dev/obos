@@ -39,7 +39,8 @@ void OBOS_CapabilityInitialize()
 
 obos_status OBOS_CapabilityFetch(const char* id, capability* res, bool create)
 {
-    OBOS_ENSURE(Vfs_PermRoot);
+    if (!Vfs_PermRoot)
+        return OBOS_STATUS_NOT_FOUND;
     OBOS_ENSURE(res);
     OBOS_ENSURE(id);
     CHECK_ID(id);
@@ -209,10 +210,17 @@ obos_status OBOS_CapabilityCheckAs(const char* id, uid user, gid group)
     capability res = {};
     obos_status status = OBOS_CapabilityFetch(id, &res, false);
     if (obos_is_error(status))
+    {
+        if (status == OBOS_STATUS_NOT_FOUND)
+        {
+            if (user == ROOT_UID || group == ROOT_GID) return OBOS_STATUS_SUCCESS;
+            return OBOS_STATUS_ACCESS_DENIED;
+        }
         return status;
+    }
     if (res.allow_user && res.owner == user)
-        return true;
+        return OBOS_STATUS_SUCCESS;
     if (res.allow_group && res.group == group)
-        return true;
-    return res.allow_other;
+        return OBOS_STATUS_SUCCESS;
+    return res.allow_other ? OBOS_STATUS_SUCCESS : OBOS_STATUS_ACCESS_DENIED;
 }
