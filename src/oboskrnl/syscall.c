@@ -50,10 +50,11 @@
 
 #include <utils/string.h>
 
-// TODO: Check permissions?
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
-    obos_status status = OBOS_STATUS_SUCCESS;
+    obos_status status = OBOS_CapabilityCheck("fs/part-probe");
+    if (obos_is_error(status))
+        return status;
 
     handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ent, HANDLE_TYPE_DIRENT, false, &status);
     if (!dent)
@@ -335,7 +336,7 @@ obos_status Sys_Shutdown()
         }
     }
     OBOS_Shutdown();
-    
+
     OBOS_UNREACHABLE;
 }
 obos_status Sys_Reboot()
