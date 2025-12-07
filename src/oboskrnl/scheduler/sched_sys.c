@@ -153,6 +153,57 @@ handle Sys_ThreadOpen(handle proc_hnd, uintptr_t tid)
     return hnd;
 }
 
+static obos_status check_priority(thread_priority priority)
+{
+    switch (priority) {
+        case THREAD_PRIORITY_IDLE:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-idle-priority", true);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        case THREAD_PRIORITY_LOW:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-low-priority", true);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        case THREAD_PRIORITY_NORMAL:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-normal-priority", true);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        case THREAD_PRIORITY_HIGH:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-high-priority", true);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        case THREAD_PRIORITY_URGENT:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-urgent-priority", false);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        case THREAD_PRIORITY_REAL_TIME:
+        {
+            obos_status status = OBOS_CapabilityCheck("core/thread-realtime-priority", false);
+            if (obos_is_error(status))
+                return status;
+            break;
+        }
+        default: 
+            return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
 handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, handle thread_context)
 {
     if (priority < 0 || priority > THREAD_PRIORITY_MAX_VALUE)
@@ -175,7 +226,20 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     }
 
     thread* thr = CoreH_ThreadAllocate(nullptr);
-    CoreH_ThreadInitialize(thr, priority, affinity, ctx->un.thread_ctx->ctx);
+
+    status = check_priority(priority);
+    if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return HANDLE_INVALID;
+    }
+    
+    status = CoreH_ThreadInitialize(thr, priority, affinity, ctx->un.thread_ctx->ctx);
+    if (obos_is_error(status))
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return HANDLE_INVALID;
+    }
     thr->signal_info = OBOSH_AllocateSignalHeader();
 
     if (ctx->un.thread_ctx->canFree)
@@ -261,51 +325,7 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
         thread_priority new_priority = 0;
         thread_priority old_priority = thr->priority;
         memcpy_usr_to_k(&new_priority, new, sizeof(thr->priority));
-        switch (new_priority) {
-            case THREAD_PRIORITY_IDLE:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-idle-priority", true);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            case THREAD_PRIORITY_LOW:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-low-priority", true);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            case THREAD_PRIORITY_NORMAL:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-normal-priority", true);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            case THREAD_PRIORITY_HIGH:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-high-priority", true);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            case THREAD_PRIORITY_URGENT:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-urgent-priority", false);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            case THREAD_PRIORITY_REAL_TIME:
-            {
-                obos_status status = OBOS_CapabilityCheck("core/thread-realtime-priority", false);
-                if (obos_is_error(status))
-                    return status;
-                break;
-            }
-            default: return OBOS_STATUS_INVALID_ARGUMENT;
-        }
+        status = check_priority(new_priority);
 
         thr->priority = new_priority;
         if (thr->priority != old_priority && thr->masterCPU) 
