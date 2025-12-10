@@ -57,6 +57,9 @@ obos_status Mm_AgingPRA(context* ctx)
     // I hate this.
     // NOTE(oberrow, 07:40 2024-09-21):
     // I have finally gotten around to rewriting this.
+
+    // NOTE(oberrow, 20:03 2025-12-08):
+    // I still hate this
     
     long workingSetDifference = 0;
     for (working_set_node* node = ctx->workingSet.pages.head; node; )
@@ -108,9 +111,11 @@ obos_status Mm_AgingPRA(context* ctx)
         {
             if (!ent->info.range->pageable)
                 ent->info.range->pageable = true;
-            Mm_SwapOut(ent->info.virt, ent->info.range);
-            ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-            Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            if (obos_is_success(Mm_SwapOut(ent->info.virt, ent->info.range)))
+            {
+                ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+                Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            }
         }
     }
 

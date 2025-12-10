@@ -11,7 +11,7 @@
 #include <partition.h>
 #include <mbr.h>
 
-#include <allocators/base.h>
+#include <mm/alloc.h>
 
 #include <vfs/fd.h>
 #include <vfs/vnode.h>
@@ -21,7 +21,7 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
 {
     if (!desc || (!partition_list && !nPartitions))
         return OBOS_STATUS_INVALID_ARGUMENT;
-    mbr_t *mbr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(mbr_t), nullptr);
+    mbr_t *mbr = Mm_QuickVMAllocate(OBOS_PAGE_SIZE, false);
     size_t nRead = 0;
     size_t filesize = desc->vn->filesize;
     if (filesize < sizeof(mbr_t))
@@ -29,17 +29,17 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
     obos_status status = Vfs_FdRead(desc, mbr, sizeof(*mbr), &nRead);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
+        Mm_VirtualMemoryFree(&Mm_KernelContext, mbr, OBOS_PAGE_SIZE);
         return status;
     }
     if (nRead != sizeof(*mbr))
     {
-        Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
+        Mm_VirtualMemoryFree(&Mm_KernelContext, mbr, OBOS_PAGE_SIZE);
         return OBOS_STATUS_INTERNAL_ERROR;
     }
     if (mbr->signature != MBR_BOOT_SIGNATURE)
     {
-        Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
+        Mm_VirtualMemoryFree(&Mm_KernelContext, mbr, OBOS_PAGE_SIZE);
         return OBOS_STATUS_INVALID_FILE;
     }
     if (nPartitions)
@@ -55,7 +55,7 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
         // Sanity check.
         if (((blkSize * curr->lba) + (curr->nSectors * blkSize)) > filesize)
         {
-            Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
+            Mm_VirtualMemoryFree(&Mm_KernelContext, mbr, OBOS_PAGE_SIZE);
             if (nPartitions)
                 *nPartitions = 0;
             return OBOS_STATUS_INVALID_FILE;
@@ -68,6 +68,6 @@ obos_status OBOS_IdentifyMBRPartitions(fd* desc, partition* partition_list, size
         partition_list[i].drive = desc->vn;
         partition_list[i].format = PARTITION_FORMAT_MBR;
     }
-    Free(OBOS_KernelAllocator, mbr, sizeof(*mbr));
+    Mm_VirtualMemoryFree(&Mm_KernelContext, mbr, OBOS_PAGE_SIZE);
     return OBOS_STATUS_SUCCESS;
 }

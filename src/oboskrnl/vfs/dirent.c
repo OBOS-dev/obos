@@ -154,6 +154,8 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         tok_len--;
     if (!tok_len)
         return nullptr;
+    if (!root->vnode)
+        return nullptr;
     // Offset of the last mount point in the path.
     size_t lastMountPoint = 0;
     mount* lastMount = root->vnode->flags & VFLAGS_MOUNTPOINT ? root->vnode->un.mounted : root->vnode->mount_point;
@@ -758,6 +760,8 @@ driver_header* Vfs_GetVnodeDriver(vnode* vn)
     {
         point = nullptr;
         if (!vn->un.device)
+            return nullptr;
+        if (!vn->un.device->driver)
             return nullptr;
         driver = &vn->un.device->driver->header;
     }

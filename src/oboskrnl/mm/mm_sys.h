@@ -32,6 +32,7 @@ obos_status Sys_ContextExpandWSCapacity(handle ctx, size_t ws_capacity);
 obos_status Sys_ContextGetStat(handle ctx, memstat* stat);
 
 size_t Sys_GetUsedPhysicalMemoryCount();
+size_t Sys_GetCachedByteCount();
 
 obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info);
 

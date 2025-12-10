@@ -64,10 +64,10 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
         obos_status status = Mm_HandlePageFault(CoreS_GetCPULocalPtr()->currentContext, virt, mm_ec);
         Core_LowerIrql(oldIrql);
+        CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
         switch (status)
         {
             case OBOS_STATUS_SUCCESS:
-                CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = false;
                 OBOS_ASSERT(frame->rsp != 0);
                 cli();
                 return;

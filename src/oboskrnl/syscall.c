@@ -492,6 +492,7 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_SigPending,
     (uintptr_t)Sys_SetGroups,
     (uintptr_t)Sys_GetGroups,
+    (uintptr_t)Sys_GetCachedByteCount,
 };
 
 // Arch syscall table is defined per-arch

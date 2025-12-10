@@ -493,6 +493,7 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, u
 	page.accessed = entry & BIT_TYPE(5, UL);
 	page.dirty = entry & BIT_TYPE(6, UL);
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
+	page.prot.is_swap_phys = entry & BIT_TYPE(9, UL);
     // page.prot.uc = (entry & BIT_TYPE(4, UL));
 	if (page.prot.huge_page)
 	{
@@ -538,9 +539,11 @@ obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t p
 	if (page->prot.fb)
 	    flags |= BIT_TYPE(4, UL)|BIT_TYPE(7, UL) /* write-Combining */;
 	// printf("%s %p->%p (%s page)\n", __func__, page->virt, phys, page->prot.huge_page ? "huge" : "normal");
-	return !page->prot.huge_page ? 
+	obos_status status = !page->prot.huge_page ? 
 		Arch_MapPage(pt, (void*)(page->virt & ~0xfff), phys, flags, free_pte) : 
 		Arch_MapHugePage(pt, (void*)(page->virt & ~0x1fffff), phys, flags, free_pte);
+	OBOS_ASSERT(obos_is_success(status));
+	return status;
 }
 
 page_table cached_root = {};

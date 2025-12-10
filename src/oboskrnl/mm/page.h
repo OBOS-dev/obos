@@ -84,7 +84,7 @@ typedef struct page
         size_t nNodes;
     } virt_pages /* virtual pages with a reference to us */;
 
-    uintptr_t swap_id;
+    struct swap_allocation* swap_alloc;
     phys_page_flags flags;
 
     enum {
@@ -121,11 +121,17 @@ inline static int pagecache_tree_cmp(struct page* lhs, struct page* rhs)
     return (lhs->file_offset < rhs->file_offset) ? -1 : (lhs->file_offset == rhs->file_offset ? 0 : 1);
 }
 
+OBOS_EXPORT void MmH_DerefPage(page* buf);
+#ifndef __clang__
 // NOTE: Adds a reference to the page.
+OBOS_EXPORT  __attribute__((malloc, malloc(MmH_DerefPage, 1))) page* MmH_PgAllocatePhysical(bool phys32, bool huge);
+OBOS_EXPORT  __attribute__((malloc, malloc(MmH_DerefPage, 1))) page* MmH_AllocatePage(uintptr_t phys, bool huge);
+OBOS_EXPORT  __attribute__((malloc, malloc(MmH_DerefPage, 1))) page* MmH_RefPage(page* buf);
+#else
 OBOS_EXPORT page* MmH_PgAllocatePhysical(bool phys32, bool huge);
 OBOS_EXPORT page* MmH_AllocatePage(uintptr_t phys, bool huge);
-OBOS_EXPORT void MmH_RefPage(page* buf);
-OBOS_EXPORT void MmH_DerefPage(page* buf);
+OBOS_EXPORT page* MmH_RefPage(page* buf);
+#endif
 OBOS_EXPORT extern phys_page_tree Mm_PhysicalPages;
 // OBOS_EXPORT extern pagecache_tree Mm_Pagecache;
 OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.

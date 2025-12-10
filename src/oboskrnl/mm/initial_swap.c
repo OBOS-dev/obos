@@ -78,7 +78,7 @@ static void swap_libc_free(void* buf)
     tag--;
     tag->allocator->Free(tag->allocator, tag, tag->sz);
 }
-#define PAGE_SHIFT (__builtin_clz(OBOS_HUGE_PAGE_SIZE > 0 ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
+#define PAGE_SHIFT (__builtin_ctz(OBOS_HUGE_PAGE_SIZE > 0 ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
 static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_page)
 {
     swap_header* hdr = dev->metadata;
@@ -87,6 +87,7 @@ static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_p
     if (hdr->bytesLeft < sz)
     {
         Core_SpinlockRelease(&hdr->lock, oldIrql);
+        OBOS_Error("%s: Not enough space in swap.\n", __func__);
         return OBOS_STATUS_NOT_ENOUGH_MEMORY;
     }
     uintptr_t found = 0;

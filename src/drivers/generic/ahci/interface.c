@@ -85,7 +85,8 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         if (data->physRegionCount >= MAX_PRDT_COUNT)
             return OBOS_STATUS_INTERNAL_ERROR;
 
-        Mm_HandlePageFault(ctx, addr, (data->direction == COMMAND_DIRECTION_WRITE ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
+        if (Core_GetIrql() < IRQL_DISPATCH)
+            Mm_HandlePageFault(ctx, addr, (data->direction == COMMAND_DIRECTION_WRITE ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
         
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
@@ -222,7 +223,12 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     {
         HBA->ghc |= BIT(1);
         // irql oldIrql = Core_RaiseIrql(IRQL_AHCI);
-        SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount);
+        if (obos_is_error(status = SendCommand(port, &data, blkOffset, 0x40, blkCount == 0x10000 ? 0 : blkCount)))
+        {
+            Core_SemaphoreRelease(&port->lock);
+            unpopulate_physical_regions((uintptr_t)buf, blkCount*port->sectorSize, &data);
+            break;
+        }
         // Core_LowerIrql(oldIrql);
         if (obos_is_error(status = Core_WaitOnObject(WAITABLE_OBJECT(data.completionEvent))))
         {

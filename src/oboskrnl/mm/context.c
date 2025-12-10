@@ -107,7 +107,11 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 {
 	if (!phys)
 		return nullptr;
-	page* buf = ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
+	page key = {.phys=phys};
+	page* buf = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+	if (buf) 
+		return buf;
+	buf = ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
 		buf->flags |= PHYS_PAGE_HUGE_PAGE;
@@ -118,18 +122,18 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 	return buf;
 }
 
-void MmH_RefPage(page* buf)
+page* MmH_RefPage(page* buf)
 {
-	if (!buf)
-		return;
-	buf->refcount++;
-	// printf("refed page %p (now at %d)\n", buf->phys, buf->refcount);
+	if (buf)
+		buf->refcount++;
+	return buf;
+	// printf("refed page %p (now at %d) (paged count = %d)\n", buf->phys, buf->refcount, buf->pagedCount);
 }
 void MmH_DerefPage(page* buf)
 {
 	if (!buf)
 		return;
-	// printf("derefed page %p (now at %d)\n", buf->phys, buf->refcount - 1);
+	// printf("derefed page %p (now at %d) (paged count = %d)\n", buf->phys, buf->refcount - 1, buf->pagedCount);
 	if (!(--buf->refcount))
 	{
 		if (~buf->flags & PHYS_PAGE_MMIO)

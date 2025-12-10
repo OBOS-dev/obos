@@ -22,6 +22,16 @@ extern uintptr_t Mm_PhysicalMemoryBoundaries;
 /// <returns>The function status.</returns>
 obos_status Mm_InitializePMM();
 
+#define Mm_AllocatePhysicalPages(...) ((uintptr_t)Mm_AllocatePhysicalPages_p(__VA_ARGS__))
+#define Mm_AllocatePhysicalPages32(...) ((uintptr_t)Mm_AllocatePhysicalPages32_p(__VA_ARGS__))
+#define Mm_FreePhysicalPages(p,s) (Mm_FreePhysicalPages_p((void*)p, s))
+
+/// <summary>
+/// Frees physical pages.
+/// </summary>
+/// <param name="addr">The address of the page.</param>
+/// <param name="nPages">The amount of pages to free.</param>
+OBOS_EXPORT obos_status Mm_FreePhysicalPages_p(void* addr, size_t nPages);
 /// <summary>
 /// Allocates physical pages.
 /// </summary>
@@ -29,7 +39,11 @@ obos_status Mm_InitializePMM();
 /// <param name="alignmentPages">The alignment of the address returned, in pages.</param>
 /// <param name="status">[optional] A pointer to a variable that will store the function's status. Can be nullptr.</param>
 /// <returns>The physical pages, or zero on failure.</returns>
-OBOS_EXPORT uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status* status);
+#ifdef __clang__
+OBOS_EXPORT void* Mm_AllocatePhysicalPages_p(size_t nPages, size_t alignmentPages, obos_status* status);
+#else
+OBOS_EXPORT __attribute__((malloc, malloc(Mm_FreePhysicalPages_p, 1))) void* Mm_AllocatePhysicalPages_p(size_t nPages, size_t alignmentPages, obos_status* status);
+#endif
 /// <summary>
 /// Allocates physical pages ranging from 0x0-0xffffffff.</br>
 /// This is the same as Mm_AllocatePhysicalPages on 32-bit architectures.
@@ -38,13 +52,11 @@ OBOS_EXPORT uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignmentPa
 /// <param name="alignmentPages">The alignment of the address returned, in pages.</param>
 /// <param name="status">[optional] A pointer to a variable that will store the function's status. Can be nullptr.</param>
 /// <returns>The physical pages, or zero on failure.</returns>
-OBOS_EXPORT uintptr_t Mm_AllocatePhysicalPages32(size_t nPages, size_t alignmentPages, obos_status* status);
-/// <summary>
-/// Frees physical pages.
-/// </summary>
-/// <param name="addr">The address of the page.</param>
-/// <param name="nPages">The amount of pages to free.</param>
-OBOS_EXPORT obos_status Mm_FreePhysicalPages(uintptr_t addr, size_t nPages);
+#ifndef __clang__
+OBOS_EXPORT __attribute__((malloc, malloc(Mm_FreePhysicalPages_p, 1))) void* Mm_AllocatePhysicalPages32_p(size_t nPages, size_t alignmentPages, obos_status* status);
+#else
+OBOS_EXPORT void* Mm_AllocatePhysicalPages32_p(size_t nPages, size_t alignmentPages, obos_status* status);
+#endif
 
 // This returns a virtual address given a physical address.
 // For example, on x86-64, this can offset the physical address by the hhdm.

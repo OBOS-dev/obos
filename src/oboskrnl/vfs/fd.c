@@ -301,6 +301,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
             void* ent = VfsH_PageCacheGetEntry(desc->vn, start, &pg);
             if (!ent)
                 return OBOS_STATUS_INVALID_OPERATION;
+            MmH_RefPage(pg);
 
             memcpy(ent, buf, nBytes);
             if ((start & ~(OBOS_PAGE_SIZE-1)) != (desc->vn->filesize & ~(OBOS_PAGE_SIZE-1)))
@@ -308,6 +309,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
             else
                 pg->end_offset = OBOS_MAX(pg->end_offset, offset + nBytes);
             Mm_MarkAsDirtyPhys(pg);
+            MmH_DerefPage(pg);
         }
         else
         {
@@ -320,6 +322,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
                 uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
                 if (!ent)
                     return OBOS_STATUS_INVALID_OPERATION;
+                MmH_RefPage(pg);
                 size_t nToWrite = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
                 nToWrite = OBOS_MIN(nToWrite, nBytes-i);
                 memcpy(ent, (const void*)((uintptr_t)buf+i), nToWrite);
@@ -328,6 +331,7 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
                 curr += nToWrite;
                 i += nToWrite;
                 Mm_MarkAsDirtyPhys(pg);
+                MmH_DerefPage(pg);
             }
         }
         VfsH_UnlockMountpoint(point);
@@ -377,16 +381,22 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
     
         size_t start = offset;
         size_t end = offset + nBytes;
+        page* pg = nullptr;
+
         if ((start & ~(OBOS_PAGE_SIZE-1)) == (end & ~(OBOS_PAGE_SIZE-1)))
         {
             // The start and end are on the same page, and therefore, 
             // use the same pagecache entry.
         
-            void* ent = VfsH_PageCacheGetEntry(desc->vn, start, nullptr);
+            void* ent = VfsH_PageCacheGetEntry(desc->vn, start, &pg);
+            MmH_RefPage(pg);
             if (!ent)
                 return OBOS_STATUS_INVALID_OPERATION;
 
             memcpy(buf, ent, nBytes);
+            if (~pg->flags & PHYS_PAGE_DIRTY)
+                Mm_MarkAsStandbyPhys(pg);
+            MmH_DerefPage(pg);
         }
         else
         {
@@ -396,15 +406,19 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
                 end_rounded = (end_rounded + (OBOS_PAGE_SIZE-(end_rounded%OBOS_PAGE_SIZE)));
             for (size_t curr = start; curr < end_rounded && i < nBytes; )
             {
-                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, nullptr);
-
+                uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
                 if (!ent)
                     return OBOS_STATUS_INVALID_OPERATION;
+                MmH_RefPage(pg);
+
                 size_t nToRead = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
                 nToRead = OBOS_MIN(nToRead, nBytes-i);
                 memcpy((void*)((uintptr_t)buf+i), ent, nToRead);
                 curr += nToRead;
                 i += nToRead;
+                if (~pg->flags & PHYS_PAGE_DIRTY)
+                    Mm_MarkAsStandbyPhys(pg);
+                MmH_DerefPage(pg);
             }
         }
     

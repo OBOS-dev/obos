@@ -247,6 +247,8 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 		thread* const thr = node->data;
 		node = node->next;
 
+		if (!thr) continue;
+
 		if (thr->status == THREAD_STATUS_READY)
 			ready = thr;
 		if (thr->status == THREAD_STATUS_BLOCKED && ~thr->flags & THREAD_FLAGS_DIED)

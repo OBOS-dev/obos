@@ -37,7 +37,6 @@ static struct pmm_freelist_node *s_head32;
 static struct pmm_freelist_node *s_tail32;
 
 #endif
-static size_t s_nNodes;
 size_t Mm_TotalPhysicalPages;
 size_t Mm_TotalPhysicalPagesUsed;
 size_t Mm_UsablePhysicalPages;
@@ -154,7 +153,7 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 	}
 	OBOS_ASSERT(node->nPages >= nPagesRequired);
 	node->nPages -= nPagesRequired;
-	Mm_TotalPhysicalPagesUsed += nPagesRequired;
+	Mm_TotalPhysicalPagesUsed += nPages;
 	if (!node->nPages)
 	{
 		if (node->next)
@@ -165,7 +164,6 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 			(*head) = node->next;
 		if ((uintptr_t)(*tail) == UNMAP_FROM_HHDM(node))
 			(*tail) = node->prev;
-		s_nNodes--;
 	}
 	phys = ((uintptr_t)node) + node->nPages * OBOS_PAGE_SIZE;
 	phys = UNMAP_FROM_HHDM(phys);
@@ -191,11 +189,15 @@ OBOS_NO_KASAN static uintptr_t allocate_phys_or_fail(size_t nPages, size_t align
 	return 0;
 #endif
 }
-OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignmentPages, obos_status *status)
+OBOS_NO_KASAN void* Mm_AllocatePhysicalPages_p(size_t nPages, size_t alignmentPages, obos_status *status)
 {
+	OBOS_ENSURE(Core_GetIrql() <= IRQL_DISPATCH);
 	uintptr_t res = allocate_phys_or_fail(nPages, alignmentPages, status);
 	if (res)
-		return res;
+	{
+		//printf("pmm alloc 0x%p %d\n", res, nPages);
+		return (void*)res;
+	}
 	if (!Mm_IsInitialized())
 		return 0; // oof.
 	if (nPages > (OBOS_HUGE_PAGE_SIZE / OBOS_PAGE_SIZE))
@@ -209,15 +211,18 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 	start_again:
 	if (tries++ == 1)
 		return 0;
-	(void)0;
 	irql oldIrql = Mm_TakeSwapLock();
 	page* node = LIST_GET_HEAD(phys_page_list, &Mm_StandbyPageList);
 	while (node)
 	{
+		// TODO(oberrow): Reclamation of file cache pages.
+		if (node->backing_vn)
+			goto next;
 		if (nPages == 1)
 			break;
 		if (node->flags & PHYS_PAGE_HUGE_PAGE && nPages != 1)
 			break;
+		next:
 		node = LIST_GET_NEXT(phys_page_list, &Mm_StandbyPageList, node);
 	}
 	if (node)
@@ -225,13 +230,10 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		// Remove from standby.
 		LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
 		res = node->phys;
-		// We need to update page mappings.
-		for (page_node *curr = node->virt_pages.head; curr; )
-		{
-			curr->data->prot.is_swap_phys = true;
-			curr->data->phys = node->swap_id;
-			curr = curr->next;
-		}
+		if (node->backing_vn)
+			Mm_CachedBytes -= (node->end_offset - node->file_offset);
+		node->swap_alloc->phys = nullptr;
+		node->swap_alloc = nullptr;
     }
 	else
 	{
@@ -242,14 +244,17 @@ OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages(size_t nPages, size_t alignment
 		goto start_again;
 	} 
 	Mm_ReleaseSwapLock(oldIrql);
-	return res;
+	//printf("standby alloc 0x%p %d\n", res, nPages);
+	return (void*)res;
 }
-OBOS_NO_KASAN uintptr_t Mm_AllocatePhysicalPages32(size_t nPages, size_t alignmentPages, obos_status *status)
+OBOS_NO_KASAN void* Mm_AllocatePhysicalPages32_p(size_t nPages, size_t alignmentPages, obos_status *status)
 {
 #if OBOS_ARCHITECTURE_BITS == 64
-	return allocate(nPages, alignmentPages, status, &s_head32, &s_tail32);
+	void* res = (void*)allocate(nPages, alignmentPages, status, &s_head32, &s_tail32);
+	//printf("pmm alloc 0x%p %d\n", res, nPages);
+	return res;
 #else
-	return Mm_AllocatePhysicalPages(nPages, alignmentPages, status);
+	return (void*)Mm_AllocatePhysicalPages(nPages, alignmentPages, status);
 #endif
 }
 OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct pmm_freelist_node** const head, struct pmm_freelist_node** const tail)
@@ -259,6 +264,9 @@ OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct pmm_
 	irql oldIrql = Core_SpinlockAcquireExplicit(&lock, IRQL_DISPATCH, true);
 	struct pmm_freelist_node* node = MAP_TO_HHDM(addr, struct pmm_freelist_node);
 	memzero(node, sizeof(*node));
+#if OBOS_DEBUG
+	memset(node+1, 0xcc, nPages * OBOS_PAGE_SIZE - sizeof(*node));
+#endif
 	node->nPages = nPages;
 	if ((*tail))
 		MAP_TO_HHDM((*tail), struct pmm_freelist_node)->next = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
@@ -266,13 +274,14 @@ OBOS_NO_KASAN static obos_status free(uintptr_t addr, size_t nPages, struct pmm_
 		(*head) = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
 	node->prev = (*tail);
 	(*tail) = (struct pmm_freelist_node*)UNMAP_FROM_HHDM(node);
-	s_nNodes--;
 	Mm_TotalPhysicalPagesUsed -= nPages;
+	//printf("pmm free 0x%p %d\n", addr, nPages);
 	Core_SpinlockRelease(&lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
-OBOS_NO_KASAN obos_status Mm_FreePhysicalPages(uintptr_t addr, size_t nPages)
+OBOS_NO_KASAN obos_status Mm_FreePhysicalPages_p(void* addr_, size_t nPages)
 {
+	uintptr_t addr = (uintptr_t)addr_;
 	OBOS_ASSERT(addr);
 	OBOS_ASSERT(!(addr % OBOS_PAGE_SIZE));
 	OBOS_ASSERT(addr < Mm_PhysicalMemoryBoundaries);

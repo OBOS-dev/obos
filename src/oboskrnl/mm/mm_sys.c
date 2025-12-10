@@ -167,6 +167,10 @@ size_t Sys_GetUsedPhysicalMemoryCount()
 {
     return Mm_PhysicalMemoryUsage;
 }
+size_t Sys_GetCachedByteCount()
+{
+    return Mm_CachedBytes;
+}
 
 obos_status Sys_QueryPageInfo(handle ctx, void* base, page_info* info)
 {

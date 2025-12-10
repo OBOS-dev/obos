@@ -383,6 +383,7 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool
             pg->flags |= PHYS_PAGE_MMIO;
         if (ref_twice)
             MmH_RefPage(pg);
+        pg->pagedCount++;
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
     Drv_TLBShootdown(Mm_KernelContext.pt, (uintptr_t)virt, size);

@@ -63,7 +63,8 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     info->phys = phys->phys;
     info->prot.present = true;
     info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);
-
+    
+    phys->pagedCount++;
     MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
     MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 }
@@ -83,12 +84,15 @@ static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t 
         return true;
     }
     page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
+    if (!new)
+        return false;
     new->pagedCount++;
     memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->prot.rw = true;
     info->prot.ro = false;
     MmS_SetPageMapping(ctx->pt, info, new->phys, false);
     MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    pg->pagedCount--;
     MmH_DerefPage(pg);
     return true;
 }
@@ -98,15 +102,6 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     page_range* const volatile rng = curr->range;
     obos_status status = OBOS_STATUS_SUCCESS;
     working_set_entry* ent = nullptr;
-    // for (working_set_node* node = rng->working_set_nodes.head; node; )
-    // {
-    //     if (node->data->info.virt == addr)
-    //     {
-    //         ent = node->data;
-    //         break;
-    //     }
-    //     node = node->next;
-    // }
     bool allocated_ent = false;
     if (!ent)
     {
@@ -141,7 +136,7 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     return status;
 }
 
-static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
+static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info, irql *oldIrql)
 {
     OBOS_UNUSED(addr);
     info->prot.present = true;
@@ -159,13 +154,21 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
             pg->cow_type = COW_DISABLED;
             goto done;
         }
+        Core_SpinlockRelease(&ctx->lock, *oldIrql);
         page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
+        *oldIrql = Core_SpinlockAcquire(&ctx->lock);
+        if (!new)
+        {
+            OBOS_Warning("%s: MmH_PgAllocatePhysical returned nullptr (OOM)\n", __func__);
+            return false;
+        }
         new->pagedCount++;
         if (~ec & PF_EC_PRESENT)
             MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
         memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         info->prot.rw = true;
         info->prot.ro = false;
+        pg->pagedCount--;
         MmH_DerefPage(pg);
         pg = new;
     }
@@ -173,10 +176,12 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
     MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->range = rng;
-    if (ec & PF_EC_RW)
-        Mm_MarkAsDirtyPhys(pg);
-    else
-        Mm_MarkAsStandbyPhys(pg);
+    // if (ec & PF_EC_RW)
+    //     Mm_MarkAsDirtyPhys(pg);
+    // else
+    //     Mm_MarkAsStandbyPhys(pg);
+    MmS_QueryPageInfo(rng->ctx->pt, info->virt, info, nullptr);
+    ref_page(ctx, info);
     return true;
 }
 
@@ -200,7 +205,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     {
         page what = {.phys=curr.phys};
         pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
-        if (!pg && !rng->un.mapped_vn)
+        if (!pg && !rng->un.mapped_vn && !curr.prot.is_swap_phys)
         {
             OBOS_Debug("No physical page found for virtual page %p (curr.phys: %p, found nothing)\n", curr.virt, curr.phys);
             goto done;
@@ -228,7 +233,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         //     handled = true;
         Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
-    if (!handled && pg->cow_type)
+    if (!handled && pg && pg->cow_type)
     {
         // if (ctx != &Mm_KernelContext)
         //     OBOS_Debug("Doing CoW...\n", addr);
@@ -239,7 +244,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
                 handled = sym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
                 break;
             case COW_ASYMMETRIC:
-                handled = asym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
+                handled = asym_cow_cpy(ctx, rng, addr, ec, pg, &curr, &oldIrql);
                 break;
             default:
                 handled = false;
@@ -251,7 +256,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         goto done;
     }
-    if (!handled && ~ec & PF_EC_PRESENT && curr.phys != 0)
+    if (!handled)
     {
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Trying a swap in...\n", addr);
@@ -328,14 +333,15 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
     node->next = nullptr;
     if (!(--ent->workingSets))
     {
-        obos_status status = ent->free ? OBOS_STATUS_ABORTED : Mm_SwapOut(ent->info.virt, ent->info.range);
-        if (obos_is_success(status))
-        {
-            ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-            Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        }
         if (!ent->free)
-            REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
+        {
+            if (obos_is_success(Mm_SwapOut(ent->info.virt, ent->info.range)))
+            {
+                ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+                Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+                REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
+            }
+        }
         Free(Mm_Allocator, ent, sizeof(*ent));
     }
     Free(Mm_Allocator, node, sizeof(*node));

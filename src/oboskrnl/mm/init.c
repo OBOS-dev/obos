@@ -212,7 +212,7 @@ void Mm_Initialize()
                 page_info info = {};
                 MmS_QueryPageInfo(Mm_KernelContext.pt, addr, &info, nullptr);
                 info.range = i;
-                Mm_SwapOut(info.virt, i);
+                // Mm_SwapOut(info.virt, i);
                 Mm_KernelContext.stat.paged += (i->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
             }
         }

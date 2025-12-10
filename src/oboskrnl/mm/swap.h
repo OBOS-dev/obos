@@ -46,6 +46,7 @@ extern phys_page_list Mm_DirtyPageList;
 extern phys_page_list Mm_StandbyPageList;
 extern size_t Mm_DirtyPagesBytes;
 extern size_t Mm_DirtyPagesBytesThreshold;
+OBOS_EXPORT extern size_t Mm_CachedBytes;
 OBOS_EXPORT void Mm_MarkAsDirty(page_info* pg);
 OBOS_EXPORT void Mm_MarkAsStandby(page_info* pg);
 OBOS_EXPORT void Mm_MarkAsDirtyPhys(page* pg);

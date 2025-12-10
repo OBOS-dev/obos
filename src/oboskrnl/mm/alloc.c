@@ -348,7 +348,27 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         if (isPresent)
         {
             if (!file && (flags & VMA_FLAGS_NON_PAGED))
+            {
                 phys = MmH_PgAllocatePhysical(rng->phys32, rng->prot.huge_page);
+                if (!phys)
+                {
+                    RB_REMOVE(page_tree, &ctx->pages, rng);
+                    for (uintptr_t jaddr = base; jaddr < addr; jaddr += OBOS_PAGE_SIZE)
+                    {
+                        page_info info = {};
+                        MmS_QueryPageInfo(ctx->pt, jaddr, &info, nullptr);
+                        page key = {.phys=info.phys};
+                        page* curr_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+                        curr_pg->pagedCount--;
+                        MmH_DerefPage(curr_pg);
+                        info.prot.present = false;
+                        MmS_SetPageMapping(ctx->pt, &info, 0, true);
+                    }
+                    Free(Mm_Allocator, rng, sizeof(*rng));
+                    Core_SpinlockRelease(&ctx->lock, oldIrql);
+                    return nullptr;
+                }
+            }
             else if (file)
             {
                 // File page.
@@ -572,7 +592,10 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             page what = {.phys=info.phys};
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
             if (pg)
+            {
+                pg->pagedCount--;
                 MmH_DerefPage(pg);
+            }
         }
         MmS_SetPageMapping(ctx->pt, &pg, 0, true);
     }
@@ -1036,10 +1059,12 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
                     MmS_QueryPageInfo(ctx->pt, jaddr, &info, nullptr);
                     page key = {.phys=info.phys};
                     page* curr_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+                    curr_pg->pagedCount--;
                     MmH_DerefPage(curr_pg);
                     info.prot.present = false;
                     MmS_SetPageMapping(ctx->pt, &info, 0, true);
                 }
+                Free(Mm_Allocator, rng, sizeof(*rng));
                 Core_SpinlockRelease(&ctx->lock, oldIrql);
                 return nullptr;
             }

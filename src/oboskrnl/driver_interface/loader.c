@@ -259,7 +259,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
 				symbolType = SYMBOL_TYPE_VARIABLE;
 				break;
 		}
-		driver_symbol* symbol = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_symbol), nullptr);
+		driver_symbol* symbol = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(driver_symbol), nullptr);
 		const char* name = dynstrtab + esymbol->st_name;
         bool forceHidden = false;
         for (size_t j = 0; j < sizeof(forced_hidden_symbols)/sizeof(*forced_hidden_symbols); j++)
@@ -271,7 +271,7 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             }
         }
 		size_t szName = strlen(name);
-		symbol->name = memcpy(ZeroAllocate(OBOS_KernelAllocator, 1, szName + 1, nullptr), name, szName);
+		symbol->name = memcpy(ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, szName + 1, nullptr), name, szName);
 		symbol->address = OffsetPtr(driver->base, esymbol->st_value, uintptr_t);
 		symbol->size = esymbol->st_size;
 		symbol->type = symbolType;

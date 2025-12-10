@@ -32,7 +32,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
     phys->backing_vn = vn;
     phys->file_offset = offset;
     phys->file_offset -= (phys->file_offset % OBOS_PAGE_SIZE);
-    phys->end_offset = phys->file_offset + OBOS_PAGE_SIZE;
+    phys->end_offset = OBOS_MIN(phys->file_offset + OBOS_PAGE_SIZE, vn->filesize);
     RB_INSERT(pagecache_tree, &vn->cache, phys);
     driver_header* driver = Vfs_GetVnodeDriver(vn);
     if (!driver) return nullptr;
@@ -41,6 +41,7 @@ static inline page* VfsH_PageCacheCreateEntry(vnode* vn, size_t offset)
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
         OBOS_ASSERT(vn->blkSize);
     }
+    Mm_CachedBytes += phys->end_offset - phys->file_offset;
     const size_t base_offset = vn->flags & VFLAGS_PARTITION ? (vn->partitions[0].off/vn->blkSize) : 0;
     OBOS_ENSURE(obos_is_success(driver->ftable.read_sync(vn->desc, MmS_MapVirtFromPhys(phys->phys), OBOS_PAGE_SIZE / vn->blkSize, offset+base_offset, nullptr)));
     return phys;
