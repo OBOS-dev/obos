@@ -935,9 +935,10 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             if (~prot & OBOS_PROTECTION_READ_ONLY)
                 Mm_MarkAsDirtyPhys(phys);
         }
-        OBOS_ENSURE(phys);
+        if (!info.prot.is_swap_phys)
+            OBOS_ENSURE(phys);
 
-        if (phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY)
+        if ((phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY) || info.prot.is_swap_phys)
         {
             uintptr_t fault_addr = uaddr;
             fault_addr -= (fault_addr % (user_rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE));

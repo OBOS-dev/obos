@@ -111,7 +111,8 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!page)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(page->phys);
+    if (!page->prot.is_swap_phys)
+        OBOS_ASSERT(page->phys);
     // OBOS_ASSERT(!page->reserved);
     // if (page->reserved)
     //     return OBOS_STATUS_INVALID_ARGUMENT;
