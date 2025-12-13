@@ -253,6 +253,7 @@ const char* syscall_to_string[] = {
     "Sys_SigPending",
     "Sys_SetGroups",
     "Sys_GetGroups",
+    "Sys_GetCachedByteCount",
 };
 
 const char* status_to_string[] = {
