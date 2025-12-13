@@ -79,11 +79,14 @@ obos_status Mm_ForkContext(context* into, context* toFork)
 
                     MmH_RefPage(phys);
                     phys->pagedCount++;
-                    if (phys->cow_type != COW_ASYMMETRIC)
-                        phys->cow_type = COW_SYMMETRIC;
-                    else
-                        info.prot.present = false;
-                    info.prot.rw = false;
+                    if (!phys->backing_vn)
+                    {
+                        if (phys->cow_type != COW_ASYMMETRIC)
+                            phys->cow_type = COW_SYMMETRIC;
+                        else
+                            info.prot.present = false;
+                    }
+                    info.prot.rw = (phys->cow_type == COW_DISABLED) ? info.prot.rw : false;
                     
                 } else if (info.prot.is_swap_phys)
                 {

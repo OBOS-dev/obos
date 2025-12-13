@@ -186,6 +186,14 @@ static obos_status make_handle(struct ps2_port* port, void** handle)
     *handle = hnd;
     return OBOS_STATUS_SUCCESS;
 }
+static obos_status close_handle(struct ps2_port* port, void* handle)
+{
+    ps2k_data* data = port->pudata;
+    if (data->ps2k_magic != PS2K_MAGIC_VALUE || ((ps2k_handle*)handle)->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    Free(OBOS_KernelAllocator, handle, sizeof(ps2k_handle));
+    return OBOS_STATUS_SUCCESS;
+}
 
 OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
 {
@@ -290,6 +298,7 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
     port->data_ready_event = &data->input.e;
     port->read_code = read_code;
     port->make_handle = make_handle;
+    port->close_handle = close_handle;
     port->get_readable_count = get_readable_count;
 
     OBOS_Log("PS/2: Successfully initialized keyboard on channel %c\n", port->second ? '2' : '1');

@@ -20,13 +20,30 @@
 #include <locks/event.h>
 
 #include "controller.h"
+#include "keyboard.h"
+#include "mouse.h"
 #include "detect.h"
+
+typedef struct ps2_handle {
+    uint32_t magic;
+    ps2_port* port;
+    char drv_data[];
+} ps2_handle;
 
 obos_status get_blk_size(dev_desc desc, size_t* blk_size)
 {
     if (!desc || !blk_size)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ps2_port* port = (void*)desc;
+    ps2_handle* handle = (void*)desc;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+    {
+        ps2_port* port = (void*)desc;
+        if (port->magic != PS2_PORT_MAGIC)
+            return OBOS_STATUS_INVALID_ARGUMENT;
+        *blk_size = port->blk_size;
+        return OBOS_STATUS_SUCCESS;
+    }
+    ps2_port* port = handle->port;
     if (port->magic != PS2_PORT_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     *blk_size = port->blk_size;
@@ -45,13 +62,16 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
 
     if (!desc || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ps2_port* port = (void*)desc;
+    ps2_handle* handle = (void*)desc;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = handle->port;
     if (port->magic != PS2_PORT_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
     uint8_t *out = buf;
     for (size_t i = 0; i < blkCount; i++)
-        port->read_raw(port->default_handle, &out[i*port->blk_size], true);
+        port->read_raw(handle, &out[i*port->blk_size], true);
 
     if (nBlkRead)
         *nBlkRead = blkCount;
@@ -78,7 +98,10 @@ obos_status query_user_readable_name(dev_desc what, const char** name)
 {
     if (!what || !name)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ps2_port* port = (void*)what;
+    ps2_handle* handle = (void*)what;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = handle->port;
     if (port->magic != PS2_PORT_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     *name = port->str_id;
@@ -89,14 +112,17 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
 {
     if (!argp || !what)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    ps2_port* port = (void*)what;
+    ps2_handle* handle = (void*)what;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = handle->port;
     if (port->magic != PS2_PORT_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     obos_status st = OBOS_STATUS_SUCCESS;
     switch (request)
     {
         case 1:
-            st = port->get_readable_count(port->default_handle, argp);
+            st = port->get_readable_count(handle, argp);
             break;
         default:
             st = OBOS_STATUS_INVALID_IOCTL;
@@ -138,9 +164,10 @@ void cleanup()
 
 static void irp_event_set(irp* req)
 {
-    ps2_port* port = (void*)req->desc;
+    ps2_handle* handle = (void*)req->desc;
+    ps2_port* port = handle->port;
     size_t nReady = 0;
-    port->get_readable_count(port->default_handle, &nReady);
+    port->get_readable_count(handle, &nReady);
     if (nReady >= req->blkCount)
         req->status = !req->dryOp ? read_sync(req->desc, req->buff, req->blkCount, 0, &req->nBlkRead) : OBOS_STATUS_SUCCESS;
     else
@@ -158,11 +185,14 @@ obos_status submit_irp(void* req_)
     if (req->op == IRP_WRITE)
         return OBOS_STATUS_INVALID_OPERATION;
 
-    ps2_port* port = (void*)req->desc;
+    ps2_handle* handle = (void*)req->desc;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = handle->port;
     if (port->magic != PS2_PORT_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
     size_t nReady = 0;
-    port->get_readable_count(port->default_handle, &nReady);
+    port->get_readable_count(handle, &nReady);
     if (nReady >= req->blkCount)
     {
         req->evnt = nullptr;
@@ -180,6 +210,24 @@ obos_status submit_irp(void* req_)
 OBOS_WEAK void on_suspend();
 OBOS_WEAK void on_wake();
 
+obos_status reference_device(dev_desc* desc) 
+{
+    if (!desc || !*desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_port* port = (void*)*desc;
+    return port->make_handle(port, (void**)desc);
+}
+
+obos_status unreference_device(dev_desc desc)
+{
+    if (!desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ps2_handle* handle = (void*)desc;
+    if (handle->magic != PS2M_HND_MAGIC_VALUE && handle->magic != PS2K_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    return handle->port->close_handle(handle->port, handle);
+}
+
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_HAS_VERSION_FIELD|DRIVER_HEADER_HAS_STANDARD_INTERFACES,
@@ -196,6 +244,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .on_suspend = on_suspend,
         .on_wake = on_wake,
         .submit_irp = submit_irp,
+        .reference_device = reference_device,
+        .unreference_device = unreference_device,
     },
     .driverName = "PS/2 Driver",
     .version = 1,

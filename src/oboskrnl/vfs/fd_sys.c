@@ -1395,7 +1395,7 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     req->vn = fd->un.fd->vn;
     req->blkCount = 1;
     VfsH_IRPBytesToBlockCount(req->vn, fd->un.fd->offset, &req->blkOffset);
-    *status = VfsH_IRPSubmit(req, nullptr);
+    *status = VfsH_IRPSubmit(req, &fd->un.fd->desc);
     if (obos_is_error(*status))
     {
         VfsH_IRPUnref(req);
@@ -1404,10 +1404,7 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     bool res = !req->evnt;
     if (req->evnt && req->evnt->hdr.signaled)
         res = true;
-    if (res)
-        VfsH_IRPUnref(req);
-    else
-        *oreq = req;
+    *oreq = req;
     return res;
 }
 
@@ -1669,7 +1666,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 else
                     break;
             }
-            if (events_satisified)
+            if (res)
             {
                 num_events++;
                 curr->revents |= POLLIN;
@@ -1694,7 +1691,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 else
                     break;
             }
-            if (events_satisified)
+            if (res)
             {
                 num_events++;
                 curr->revents |= POLLOUT;

@@ -601,8 +601,7 @@ static void irp_stream_on_event_set(irp* req)
         ringbuffer_ready_count(lsckt->incoming_stream, &nReady);
         if ((nReady < req->blkCount && (req->socket_flags & MSG_WAITALL)) || !nReady)
         {
-            if (req->evnt)
-                Core_EventClear(req->evnt);
+            Core_EventClear(&lsckt->incoming_stream->doorbell);
             req->status = OBOS_STATUS_IRP_RETRY;
             return;
         }
@@ -674,6 +673,8 @@ static obos_status stream_submit_irp(irp* req)
                 req->blkCount = (lsckt->outgoing_stream->size - nReady);
             if ((lsckt->outgoing_stream->size - nReady) < req->blkCount)
                 req->evnt = &lsckt->outgoing_stream->empty;
+            else if (!req->dryOp)
+                irp_stream_on_event_set(req);
             break;
         }
         default: return OBOS_STATUS_INVALID_ARGUMENT;

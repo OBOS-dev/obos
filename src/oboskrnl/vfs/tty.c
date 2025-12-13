@@ -657,6 +657,10 @@ static void poll_keyboard(struct screen_tty* data)
 {
     keycode tmp_code = 0;
     keycode* keycode_buffer = &tmp_code;
+    dev_desc desc = data->keyboard.vn->desc;
+    driver_header* header = Vfs_GetVnodeDriver(data->keyboard.vn);
+    if (header->ftable.reference_device(&desc))
+        OBOS_ENSURE(obos_is_success(header->ftable.reference_device(&desc)));
     while (1)
     {
         while (data->input_paused)
@@ -669,7 +673,7 @@ static void poll_keyboard(struct screen_tty* data)
         req->op = IRP_READ;
         req->dryOp = false;
         req->status = OBOS_STATUS_SUCCESS;
-        VfsH_IRPSubmit(req, nullptr);
+        VfsH_IRPSubmit(req, &desc);
         VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
         char* buffer = Vfs_Malloc(nReady);

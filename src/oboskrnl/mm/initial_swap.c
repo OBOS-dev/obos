@@ -144,7 +144,7 @@ static obos_status swap_free(struct swap_device* dev, uintptr_t id, bool huge_pa
         hdr->bytesLeft += what.sz;
         swap_free_handle* hnd = swap_malloc(sizeof(swap_free_handle));
         memzero(hnd, sizeof(*hnd));
-        hnd->hnd = id;
+        hnd->hnd = id >> (huge_page ? PAGE_SHIFT_HUGE : PAGE_SHIFT);
         if (!hdr->free_handles.head)
             hdr->free_handles.head = hnd;
         if (hdr->free_handles.tail)

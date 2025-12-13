@@ -46,6 +46,7 @@ typedef struct ps2_port {
     // Gets the amount of readable objects for that handle.
     obos_status(*get_readable_count)(void* handle, size_t* nReadable);
     obos_status(*make_handle)(struct ps2_port* port, void** handle);
+    obos_status(*close_handle)(struct ps2_port* port, void* handle);
     // To be set by the driver when there is at least one object ready to be read by read_*
     // Should be a 'EVENT_NOTIFICATION'
     event* data_ready_event;

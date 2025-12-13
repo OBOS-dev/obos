@@ -138,7 +138,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     if (Core_GetCurrentThread()->proc->exec_file)
         Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->exec_file, strlen(Core_GetCurrentThread()->proc->exec_file)+1);
     if (obos_is_error(status))
+    {
+        printf("%d after open of %s in execve\n", status, path);
+        Free(OBOS_KernelAllocator, path, sz_path);
         return status;
+    }
     Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPath(VfsH_DirentLookup(path), nullptr);
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, OBOS_PROTECTION_READ_ONLY, 0, &file, nullptr);
@@ -200,6 +204,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
                               OBOS_GetStringSize(&cmd_line)+1);
         OBOS_FreeString(&cmd_line);
     } while(0);
+
+    Free(OBOS_KernelAllocator, path, sz_path);
 
     status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
     if (obos_is_error(status))

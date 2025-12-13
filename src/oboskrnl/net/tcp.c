@@ -1408,7 +1408,8 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     syn.flags = TCP_SYN;
     syn.seq = s->connection->state.snd.iss;
     status = NetH_SendTCPSegment(s->connection->nic, s->connection, s->connection->ip_ent, s->connection->dest.addr, &syn);
-    OBOS_SharedPtrUnref(&syn.unacked_seg->ptr);
+    if (syn.unacked_seg)
+        OBOS_SharedPtrUnref(&syn.unacked_seg->ptr);
     if (obos_is_error(status))
     {
         Core_PushlockAcquire(&iface->tcp_connections_lock, false);
@@ -1544,16 +1545,20 @@ static void irp_on_event_set(irp* req)
     if (~req->socket_flags & MSG_PEEK)
     {
         s->connection->recv_buffer.in_ptr += read_size;
-        //printf("TCP: Read %d bytes\n", read_size);
-        //printf("TCP window (%d, %d) receive window %d->%d\n", s->connection->dest.port, s->connection->src.port, s->connection->state.rcv.wnd, s->connection->state.rcv.wnd+read_size);
+        // printf("TCP: Read %d bytes\n", read_size);
+        // printf("TCP window (%d, %d) receive window %d->%d, in_ptr=%d, ptr=%d\n",
+        //      s->connection->dest.port, s->connection->src.port,
+        //      s->connection->state.rcv.wnd, s->connection->state.rcv.wnd+read_size,
+        //      s->connection->recv_buffer.in_ptr,
+        //      s->connection->recv_buffer.ptr
+        //     );
         s->connection->state.rcv.wnd += read_size;
         OBOS_ENSURE(s->connection->recv_buffer.in_ptr <= s->connection->recv_buffer.ptr);
-        if (s->connection->recv_buffer.in_ptr == s->connection->recv_buffer.ptr)
+        if (s->connection->recv_buffer.ptr == s->connection->recv_buffer.in_ptr)
         {
             s->connection->recv_buffer.in_ptr = 0;
             s->connection->recv_buffer.ptr = 0;
-            if (req->evnt)
-                Core_EventClear(req->evnt);
+            Core_EventClear(&s->connection->inbound_sig);
         }
     }
     

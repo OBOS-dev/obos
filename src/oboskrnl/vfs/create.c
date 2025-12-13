@@ -157,7 +157,7 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
     if (obos_is_error(status))
         return status;
 
-    mount *parent_mnt = Vfs_GetVnodeMount(node->vnode);
+    mount *parent_mnt = Vfs_GetVnodeMount(node->d_parent->vnode);
     if (!parent_mnt)
         return OBOS_STATUS_INTERNAL_ERROR;
     OBOS_ENSURE(parent_mnt->root);

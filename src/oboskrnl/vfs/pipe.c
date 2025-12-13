@@ -143,13 +143,8 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     if (!has_read_fd)
     {
         OBOS_Log("thread %d: ret from %s (pipe closed). blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
-        if (Core_GetCurrentThread()->signal_info && Core_GetCurrentThread()->signal_info->mask & BIT(SIGPIPE-1))
-            return OBOS_STATUS_PIPE_CLOSED;
-        else
-        {
-            OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
-            return OBOS_STATUS_PIPE_CLOSED;
-        }
+        OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
+        return OBOS_STATUS_PIPE_CLOSED;
     }
 
     if (pipe->size < blkCount)
