@@ -1,4 +1,5 @@
 #include <obos/syscall.h>
+#include <obos/error.h>
 #include <stdio.h>
 #include <assert.h>
 
@@ -48,10 +49,16 @@ void get_div_and_unit(size_t val, char* unit, size_t *divisor)
 int main()
 {
     size_t pmem = syscall0(Sys_GetUsedPhysicalMemoryCount);
+    size_t cmem = syscall0(Sys_GetCachedByteCount);
     char unit = 'B';
     size_t divisor = 0;
     get_div_and_unit(pmem, &unit, &divisor);
     printf("Physical memory usage: %ld%c\n", pmem/divisor, unit);
+    if (cmem != OBOS_STATUS_UNIMPLEMENTED)
+    {
+        get_div_and_unit(cmem, &unit, &divisor);
+        printf("Cached Memory: %ld%c\n", cmem/divisor, unit);
+    }
     memstat global_memory_usage = {};
     syscall2(Sys_ContextGetStat, HANDLE_INVALID, &global_memory_usage);
     get_div_and_unit(global_memory_usage.committedMemory, &unit, &divisor);
