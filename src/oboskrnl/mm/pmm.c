@@ -244,7 +244,7 @@ OBOS_NO_KASAN void* Mm_AllocatePhysicalPages_p(size_t nPages, size_t alignmentPa
 		goto start_again;
 	} 
 	Mm_ReleaseSwapLock(oldIrql);
-	//printf("standby alloc 0x%p %d\n", res, nPages);
+	// printf("standby alloc 0x%p %d\n", res, nPages);
 	return (void*)res;
 }
 OBOS_NO_KASAN void* Mm_AllocatePhysicalPages32_p(size_t nPages, size_t alignmentPages, obos_status *status)
@@ -308,4 +308,28 @@ OBOS_NO_KASAN obos_status Mm_FreePhysicalPages_p(void* addr_, size_t nPages)
 #endif
 	// OBOS_Debug("%s: Marking physical memory region at 0x%p-0x%p as free.\n", __func__, addr, addr+nPages*OBOS_PAGE_SIZE);
 	return OBOS_STATUS_SUCCESS;
+}
+
+bool Mm_PhysicalPageFree(uintptr_t phys)
+{
+#if OBOS_ARCHITECTURE_BITS == 64
+	for (struct pmm_freelist_node* node_addr = s_head32; node_addr;)
+	{
+		struct pmm_freelist_node* const node = MAP_TO_HHDM(node_addr, struct pmm_freelist_node);
+		if (phys >= (uintptr_t)node_addr && phys < (uintptr_t)node_addr + node->nPages*OBOS_PAGE_SIZE)
+			return true;
+
+		node_addr = node->next;
+	}
+#endif
+	for (struct pmm_freelist_node* node_addr = s_head; node_addr;)
+	{
+		struct pmm_freelist_node* const node = MAP_TO_HHDM(node_addr, struct pmm_freelist_node);
+		if (phys >= (uintptr_t)node_addr && phys < (uintptr_t)node_addr + node->nPages*OBOS_PAGE_SIZE)
+			return true;
+
+		node_addr = node->next;
+	}
+
+	return false;
 }

@@ -84,10 +84,14 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                     else
                         info.prot.present = false;
                     info.prot.rw = false;
-                    MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
-
+                    
+                } else if (info.prot.is_swap_phys)
+                {
+                    swap_allocation* swap_alloc = MmH_LookupSwapAllocation(info.phys);
+                    MmH_RefSwapAllocation(swap_alloc);
                 }
                 down:
+                MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
                 MmS_SetPageMapping(into->pt, &info, info.phys, false);
             }
             MmS_TLBShootdown(toFork->pt, curr->virt, curr->size);

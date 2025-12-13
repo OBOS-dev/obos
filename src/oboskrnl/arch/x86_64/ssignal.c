@@ -74,11 +74,17 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     if (sig->flags & SA_ONSTACK && Core_GetCurrentThread()->signal_info->sp)
         frame->rsp = Core_GetCurrentThread()->signal_info->sp;
     if (is_kernel_stack)
+    {
+        if (!Core_GetCurrentThread()->userStack)
+            Core_GetCurrentThread()->userStack = Mm_VirtualMemoryAlloc(Core_GetCurrentThread()->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
         frame->rsp = (uintptr_t)Core_GetCurrentThread()->userStack + 0x10000;
+    }
+    
     ctx.irql = 0;
     
     frame->rsp -= sizeof(ctx);
     uint8_t *rsp = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, (void*)frame->rsp, nullptr, sizeof(ucontext_t), 0, true, nullptr);
+    OBOS_ENSURE(rsp);
     memcpy(rsp, &ctx, sizeof(ctx));
     Mm_VirtualMemoryFree(&Mm_KernelContext, rsp, sizeof(ucontext_t));
     frame->rsp -= sizeof(sig->trampoline_base);

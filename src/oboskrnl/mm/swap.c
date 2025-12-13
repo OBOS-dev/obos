@@ -41,21 +41,18 @@ static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
 static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
 static spinlock swap_lock;
 
-obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
+obos_status Mm_SwapOut(uintptr_t virt, context* ctx)
 {
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
-    if (!rng)
+    if (!ctx)
         return OBOS_STATUS_INVALID_ARGUMENT;
     // OBOS_ASSERT(!page->reserved);
     // if (page->reserved)
     //     return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(rng->pageable);
-    if (!rng->pageable)
-        return OBOS_STATUS_INVALID_ARGUMENT;
     uintptr_t phys = 0;
     page_info page = {};
-    obos_status status = MmS_QueryPageInfo(rng->ctx->pt, virt, &page, &phys);
+    obos_status status = MmS_QueryPageInfo(ctx->pt, virt, &page, &phys);
     if (obos_is_error(status))
         return status;
     if (page.prot.is_swap_phys)
@@ -71,7 +68,7 @@ obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
     
     uintptr_t swap_id = 0;
     irql oldIrql = IRQL_INVALID;
-    if (rng->ctx == &Mm_KernelContext && Core_SpinlockAcquired(&Mm_KernelContext.lock))
+    if (ctx == &Mm_KernelContext && Core_SpinlockAcquired(&Mm_KernelContext.lock))
     {
         oldIrql = Core_GetIrql();
         Core_SpinlockRelease(&Mm_KernelContext.lock, IRQL_DISPATCH);
@@ -83,6 +80,7 @@ obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
         return status;
 
     swap_allocation* swap_alloc = MmH_AddSwapAllocation(swap_id);
+    MmH_RefSwapAllocation(swap_alloc);
     swap_alloc->phys = pg;
     MmH_RefPage(pg);
     pg->swap_alloc = swap_alloc;
@@ -91,9 +89,9 @@ obos_status Mm_SwapOut(uintptr_t virt, page_range* rng)
     page.prot.is_swap_phys = true;
     page.phys = swap_id;
     phys = swap_id;
-    status = MmS_SetPageMapping(rng->ctx->pt, &page, phys, false);
+    status = MmS_SetPageMapping(ctx->pt, &page, phys, false);
 
-    MmS_TLBShootdown(rng->ctx->pt, page.virt, page.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    MmS_TLBShootdown(ctx->pt, page.virt, page.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     if (obos_is_error(status))
     {
         OBOS_Warning("%s: MmS_SetPageMapping returned %d\n", __func__, status);
@@ -183,8 +181,21 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
             return OBOS_STATUS_SUCCESS;
         }
     }
+    else
+        MmH_RefPage(alloc->phys);
+    if (alloc->phys->flags & PHYS_PAGE_STANDBY)
+        LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, alloc->phys);
+    else if (alloc->phys->flags & PHYS_PAGE_DIRTY)
+    {
+        if (!alloc->phys->pagedCount)
+            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, alloc->phys);
+        Mm_DirtyPagesBytes -= page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
     phys = alloc->phys->phys;
+    if (page->range)
+        page->prot = page->range->prot;
     page->prot.present = true;
+    page->prot.is_swap_phys = false;
     page->phys = phys;
     alloc->phys->pagedCount++;
     status = MmS_SetPageMapping(page->range->ctx->pt, page, phys, false);
@@ -194,6 +205,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         Core_SpinlockRelease(&swap_lock, oldIrql);
         return status;
     }
+    MmH_DerefSwapAllocation(alloc);
     Core_SpinlockRelease(&swap_lock, oldIrql);
     if (type)
         *type = HARD_FAULT;

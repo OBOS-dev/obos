@@ -111,7 +111,7 @@ obos_status Mm_AgingPRA(context* ctx)
         {
             if (!ent->info.range->pageable)
                 ent->info.range->pageable = true;
-            if (obos_is_success(Mm_SwapOut(ent->info.virt, ent->info.range)))
+            if (obos_is_success(Mm_SwapOut(ent->info.virt, ctx)))
             {
                 ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
                 Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);

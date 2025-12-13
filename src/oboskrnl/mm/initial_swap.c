@@ -58,6 +58,7 @@ typedef struct swap_header
         uintptr_t bump;
     } free_handles;
     swap_page_tree pages;
+    swap_page_tree pages_huge;
 } swap_header;
 typedef struct swap_mem_tag
 {
@@ -78,7 +79,8 @@ static void swap_libc_free(void* buf)
     tag--;
     tag->allocator->Free(tag->allocator, tag, tag->sz);
 }
-#define PAGE_SHIFT (__builtin_ctz(OBOS_HUGE_PAGE_SIZE > 0 ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
+#define PAGE_SHIFT_HUGE (__builtin_ctz(OBOS_HUGE_PAGE_SIZE))
+#define PAGE_SHIFT (__builtin_ctz(OBOS_PAGE_SIZE))
 static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_page)
 {
     swap_header* hdr = dev->metadata;
@@ -108,16 +110,16 @@ static obos_status swap_resv(struct swap_device* dev, uintptr_t *id, bool huge_p
         found = hdr->free_handles.bump++;
 
     swap_page *pg = swap_malloc(sizeof(swap_page));
-    pg->key = found << PAGE_SHIFT;
+    pg->key = found << (huge_page ? PAGE_SHIFT_HUGE : PAGE_SHIFT);
     pg->sz = sz;
     pg->buffer = swap_malloc(sz);
-    RB_INSERT(swap_page_tree, &hdr->pages, pg);
+    RB_INSERT(swap_page_tree, huge_page ? &hdr->pages_huge : &hdr->pages, pg);
 
     hdr->bytesLeft -= sz;
     if (hdr->bytesLeft < 0)
         OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "In-Ram SWAP corruption. hdr->bytesLeft < 0. bytesLeft: %ld\nThis is a bug, report it, or fix it yourself and send a PR.\n", hdr->bytesLeft);
     Core_SpinlockRelease(&hdr->lock, oldIrql);
-    *id = found << PAGE_SHIFT;
+    *id = found << (huge_page ? PAGE_SHIFT_HUGE : PAGE_SHIFT);
     return OBOS_STATUS_SUCCESS;
 }
 static void swap_free_impl(void* item)
@@ -134,10 +136,10 @@ static obos_status swap_free(struct swap_device* dev, uintptr_t id, bool huge_pa
     swap_header* hdr = dev->metadata;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
     swap_page what = {.key=id};
-    swap_page* item = RB_FIND(swap_page_tree, &hdr->pages, &what);
+    swap_page* item = RB_FIND(swap_page_tree, huge_page ? &hdr->pages_huge : &hdr->pages, &what);
     if (item)
     {
-        RB_REMOVE(swap_page_tree, &hdr->pages, item);
+        RB_REMOVE(swap_page_tree, huge_page ? &hdr->pages_huge : &hdr->pages, item);
         swap_free_impl(item);
         hdr->bytesLeft += what.sz;
         swap_free_handle* hnd = swap_malloc(sizeof(swap_free_handle));
@@ -161,7 +163,7 @@ static obos_status swap_write(struct swap_device* dev, uintptr_t id, page* in)
     swap_header* hdr = dev->metadata;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
     swap_page what = {.key=id};
-    const swap_page* pg = RB_FIND(swap_page_tree, &hdr->pages, &what);
+    const swap_page* pg = RB_FIND(swap_page_tree, in->flags & PHYS_PAGE_HUGE_PAGE ? &hdr->pages_huge : &hdr->pages, &what);
     if (!pg)
     {
         Core_SpinlockRelease(&hdr->lock, oldIrql);
@@ -178,7 +180,7 @@ static obos_status swap_read(struct swap_device* dev, uintptr_t id, page* into)
     swap_header* hdr = dev->metadata;
     irql oldIrql = Core_SpinlockAcquire(&hdr->lock);
     swap_page what = {.key=id};
-    const swap_page* pg = RB_FIND(swap_page_tree, &hdr->pages, &what);
+    const swap_page* pg = RB_FIND(swap_page_tree, into->flags & PHYS_PAGE_HUGE_PAGE ? &hdr->pages_huge : &hdr->pages, &what);
     if (!pg)
     {
         Core_SpinlockRelease(&hdr->lock, oldIrql);

@@ -105,6 +105,7 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     bool allocated_ent = false;
     if (!ent)
     {
+        for (volatile bool b = (rng->ctx != ctx); b; );
         ent = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
         ent->info.virt = curr->virt;
         ent->info.prot = curr->prot;
@@ -136,7 +137,7 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     return status;
 }
 
-static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info, irql *oldIrql)
+static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page** pg, page_info* info, irql *oldIrql)
 {
     OBOS_UNUSED(addr);
     info->prot.present = true;
@@ -146,12 +147,12 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     {
         if (rng->prot.ro)
             return false; // whoops
-        if (pg->refcount == 1 /* we're the only one left */)
+        if ((*pg)->refcount == 1 /* we're the only one left */)
         {
             // Steal the page.
             info->prot.rw = true;
             info->prot.ro = false;
-            pg->cow_type = COW_DISABLED;
+            (*pg)->cow_type = COW_DISABLED;
             goto done;
         }
         Core_SpinlockRelease(&ctx->lock, *oldIrql);
@@ -163,17 +164,15 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
             return false;
         }
         new->pagedCount++;
-        if (~ec & PF_EC_PRESENT)
-            MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
-        memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys((*pg)->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         info->prot.rw = true;
         info->prot.ro = false;
-        pg->pagedCount--;
-        MmH_DerefPage(pg);
-        pg = new;
+        (*pg)->pagedCount--;
+        MmH_DerefPage((*pg));
+        *pg = new;
     }
     done:
-    MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+    MmS_SetPageMapping(ctx->pt, info, (*pg)->phys, false);
     MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->range = rng;
     // if (ec & PF_EC_RW)
@@ -197,7 +196,10 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     fault_type type = INVALID_FAULT;
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
+    {
+        OBOS_Debug("Fatal Paqe Fault: No page range found for target at 0x%p\n", what.virt);
         goto done;
+    }
     page_info curr = {};
     MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
     page* pg = nullptr;
@@ -244,7 +246,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
                 handled = sym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
                 break;
             case COW_ASYMMETRIC:
-                handled = asym_cow_cpy(ctx, rng, addr, ec, pg, &curr, &oldIrql);
+                handled = asym_cow_cpy(ctx, rng, addr, ec, &pg, &curr, &oldIrql);
                 break;
             default:
                 handled = false;
@@ -256,10 +258,10 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         goto done;
     }
-    if (!handled)
+    if (!handled && curr.prot.is_swap_phys)
     {
         if (ctx != &Mm_KernelContext)
-            OBOS_Debug("Trying a swap in...\n", addr);
+            OBOS_Debug("Trying a swap in of 0x%p...\n", addr);
         // Try a swap in?
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         fault_type curr_type = SOFT_FAULT;
@@ -335,7 +337,7 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
     {
         if (!ent->free)
         {
-            if (obos_is_success(Mm_SwapOut(ent->info.virt, ent->info.range)))
+            if (obos_is_success(Mm_SwapOut(ent->info.virt, ctx)))
             {
                 ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
                 Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);

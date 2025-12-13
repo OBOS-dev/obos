@@ -238,6 +238,8 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 
 	MmS_FreePageTable(proc->ctx->pt);
 	Free(Mm_Allocator, proc->ctx, sizeof(context));
+	CoreS_GetCPULocalPtr()->currentThread->userStack = 0;
+	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 
 	thread* ready = nullptr;
 	thread* running = nullptr;
@@ -275,7 +277,6 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	if (!(--proc->refcount))
 		Free(OBOS_NonPagedPoolAllocator, proc, sizeof(*proc));
 
-	Core_GetCurrentThread()->userStack = nullptr;
 	Core_GetCurrentThread()->proc = nullptr;
 	Core_ExitCurrentThread();
 }

@@ -165,6 +165,8 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (obos_expect(has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
+	if (phys & ~0xffffffffff000)
+		return OBOS_STATUS_INVALID_ARGUMENT;
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
 	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
 	uintptr_t entry = phys | flags;
@@ -182,6 +184,8 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 	// flags |= 1;
 	uintptr_t at = (uintptr_t)at_;
 	if (phys & 0x1fffff || at & 0x1fffff)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (phys & ~0xffffffffff000)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (obos_expect(!has_xd(), true))
 		flags &= ~0x8000000000000000; // If XD is disabled in IA32_EFER (0xC0000080), disable the bit here.
@@ -538,7 +542,17 @@ obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t p
 		flags |= BIT_TYPE(4, UL);
 	if (page->prot.fb)
 	    flags |= BIT_TYPE(4, UL)|BIT_TYPE(7, UL) /* write-Combining */;
-	// printf("%s %p->%p (%s page)\n", __func__, page->virt, phys, page->prot.huge_page ? "huge" : "normal");
+	// if (page->prot.present && !page->prot.is_swap_phys)
+	// 	OBOS_ENSURE(!Mm_PhysicalPageFree(phys));
+	// if (page->prot.is_swap_phys)
+	// 	OBOS_ENSURE(!page->prot.present);
+	if (pt != Arch_KernelCR3)
+	{
+		// printf("map 0x%p 0x%p (present: %d, is_swap_phys: %d, rw: %d, exec: %d)\n", page->virt, phys,
+		// 	page->prot.present,page->prot.is_swap_phys,page->prot.rw,page->prot.executable);
+		// for (volatile bool b = (page->virt == 0x4100c000); b;)
+		// 	;
+	}
 	obos_status status = !page->prot.huge_page ? 
 		Arch_MapPage(pt, (void*)(page->virt & ~0xfff), phys, flags, free_pte) : 
 		Arch_MapHugePage(pt, (void*)(page->virt & ~0x1fffff), phys, flags, free_pte);

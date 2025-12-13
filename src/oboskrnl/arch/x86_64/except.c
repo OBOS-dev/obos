@@ -35,12 +35,12 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Arch_Pa
         goto down;
     if (!CoreS_GetCPULocalPtr()->currentContext)
         goto down;
-    if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
-        virt &= ~0x1fffff;
     if (Core_GetIrql() > IRQL_DISPATCH)
         OBOS_Error("Page fault at > IRQL_DISPATCH\n");
     if (Mm_IsInitialized() && Core_GetIrql() <= IRQL_DISPATCH)
     {
+        if (Arch_GetPML2Entry(CoreS_GetCPULocalPtr()->currentContext->pt, virt) & (1<<7))
+            virt &= ~0x1fffff;
         CoreS_GetCPULocalPtr()->arch_specific.pf_handler_running = true;
         uint32_t mm_ec = 0;
         if (frame->errorCode & BIT(0))

@@ -58,6 +58,8 @@ OBOS_EXPORT __attribute__((malloc, malloc(Mm_FreePhysicalPages_p, 1))) void* Mm_
 OBOS_EXPORT void* Mm_AllocatePhysicalPages32_p(size_t nPages, size_t alignmentPages, obos_status* status);
 #endif
 
+bool Mm_PhysicalPageFree(uintptr_t phys);
+
 // This returns a virtual address given a physical address.
 // For example, on x86-64, this can offset the physical address by the hhdm.
 OBOS_EXPORT void* MmS_MapVirtFromPhys(uintptr_t addr);

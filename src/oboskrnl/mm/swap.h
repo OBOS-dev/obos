@@ -31,7 +31,7 @@ typedef struct swap_device
 } swap_dev;
 extern swap_dev* Mm_SwapProvider;
 
-obos_status Mm_SwapOut(uintptr_t virt, page_range* rng);
+obos_status Mm_SwapOut(uintptr_t virt, context* ctx);
 obos_status Mm_SwapIn(page_info* page, fault_type* type);
 
 enum {

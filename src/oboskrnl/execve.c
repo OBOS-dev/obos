@@ -299,7 +299,6 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 
     Core_GetCurrentThread()->context.stackBase = Mm_VirtualMemoryAlloc(ctx, nullptr, 4*1024*1024, OBOS_PROTECTION_USER_PAGE, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
     Core_GetCurrentThread()->context.stackSize = 4*1024*1024;
-    Core_GetCurrentThread()->userStack = Mm_VirtualMemoryAlloc(Core_GetCurrentThread()->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
 
     aux.argc = argc;
     aux.argv = kargv;
