@@ -141,7 +141,7 @@ static obos_status swap_free(struct swap_device* dev, uintptr_t id, bool huge_pa
     {
         RB_REMOVE(swap_page_tree, huge_page ? &hdr->pages_huge : &hdr->pages, item);
         swap_free_impl(item);
-        hdr->bytesLeft += what.sz;
+        hdr->bytesLeft += (huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         swap_free_handle* hnd = swap_malloc(sizeof(swap_free_handle));
         memzero(hnd, sizeof(*hnd));
         hnd->hnd = id >> (huge_page ? PAGE_SHIFT_HUGE : PAGE_SHIFT);
