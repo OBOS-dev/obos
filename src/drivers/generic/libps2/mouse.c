@@ -67,6 +67,14 @@ static obos_status make_handle(struct ps2_port* port, void** handle)
     *handle = hnd;
     return OBOS_STATUS_SUCCESS;
 }
+static obos_status close_handle(struct ps2_port* port, void* handle)
+{
+    ps2m_data* data = port->pudata;
+    if (data->magic != PS2M_MAGIC_VALUE || ((ps2m_handle*)handle)->magic != PS2M_HND_MAGIC_VALUE)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    Free(OBOS_KernelAllocator, handle, sizeof(ps2m_handle));
+    return OBOS_STATUS_SUCCESS;
+}
 
 static void set_mouse_rate(ps2_port* port, uint8_t rate)
 {
@@ -171,10 +179,7 @@ void PS2_InitializeMouse(ps2_port* port)
     set_mouse_rate(port, 80);
     uint8_t id = get_id(port);
     if (id != 3)
-    {
-        printf("oh btw id=0x%02x\n", id);
         goto premature_finish;
-    }
     data->z_axis_extension_enabled = true;
     set_mouse_rate(port, 200);
     set_mouse_rate(port, 200);
@@ -196,6 +201,7 @@ void PS2_InitializeMouse(ps2_port* port)
     port->data_ready_event = &data->packets.e;
     port->read_mouse_packet = read_pckt;
     port->make_handle = make_handle;
+    port->close_handle = close_handle;
     port->get_readable_count = get_readable_count;
     port->type = PS2_DEV_TYPE_MOUSE;
     port->id[3] = port->type;
