@@ -113,9 +113,10 @@ void r8169_rx(r8169_device* dev)
         void* buff = map_registers(desc->buf, packet_len, false, true, false);
         r8169_frame_generate(dev, &frame, buff, packet_len, FRAME_PURPOSE_RX /* We're receiving a packet */);
         r8169_buffer_add_frame(&dev->rx_buffer, &frame);
-        if (memcmp(buff, "OBOS_Shutdown", 13))
-            OBOS_Shutdown();
+        // if (memcmp(buff, "OBOS_Shutdown", 13))
+        //     OBOS_Shutdown();
         Mm_VirtualMemoryFree(&Mm_KernelContext, buff, packet_len);
+        buff = nullptr;
 
         dev->rx_bytes += packet_len;
         Core_EventPulse(&dev->rx_buffer.envt, false);
