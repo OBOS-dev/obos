@@ -1633,8 +1633,11 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     nTotalEvents += (timeout != UINTPTR_MAX);
     struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nTotalEvents, sizeof(struct waitable_header*)*2, nullptr);
     size_t n_waitable_objects = 0;
+    irp** irp_list = nullptr;
+    size_t irp_count = 0;
 
     // FIXME: The IRPs are leaked
+    // FYM THE IRPS ARE LEAKED U DUMBASS
     
     up:
     for (size_t i = 0; i < nFds; i++)
@@ -1700,9 +1703,19 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         if (events_satisified)
             continue;
         if (read_irp)
+        {
             waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+            irp_count++;
+            irp_list = Reallocate(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
+            irp_list[irp_count-1] = read_irp;
+        }
         if (write_irp)
+        {
             waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+            irp_count++;
+            irp_list = Reallocate(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
+            irp_list[irp_count-1] = read_irp;
+        }
     }
 
     if (n_waitable_objects == nFds && obos_is_success(status))
@@ -1742,10 +1755,20 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         CoreH_FreeDPC(&tm.handler_dpc, false);
 
         n_waitable_objects = 0;
+        for (size_t i = 0; i < irp_count; i++)
+            VfsH_IRPUnref(irp_list[i]);
+        Free(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*));
         goto up;
     }
 
     out:
+
+    if (irp_list)
+    {
+        for (size_t i = 0; i < irp_count; i++)
+            VfsH_IRPUnref(irp_list[i]);
+        Free(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*));
+    }
 
     memcpy_k_to_usr(nEvents, &num_events, sizeof(int));
 
