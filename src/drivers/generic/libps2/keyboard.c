@@ -355,7 +355,7 @@ obos_status PS2_RingbufferFetchKeycode(const ps2_ringbuffer* buff, size_t* in_pt
     if (*in_ptr == buff->out_ptr)
         return OBOS_STATUS_EOF;
     *code = buff->keycodes[(*in_ptr)++ % buff->nElements];
-    *in_ptr = *in_ptr % buff->nElements; // sanitize it for the user
+    // *in_ptr = *in_ptr % buff->nElemen.ts; // sanitize it for the user
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -372,7 +372,7 @@ obos_status PS2_RingbufferFetchMousePacket(const ps2_ringbuffer* buff, size_t* i
     if (*in_ptr == buff->out_ptr)
         return OBOS_STATUS_EOF;
     *pckt = buff->mouse_packets[(*in_ptr)++ % buff->nElements];
-    *in_ptr = *in_ptr % buff->nElements; // sanitize it for the user
+    // *in_ptr = *in_ptr % buff->nElements; // sanitize it for the user
     return OBOS_STATUS_SUCCESS;
 }
 

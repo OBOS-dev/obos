@@ -52,6 +52,7 @@ static obos_status get_readable_count(void* handle, size_t* nReadable)
     ps2_port* port = hnd->port;
     ps2m_data* data = port->pudata;
     *nReadable = (data->packets.out_ptr - hnd->in_ptr);
+    OBOS_ENSURE(*nReadable <= data->packets.nElements);
     return OBOS_STATUS_SUCCESS;
 }
 
