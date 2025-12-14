@@ -346,7 +346,7 @@ static obos_status submit_irp(void* irp_)
         }
     }
 
-    req->evnt = req->op == IRP_READ ? &pipe->data_evnt : &pipe->empty_evnt;
+    req->evnt = req->op == IRP_READ ? &pipe->data_evnt : (pipe->in_ptr == pipe->ptr ? &pipe->empty_evnt : nullptr);
     req->on_event_set = nullptr;
     req->status = OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_SUCCESS;
