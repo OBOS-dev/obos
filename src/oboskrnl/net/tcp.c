@@ -1099,7 +1099,7 @@ void tcp_free(socket_desc* socket)
             Core_PushlockAcquire(&port->iface->tcp_ports_lock, false);
             RB_REMOVE(tcp_port_tree, &port->iface->tcp_ports, port);
             Core_PushlockRelease(&port->iface->tcp_ports_lock, false);
-            Vfs_Free(port);
+            Free(OBOS_KernelAllocator, port, sizeof(*port));    
         }
         Vfs_Free(s->serv.bound_ports);
     }
