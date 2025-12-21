@@ -204,3 +204,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
 #       define PCI_IRQ_UACPI_INIT_LEVEL UACPI_INIT_LEVEL_NAMESPACE_LOADED
 #   endif
 #endif
+
+#define ETHERNET_DEVICE_PREFIX "en"
+
+OBOS_EXPORT char* DrvH_MakePCIDeviceName(pci_device_location loc, const char* prefix);

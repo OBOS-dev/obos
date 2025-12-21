@@ -481,9 +481,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         search_bus(&Drv_PCIBuses[bus], false);
     for (size_t i = 0; i < nDevices; i++)
     {
-        size_t sz_name = snprintf(nullptr, 0, "e1000-eth%lu", i);
-        Devices[i].interface_name = Vfs_Malloc(sz_name+1);
-        snprintf(Devices[i].interface_name, sz_name+1, "e1000-eth%lu", i);
+        Devices[i].interface_name = DrvH_MakePCIDeviceName(Devices[i].osdep.pci->location, ETHERNET_DEVICE_PREFIX);
         Devices[i].vn = Drv_AllocateVNode(this, (dev_desc)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
         Devices[i].vn->flags |= VFLAGS_NIC_NO_FCS;
         Drv_RegisterVNode(Devices[i].vn, Devices[i].interface_name);

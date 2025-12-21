@@ -624,3 +624,15 @@ obos_status Drv_EarlyPCIInitialize()
 __attribute__((alias("Drv_EarlyPCIInitialize"))) obos_status Drv_PCIInitialize();
 #endif
 
+#include <int.h>
+#include <klog.h>
+
+char* DrvH_MakePCIDeviceName(pci_device_location loc, const char* prefix)
+{
+    const char* format = loc.function == 0 ? "%sp%ds%d" : "%sp%ds%df%d";
+    size_t len = snprintf(NULL, 0, format, prefix, loc.bus, loc.slot, loc.function);
+    char* str = Allocate(OBOS_KernelAllocator, len+1, nullptr);
+    snprintf(str, len+1, format, prefix, loc.bus, loc.slot, loc.function);
+    str[len] = 0; // is this redundant?
+    return str;
+}

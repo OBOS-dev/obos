@@ -309,10 +309,7 @@ void r8169_reset(r8169_device* dev)
 
         dev->magic = R8169_DEVICE_MAGIC;
 
-        size_t len = snprintf(nullptr, 0, "r8169-eth%d", dev->idx);
-        dev->interface_name = OBOS_KernelAllocator->Allocate(OBOS_KernelAllocator, len+1, nullptr);
-        snprintf(dev->interface_name, len+1, "r8169-eth%d", dev->idx);
-        dev->interface_name[len] = 0;
+        dev->interface_name = DrvH_MakePCIDeviceName(dev->dev->location, ETHERNET_DEVICE_PREFIX);
 
         dev->dev->resource_cmd_register->cmd_register |= 0x3; // io space + memspace
         Drv_PCISetResource(dev->dev->resource_cmd_register);
