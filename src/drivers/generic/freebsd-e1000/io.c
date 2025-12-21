@@ -80,8 +80,6 @@ void e1000_init_rx(e1000_device* dev)
     rctl &= ~E1000_RCTL_LPE;
     rctl &= ~E1000_RCTL_SECRC;
 
-    printf("0x%x\n", rctl);
-
     // taken from managarm
     if(dev->hw.mac.type >= e1000_82540) {
         E1000_WRITE_REG(&dev->hw, E1000_RADV, EM_RADV);

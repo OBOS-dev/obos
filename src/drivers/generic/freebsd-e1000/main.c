@@ -245,7 +245,7 @@ void e1000_sleep_us(uint64_t us)
 static driver_id* this_driver;
 
 e1000_device *Devices = nullptr;
-size_t nDevices = 0;
+size_t nDevices = 0, nInitializedDevices = 0;
 
 static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool ref_twice)
 {
@@ -284,7 +284,162 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool
     return virt+phys_page_offset;
 }
 
-static void search_bus(pci_bus* bus)
+static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
+{
+    pci_resource* bar0 = nullptr;
+    pci_resource* io_bar = nullptr;
+    pci_resource* irq_res = nullptr;
+    for (pci_resource* res = LIST_GET_HEAD(pci_resource_list, &dev->resources); res; )
+    {
+        if (res->type == PCI_RESOURCE_BAR && res->bar->idx == 0)
+            bar0 = res;
+        if (res->type == PCI_RESOURCE_BAR && res->bar->type == PCI_BARIO)
+            io_bar = res;
+        if (res->type == PCI_RESOURCE_IRQ)
+            irq_res = res;
+
+        if (bar0 && irq_res && io_bar)
+            break;
+
+        res = LIST_GET_NEXT(pci_resource_list, &dev->resources, res);
+    }
+
+    if (!bar0 || !irq_res)
+    {
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+    
+    // for (volatile bool b = true; b;)
+    //     OBOSS_SpinlockHint();
+
+    dev->resource_cmd_register->cmd_register |= 0x7;
+    Drv_PCISetResource(dev->resource_cmd_register);
+    
+    Devices[dev_index].hw.back = &Devices[dev_index].osdep;
+    Devices[dev_index].osdep.pci = dev;
+    Devices[dev_index].osdep.iobase = io_bar ? io_bar->bar->iospace : 0;
+    Devices[dev_index].osdep.membase = (uintptr_t)map_registers(bar0->bar->phys, bar0->bar->size, true, true, false);
+    Devices[dev_index].hw.io_base = Devices[dev_index].osdep.iobase;
+    Devices[dev_index].hw.hw_addr = (void*)Devices[dev_index].osdep.membase;
+    Devices[dev_index].hw.vendor_id = dev->hid.indiv.vendorId;
+    Devices[dev_index].hw.device_id = dev->hid.indiv.deviceId;
+    Devices[dev_index].hw.revision_id = 0;
+    e1000_read_pci_cfg(&Devices[dev_index].hw, 0x2c, &Devices[dev_index].hw.subsystem_vendor_id);
+    e1000_read_pci_cfg(&Devices[dev_index].hw, 0x2e, &Devices[dev_index].hw.subsystem_device_id);
+    if (e1000_set_mac_type(&Devices[dev_index].hw) != E1000_SUCCESS)
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+    if (!io_bar && (Devices[dev_index].hw.mac.type < e1000_82547 && Devices[dev_index].hw.mac.type > e1000_82543))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+
+    // Taken from managarm
+    if((Devices[dev_index].hw.mac.type == e1000_ich8lan) || (Devices[dev_index].hw.mac.type == e1000_ich9lan) ||
+        (Devices[dev_index].hw.mac.type == e1000_ich10lan) || (Devices[dev_index].hw.mac.type == e1000_pchlan) ||
+        (Devices[dev_index].hw.mac.type == e1000_pch2lan) || (Devices[dev_index].hw.mac.type == e1000_pch_lpt))
+    {
+        OBOS_Warning("%02x:%02x:%02x: e1000: Mapping of flash unimplemented\n", dev->location.bus, dev->location.slot, dev->location.function);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    } else if (Devices[dev_index].hw.mac.type >= e1000_pch_spt) {
+        /**
+        * In the new SPT device flash is not a separate BAR, rather it is also in BAR0,
+        * so use the same tag and an offset handle for the FLASH read/write macros in the shared code.
+        */
+
+        hw2flashbase(&Devices[dev_index].hw) = Devices[dev_index].osdep.membase + E1000_FLASH_BASE_ADDR;
+    }
+    Devices[dev_index].hw.flash_address = (void*)Devices[dev_index].osdep.flashbase;
+
+    if (e1000_setup_init_funcs(&Devices[dev_index].hw, true) != E1000_SUCCESS)
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+
+    e1000_get_bus_info(&Devices[dev_index].hw);
+
+    Devices[dev_index].hw.mac.autoneg = 1;
+    Devices[dev_index].hw.phy.autoneg_wait_to_complete = false;
+    Devices[dev_index].hw.phy.autoneg_advertised = (ADVERTISE_10_HALF | ADVERTISE_10_FULL | ADVERTISE_100_HALF | ADVERTISE_100_FULL | ADVERTISE_1000_FULL);
+
+    if (Devices[dev_index].hw.phy.media_type == e1000_media_type_copper) {
+        Devices[dev_index].hw.phy.mdix = 0;
+        Devices[dev_index].hw.phy.disable_polarity_correction = false;
+        Devices[dev_index].hw.phy.ms_type = e1000_ms_hw_default;
+    }
+
+    Devices[dev_index].hw.mac.report_tx_early = true;
+
+    if (e1000_reset_hw(&Devices[dev_index].hw) != E1000_SUCCESS)
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+    e1000_power_up_phy(&Devices[dev_index].hw);
+
+    if (e1000_validate_nvm_checksum(&Devices[dev_index].hw) != E1000_SUCCESS)
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+        nDevices--;
+        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+        return;
+    }
+
+    e1000_disable_ulp_lpt_lp(&Devices[dev_index].hw, true);
+
+    Devices[dev_index].rx_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    Devices[dev_index].tx_done_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    Devices[dev_index].irq_res = irq_res;
+
+    e1000_init_rx(&Devices[dev_index]);
+    e1000_init_tx(&Devices[dev_index]);
+
+    Core_IrqObjectInitializeIRQL(&Devices[dev_index].irq, IRQL_E1000, true, true);
+    Devices[dev_index].irq.handler = e1000_irq_handler;
+    Devices[dev_index].irq.irqChecker = e1000_check_irq_callback;
+    Devices[dev_index].irq.irqCheckerUserdata = Devices + dev_index;
+    Devices[dev_index].irq.handlerUserdata = Devices + dev_index;
+    Devices[dev_index].irq_res->irq->irq = &Devices[dev_index].irq;
+    Devices[dev_index].irq_res->irq->masked = false;
+    Drv_PCISetResource(Devices[dev_index].irq_res);
+    Devices[dev_index].irq.handler = e1000_irq_handler;
+    Devices[dev_index].irq.irqChecker = e1000_check_irq_callback;
+    Devices[dev_index].irq.irqCheckerUserdata = Devices + dev_index;
+    Devices[dev_index].irq.handlerUserdata = Devices + dev_index;
+
+    e1000_clear_hw_cntrs_base_generic(&Devices[dev_index].hw);
+    E1000_WRITE_REG(&Devices[dev_index].hw, E1000_IMS, IMS_ENABLE_MASK);
+}
+static void search_bus(pci_bus* bus, bool enumerate)
 {
     for (pci_device* dev = LIST_GET_HEAD(pci_device_list, &bus->devices); dev; )
     {
@@ -305,172 +460,10 @@ static void search_bus(pci_bus* bus)
                 dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
                 continue;
             }
-
-            pci_resource* bar0 = nullptr;
-            pci_resource* io_bar = nullptr;
-            pci_resource* irq_res = nullptr;
-            for (pci_resource* res = LIST_GET_HEAD(pci_resource_list, &dev->resources); res; )
-            {
-                if (res->type == PCI_RESOURCE_BAR && res->bar->idx == 0)
-                    bar0 = res;
-                if (res->type == PCI_RESOURCE_BAR && res->bar->type == PCI_BARIO)
-                    io_bar = res;
-                if (res->type == PCI_RESOURCE_IRQ)
-                    irq_res = res;
-
-                if (bar0 && irq_res && io_bar)
-                    break;
-
-                res = LIST_GET_NEXT(pci_resource_list, &dev->resources, res);
-            }
-
-            if (!bar0 || !irq_res)
-            {
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-
-            nDevices++;
-            Devices = OBOS_NonPagedPoolAllocator->Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices-1)*sizeof(e1000_device), nullptr);
-            memzero(&Devices[nDevices-1], sizeof(Devices[nDevices-1]));
-
-            // for (volatile bool b = true; b;)
-            //     OBOSS_SpinlockHint();
-
-            dev->resource_cmd_register->cmd_register |= 0x7;
-            Drv_PCISetResource(dev->resource_cmd_register);
-            
-            Devices[nDevices-1].hw.back = &Devices[nDevices-1].osdep;
-            Devices[nDevices-1].osdep.pci = dev;
-            Devices[nDevices-1].osdep.iobase = io_bar ? io_bar->bar->iospace : 0;
-            Devices[nDevices-1].osdep.membase = (uintptr_t)map_registers(bar0->bar->phys, bar0->bar->size, true, true, false);
-            Devices[nDevices-1].hw.io_base = Devices[nDevices-1].osdep.iobase;
-            Devices[nDevices-1].hw.hw_addr = (void*)Devices[nDevices-1].osdep.membase;
-            Devices[nDevices-1].hw.vendor_id = dev->hid.indiv.vendorId;
-            Devices[nDevices-1].hw.device_id = dev->hid.indiv.deviceId;
-            Devices[nDevices-1].hw.revision_id = 0;
-            e1000_read_pci_cfg(&Devices[nDevices-1].hw, 0x2c, &Devices[nDevices-1].hw.subsystem_vendor_id);
-            e1000_read_pci_cfg(&Devices[nDevices-1].hw, 0x2e, &Devices[nDevices-1].hw.subsystem_device_id);
-            if (e1000_set_mac_type(&Devices[nDevices-1].hw) != E1000_SUCCESS)
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-            if (!io_bar && (Devices[nDevices-1].hw.mac.type < e1000_82547 && Devices[nDevices-1].hw.mac.type > e1000_82543))
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-
-            // Taken from managarm
-            if((Devices[nDevices-1].hw.mac.type == e1000_ich8lan) || (Devices[nDevices-1].hw.mac.type == e1000_ich9lan) ||
-                (Devices[nDevices-1].hw.mac.type == e1000_ich10lan) || (Devices[nDevices-1].hw.mac.type == e1000_pchlan) ||
-                (Devices[nDevices-1].hw.mac.type == e1000_pch2lan) || (Devices[nDevices-1].hw.mac.type == e1000_pch_lpt))
-            {
-                OBOS_Warning("%02x:%02x:%02x: e1000: Mapping of flash unimplemented\n", dev->location.bus, dev->location.slot, dev->location.function);
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            } else if (Devices[nDevices-1].hw.mac.type >= e1000_pch_spt) {
-                /**
-                * In the new SPT device flash is not a separate BAR, rather it is also in BAR0,
-                * so use the same tag and an offset handle for the FLASH read/write macros in the shared code.
-                */
-
-                hw2flashbase(&Devices[nDevices-1].hw) = Devices[nDevices-1].osdep.membase + E1000_FLASH_BASE_ADDR;
-            }
-            Devices[nDevices-1].hw.flash_address = (void*)Devices[nDevices-1].osdep.flashbase;
-
-            if (e1000_setup_init_funcs(&Devices[nDevices-1].hw, true) != E1000_SUCCESS)
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-
-            e1000_get_bus_info(&Devices[nDevices-1].hw);
-
-            Devices[nDevices-1].hw.mac.autoneg = 1;
-            Devices[nDevices-1].hw.phy.autoneg_wait_to_complete = false;
-            Devices[nDevices-1].hw.phy.autoneg_advertised = (ADVERTISE_10_HALF | ADVERTISE_10_FULL | ADVERTISE_100_HALF | ADVERTISE_100_FULL | ADVERTISE_1000_FULL);
-
-            if (Devices[nDevices-1].hw.phy.media_type == e1000_media_type_copper) {
-                Devices[nDevices-1].hw.phy.mdix = 0;
-                Devices[nDevices-1].hw.phy.disable_polarity_correction = false;
-                Devices[nDevices-1].hw.phy.ms_type = e1000_ms_hw_default;
-            }
-
-            Devices[nDevices-1].hw.mac.report_tx_early = true;
-
-            if (e1000_reset_hw(&Devices[nDevices-1].hw) != E1000_SUCCESS)
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-            e1000_power_up_phy(&Devices[nDevices-1].hw);
-
-            if (e1000_validate_nvm_checksum(&Devices[nDevices-1].hw) != E1000_SUCCESS)
-            {
-                Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-                nDevices--;
-                Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-                OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-                dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-                continue;
-            }
-            
-            // if (e1000_init_hw(&Devices[nDevices-1].hw) != E1000_SUCCESS)
-            // {
-            //     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[nDevices-1].osdep.membase, bar0->bar->size);
-            //     nDevices--;
-            //     Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-            //     OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
-            //     dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-            //     continue;
-            // }
-
-            e1000_disable_ulp_lpt_lp(&Devices[nDevices-1].hw, true);
-
-            Devices[nDevices-1].rx_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-            Devices[nDevices-1].tx_done_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-            Devices[nDevices-1].irq_res = irq_res;
-            Core_IrqObjectInitializeIRQL(&Devices[nDevices-1].irq, IRQL_E1000, true, true);
-            Devices[nDevices-1].irq.handler = e1000_irq_handler;
-            Devices[nDevices-1].irq.irqChecker = e1000_check_irq_callback;
-            Devices[nDevices-1].irq.irqCheckerUserdata = Devices + nDevices - 1;
-            Devices[nDevices-1].irq.handlerUserdata = Devices + nDevices - 1;
-            Devices[nDevices-1].irq_res->irq->irq = &Devices[nDevices-1].irq;
-            Devices[nDevices-1].irq_res->irq->masked = false;
-            Drv_PCISetResource(Devices[nDevices-1].irq_res);
-            Devices[nDevices-1].irq.handler = e1000_irq_handler;
-            Devices[nDevices-1].irq.irqChecker = e1000_check_irq_callback;
-            Devices[nDevices-1].irq.irqCheckerUserdata = Devices + nDevices - 1;
-            Devices[nDevices-1].irq.handlerUserdata = Devices + nDevices - 1;
-
-            e1000_init_rx(&Devices[nDevices-1]);
-            e1000_init_tx(&Devices[nDevices-1]);
-
-            e1000_clear_hw_cntrs_base_generic(&Devices[nDevices-1].hw);
-            E1000_WRITE_REG(&Devices[nDevices-1].hw, E1000_IMS, IMS_ENABLE_MASK);
+            if (enumerate)
+                nDevices++;
+            else
+                init_e1000(bus, dev, nInitializedDevices++);
         }
 
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
@@ -481,7 +474,11 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
     for (uint16_t bus = 0; bus < Drv_PCIBusCount; bus++)
-        search_bus(&Drv_PCIBuses[bus]);
+        search_bus(&Drv_PCIBuses[bus], true);
+    Devices = ZeroAllocate(OBOS_KernelAllocator, nDevices, sizeof(*Devices), nullptr);
+    nInitializedDevices = 0;
+    for (uint16_t bus = 0; bus < Drv_PCIBusCount; bus++)
+        search_bus(&Drv_PCIBuses[bus], false);
     for (size_t i = 0; i < nDevices; i++)
     {
         size_t sz_name = snprintf(nullptr, 0, "e1000-eth%lu", i);
