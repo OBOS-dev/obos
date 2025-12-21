@@ -340,9 +340,9 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
             {
                 ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
                 Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-                REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
             }
         }
+        REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
         Free(Mm_Allocator, ent, sizeof(*ent));
     }
     Free(Mm_Allocator, node, sizeof(*node));

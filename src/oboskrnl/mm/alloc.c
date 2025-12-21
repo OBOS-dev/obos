@@ -481,8 +481,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_NOT_FOUND;
     }
-    if (rng->size > size)
-        size = rng->size; // TODO: Fix
+    if ((base + size) > size)
+        size = rng->size - (base - rng->virt); // TODO: Fix
 
     // printf("freeing %d at %p. called from %p\n", size, base, __builtin_return_address(0));
     bool sizeHasGuardPage = false;
@@ -533,8 +533,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 working_set_node* next = curr->next;
                 if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
                 {
+                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                     curr->data->free = true; // mark for deletion.
-                    Free(Mm_Allocator, curr, sizeof(*curr));
                     curr = next;
                     continue;
                 }
@@ -571,7 +571,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 {
                     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                     curr->data->free = true;
-                    Free(Mm_Allocator, curr, sizeof(*curr));
                 }
                 curr = next;
             }
@@ -639,14 +638,16 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 
     if (full)
     {
-        // for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-        // {
-        //     working_set_node* next = curr->next;
-        //     REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-        //     curr->data->free = true;
-        //     Free(Mm_Allocator, curr, sizeof(*curr));
-        //     curr = next;
-        // }
+        for (working_set_node* curr = rng->working_set_nodes.head; curr; )
+        {
+            working_set_node* next = curr->next;
+            if (curr->data)
+            {
+                REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                curr->data->free = true;
+            }
+            curr = next;
+        }
         RB_REMOVE(page_tree, &ctx->pages, rng);
         Free(Mm_Allocator, rng, sizeof(*rng));
     }
@@ -675,6 +676,11 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
     irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
     if (!rng)
+    {
+        Core_SpinlockRelease(&ctx->lock, oldIrql);
+        return OBOS_STATUS_NOT_FOUND;
+    }
+    if ((base + size) > (rng->virt+rng->size))
     {
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_NOT_FOUND;
@@ -734,12 +740,15 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             new->pageable = pageable;
             for (working_set_node* curr = rng->working_set_nodes.head; curr; )
             {
-                working_set_node* next = curr->next;
+                working_set_node* const next = curr->next;
                 if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
                 {
                     curr->data->info.range = new;
                     if (!pageable)
+                    {
+                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                         curr->data->free = true;
+                    }
                     curr = next;
                     continue;
                 }
@@ -823,7 +832,15 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
                     szUpdated += (curr->data->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
                     curr->data->info.range = new;
                     if (!pageable)
+                    {
+                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
                         curr->data->free = true;
+                    }
+                    else
+                    {
+                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
+                        APPEND_WORKINGSET_PAGE_NODE(new->working_set_nodes, &curr->data->pr_node);
+                    }
                 }
                 curr = next;
             }

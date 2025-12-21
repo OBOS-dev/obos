@@ -70,7 +70,6 @@ obos_status Mm_AgingPRA(context* ctx)
         if (ent->free)
         {
             MmH_RemovePageFromWorkingset(ctx, node_save);
-            Free(Mm_Allocator, ent, sizeof(*ent));
             continue;
         }
         page_info info = {};
@@ -94,6 +93,7 @@ obos_status Mm_AgingPRA(context* ctx)
         REMOVE_WORKINGSET_PAGE_NODE(ctx->referenced, node);
         if (ent->free)
         {
+            REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
             Free(Mm_Allocator, node, sizeof(*node));
             Free(Mm_Allocator, ent, sizeof(*ent));
             continue;
