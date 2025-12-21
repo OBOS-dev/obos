@@ -15,6 +15,7 @@
 typedef struct spinlock {
 	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) atomic_flag val;
 	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) bool locked;
+	OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) void* caller;
 } spinlock;
 
 #define Core_SpinlockCreate() (spinlock){}

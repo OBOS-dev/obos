@@ -194,19 +194,23 @@ void fd_close(handle_desc* hnd)
 {
     Vfs_FdClose(hnd->un.fd);
     Vfs_Free(hnd->un.fd);
+    hnd->un.as_int = 0;
 }
 void dirent_close(handle_desc* hnd)
 {
     Free(OBOS_KernelAllocator, hnd->un.dirent, sizeof(struct dirent_handle));
+    hnd->un.as_int = 0;
 }
 void drv_close(handle_desc* hnd)
 {
     Drv_UnrefDriver(hnd->un.driver_id);
+    hnd->un.as_int = 0;
 }
 void process_close(handle_desc* hnd)
 {
     if (!(--hnd->un.process->refcount))
         Free(OBOS_NonPagedPoolAllocator, hnd->un.process, sizeof(process));
+    hnd->un.as_int = 0;
 }
 void irp_close(handle_desc* hnd)
 {
@@ -217,6 +221,7 @@ void irp_close(handle_desc* hnd)
         Mm_VirtualMemoryFree(&Mm_KernelContext, req->obj->buff, req->buff_size);
     VfsH_IRPUnref(req->obj);
     Vfs_Free(req);
+    hnd->un.as_int = 0;
 }
 extern void OBOS_ThreadHandleFree(handle_desc* hnd);
 

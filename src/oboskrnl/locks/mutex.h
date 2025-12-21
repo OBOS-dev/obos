@@ -28,7 +28,7 @@ typedef struct mutex {
     uint64_t lastLockTimeNS;
 } mutex;
 
-#define MUTEX_INITIALIZE() (mutex){ .hdr=WAITABLE_HEADER_INITIALIZE(true, false), .locked=false, .who=nullptr }
+#define MUTEX_INITIALIZE() (mutex){ .hdr=WAITABLE_HEADER_INITIALIZE(true, true), .locked=false, .who=nullptr }
 
 OBOS_EXPORT obos_status Core_MutexAcquire(mutex* mut);
 OBOS_EXPORT obos_status Core_MutexTryAcquire(mutex* mut);

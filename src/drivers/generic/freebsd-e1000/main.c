@@ -114,6 +114,7 @@ static void irp_on_rx_event_set(irp* req)
             LIST_REMOVE(e1000_frame_list, &dev->rx_frames, hnd->rx_curr);
             Free(OBOS_NonPagedPoolAllocator, hnd->rx_curr->buff, hnd->rx_curr->size);
             Free(OBOS_NonPagedPoolAllocator, hnd->rx_curr, sizeof(*hnd->rx_curr));
+            // hnd->rx_curr = 0;
         }
         hnd->rx_curr = next;
         hnd->rx_off = 0;
@@ -264,7 +265,9 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool
         MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
         do {
             struct page what = {.phys=page.phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             struct page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             MmH_DerefPage(pg);
         } while(0);
         page.prot.uc = uc;

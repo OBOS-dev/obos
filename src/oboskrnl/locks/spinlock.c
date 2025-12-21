@@ -40,6 +40,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
     while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
         OBOSS_SpinlockHint();
     done_wait:
+    lock->caller = __builtin_return_address(0);
     lock->locked = true;
     return oldIrql;
 }
@@ -55,6 +56,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(
         OBOSS_SpinlockHint();
     locked:
     lock->locked = true;
+    lock->caller = __builtin_return_address(0);
 #if OBOS_ENABLE_LOCK_PROFILING
     lock->lastLockTimeNS = nanoseconds_since_boot();
 #endif
@@ -72,6 +74,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
 #endif
     atomic_flag_clear_explicit(&lock->val, memory_order_relaxed);
     lock->locked = false;
+    lock->caller = 0;
     Core_LowerIrqlNoThread(oldIrql);
 #if OBOS_ENABLE_LOCK_PROFILING
     lock->lastLockTimeNS = nanoseconds_since_boot() - lock->lastLockTimeNS;

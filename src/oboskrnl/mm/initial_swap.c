@@ -75,6 +75,8 @@ static void* swap_malloc(size_t sz)
 }
 static void swap_libc_free(void* buf)
 {
+    if (!buf)
+        return;
     swap_mem_tag* tag = (swap_mem_tag*)buf;
     tag--;
     tag->allocator->Free(tag->allocator, tag, tag->sz);

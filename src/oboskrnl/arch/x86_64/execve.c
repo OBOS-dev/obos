@@ -18,6 +18,8 @@
 #include <mm/context.h>
 #include <mm/alloc.h>
 
+#include <allocators/base.h>
+
 #include <arch/x86_64/sse.h>
 
 #include <irq/irql.h>
@@ -69,6 +71,7 @@ static OBOS_NO_KASAN void allocate_string_vector_on_stack(char** vec, size_t cnt
         if (!str)
             OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "obos shat itself: your stack is not big enough to hold all these arguments");
         memcpy_k_to_usr(str, vec[i], str_len+1);
+        Free(OBOS_KernelAllocator, vec[i], str_len+1);
         // stck_buf[i] = str;
         vec[i] = str;
     }
@@ -79,6 +82,7 @@ static OBOS_NO_KASAN void write_vector_to_stack(char** vec, char** stck_buf, siz
     for (size_t i = 0; i < cnt; i++)
         stck_buf[i] = vec[i];
     stck_buf[cnt] = 0;
+    Free(OBOS_KernelAllocator, vec, (cnt+1)*sizeof(char*));
 }
 
 OBOS_NORETURN void Arch_GotoUser(uintptr_t rip, uintptr_t cr3, uintptr_t rsp);
@@ -150,6 +154,8 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
 
     write_vector_to_stack(aux->argv, (char**)(init_vals+1), aux->argc);
     write_vector_to_stack(aux->envp, (char**)(init_vals+1+aux->argc+1), aux->envpc);
+    aux->argv = 0;
+    aux->envp = 0;
 
     // Core_GetCurrentThread()->context.frame.cr3 = ctx->pt;
     // Core_GetCurrentThread()->context.frame.cs = 0x20|3;
@@ -161,6 +167,7 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
     // Core_GetCurrentThread()->context.gs_base = 0;
 
     Mm_VirtualMemoryFree(&Mm_KernelContext, init_vals, szAllocation);
+    init_vals = 0;
 
     OBOS_Debug("Handing off control to user program.\n");
     OBOS_Debug("NOTE: RSP=0x%p.\n", Core_GetCurrentThread()->context.frame.rsp);

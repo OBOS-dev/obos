@@ -136,7 +136,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         path[index] = ch;
         if (!parent)
         {
-            Free(OBOS_KernelAllocator, path, sz_path);
+            Free(OBOS_KernelAllocator, path, sz_path+1);
             return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
         }
         file_perm real_mode = unix_to_obos_mode(mode, true);
@@ -154,7 +154,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
     //     printf("failed (status=%d) open of %s on fd 0x%x\n", status, path, desc);
     // else
     //     printf("open of %s on fd 0x%x\n", path, desc);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
     return status;
 }
 obos_status Sys_FdOpen(handle desc, const char* upath, uint32_t oflags)
@@ -486,7 +486,8 @@ obos_status Sys_FdEOF(const handle desc)
 
 obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_argp)
 {
-    obos_status status = OBOS_CapabilityCheck("fs/ioctl", true);
+    // obos_status status = OBOS_CapabilityCheck("fs/ioctl", true);
+    obos_status status = OBOS_STATUS_SUCCESS;
     if (obos_is_error(status))
         return status;
 
@@ -607,7 +608,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 handle_desc* ent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), desc, HANDLE_TYPE_DIRENT, false, &status);
                 if (!ent)
                 {
-                    Free(OBOS_KernelAllocator, path, sz_path);
+                    Free(OBOS_KernelAllocator, path, sz_path+1);
                     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                     return status;
                 }
@@ -615,7 +616,7 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
                 dent = VfsH_DirentLookupFrom(path, ent->un.dirent->parent);
             }
             // printf("trying stat of %s\n", path);
-            Free(OBOS_KernelAllocator, path, sz_path);
+            Free(OBOS_KernelAllocator, path, sz_path+1);
             if (dent && (~flags & AT_SYMLINK_NOFOLLOW && dent->vnode->vtype == VNODE_TYPE_LNK))
                 dent = VfsH_FollowLink(dent);
             if (dent)
@@ -728,7 +729,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
     if (parent == AT_FDCWD || path[0] == '/')
     {
         dirent* dent = VfsH_DirentLookup(path);
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         if (!dent)
             return OBOS_STATUS_NOT_FOUND;
 
@@ -747,7 +748,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());        
 
         dirent* dent = VfsH_DirentLookupFrom(path, parent_dirent->un.dirent->parent);
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         if (!dent)
             return OBOS_STATUS_NOT_FOUND;
 
@@ -774,7 +775,7 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
     if (parent == AT_FDCWD || path[0] == '/')
     {
         dirent* dent = VfsH_DirentLookup(path);
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         if (!dent)
             return OBOS_STATUS_NOT_FOUND;
 
@@ -782,7 +783,7 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
     }
     else if (!strlen(path))
     {
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         if (HANDLE_TYPE(parent) != HANDLE_TYPE_FD && HANDLE_TYPE(parent) != HANDLE_TYPE_DIRENT)
             return OBOS_STATUS_INVALID_ARGUMENT;
         
@@ -865,7 +866,7 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
     dirent* dent = VfsH_DirentLookup(path);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
     if (!dent)
     {
         status = OBOS_STATUS_NOT_FOUND;
@@ -984,7 +985,7 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
     status = Vfs_CreateNode(parent, dirname, VNODE_TYPE_DIR, unix_to_obos_mode(mode, true));
-    Free(OBOS_KernelAllocator, name, sz_path);
+    Free(OBOS_KernelAllocator, name, sz_path+1);
 
     return status;
 }
@@ -1309,7 +1310,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
     status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         return status;
     }
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -1326,7 +1327,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
         if (obos_is_error(status))
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            Free(OBOS_KernelAllocator, path, sz_path);
+            Free(OBOS_KernelAllocator, path, sz_path+1);
             return status;
         }
         parent = desc->un.dirent->parent;
@@ -1363,7 +1364,7 @@ obos_status Sys_CreateNamedPipe(handle dirfd, const char* upath, int mode, size_
     gid current_gid = Core_GetCurrentThread()->proc->egid;
     uid current_uid = Core_GetCurrentThread()->proc->euid;
     status = Vfs_CreateNamedPipe(perm, current_gid, current_uid, parent, fifo_name, pipesize);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
     
     return status;
 }
@@ -1404,7 +1405,13 @@ bool fd_avaliable_for(enum irp_op op, handle ufd, obos_status *status, irp** ore
     bool res = !req->evnt;
     if (req->evnt && req->evnt->hdr.signaled)
         res = true;
+    // if (!res)
     *oreq = req;
+    // else
+    // {
+    //     VfsH_IRPUnref(req);
+    //     *oreq = nullptr;
+    // }
     return res;
 }
 
@@ -1550,6 +1557,9 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         goto again;
     }
     timeout:
+    for (size_t i = 0; i < nPossibleEvents; i++)
+        if (unsignaledIRPs[i])
+            VfsH_IRPUnref(unsignaledIRPs[i]);
     Free(OBOS_NonPagedPoolAllocator, unsignaledIRPs, nPossibleEvents*sizeof(irp*));
     if (extra.sigmask)
         OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
@@ -1595,6 +1605,8 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     if (!fds)
         return status;
 
+    const event set_event = { .hdr=WAITABLE_HEADER_INITIALIZE(true, true), .type=(EVENT_NOTIFICATION) };
+
     sigset_t sigmask = 0, oldmask = 0;
     if (usigmask)
     {
@@ -1631,7 +1643,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         nTotalEvents += (curr->events & POLLOUT);
     }
     nTotalEvents += (timeout != UINTPTR_MAX);
-    struct waitable_header** waitable_list = ZeroAllocate(OBOS_KernelAllocator, nTotalEvents, sizeof(struct waitable_header*)*2, nullptr);
+    struct waitable_header** waitable_list = ZeroAllocate(OBOS_NonPagedPoolAllocator, nTotalEvents, sizeof(struct waitable_header*), nullptr);
     size_t n_waitable_objects = 0;
     irp** irp_list = nullptr;
     size_t irp_count = 0;
@@ -1700,21 +1712,31 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 curr->revents |= POLLOUT;
             }
         }
-        if (events_satisified)
-            continue;
+        // if (events_satisified)
+        // {
+        //     OBOS_ASSERT(!read_irp);
+        //     OBOS_ASSERT(!write_irp);
+        //     continue;
+        // }
         if (read_irp)
         {
-            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+            if (read_irp->evnt)
+                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+            else
+                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
             irp_count++;
-            irp_list = Reallocate(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
+            irp_list = Reallocate(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
             irp_list[irp_count-1] = read_irp;
         }
         if (write_irp)
         {
-            waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+            if (write_irp->evnt)
+                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+            else
+                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
             irp_count++;
-            irp_list = Reallocate(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
-            irp_list[irp_count-1] = read_irp;
+            irp_list = Reallocate(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
+            irp_list[irp_count-1] = write_irp;
         }
     }
 
@@ -1757,7 +1779,9 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         n_waitable_objects = 0;
         for (size_t i = 0; i < irp_count; i++)
             VfsH_IRPUnref(irp_list[i]);
-        Free(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*));
+        Free(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*));
+        irp_list = nullptr;
+        irp_count = 0;
         goto up;
     }
 
@@ -1767,13 +1791,13 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     {
         for (size_t i = 0; i < irp_count; i++)
             VfsH_IRPUnref(irp_list[i]);
-        Free(OBOS_KernelAllocator, irp_list, irp_count*sizeof(irp*));
+        Free(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*));
     }
 
     memcpy_k_to_usr(nEvents, &num_events, sizeof(int));
 
     if (waitable_list)
-        Free(OBOS_KernelAllocator, waitable_list, nTotalEvents);
+        Free(OBOS_NonPagedPoolAllocator, waitable_list, nTotalEvents*sizeof(struct waitable_header*));
     OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
     Mm_VirtualMemoryFree(&Mm_KernelContext, fds, nFds*sizeof(struct pollfd));
 
@@ -1805,7 +1829,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     status = OBOSH_ReadUserString(ulink, nullptr, &sz_path2);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return status;
     }
     link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
@@ -1874,9 +1898,9 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     node->vnode->un.linked = target;
 
     fail:
-    Free(OBOS_KernelAllocator, link, sz_path2);
+    Free(OBOS_KernelAllocator, link, sz_path+1);
     if (obos_is_error(status))
-        Free(OBOS_KernelAllocator, target, sz_path);
+        Free(OBOS_KernelAllocator, target, sz_path+1);
     return status;
 }
 
@@ -1917,8 +1941,8 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         {
             if (HANDLE_TYPE(olddirfd) != HANDLE_TYPE_DIRENT && HANDLE_TYPE(olddirfd) != HANDLE_TYPE_FD)
             {
-                Free(OBOS_KernelAllocator, target, sz_path);
-                Free(OBOS_KernelAllocator, link, sz_path2);
+                Free(OBOS_KernelAllocator, target, sz_path+1);
+                Free(OBOS_KernelAllocator, link, sz_path+1);
                 return OBOS_STATUS_INVALID_ARGUMENT;
             }
             OBOS_LockHandleTable(OBOS_CurrentHandleTable());
@@ -1926,8 +1950,8 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
             handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, 0, true, &status);
             if (!hnd)
             {
-                Free(OBOS_KernelAllocator, target, sz_path2);
-                Free(OBOS_KernelAllocator, link, sz_path2);
+                Free(OBOS_KernelAllocator, target, sz_path+1);
+                Free(OBOS_KernelAllocator, link, sz_path2+1);
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 return status;
             }
@@ -1936,8 +1960,8 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
                 case HANDLE_TYPE_FD: 
                     if (~hnd->un.fd->flags & FD_FLAGS_OPEN)
                     {
-                        Free(OBOS_KernelAllocator, target, sz_path);
-                        Free(OBOS_KernelAllocator, link, sz_path2);
+                        Free(OBOS_KernelAllocator, target, sz_path+1);
+                        Free(OBOS_KernelAllocator, link, sz_path+1);
                         return OBOS_STATUS_UNINITIALIZED;
                     }
                     vtarget = hnd->un.fd->vn;
@@ -1945,8 +1969,8 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
                 case HANDLE_TYPE_DIRENT: 
                     if (!hnd->un.dirent || !hnd->un.dirent->parent)
                     {
-                        Free(OBOS_KernelAllocator, target, sz_path);
-                        Free(OBOS_KernelAllocator, link, sz_path2);
+                        Free(OBOS_KernelAllocator, target, sz_path+1);
+                        Free(OBOS_KernelAllocator, link, sz_path+1);
                         return OBOS_STATUS_UNINITIALIZED;
                     }
                     vtarget = hnd->un.dirent->parent->vnode;
@@ -1960,8 +1984,8 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!dent)
         {
-            Free(OBOS_KernelAllocator, target, sz_path);
-            Free(OBOS_KernelAllocator, link, sz_path2);
+            Free(OBOS_KernelAllocator, target, sz_path+1);
+            Free(OBOS_KernelAllocator, link, sz_path+1);
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
@@ -1981,11 +2005,11 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
 
     skip_target_lookup:
 
-    Free(OBOS_KernelAllocator, target, sz_path);
+    Free(OBOS_KernelAllocator, target, sz_path+1);
 
     if (!vtarget)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_INVALID_ARGUMENT;
     }
 
@@ -1998,7 +2022,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), newdirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!hnd)
         {
-            Free(OBOS_KernelAllocator, link, sz_path2);
+            Free(OBOS_KernelAllocator, link, sz_path+1);
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
@@ -2023,7 +2047,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
 
     if (!plink)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_NOT_FOUND;
     }
 
@@ -2033,17 +2057,17 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     mount* link_mount = Vfs_GetVnodeMount(plink->vnode);
     if (!link_mount || !target_mount || !target_header)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_INVALID_ARGUMENT;
     }
     if (target_mount != link_mount)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_ACCESS_DENIED; // well we should return EXDEV but that doesn't exist here does it :)
     }
     if (VfsH_DirentLookupFrom(linkname, plink))
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
     
@@ -2061,7 +2085,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         VfsH_DirentAppendChild(plink, ent);
     }
 
-    Free(OBOS_KernelAllocator, link, sz_path2);
+    Free(OBOS_KernelAllocator, link, sz_path+1);
 
     // NOTE: DO NOT COMMIT!!!!
     return OBOS_STATUS_SUCCESS;
@@ -2106,7 +2130,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
             if (!hnd)
             {
                 Free(OBOS_KernelAllocator, target, sz_path2);
-                Free(OBOS_KernelAllocator, link, sz_path2);
+                Free(OBOS_KernelAllocator, link, sz_path+1);
                 OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
                 return status;
             }
@@ -2119,8 +2143,8 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         handle_desc* dent = OBOS_HandleLookup(OBOS_CurrentHandleTable(), olddirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!dent)
         {
-            Free(OBOS_KernelAllocator, target, sz_path);
-            Free(OBOS_KernelAllocator, link, sz_path2);
+            Free(OBOS_KernelAllocator, target, sz_path+1);
+            Free(OBOS_KernelAllocator, link, sz_path+1);
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
@@ -2134,18 +2158,18 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
     dtarget = VfsH_DirentLookupFrom(target, ptarget);
     if (!dtarget)
     {
-        Free(OBOS_KernelAllocator, target, sz_path);
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, target, sz_path+1);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_NOT_FOUND;
     }
     
     skip_target_lookup:
 
-    Free(OBOS_KernelAllocator, target, sz_path);
+    Free(OBOS_KernelAllocator, target, sz_path+1);
 
     if (!dtarget)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_INVALID_ARGUMENT;
     }
 
@@ -2158,7 +2182,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         handle_desc* hnd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), newdirfd, HANDLE_TYPE_DIRENT, false, &status);
         if (!hnd)
         {
-            Free(OBOS_KernelAllocator, link, sz_path2);
+            Free(OBOS_KernelAllocator, link, sz_path+1);
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
             return status;
         }
@@ -2186,20 +2210,20 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
 
     if (!pnewname)
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_NOT_FOUND;
     }
 
     // Now we have pnewname, newfilename, target, and vtarget
     if (VfsH_DirentLookupFrom(newfilename, pnewname))
     {
-        Free(OBOS_KernelAllocator, link, sz_path2);
+        Free(OBOS_KernelAllocator, link, sz_path+1);
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
     
     status = Vfs_RenameNode(dtarget, pnewname, newfilename);
 
-    Free(OBOS_KernelAllocator, link, sz_path2);
+    Free(OBOS_KernelAllocator, link, sz_path+1);
 
     return status;
 }
@@ -2473,7 +2497,7 @@ obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct time
     status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, target, sz_path);
+        Free(OBOS_KernelAllocator, target, sz_path+1);
         return status;
     }
     pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -2481,7 +2505,7 @@ obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct time
 
     dirent* ent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
     
-    Free(OBOS_KernelAllocator, pathname, sz_path);
+    Free(OBOS_KernelAllocator, pathname, sz_path+1);
 
     if (~flags & AT_SYMLINK_NOFOLLOW)
         ent = VfsH_FollowLink(ent);
@@ -2661,6 +2685,7 @@ obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t
     status = memcpy_usr_to_k(&addr_length, uaddr_length, sizeof(size_t));
     if (obos_is_error(status))
         return status;
+    size_t initial_addr_length = addr_length;
 
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
@@ -2673,7 +2698,7 @@ obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t
     memcpy_k_to_usr(uaddr_length, &addr_length, sizeof(addr_length));
 
     OBOS_MAYBE_UNUSED fail1:
-    Free(OBOS_KernelAllocator, buf, addr_length);
+    Free(OBOS_KernelAllocator, buf, initial_addr_length);
 
     if (CoreS_ForceYieldOnSyscallReturn)
         CoreS_ForceYieldOnSyscallReturn();
@@ -2748,6 +2773,7 @@ obos_status Sys_SockName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    size_t const addr_length_user = addr_length;
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
     status = memcpy_usr_to_k(addr, uaddr, addr_length);
@@ -2763,7 +2789,7 @@ obos_status Sys_SockName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     }
 
     OBOS_MAYBE_UNUSED fail1:
-    Free(OBOS_KernelAllocator, buf, addr_length);
+    Free(OBOS_KernelAllocator, buf, addr_length_user);
 
     return status;
 }
@@ -2780,6 +2806,7 @@ obos_status Sys_PeerName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
+    size_t const addr_length_user = addr_length;
     void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
     sockaddr *addr = buf;
     status = memcpy_usr_to_k(addr, uaddr, addr_length);
@@ -2795,7 +2822,7 @@ obos_status Sys_PeerName(handle desc, sockaddr* uaddr, size_t addr_length, size_
     }
 
     OBOS_MAYBE_UNUSED fail1:
-    Free(OBOS_KernelAllocator, buf, addr_length);
+    Free(OBOS_KernelAllocator, buf, addr_length_user);
 
     return status;
 }
@@ -2886,7 +2913,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
     status = OBOSH_ReadUserString(upathname, nullptr, &sz_path);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, pathname, sz_path);
+        Free(OBOS_KernelAllocator, pathname, sz_path+1);
         return status;
     }
     pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
@@ -2995,7 +3022,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
     target->perm = real_mode;
 
     fail:
-    Free(OBOS_KernelAllocator, pathname, sz_path);
+    Free(OBOS_KernelAllocator, pathname, sz_path+1);
 
     return status;
 }
@@ -3112,7 +3139,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
         target->gid = group;
 
     fail:
-    Free(OBOS_KernelAllocator, pathname, sz_path);
+    Free(OBOS_KernelAllocator, pathname, sz_path+1);
 
     return status;
 }

@@ -381,7 +381,9 @@ obos_status PS2_RingbufferFree(ps2_ringbuffer* buff)
     memset(buff->buff, 0xcc, buff->size);
     uintptr_t phys = MmS_UnmapVirtFromPhys(buff->buff);
     page what = {.phys=phys};
+    Core_MutexAcquire(&Mm_PhysicalPagesLock);
     page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    Core_MutexRelease(&Mm_PhysicalPagesLock);
     MmH_DerefPage(pg);
     memset(buff, 0xcc, sizeof(*buff));
     return OBOS_STATUS_SUCCESS;

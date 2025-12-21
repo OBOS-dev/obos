@@ -92,7 +92,9 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
 
         page key = {.phys=info.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
         page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
         OBOS_ENSURE(pg != Mm_AnonPage);
         OBOS_ENSURE(pg != Mm_UserAnonPage);
         
@@ -151,11 +153,14 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
         page_info info = {};
         MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
         page key = {.phys=info.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
         page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
         MmH_DerefPage(pg);
         pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
     Free(Mm_Allocator, data->phys_regions, data->physRegionCount*sizeof(struct ahci_phys_region));
+    data->phys_regions = nullptr;
     return OBOS_STATUS_SUCCESS;
 }
 // #pragma GCC pop_options
@@ -394,6 +399,7 @@ obos_status submit_irp(void* request_)
     if (obos_is_error(status))
     {
         Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
+        request->drvData = nullptr;
         return status;
     }
     SendCommand(port, data, request->blkOffset, 0x40, request->blkCount == 0x10000 ? 0 : request->blkCount);
@@ -412,5 +418,6 @@ obos_status finalize_irp(void* request_)
         request->nBlkRead = 0;
     unpopulate_physical_regions((uintptr_t)request->buff, request->blkCount, data);
     Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
+    request->drvData = nullptr;
     return OBOS_STATUS_SUCCESS;
 }

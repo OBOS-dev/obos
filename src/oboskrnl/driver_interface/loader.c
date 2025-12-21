@@ -395,6 +395,7 @@ obos_status Drv_UnrefDriver(driver_id* driver)
             Core_Yield();
         if (!(--driver->main_thread->references) && driver->main_thread->free)
             driver->main_thread->free(driver->main_thread);
+        driver->main_thread = 0;
     }
     driver->header.ftable.driver_cleanup_callback();
     for (driver_node* node = driver->dependencies.head; node; )

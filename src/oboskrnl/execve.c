@@ -47,7 +47,7 @@ static bool OBOS_CROSSES_PAGE_BOUNDARY(void* ptr_, size_t sz)
 }
 
 // vec is terminated with a nullptr entry.
-static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
+static char** map_user_vector(context* ctx, char* const* vec, size_t* const szvec, obos_status* status)
 {
     char** kstr = Mm_MapViewOfUserMemory(ctx, (void*)((uintptr_t)vec - ((uintptr_t)vec % OBOS_PAGE_SIZE)), nullptr, OBOS_PAGE_SIZE, OBOS_PROTECTION_READ_ONLY, true, status);
     if (!kstr)
@@ -79,7 +79,7 @@ static char** allocate_user_vector_as_kernel(context* ctx, char* const* vec, siz
     return kstr;
 }
 
-static char** reallocate_user_vector_as_kernel(context* ctx, char* const* vec, size_t count, obos_status* statusp)
+static char** get_user_string_vector(context* ctx, char* const* vec, size_t count, obos_status* statusp)
 {
     OBOS_UNUSED(ctx);
 
@@ -135,15 +135,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     OBOSH_ReadUserString(upath, path, nullptr);
     fd file = {};
     status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
-    if (Core_GetCurrentThread()->proc->exec_file)
-        Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->exec_file, strlen(Core_GetCurrentThread()->proc->exec_file)+1);
     if (obos_is_error(status))
     {
-        printf("%d after open of %s in execve\n", status, path);
         Free(OBOS_KernelAllocator, path, sz_path);
         return status;
     }
-    Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPath(VfsH_DirentLookup(path), nullptr);
     size_t szBuf = file.vn->filesize;
     void* kbuf = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szBuf, OBOS_PROTECTION_READ_ONLY, 0, &file, nullptr);
     bool set_uid = file.vn->perm.set_uid;
@@ -152,14 +148,14 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     gid target_egid = set_gid ? file.vn->gid : Core_GetCurrentThread()->proc->egid;
     Vfs_FdClose(&file);
 
-    char** kargv = allocate_user_vector_as_kernel(ctx, argv, &argc, &status);
+    char** kargv = map_user_vector(ctx, argv, &argc, &status);
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
     }
 
-    char** knvp = allocate_user_vector_as_kernel(ctx, envp, &envpc, &status);
+    char** knvp = map_user_vector(ctx, envp, &envpc, &status);
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
@@ -167,11 +163,18 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     }
 
     // Reallocate kargv+knvp to only use kernel pointers
-    kargv = reallocate_user_vector_as_kernel(ctx, kargv, argc, &status);
+    kargv = get_user_string_vector(ctx, kargv, argc, &status);
     if (obos_is_error(status))
         return status;
 
-    knvp = reallocate_user_vector_as_kernel(ctx, knvp, envpc, &status);
+    knvp = get_user_string_vector(ctx, knvp, envpc, &status);
+    if (obos_is_error(status))
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        return status;
+    }
+
+    status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
@@ -179,8 +182,12 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     }
 
     do {
+        if (Core_GetCurrentThread()->proc->exec_file)
+            Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->exec_file, strlen(Core_GetCurrentThread()->proc->exec_file)+1);
+        Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPathKAlloc(VfsH_DirentLookup(path), nullptr);
         if (Core_GetCurrentThread()->proc->cmdline)
             Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->cmdline, strlen(Core_GetCurrentThread()->proc->cmdline)+1);
+        Core_GetCurrentThread()->proc->cmdline = nullptr;
         string cmd_line = {};
         process* proc = Core_GetCurrentThread()->proc;
         OBOS_InitString(&cmd_line, proc->exec_file);
@@ -205,14 +212,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         OBOS_FreeString(&cmd_line);
     } while(0);
 
-    Free(OBOS_KernelAllocator, path, sz_path);
-
-    status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
-    if (obos_is_error(status))
-    {
-        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
-        return status;
-    }
+    Free(OBOS_KernelAllocator, path, sz_path+1);
+    path = nullptr;
 
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     // For each thread in the current process, send SIGKILL, and wait for it to die.

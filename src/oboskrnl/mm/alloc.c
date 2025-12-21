@@ -270,7 +270,9 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         {
             MmS_QueryPageInfo(ctx->pt, addr, &temp, nullptr);
             page what = {.phys=temp.phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             if (pg)
             {
                 set_statusp(ustatus, OBOS_STATUS_IN_USE);
@@ -358,7 +360,9 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
                         page_info info = {};
                         MmS_QueryPageInfo(ctx->pt, jaddr, &info, nullptr);
                         page key = {.phys=info.phys};
+                        Core_MutexAcquire(&Mm_PhysicalPagesLock);
                         page* curr_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+                        Core_MutexRelease(&Mm_PhysicalPagesLock);
                         curr_pg->pagedCount--;
                         MmH_DerefPage(curr_pg);
                         info.prot.present = false;
@@ -590,7 +594,9 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         if (!info.prot.is_swap_phys && info.phys)
         {
             page what = {.phys=info.phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             if (pg)
             {
                 pg->pagedCount--;
@@ -926,10 +932,16 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         MmS_QueryPageInfo(user_context->pt, uaddr, &info, nullptr);
 
         page what = {.phys=info.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
         if (user_rng->un.mapped_vn && !phys)
         {
+            Core_SpinlockRelease(&user_context->lock, oldIrql2);
+            Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
             VfsH_PageCacheGetEntry(user_rng->un.mapped_vn, uaddr-(user_rng->virt), &phys);
+            oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
+            oldIrql2 = Core_SpinlockAcquire(&user_context->lock);
             what.phys = phys->phys;
             info.phys = phys->phys;
             if (~prot & OBOS_PROTECTION_READ_ONLY)
@@ -943,11 +955,15 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             uintptr_t fault_addr = uaddr;
             fault_addr -= (fault_addr % (user_rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE));
             Core_SpinlockRelease(&user_context->lock, oldIrql2);
+            Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
             Mm_HandlePageFault(user_context, fault_addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
+            oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
             oldIrql2 = Core_SpinlockAcquire(&user_context->lock);
             MmS_QueryPageInfo(user_context->pt, uaddr, nullptr, &info.phys);
             what.phys = info.phys;
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             OBOS_ENSURE(phys != Mm_AnonPage);
         }
 
@@ -1059,7 +1075,9 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
                     page_info info = {};
                     MmS_QueryPageInfo(ctx->pt, jaddr, &info, nullptr);
                     page key = {.phys=info.phys};
+                    Core_MutexAcquire(&Mm_PhysicalPagesLock);
                     page* curr_pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+                    Core_MutexRelease(&Mm_PhysicalPagesLock);
                     curr_pg->pagedCount--;
                     MmH_DerefPage(curr_pg);
                     info.prot.present = false;

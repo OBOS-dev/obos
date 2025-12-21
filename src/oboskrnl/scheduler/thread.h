@@ -94,6 +94,7 @@ typedef struct thread
 	thread_status status;
 	thread_priority priority;
 	uint64_t quantum;
+	bool force_yield;
 	thread_affinity affinity;
 	uint64_t lastRunTick;
 

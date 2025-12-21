@@ -79,9 +79,9 @@ static void get_initrd_module()
     else
         OBOS_Warning("Could not find either 'initrd-module' or 'initrd-driver-module'. Kernel will run without an initrd.\n");
     if (initrd_module_name)
-        Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name));
+        Free(OBOS_KernelAllocator, initrd_module_name, strlen(initrd_module_name)+1);
     if (initrd_driver_module_name)
-        Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name));
+        Free(OBOS_KernelAllocator, initrd_driver_module_name, strlen(initrd_driver_module_name)+1);
 }
 
 static void foreach_string_in_list(const char* list, void(*cb)(const char* name, size_t name_len, void* userdata), void* userdata)

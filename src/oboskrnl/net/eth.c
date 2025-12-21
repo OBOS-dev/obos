@@ -60,6 +60,14 @@ PacketProcessSignature(Ethernet, void*)
     OBOS_UNUSED(depth);
     if (!size || !ptr)
         ExitPacketHandler();
+    if (size <= sizeof(ethernet2_header)+(nic->flags & VFLAGS_NIC_NO_FCS ? 0 : 4))
+    {
+        NetError("%s: Short packet received on " MAC_ADDRESS_FORMAT ".\n",
+            __func__,
+            MAC_ADDRESS_ARGS(nic->net_tables->mac)
+        );
+        ExitPacketHandler();
+    }
     ethernet2_header* hdr = ptr;
     if (~nic->flags & VFLAGS_NIC_NO_FCS)
     {

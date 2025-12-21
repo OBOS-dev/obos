@@ -121,6 +121,8 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
             if (signaled)
                 *signaled = obj;
             Core_SpinlockRelease(&obj->lock, spinlockIrql);
+            Core_LowerIrql(oldIrql);
+            Free(OBOS_NonPagedPoolAllocator, nodes, nObjects * sizeof(*nodes));
             return OBOS_STATUS_SUCCESS;
         }
         nodes[i].obj = obj;

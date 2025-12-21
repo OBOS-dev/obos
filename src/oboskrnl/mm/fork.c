@@ -61,7 +61,9 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                 page_info info = {};
                 MmS_QueryPageInfo(toFork->pt, addr, &info, nullptr);
                 page what = {.phys=info.phys};
+                Core_MutexAcquire(&Mm_PhysicalPagesLock);
                 page* phys = (info.prot.is_swap_phys) ? nullptr : RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+                Core_MutexRelease(&Mm_PhysicalPagesLock);
                 if (phys)
                 {
                     if (phys->cow_type == COW_SYMMETRIC)
@@ -72,7 +74,9 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                         oldIrql = Core_SpinlockAcquire(&toFork->lock);
                         MmS_QueryPageInfo(toFork->pt, fault_addr, nullptr, &info.phys);
                         what.phys = info.phys;
+                        Core_MutexAcquire(&Mm_PhysicalPagesLock);
                         phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+                        Core_MutexRelease(&Mm_PhysicalPagesLock);
                         if (obos_expect(!phys, false))
                             goto down;
                     }

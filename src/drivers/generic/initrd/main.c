@@ -180,7 +180,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
 
     bool path_needs_slash = hdr->filename[0] != '/' && (*hdr->prefix && hdr->prefix[strnlen(hdr->prefix, 155)-1] != '/');
     ino->path_len = strnlen(hdr->filename, 100) + strnlen(hdr->prefix, 155) + path_needs_slash;
-    ino->path_size = ino->path_len;
+    ino->path_size = ino->path_len + 1;
     ino->path = Allocate(OBOS_KernelAllocator, ino->path_len+1, nullptr);
 
     memcpy(ino->path, hdr->prefix, strnlen(hdr->prefix, 155));
@@ -196,7 +196,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
         ino->path[--ino->path_len] = 0;
     int64_t index = strrfind(ino->path, '/')+1;
     ino->name_len = ino->path_len - index+1;
-    ino->name_size = ino->name_len;
+    ino->name_size = ino->name_len + 1;
     ino->name = Allocate(OBOS_KernelAllocator, ino->name_len+1, nullptr);
     memcpy(ino->name, ino->path+index, ino->name_len);
     ino->name[ino->name_len] = 0;
@@ -440,12 +440,12 @@ obos_status move_desc_to(dev_desc desc, dev_desc dnew_parent, const char* name)
     {
         ino->name_len = 0;
         Free(OBOS_KernelAllocator, ino->name, ino->name_size);
-        ino->name_size = ino->name_len = strlen(name);
+        ino->name_size = ino->name_len = strlen(name) + 1;
         ino->name_size++;
         ino->name = memcpy(Allocate(OBOS_KernelAllocator, ino->name_size, nullptr), name, ino->name_len);
         
         ino->path_len = 0;
-        Free(OBOS_KernelAllocator, ino->name, ino->path_size);
+        Free(OBOS_KernelAllocator, ino->path, ino->path_size);
         ino->path_len = snprintf(nullptr, 0, "%.*s%c%s", 
             ino->parent->path_len, ino->parent->path,
             (ino->parent->path[ino->parent->path_len-1] == '/' ? '\0' : '/'),
@@ -581,7 +581,7 @@ OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, co
     }
     char* path = fullpath(parent, what);
     ino = create_inode_with_parents(path, nullptr);
-    Free(OBOS_KernelAllocator, path, strlen(path));
+    Free(OBOS_KernelAllocator, path, strlen(path)+1);
 
     *found = (dev_desc)ino;
     return ino ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
@@ -649,11 +649,13 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
                     if (cb((dev_desc)ino, 1, ino->filesize, userdata, ino->name) == ITERATE_DECISION_STOP)
                     {
                         Free(OBOS_KernelAllocator, hdr_path, hdr_path_len+1);
+                        hdr_path = nullptr;
                         break;
                     }
                 }
             }
             Free(OBOS_KernelAllocator, hdr_path, hdr_path_len+1);
+            hdr_path = nullptr;
 
             down:
             (void)0;
@@ -723,6 +725,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const cha
 
     initrd_inode *new = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(initrd_inode), nullptr);
     new->name_size = new->name_len = strlen(name);
+    new->name_size++;
     new->type = type;
     new->perm = perm;
     new->ino = CurrentInodeNumber++;
@@ -730,7 +733,7 @@ obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const cha
     memcpy(new->name, name, new->name_len);
     new->name[new->name_len] = 0;
     new->path_len = parent->path_len + 1 + new->name_len;
-    new->path_size = new->path_len;
+    new->path_size = new->path_len + 1;
     new->path = Allocate(OBOS_KernelAllocator, new->path_len+1, nullptr);
     memcpy(new->path, parent->path, parent->path_len);
     new->path[parent->path_len] = '/';

@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <error.h>
+#include <klog.h>
 
 #include <arch/x86_64/asm_helpers.h>
 
@@ -16,15 +17,25 @@ bool Arch_HasXSAVE = false;
 
 void* Arch_AllocateXSAVERegion()
 {
+#ifndef OBOS_DEBUG
     void* base = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size, nullptr);
+#else
+    void* base = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, xsave_size+64, nullptr);
+    base = (void*)(((uintptr_t)base + 63) & ~63);
+#endif
     uint32_t* base32 = base;
     base32[0x18/4] = 0x1f80; // mxcsr
     return base;
+
 }
 
 void Arch_FreeXSAVERegion(void* buf)
 {
+#ifndef OBOS_DEBUG
     Free(OBOS_NonPagedPoolAllocator, buf, xsave_size);
+#else
+    OBOS_Debug("XSave Region 0x%p leaked!\n");
+#endif
 }
 
 // Enables stuff such as XSAVE, SSE(2), AVX, AVX512, etc.

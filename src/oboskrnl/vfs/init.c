@@ -114,9 +114,9 @@ void Vfs_Initialize()
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
     OBOS_CapabilityInitialize();
     if (root_partid)
-        Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+        Free(OBOS_KernelAllocator, root_partid, strlen(root_partid)+1);
     if (root_uuid)
-        Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid));
+        Free(OBOS_KernelAllocator, root_uuid, strlen(root_uuid)+1);
     Vfs_InitializePipeInterface();
 }
 OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
@@ -190,9 +190,9 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
     VfsH_DirentAppendChild(Vfs_Root, initrd_vfs_root);
     end:
     if (root_partid)
-        Free(OBOS_KernelAllocator, root_partid, strlen(root_partid));
+        Free(OBOS_KernelAllocator, root_partid, strlen(root_partid)+1);
     if (root_uuid_str)
-        Free(OBOS_KernelAllocator, root_uuid_str, strlen(root_uuid_str));
+        Free(OBOS_KernelAllocator, root_uuid_str, strlen(root_uuid_str)+1);
     Vfs_InitDummyDevices();
 
 #if OBOS_ARCHITECTURE_HAS_ACPI

@@ -193,6 +193,9 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
 
     Core_PushlockRelease(&con->unacked_segments.lock, false);
 
+    if (con->state.state == TCP_STATE_FIN_WAIT1 && dat->flags & TCP_FIN)
+        con->fin_segment = seg;
+
     Core_LowerIrql(oldIrql);
 
     return OBOS_STATUS_SUCCESS;
@@ -1064,7 +1067,18 @@ void tcp_free(socket_desc* socket)
         
         net_tables* iface = s->connection->nic->net_tables;
         Core_PushlockAcquire(&iface->tcp_connections_lock, false);
-        RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
+        if (s->connection->is_client)
+            RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
+        else
+        {
+            tcp_port key = {.port=s->connection->src.port};
+            Core_PushlockAcquire(&iface->tcp_ports_lock, true);
+            tcp_port* port = RB_FIND(tcp_port_tree, &iface->tcp_ports, &key);
+            Core_PushlockRelease(&iface->tcp_ports_lock, true);
+            Core_PushlockAcquire(&port->connection_tree_lock, false);
+            RB_REMOVE(tcp_connection_tree, &port->connections, s->connection);
+            Core_PushlockRelease(&port->connection_tree_lock, false);
+        }
         Core_PushlockRelease(&iface->tcp_connections_lock, false);
         Free(OBOS_KernelAllocator, s->connection, sizeof(*s->connection));
     }
@@ -1222,7 +1236,7 @@ static void internal_listen_thread(void* udata)
             continue;
         Core_EventSet(s->serv.listen_event, false);
     }
-    Free(OBOS_NonPagedPoolAllocator, objs, s->serv.bound_port_count+1 * sizeof(struct waitable_header*));
+    Free(OBOS_NonPagedPoolAllocator, objs, (s->serv.bound_port_count+1) * sizeof(struct waitable_header*));
     Core_ExitCurrentThread();
 }
 

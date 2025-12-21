@@ -38,25 +38,32 @@ const uint8_t OBOS_ASANPoisonValues[] = {
 	0xAA,
 	0x1A,
 };
+
+#if OBOS_KASAN_ENABLED
+#	define asan_report_impl(...) OBOS_Panic(__VA_ARGS__)
+#else
+#	define asan_report_impl(panic_reason, ...) OBOS_Error("(possible false-positive) " __VA_ARGS__)
+#endif
+
 OBOS_NO_KASAN void asan_report(uintptr_t addr, size_t sz, uintptr_t ip, bool rw, asan_violation_type type, bool unused)
 {
 	OBOS_UNUSED(unused);
 	switch (type)
 	{
 	case ASAN_InvalidAccess:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p.\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		asan_report_impl(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p.\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_ShadowSpaceAccess:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Pointer is in shadow space).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		asan_report_impl(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Pointer is in shadow space).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_UseAfterFree:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Use of memory block after free).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		asan_report_impl(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Use of memory block after free).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_UninitMemory:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
+		asan_report_impl(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p while trying to %s %lu bytes from 0x%p (Hint: Uninitialized memory).\n", (void*)ip, rw ? "write" : "read", sz, (void*)addr);
 		break;
 	case ASAN_AllocatorMismatch:
-		OBOS_Panic(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p trying to free/reallocate %d bytes at %p. (Hint: Mismatched Allocators)\n", (void*)ip, sz, (void*)addr);
+		asan_report_impl(OBOS_PANIC_KASAN_VIOLATION, "ASAN Violation at %p trying to free/reallocate %d bytes at %p. (Hint: Mismatched Allocators)\n", (void*)ip, sz, (void*)addr);
 		break;
 	default:
 		// NOTE(oberrow): I forgot to put this, and it caused me two days worth of debugging an allocator mismatch.

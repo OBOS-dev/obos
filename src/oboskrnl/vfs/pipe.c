@@ -21,6 +21,7 @@
 #include <locks/pushlock.h>
 #include <locks/wait.h>
 #include <locks/event.h>
+#include <locks/mutex.h>
 
 #include <scheduler/schedule.h>
 
@@ -42,11 +43,14 @@ static obos_status pipe_write(pipe_desc* stream, const void* buffer, size_t sz, 
         return OBOS_STATUS_INVALID_ARGUMENT;
     if ((sz+stream->ptr) >= stream->size)
         sz = stream->size - stream->ptr;
+    Core_MutexAcquire(&stream->ptr_lock);
     void* out_ptr = (void*)((uintptr_t)stream->buf + stream->ptr);    
     memcpy(out_ptr, buffer, sz);
     stream->ptr += sz;
+    stream->ptr_last_mod = __func__;
     Core_EventSet(&stream->data_evnt, false);
     Core_EventClear(&stream->empty_evnt);
+    Core_MutexRelease(&stream->ptr_lock);
     if (bytes_written)
         *bytes_written = sz;
     return OBOS_STATUS_SUCCESS;
@@ -56,7 +60,9 @@ static obos_status pipe_ready_count(pipe_desc* stream, size_t* bytes_ready)
 {
     if (!bytes_ready || !stream)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    Core_MutexAcquire(&stream->ptr_lock);
     *bytes_ready = stream->ptr - stream->in_ptr;
+    Core_MutexRelease(&stream->ptr_lock);
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -64,15 +70,16 @@ static obos_status pipe_read(pipe_desc* stream, void* buffer, size_t sz, size_t*
 {
     if (!stream || !buffer)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    // if ((stream->ptr - stream->in_ptr) < (intptr_t)sz)
-    //     sz = stream->size - stream->ptr;
+    OBOS_ASSERT(stream->ptr >= stream->in_ptr);
+    if ((intptr_t)sz > (stream->ptr - stream->in_ptr))
+        sz = (stream->ptr - stream->in_ptr);
+    Core_MutexAcquire(&stream->ptr_lock);
     const void* in_ptr = (void*)((uintptr_t)stream->buf + stream->in_ptr);    
     memcpy(buffer, in_ptr, sz);
     if (!peek)
     {
         stream->in_ptr += sz;
-        stream->ptr -= sz;
-        if (stream->ptr <= 0)
+        if (stream->ptr == stream->in_ptr)
         {
             // Clear the data event, and set the pipe empty event.
             stream->in_ptr = 0;
@@ -80,8 +87,10 @@ static obos_status pipe_read(pipe_desc* stream, void* buffer, size_t sz, size_t*
             Core_EventSet(&stream->empty_evnt, false);
             Core_EventClear(&stream->data_evnt);
         }
+        stream->ptr_last_mod = stream->in_ptr_last_mod = __func__;
         Core_EventSet(&stream->write_evnt, false);
     }
+    Core_MutexRelease(&stream->ptr_lock);
     if (bytes_read)
         *bytes_read = sz;
     return OBOS_STATUS_SUCCESS;
@@ -115,7 +124,12 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     }
 
     while ((pipe->ptr - pipe->in_ptr) < (intptr_t)blkCount)
+    {
+        Core_MutexAcquire(&pipe->ptr_lock);
+        OBOS_ENSURE(pipe->in_ptr <= pipe->ptr);
         blkCount = (pipe->ptr - pipe->in_ptr);
+        Core_MutexRelease(&pipe->ptr_lock);
+    }
     pipe_read(pipe, buf, blkCount, nBlkRead, false);
     
     OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
@@ -214,9 +228,15 @@ static obos_status ioctl(dev_desc what, uint32_t request, void* argp)
             pipe->size = *sargp;
             // TODO: Properly change this?
             if ((uintptr_t)pipe->ptr > pipe->size)
+            {
                 pipe->ptr = 0;
+                pipe->ptr_last_mod = __func__;
+            }
             if ((uintptr_t)pipe->in_ptr > pipe->size)
+            {
                 pipe->in_ptr = 0;
+                pipe->in_ptr_last_mod = __func__;
+            }
             Core_EventClear(&pipe->data_evnt);
             Core_EventSet(&pipe->empty_evnt, false);
             Core_EventSet(&pipe->write_evnt, false);
@@ -240,8 +260,9 @@ static obos_status ioctl_argp_size(uint32_t request, size_t *size)
     switch (request)
     {
         case IOCTL_PIPE_SET_SIZE:
+        case IOCTL_PIPE_GET_SIZE:
         {
-            *size = 8;
+            *size = sizeof(size_t);
             break;
         }
         default: return OBOS_STATUS_INVALID_IOCTL;
@@ -346,7 +367,7 @@ static obos_status submit_irp(void* irp_)
         }
     }
 
-    req->evnt = req->op == IRP_READ ? &pipe->data_evnt : (pipe->in_ptr == pipe->ptr ? &pipe->empty_evnt : nullptr);
+    req->evnt = req->op == IRP_READ ? &pipe->data_evnt : ((intptr_t)pipe->size == pipe->ptr ? &pipe->empty_evnt : nullptr);
     req->on_event_set = nullptr;
     req->status = OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_SUCCESS;
@@ -359,8 +380,8 @@ static obos_status finalize_irp(void* irp_)
     if (req->dryOp)
         return OBOS_STATUS_SUCCESS;
     req->status = req->op == IRP_READ ? 
-        read_sync(req->desc, req->buff, req->blkCount, req->blkOffset, &req->nBlkRead) :
-        write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
+            pipe_read((void*)req->desc, req->buff, req->blkCount, &req->nBlkRead, false) :
+            write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -397,6 +418,7 @@ pipe_desc* alloc_pipe_desc(size_t pipesize)
     desc->empty_evnt = EVENT_INITIALIZE(EVENT_SYNC);
     desc->write_evnt = EVENT_INITIALIZE(EVENT_SYNC);
     desc->buffer_lock = PUSHLOCK_INITIALIZE();
+    desc->ptr_lock = MUTEX_INITIALIZE();
     Core_EventSet(&desc->empty_evnt, false);
     return desc;
 }

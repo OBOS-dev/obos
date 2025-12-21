@@ -148,7 +148,9 @@ static void tx_set(r8169_device* dev, uint8_t set)
         for (uintptr_t phys = desc->buf; phys < (desc->buf + sz); phys += OBOS_PAGE_SIZE)
         {
             page what = {.phys=phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             MmH_DerefPage(pg);
         }
         // Mm_FreePhysicalPages(desc->buf, TX_PACKET_SIZE*128);
@@ -374,7 +376,9 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool
         MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
         do {
             struct page what = {.phys=page.phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
             struct page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
             MmH_DerefPage(pg);
         } while(0);
         page.prot.uc = uc;
@@ -507,6 +511,7 @@ obos_status r8169_tx_queue_flush(r8169_device* dev, bool wait)
             dev->tx_awaiting_transfer += tx_frame->sz;
         }
         Mm_VirtualMemoryFree(&Mm_KernelContext, tx_frame->buf, ((TX_PACKET_SIZE*128) + (OBOS_PAGE_SIZE-((TX_PACKET_SIZE*128)%OBOS_PAGE_SIZE))));
+        tx_frame->buf = nullptr;
 
         r8169_buffer_remove_frame(&dev->tx_buffer, tx_frame);
 

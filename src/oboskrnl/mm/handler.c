@@ -57,6 +57,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         *type = ACCESS_FAULT;
         return;
     }
+    irql oldIrql = Core_SpinlockAcquire(&rng->ctx->lock);
     MmH_RefPage(phys);
     if (ec & PF_EC_RW)
         Mm_MarkAsDirtyPhys(phys);
@@ -67,6 +68,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     phys->pagedCount++;
     MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
     MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    Core_SpinlockRelease(&rng->ctx->lock, oldIrql);
 }
 
 static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
@@ -206,7 +208,9 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     do
     {
         page what = {.phys=curr.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
         pg = (curr.phys && !curr.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
         if (!pg && !rng->un.mapped_vn && !curr.prot.is_swap_phys)
         {
             OBOS_Debug("No physical page found for virtual page %p (curr.phys: %p, found nothing)\n", curr.virt, curr.phys);
@@ -222,7 +226,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             OBOS_Debug("Trying file mapping...\n", addr);
         // page_info info = {};
         // MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
-        irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         handled = true;
         fault_type curr_type = SOFT_FAULT;
         if (~ec & PF_EC_PRESENT)
@@ -233,7 +236,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             type = curr_type;
         // if (type == INVALID_FAULT)
         //     handled = true;
-        Core_SpinlockRelease(&ctx->lock, oldIrql);
     }
     if (!handled && pg && pg->cow_type)
     {
@@ -263,7 +265,6 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         if (ctx != &Mm_KernelContext)
             OBOS_Debug("Trying a swap in of 0x%p...\n", addr);
         // Try a swap in?
-        irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         fault_type curr_type = SOFT_FAULT;
         // for (volatile bool b = !rng->pageable; b; )
         //     ;
@@ -271,10 +272,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         if (curr_type > type)
             type = curr_type;
         if (obos_is_error(status))
-        {
-            Core_SpinlockRelease(&ctx->lock, oldIrql);
             goto done;
-        }
+        irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         ctx->stat.paged -= (curr.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         Mm_GlobalMemoryUsage.paged -= (curr.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
         MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);

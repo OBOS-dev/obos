@@ -52,6 +52,7 @@ static void e1000_init_rx_desc(e1000_device* dev)
     dev->rx_ring_phys_pg = MmH_PgAllocatePhysical(false, false);
     dev->rx_ring = dev->rx_ring_phys_pg->phys;
     union e1000_rx_desc_extended* desc = MmS_MapVirtFromPhys(dev->rx_ring);
+    memzero(desc, sizeof(*desc) * RX_QUEUE_SIZE);
     for (size_t i = 0; i < RX_QUEUE_SIZE; i++)
     {
         dev->rx_ring_buffers[i] = Mm_AllocatePhysicalPages(1, 1, nullptr);
@@ -78,6 +79,8 @@ void e1000_init_rx(e1000_device* dev)
     rctl &= ~E1000_RCTL_MPE;
     rctl &= ~E1000_RCTL_LPE;
     rctl &= ~E1000_RCTL_SECRC;
+
+    printf("0x%x\n", rctl);
 
     // taken from managarm
     if(dev->hw.mac.type >= e1000_82540) {
@@ -110,6 +113,7 @@ void e1000_init_rx(e1000_device* dev)
     E1000_WRITE_REG(&dev->hw, E1000_RFCTL, rfctl);
     u32 rxcsum = E1000_READ_REG(&dev->hw, E1000_RXCSUM);
     rxcsum &= ~E1000_RXCSUM_TUOFL;
+    rxcsum &= ~E1000_RXCSUM_IPOFL;
     E1000_WRITE_REG(&dev->hw, E1000_RXCSUM, rxcsum);
 
     /*
@@ -343,15 +347,19 @@ static void rx_dpc(dpc* d, void* udata)
 {
     OBOS_UNUSED(d);
     e1000_device* dev = udata;
+    e1000_frame* current_frame = nullptr;
+    size_t offset = 0;
     for (size_t i = 0; i < RX_QUEUE_SIZE; i++)
     {
         uint32_t length = 0;
+        bool eop = false;
         if(dev->hw.mac.type >= e1000_82547)
         {
             union e1000_rx_desc_extended* desc = &((union e1000_rx_desc_extended*)MmS_MapVirtFromPhys(dev->rx_ring))[i];
             if (~desc->wb.upper.status_error & E1000_RXD_STAT_DD)
                 continue;
             length = desc->wb.upper.length;
+            eop = desc->wb.upper.status_error & E1000_RXD_STAT_EOP;
             desc->wb.upper.status_error = 0;
             desc->read.buffer_addr = dev->rx_ring_buffers[i];
         }
@@ -360,15 +368,24 @@ static void rx_dpc(dpc* d, void* udata)
             struct e1000_rx_desc* desc = &((struct e1000_rx_desc*)MmS_MapVirtFromPhys(dev->rx_ring))[i];
             if (~desc->status & E1000_RXD_STAT_DD)
                 continue;
+            eop = desc->status & E1000_RXD_STAT_EOP;
             length = desc->length;
             desc->status = 0;
         }
-        e1000_frame* frame = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(e1000_frame), nullptr);
-        frame->size = length;
-        frame->buff = Allocate(OBOS_NonPagedPoolAllocator, frame->size, nullptr);
-        frame->refs = dev->refs;
-        memcpy(frame->buff, MmS_MapVirtFromPhys(dev->rx_ring_buffers[i]), length);
-        LIST_APPEND(e1000_frame_list, &dev->rx_frames, frame);
+        if (!current_frame)
+            current_frame = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(e1000_frame), nullptr);
+        current_frame->size += length;
+        current_frame->buff = Reallocate(OBOS_NonPagedPoolAllocator, current_frame->buff, current_frame->size, current_frame->size - length, nullptr);
+        current_frame->refs = dev->refs;
+        memcpy((char*)current_frame->buff + offset, MmS_MapVirtFromPhys(dev->rx_ring_buffers[i]), length);
+        if (eop)
+        {
+            LIST_APPEND(e1000_frame_list, &dev->rx_frames, current_frame);
+            current_frame = nullptr;
+            offset = 0;
+        }
+        else
+            offset += length;
         E1000_WRITE_REG(&dev->hw, E1000_RDT(0), i);
     }
     Core_EventSet(&dev->rx_evnt, false);

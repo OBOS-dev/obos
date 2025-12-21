@@ -395,7 +395,9 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
             {
                 Mm_FreePhysicalPages(reg.phys, reg.sz/OBOS_PAGE_SIZE);
                 Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)port->clBase, OBOS_PAGE_SIZE);
+                port->clBase = 0;
                 Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)port->fisBase, OBOS_PAGE_SIZE*7);
+                port->fisBase = 0;
                 continue;
             }
             OBOS_Debug("Command failed. Retrying...\n");

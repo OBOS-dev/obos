@@ -502,7 +502,7 @@ OBOS_PAGEABLE_FUNCTION void __attribute__((no_stack_protector)) Arch_KernelEntry
     Core_CpuInfo->initialized = true;
 
     // Finally yield into the scheduler.
-    
+    Core_LowerIrql(IRQL_DISPATCH);
     Core_Yield();
 
     OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Scheduler did not switch to a new thread.\n");
@@ -626,7 +626,9 @@ void OBOSS_KernelPostVMMInit()
                 Arch_MapHugePage(Mm_KernelContext.pt, (void*)addr, phys, BIT_TYPE(0, UL)|BIT_TYPE(1, UL)|BIT_TYPE(63, UL)|BIT_TYPE(4, UL)|BIT_TYPE(12, UL), false);
                 offset = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
                 page what = {.phys=oldPhys};
+                Core_MutexAcquire(&Mm_PhysicalPagesLock);
                 page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+                Core_MutexRelease(&Mm_PhysicalPagesLock);
                 MmH_DerefPage(pg);
             }
         }

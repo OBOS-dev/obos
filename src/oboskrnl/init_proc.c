@@ -33,6 +33,12 @@
 
 static struct exec_aux_values aux;
 
+static char* strcpy(const char* str)
+{
+    size_t len = strlen(str);
+    return memcpy(Allocate(OBOS_KernelAllocator, len+1, nullptr), str, len+1);
+}
+
 void OBOS_LoadInit()
 {
     if (!Core_GetCurrentThread()->proc->pgrp || !Core_GetCurrentThread()->proc->pgrp->controlling_tty)
@@ -91,11 +97,12 @@ void OBOS_LoadInit()
     aux.argv = ZeroAllocate(OBOS_KernelAllocator, aux.argc+1, sizeof(char*), nullptr);
     aux.argv[0] = init_path;
     for (size_t i = 1; i < (OBOS_InitArgumentsCount+1); i++)
-        aux.argv[i] = OBOS_argv[OBOS_InitArgumentsStart+i-1];
+        aux.argv[i] = strcpy(OBOS_argv[OBOS_InitArgumentsStart+i-1]);
 
     do {
         if (Core_GetCurrentThread()->proc->cmdline)
             Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->cmdline, strlen(Core_GetCurrentThread()->proc->cmdline)+1);
+        Core_GetCurrentThread()->proc->cmdline = nullptr;
         string cmd_line = {};
         process* proc = new;
         OBOS_InitString(&cmd_line, init_path);

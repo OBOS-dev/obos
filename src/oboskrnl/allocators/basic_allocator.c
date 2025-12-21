@@ -215,13 +215,29 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 	return 1;
 }
 
+static volatile bool s_enable_alloc_logs = false;
+
+void* _Allocate(allocator_info* This_, size_t nBytes, obos_status* status, bool);
 OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
+{
+	void* blk = _Allocate(This_, nBytes, status, false);
+	if (s_enable_alloc_logs)
+		printf("kalloc alloc 0x%p %d 0x%p\n", blk, nBytes, __builtin_return_address(0));
+	return blk;
+}
+OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes, obos_status* status, bool log_alloc)
 {
 	basic_allocator* This = (basic_allocator*)This_;
 
 #if OBOS_KASAN_ENABLED
 	nBytes += 32;
 #endif
+
+#if OBOS_DEBUG
+	nBytes += (sizeof(uintptr_t)*2);
+#endif
+
+	OBOS_MAYBE_UNUSED size_t unrounded_nBytes = nBytes;
 
 	if (nBytes <= 16)
 		nBytes = 16;
@@ -261,8 +277,21 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes,
 	unlock((cache*)c, oldIrql);
 
 #if OBOS_KASAN_ENABLED
+	nBytes -= 32;
+	unrounded_nBytes -= 32;
 	memset((void*)((uintptr_t)ret+nBytes-32), OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], 32);
 #endif
+
+#if OBOS_DEBUG
+	nBytes -= sizeof(uintptr_t)*2;
+	unrounded_nBytes -= sizeof(uintptr_t)*2;
+	((uintptr_t*)ret)[0] = unrounded_nBytes;
+	((void**)ret)[1] = __builtin_return_address(0);
+	ret = (void*)((uintptr_t)ret + (sizeof(uintptr_t)*2));
+#endif
+
+	if (log_alloc && s_enable_alloc_logs)
+		printf("kalloc alloc 0x%p %d 0x%p\n", ret, nBytes, __builtin_return_address(0));
 
 #if !OBOS_KASAN_ENABLED
 	return ret;
@@ -278,9 +307,16 @@ OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t b
 		return nullptr;
 	}
 	size_t size = bytesPerObject * nObjects;
-	void* blk = Allocate(This, size, status);
+	void* blk = _Allocate(This, size, status, false);
 	if (blk)
+	{
+		if (s_enable_alloc_logs)
+			printf("kalloc alloc 0x%p %d 0x%p\n", blk, size, __builtin_return_address(0));
+#if OBOS_DEBUG
+		((void**)((uintptr_t)blk - sizeof(uintptr_t)*2))[1] = __builtin_return_address(0);
+#endif
 		return memset(blk, 0, size);
+	}
 	return blk;
 }
 
@@ -315,6 +351,20 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	if (!blk || !nBytes)
 		return OBOS_STATUS_SUCCESS;
 
+	OBOS_MAYBE_UNUSED void* initial_blk = blk;
+	OBOS_MAYBE_UNUSED size_t initial_nBytes = nBytes;
+
+	OBOS_ASSERT(!((uintptr_t)blk & 0xf)); 
+#if OBOS_DEBUG
+	blk = (void*)((uintptr_t)blk - (sizeof(uintptr_t)*2));
+	do {
+		uintptr_t *debug_info = blk;
+		if (debug_info[0] != nBytes)
+			OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "MISMATCHED ALLOCATION/FREE SIZES! nBytes on alloc: %d, nBytes on free: %d. Block 0x%p allocated by 0x%p\n", debug_info[0], nBytes, blk, debug_info[1]);			
+	} while(0);
+	nBytes += (sizeof(uint64_t)*2);
+#endif
+	
 #if OBOS_KASAN_ENABLED
 	nBytes += 32;
 #endif
@@ -323,6 +373,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 		nBytes = 16;
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
+
+	if (s_enable_alloc_logs)
+		printf("kalloc free 0x%p %d 0x%p\n", initial_blk, initial_nBytes, __builtin_return_address(0));
 
 #if __SIZE_MAX__ > __UINT32_MAX__
 	if (nBytes > (4UL*1024*1024*1024))
@@ -342,7 +395,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	{
 		irql oldIrql = lock(c);
 		append_node(c->free, (freelist_node*)blk);
-#if OBOS_KASAN_ENABLED
+#if OBOS_KASAN_ENABLED || OBOS_DEBUG
 		memset(((freelist_node*)blk)+1, OBOS_ASANPoisonValues[ASAN_POISON_FREED], nBytes-sizeof(freelist_node));
 #endif
 		unlock(c, oldIrql);

@@ -11,6 +11,8 @@
 #include <utils/tree.h>
 #include <utils/list.h>
 
+#include <locks/mutex.h>
+
 typedef struct page_protection
 {
     bool present : 1;      // If set, the page is present.
@@ -133,6 +135,7 @@ OBOS_EXPORT page* MmH_AllocatePage(uintptr_t phys, bool huge);
 OBOS_EXPORT page* MmH_RefPage(page* buf);
 #endif
 OBOS_EXPORT extern phys_page_tree Mm_PhysicalPages;
+OBOS_EXPORT extern mutex Mm_PhysicalPagesLock;
 // OBOS_EXPORT extern pagecache_tree Mm_Pagecache;
 OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usage in bytes.
 

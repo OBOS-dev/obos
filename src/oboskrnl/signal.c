@@ -333,8 +333,6 @@ enum signal_default_action OBOS_SignalDefaultActions[SIGMAX+1] = {
 void OBOS_DefaultSignalHandler(int signum, siginfo_t* info, void* unknown)
 {
     OBOS_UNUSED(signum);
-    OBOS_UNUSED(info);
-    OBOS_UNUSED(unknown);
     switch (OBOS_SignalDefaultActions[signum]) {
         case SIGNAL_DEFAULT_TERMINATE_PROC:
             OBOS_Debug("Exitting process %ld after receiving signal %d\n", Core_GetCurrentThread()->proc->pid, signum);

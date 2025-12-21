@@ -157,7 +157,7 @@ static obos_status acpi_driver_helper(acpi_pnp_device_tree* acpi_drivers, driver
     pnp_device *dev = RB_FIND(acpi_pnp_device_tree, acpi_drivers, &what);
     if (!dev)
     {
-        dev = memzero(malloc(sizeof(pnp_device)), sizeof(pnp_device));
+        dev = malloc(sizeof(pnp_device));
         *dev = what;
         RB_INSERT(acpi_pnp_device_tree, acpi_drivers, dev);
     }
@@ -498,7 +498,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
             OBOS_Log("Found a driver.\n", strnlen(hdr->driverName, 64), hdr->driverName);
         struct driver_file *drv_file = memzero(malloc(sizeof(struct driver_file)), sizeof(struct driver_file));
         *drv_file = (struct driver_file){ .hdr=hdr, .base=buf, .file=file };
-        driver_header_node* node = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(driver_header_node), nullptr);
+        driver_header_node* node = malloc(sizeof(driver_header_node));
         // hashmap_set(drivers, &drv_file);
         RB_INSERT(driver_file_tree, &drivers, drv_file);
         node->data = hdr;
@@ -516,7 +516,6 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         {
             driver_header_node* next = node->next;
             driver_header* const curr = node->data;
-            Free(OBOS_KernelAllocator, node, sizeof(*node));
             node = next;
             struct driver_file ele = { .hdr=curr };
             // struct driver_file* file = (struct driver_file*)hashmap_get(drivers, &ele);
@@ -569,7 +568,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     for (driver_header_node* node = what.head; node; )
     {
         driver_header_node* next = node->next;
-        Free(OBOS_KernelAllocator, node, sizeof(*node));
+        free(node);
         node = next;
     }
     struct driver_file *iter, *next;

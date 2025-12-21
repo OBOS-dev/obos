@@ -662,6 +662,22 @@ char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
     return path;
 }
 
+static char* strcpy(const char* str)
+{
+    size_t len = strlen(str);
+    return memcpy(Allocate(OBOS_KernelAllocator, len+1, nullptr), str, len+1);
+}
+
+char* VfsH_DirentPathKAlloc(dirent* ent, dirent* relative_to)
+{
+    char* res = VfsH_DirentPath(ent, relative_to);
+    if (!res)
+        return nullptr;
+    char* ret = strcpy(res);
+    Vfs_Free(res);
+    return ret;
+}
+
 static bool check_chdir_perms(dirent* ent)
 {
     return Vfs_Access(ent->vnode, false, false, true) == OBOS_STATUS_SUCCESS;
@@ -726,7 +742,7 @@ obos_status Sys_Chdir(const char *upath)
     OBOSH_ReadUserString(upath, path, nullptr);
 
     status = VfsH_Chdir(Core_GetCurrentThread()->proc, path);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
 
     return status;
 }

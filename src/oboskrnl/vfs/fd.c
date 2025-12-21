@@ -140,7 +140,6 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
     VfsH_IRPBytesToBlockCount(desc->vn, nBytes, &req->blkCount);
     VfsH_IRPBytesToBlockCount(desc->vn, uoffset, &req->blkOffset);
     req->cbuff = from;
-    VfsH_IRPRef(req);
     req->op = IRP_WRITE;
     req->dryOp = false;
     req->status = OBOS_STATUS_SUCCESS;

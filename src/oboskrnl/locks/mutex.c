@@ -83,6 +83,7 @@ obos_status Core_MutexAcquire(mutex* mut)
     }
     //printf("tid %d: waiting for tid %d to release mutex %p\n", Core_GetCurrentThread()->tid, mut->who->tid, mut);
     status = Core_WaitOnObject(&mut->hdr);
+    CoreH_ClearSignaledState(&mut->hdr);
     if (status != OBOS_STATUS_SUCCESS)
         return status;
     if (mut->ignoreAllAndBlowUp)

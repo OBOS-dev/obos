@@ -15,6 +15,7 @@
 
 #include <locks/event.h>
 #include <locks/pushlock.h>
+#include <locks/mutex.h>
 
 // fds is an array of 2 file descriptors
 obos_status Vfs_CreatePipe(fd* fds, size_t pipesize);
@@ -36,6 +37,8 @@ typedef struct pipe_desc
     void* buf;
     intptr_t in_ptr;
     intptr_t ptr;
+    const char* ptr_last_mod;
+    const char* in_ptr_last_mod;
     event data_evnt;
     event empty_evnt;
     event write_evnt;
@@ -44,5 +47,6 @@ typedef struct pipe_desc
     // those variables, so they can take this
     // as a reader.
     pushlock buffer_lock;
+    mutex ptr_lock;
     size_t refs;
 } pipe_desc;

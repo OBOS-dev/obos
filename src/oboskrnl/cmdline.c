@@ -184,6 +184,13 @@ void OBOS_ParseCMDLine()
     if (OBOS_GetOPTF("help"))
         printf("%s", help_message);
 }
+
+#define user_alloc(sz) \
+(OBOS_KernelAllocator ? \
+    ZeroAllocate(OBOS_KernelAllocator, sz, 1, nullptr) : \
+    OBOS_BasicMMAllocatePages(sz, nullptr)\
+)
+
 char* OBOS_GetOPTS(const char* opt)
 {
     for (size_t i = 0; i < OBOS_argc; i++)
@@ -208,11 +215,11 @@ char* OBOS_GetOPTS(const char* opt)
             if (optlen == arglen)
             {
                 size_t valuelen = strlen(OBOS_argv[i+1]);
-                return memcpy(cmd_calloc(valuelen+1, sizeof(char)), OBOS_argv[i+1], valuelen);
+                return memcpy(user_alloc(valuelen+1), OBOS_argv[i+1], valuelen);
             }
-            size_t valuelen = arglen-optlen;
+            size_t valuelen = -1+arglen-optlen;
             arg += optlen+1;
-            return memcpy(cmd_calloc(valuelen+1, sizeof(char)), arg, valuelen);
+            return memcpy(user_alloc(valuelen+1), arg, valuelen);
         }
     }
     return nullptr;
@@ -341,7 +348,7 @@ uint64_t OBOS_GetOPTD_Ex(const char* opt, uint64_t default_value)
     if (!val)
         return default_value;
     uint64_t dec = strtoull(val, nullptr, 0);
-    cmd_free(val);
+    Free(OBOS_KernelAllocator, val, strlen(val)+1);
     return dec;
 }
 

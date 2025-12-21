@@ -118,5 +118,8 @@ obos_status Sys_FutexWake(uint32_t *futex, uint32_t nWaiters)
         for (uint32_t i = 0; i < nWaiters; i++)
             CoreH_SignalWaitingThreads(WAITABLE_OBJECT(*obj), false, false); // only wake nWaiters
 
+    // Dereference, but do not free yet.
+    --obj->refs;
+
     return OBOS_STATUS_SUCCESS;
 }

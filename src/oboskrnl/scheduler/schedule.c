@@ -19,6 +19,8 @@
 
 #include <locks/spinlock.h>
 
+#include <mm/context.h>
+
 #ifdef __x86_64__
 #	include <arch/x86_64/lapic.h>
 #endif
@@ -152,6 +154,10 @@ void Core_Yield()
 	if (getCurrentThread && getCurrentThread->kill && (getCurrentThread->yield_count_since_kill++ != 1 /* give the code a chance to remove itself from existance */))
 		Core_ExitCurrentThread();
 	irql oldIrql = IRQL_INVALID;
+	if (obos_expect(CoreS_GetCPULocalPtr()->ever_yielded, true))
+		OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+	else
+	 	CoreS_GetCPULocalPtr()->ever_yielded = true;
 	if (Core_GetIrql() <= IRQL_DISPATCH)
 	{
 		oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
@@ -161,7 +167,7 @@ void Core_Yield()
 	{
 		bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
 		++getCurrentThread->total_quantums;
-		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread)
+		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread && !getCurrentThread->force_yield)
 		{
 			if (oldIrql != IRQL_INVALID)
 			{

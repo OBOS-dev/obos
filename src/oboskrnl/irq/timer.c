@@ -129,8 +129,8 @@ obos_status Core_InitializeTimerInterface()
 timer* Core_TimerObjectAllocate(obos_status* status)
 {
     if (!OBOS_NonPagedPoolAllocator)
-		return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(process), status);
-	return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(process), status);
+		return ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(timer), status);
+	return ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(timer), status);
 }
 obos_status Core_TimerObjectFree(timer* obj)
 {

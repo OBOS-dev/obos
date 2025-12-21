@@ -235,6 +235,8 @@ obos_status Kdbg_ConnectionRecvPacket(gdb_connection* conn, char** packet, size_
     if (!ack)
     {
         Kdbg_Free(rawPacket);
+        rawPacket = 0;
+        rawPacketLen = 0;
         goto retry;
     }
     *packet = rawPacket;

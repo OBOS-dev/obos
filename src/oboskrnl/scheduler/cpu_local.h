@@ -43,6 +43,7 @@ typedef struct cpu_local
 	size_t nMSIRoutedIRQs;
 
 	struct cpu_local* curr;
+	bool ever_yielded;
 } cpu_local;
 extern DRV_EXPORT cpu_local* Core_CpuInfo;
 extern DRV_EXPORT size_t Core_CpuCount;
