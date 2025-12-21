@@ -335,6 +335,25 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void* blk, s
 		This_->Free(This_, blk, old_size);
 		return NULL;
 	}
+	do {
+		size_t nBytes = new_size;
+		size_t nBytes_old = old_size;
+		if (nBytes <= 16)
+			nBytes = 16;
+		else
+			nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
+		if (nBytes_old <= 16)
+			nBytes_old = 16;
+		else
+			nBytes_old = (size_t)1 << (64-__builtin_clzll(nBytes_old));
+		if (nBytes == nBytes_old)
+		{
+#if OBOS_DEBUG
+			*((uintptr_t*)((uintptr_t)blk - sizeof(uintptr_t)*2)) = new_size;
+#endif
+			return blk;
+		}
+	} while(0);
 	void* newblk = Allocate(This_, new_size, status);
 	if (!newblk)
 		return newblk;
