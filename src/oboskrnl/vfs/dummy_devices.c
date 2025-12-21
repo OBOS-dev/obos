@@ -409,6 +409,20 @@ vdev OBOS_DummyDriverVdev = {
     .driver = &OBOS_DummyDriver,
 };
 
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
+
+static long get_current_time()
+{
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+    return current_time;
+}
+
+
 static void init_desc(dev_desc desc)
 {
     if (desc == DUMMY_FB0 && !OBOS_TextRendererState.fb.base)
@@ -433,6 +447,10 @@ static void init_desc(dev_desc desc)
     vn->perm.owner_write=true;
     vn->perm.group_write=true;
     vn->perm.other_write=true;
+
+    vn->times.birth = get_current_time();
+    vn->times.change = vn->times.birth;
+    vn->times.access = vn->times.birth;
 
     vn->vtype = VNODE_TYPE_CHR;
     vn->un.device = &OBOS_DummyDriverVdev;
