@@ -1712,28 +1712,28 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 curr->revents |= POLLOUT;
             }
         }
-        // if (events_satisified)
-        // {
-        //     OBOS_ASSERT(!read_irp);
-        //     OBOS_ASSERT(!write_irp);
-        //     continue;
-        // }
         if (read_irp)
         {
-            if (read_irp->evnt)
-                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
-            else
-                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
+            if (!events_satisified)
+            {
+                if (read_irp->evnt)
+                    waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*read_irp->evnt);
+                else
+                    waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
+            }
             irp_count++;
             irp_list = Reallocate(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
             irp_list[irp_count-1] = read_irp;
         }
         if (write_irp)
         {
-            if (write_irp->evnt)
-                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
-            else
-                waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
+            if (!events_satisified)
+            {
+                if (write_irp->evnt)
+                    waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(*write_irp->evnt);
+                else
+                    waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(set_event);
+            }
             irp_count++;
             irp_list = Reallocate(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*), (irp_count-1)*sizeof(irp*),nullptr);
             irp_list[irp_count-1] = write_irp;
