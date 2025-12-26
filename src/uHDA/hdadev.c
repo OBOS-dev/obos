@@ -74,6 +74,7 @@ static vdev HDAVdev = {
 };
 
 extern UhdaController** Drv_uHDAControllers;
+extern pci_device_location* Drv_uHDAControllersLocations;
 extern size_t Drv_uHDAControllerCount;
 
 enum hda_ioctls {
@@ -225,9 +226,10 @@ void OBOS_InitializeHDAAudioDev()
         dev->output_group_count = 0;
         dev->next_write_is_data_queue = false;
 
-        size_t len_name = snprintf(nullptr, 0, name_format, i);
-        dev->name = Allocate(OBOS_KernelAllocator, len_name+1, nullptr);
-        snprintf(dev->name, len_name+1, name_format, i);
+        // size_t len_name = snprintf(nullptr, 0, name_format, i);
+        // dev->name = Allocate(OBOS_KernelAllocator, len_name+1, nullptr);
+        // snprintf(dev->name, len_name+1, name_format, i);
+        dev->name = DrvH_MakePCIDeviceName(Drv_uHDAControllersLocations[i], "hda");
 
         dev->vn = Drv_AllocateVNode(&HDADriver, (dev_desc)dev, 0, nullptr, VNODE_TYPE_CHR);
         dev->dent = Drv_RegisterVNode(dev->vn, dev->name);

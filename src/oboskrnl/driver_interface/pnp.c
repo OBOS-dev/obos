@@ -588,6 +588,7 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
 #include <uhda/uhda.h>
 
 UhdaController** Drv_uHDAControllers;
+pci_device_location* Drv_uHDAControllersLocations;
 size_t Drv_uHDAControllerCount;
 
 void OBOS_InitializeHDAAudioDev();
@@ -616,7 +617,14 @@ obos_status Drv_PnpLoad_uHDA()
                                               (Drv_uHDAControllerCount+1)*sizeof(*Drv_uHDAControllers), 
                                               Drv_uHDAControllerCount*sizeof(*Drv_uHDAControllers),
                                               nullptr);
+                    
+                    Drv_uHDAControllersLocations = Reallocate(OBOS_KernelAllocator,
+                                              Drv_uHDAControllers, 
+                                              (Drv_uHDAControllerCount+1)*sizeof(*Drv_uHDAControllersLocations), 
+                                              Drv_uHDAControllerCount*sizeof(*Drv_uHDAControllersLocations),
+                                              nullptr);
                     Drv_uHDAControllers[Drv_uHDAControllerCount++] = controller;
+                    Drv_uHDAControllersLocations[Drv_uHDAControllerCount - 1] = dev->location;
                 }
             }
 
