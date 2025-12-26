@@ -319,7 +319,11 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
     if (size % OBOS_PAGE_SIZE)
         nPages++;
     if (nPages > TX_BUFFER_PAGES)
+    {
+        Core_LowerIrql(oldIrql);
         return nullptr;
+    }
+
     uintptr_t buff = dev->tx_buffers[dev->tx_index % TX_QUEUE_SIZE];
     memcpy(MmS_MapVirtFromPhys(buff), buffer, size);
     desc->buffer_addr = buff;
