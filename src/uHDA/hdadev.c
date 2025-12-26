@@ -8,6 +8,7 @@
 #include <handle.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <syscall.h>
 
 #include <uhda/uhda.h>
 #include <uhda/types.h>
@@ -15,6 +16,7 @@
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
+#include <vfs/mount.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -234,6 +236,45 @@ void OBOS_InitializeHDAAudioDev()
         dev->vn = Drv_AllocateVNode(&HDADriver, (dev_desc)dev, 0, nullptr, VNODE_TYPE_CHR);
         dev->dent = Drv_RegisterVNode(dev->vn, dev->name);
     }
+}
+
+obos_status Sys_GetHDADevices(handle* uarr, size_t* ucount, uint32_t oflags)
+{
+    if (!uarr && !ucount)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!uarr)
+        return memcpy_k_to_usr(ucount, &Drv_uHDAControllerCount, sizeof(*ucount));
+    size_t count = 0;
+    handle* arr = nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    status = memcpy_usr_to_k(&count, ucount, sizeof(count));
+    if (obos_is_error(status))
+        return status;
+    
+    if (count == 0)
+        return memcpy_k_to_usr(ucount, &Drv_uHDAControllerCount, sizeof(*ucount));
+
+    arr = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, uarr, nullptr, count*sizeof(handle), 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+    
+    for (size_t i = 0; i < OBOS_MIN(count, Drv_uHDAControllerCount); i++)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = nullptr;
+        handle hnd = OBOS_HandleAllocate(OBOS_CurrentHandleTable(), HANDLE_TYPE_FD, &desc);
+        desc->un.fd = Vfs_Calloc(1, sizeof(fd));
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        char* filename = DrvH_MakePCIDeviceName(Drv_uHDAControllersLocations[i], "hda");
+        dirent* dev = VfsH_DirentLookupFrom(filename, Vfs_DevRoot);
+        OBOS_ENSURE(dev);
+        oflags &= ~FD_OFLAGS_CREATE;
+        Vfs_FdOpenDirent(desc->un.fd, dev, oflags);
+        Free(OBOS_KernelAllocator, filename, strlen(filename)+1);
+    }
+
+    return memcpy_k_to_usr(ucount, &Drv_uHDAControllerCount, sizeof(*ucount));
 }
 
 obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)

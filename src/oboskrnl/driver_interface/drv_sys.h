@@ -31,3 +31,5 @@ handle Sys_EnumerateLoadedDrivers(handle curr);
 // sznamebuf is the size of the buffer passed, and *sznamebuf is set to the actual length of the string.
 // When copying the buffer, MIN(*sznamebuf, strlen(driverName)) is chosen.
 obos_status Sys_QueryDriverName(handle drv, char* namebuf, size_t *sznamebuf /* need not be over 64 */);
+
+obos_status Sys_GetHDADevices(handle* arr, size_t* count, uint32_t oflags);
