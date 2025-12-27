@@ -287,6 +287,7 @@ obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size
         return OBOS_STATUS_UNINITIALIZED;
     uint32_t count = blkCount;
     uhda_stream_queue_data(dev->selected_output_stream, buf, &count);
+    dev->next_write_is_data_queue = false;
     if (nBlkWritten)
         *nBlkWritten = count;
     return OBOS_STATUS_SUCCESS;
