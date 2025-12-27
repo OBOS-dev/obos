@@ -71,6 +71,11 @@ static obos_status ringbuffer_read(struct ringbuffer* stream, void* buffer, size
 {
     if (!stream || !buffer)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!stream->buffer)
+    {
+        if (bytes_read) *bytes_read = 0;
+        return OBOS_STATUS_SUCCESS;
+    }
     Core_MutexAcquire(&stream->lock);
     const void* in_ptr = (void*)((uintptr_t)stream->buffer + stream->in_ptr);    
     memcpy(buffer, in_ptr, sz);
@@ -106,6 +111,7 @@ static void ringbuffer_initialize(struct ringbuffer* stream)
 static void ringbuffer_free(struct ringbuffer* stream)
 {
     Mm_VirtualMemoryFree(&Mm_KernelContext, stream->buffer, stream->size);
+    stream->buffer = nullptr;
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(stream->doorbell));
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(stream->empty));
 }
