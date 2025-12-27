@@ -120,6 +120,21 @@ enum hda_ioctls {
     IOCTL_HDA_STREAM_SETUP_USER,
 };
 
+struct stream_input_buffer {
+    void* buffer_addr;
+    size_t buffer_size;
+    uint32_t in_ptr;
+};
+static uint32_t buffer_fill(void* arg, void* data, uint32_t space)
+{
+    struct stream_input_buffer* ibuf = arg;
+    memcpy(data, ibuf->buffer_addr, OBOS_MIN(ibuf->buffer_size, space));
+    ibuf->in_ptr += OBOS_MIN(ibuf->buffer_size, space);
+    if (ibuf->in_ptr == ibuf->buffer_size)
+        ibuf->in_ptr = 0;
+    return OBOS_MIN(ibuf->buffer_size, space);
+}
+
 enum {
     FORMAT_PCM8,
     FORMAT_PCM16,
@@ -142,7 +157,7 @@ typedef struct stream_parameters {
 typedef struct hda_stream_setup_parameters {
     stream_parameters stream_params;
     uint32_t ring_buffer_size;
-    void* resv; 
+    void* buffer; // should be ring_buffer_size bytes in length
 } *hda_stream_setup_parameters;
 typedef const bool *hda_stream_play;
 typedef struct hda_path_find_parameters {
@@ -429,10 +444,22 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
             params.fmt = argp.stream_setup->stream_params.format;
             if (params.fmt > UHDA_FORMAT_PCM32 || params.fmt < 0)
                 return OBOS_STATUS_INVALID_ARGUMENT;
+
+            struct stream_input_buffer* buffer = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*buffer), nullptr);
+            if (Core_GetCurrentThread()->proc->pid != 0)
+                buffer->buffer_addr = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, 
+                                                             argp.stream_setup->buffer, NULL, 
+                                                             argp.stream_setup->ring_buffer_size, 
+                                                             OBOS_PROTECTION_READ_ONLY, 
+                                                             true, 
+                                                            nullptr);
+            else
+                buffer->buffer_addr = argp.stream_setup->buffer;
+            buffer->buffer_size = argp.stream_setup->ring_buffer_size;
             uhda_stream_setup(dev->selected_output_stream, 
                               &params, 
                               argp.stream_setup->ring_buffer_size, 
-                              nullptr, nullptr, 
+                              buffer_fill, buffer, 
                               0, nullptr, nullptr);
             break;
         }
@@ -526,9 +553,6 @@ obos_status ioctl_argp_size(uint32_t request, size_t* osize)
             break;
         case IOCTL_HDA_STREAM_SETUP:
             *osize = sizeof(*(hda_stream_setup_parameters)nullptr);
-            break;
-        case IOCTL_HDA_STREAM_SETUP_USER:
-            *osize = sizeof(*(hda_stream_setup_user_parameters)nullptr);
             break;
         case IOCTL_HDA_PATH_MUTE: 
             *osize = sizeof(*(hda_path_mute_parameter)nullptr);
