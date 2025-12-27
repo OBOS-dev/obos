@@ -525,33 +525,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             after->virt = before->virt+before->size+size;
             after->size = (after->virt-before->virt);
             after->hasGuardPage = false;
-            memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
-            memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
-            // printf("split %p-%p into %p-%p and %p-%p\n", base, size+base, before->virt, before->virt+before->size, after->virt, after->virt+after->size);
-            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-            {
-                working_set_node* next = curr->next;
-                if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    curr->data->free = true; // mark for deletion.
-                    curr = next;
-                    continue;
-                }
-                if (curr->data->info.virt < before->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    curr->data->info.range = before;
-                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
-                }
-                if (curr->data->info.virt >= after->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    curr->data->info.range = after;
-                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
-                }
-                curr = next;
-            }
             RB_REMOVE(page_tree, &ctx->pages, rng);
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
@@ -564,16 +537,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             rng->size = (rng->size-size);
             rng->virt += size;
             // printf("split %p-%p into %p-%p\n", base, size+base, rng->virt, rng->virt+rng->size);
-            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-            {
-                working_set_node* next = curr->next;
-                if (curr->data->info.virt < rng->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    curr->data->free = true;
-                }
-                curr = next;
-            }
             rng = nullptr;
         }
     }
@@ -638,16 +601,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
 
     if (full)
     {
-        for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-        {
-            working_set_node* next = curr->next;
-            if (curr->data)
-            {
-                REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                curr->data->free = true;
-            }
-            curr = next;
-        }
         RB_REMOVE(page_tree, &ctx->pages, rng);
         Free(Mm_Allocator, rng, sizeof(*rng));
     }
@@ -734,38 +687,6 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             before->size = base-before->virt;
             after->virt = before->virt+before->size+size;
             after->size = rng->size-(after->virt-rng->virt);
-            memzero(&before->working_set_nodes, sizeof(before->working_set_nodes));
-            memzero(&after->working_set_nodes, sizeof(after->working_set_nodes));
-            new->prot = new_prot;
-            new->pageable = pageable;
-            for (working_set_node* curr = rng->working_set_nodes.head; curr; )
-            {
-                working_set_node* const next = curr->next;
-                if (curr->data->info.virt >= before->virt && curr->data->info.virt < after->virt)
-                {
-                    curr->data->info.range = new;
-                    if (!pageable)
-                    {
-                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                        curr->data->free = true;
-                    }
-                    curr = next;
-                    continue;
-                }
-                if (curr->data->info.virt < before->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    APPEND_WORKINGSET_PAGE_NODE(before->working_set_nodes, &curr->data->pr_node);
-                    curr->data->info.range = before;
-                }
-                if (curr->data->info.virt >= after->virt)
-                {
-                    REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                    APPEND_WORKINGSET_PAGE_NODE(after->working_set_nodes, &curr->data->pr_node);
-                    curr->data->info.range = after;
-                }
-                curr = next;
-            }
             new->prot = new_prot;
             new->pageable = pageable;
             new->virt = base;
@@ -823,27 +744,6 @@ obos_status Mm_VirtualMemoryProtect(context* ctx, void* base_, size_t size, prot
             new->prot = new_prot;
             new->pageable = pageable;
             RB_INSERT(page_tree, &ctx->pages, new);
-            size_t szUpdated = 0;
-            for (working_set_node* curr = rng->working_set_nodes.head; curr && szUpdated < size; )
-            {
-                working_set_node* next = curr->next;
-                if (curr->data->info.virt >= new->virt && curr->data->info.virt < rng->virt)
-                {
-                    szUpdated += (curr->data->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-                    curr->data->info.range = new;
-                    if (!pageable)
-                    {
-                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                        curr->data->free = true;
-                    }
-                    else
-                    {
-                        REMOVE_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &curr->data->pr_node);
-                        APPEND_WORKINGSET_PAGE_NODE(new->working_set_nodes, &curr->data->pr_node);
-                    }
-                }
-                curr = next;
-            }
             if (!rng->size)
                 RB_REMOVE(page_tree, &ctx->pages, rng);
             rng = new;
@@ -1063,7 +963,6 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
     rng->prot.executable = false;
     rng->prot.user = false;
     rng->pageable = !non_pageable;
-    memzero(&rng->working_set_nodes, sizeof(rng->working_set_nodes));
 
     RB_INSERT(page_tree, &ctx->pages, rng);
 

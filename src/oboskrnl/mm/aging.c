@@ -93,7 +93,6 @@ obos_status Mm_AgingPRA(context* ctx)
         REMOVE_WORKINGSET_PAGE_NODE(ctx->referenced, node);
         if (ent->free)
         {
-            REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
             Free(Mm_Allocator, node, sizeof(*node));
             Free(Mm_Allocator, ent, sizeof(*ent));
             continue;
@@ -109,8 +108,6 @@ obos_status Mm_AgingPRA(context* ctx)
         }
         else 
         {
-            if (!ent->info.range->pageable)
-                ent->info.range->pageable = true;
             if (obos_is_success(Mm_SwapOut(ent->info.virt, ctx)))
             {
                 ctx->stat.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);

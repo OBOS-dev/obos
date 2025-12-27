@@ -129,9 +129,6 @@ static obos_status ref_page(context* ctx, const page_info *curr)
             Free(Mm_Allocator, ent, sizeof(*ent));
         return status;
     }
-    APPEND_WORKINGSET_PAGE_NODE(ctx->referenced, node);
-    ent->pr_node.data = ent;
-    APPEND_WORKINGSET_PAGE_NODE(rng->working_set_nodes, &ent->pr_node);
     // TODO: Try to figure out a better number based off the count of pages in the context/working-set.
     const size_t threshold = 512;
     if (ctx->referenced.nNodes >= threshold)
@@ -342,7 +339,6 @@ void MmH_RemovePageFromWorkingset(context* ctx, working_set_node* node)
                 Mm_GlobalMemoryUsage.paged += (ent->info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
             }
         }
-        REMOVE_WORKINGSET_PAGE_NODE(ent->info.range->working_set_nodes, &ent->pr_node);
         Free(Mm_Allocator, ent, sizeof(*ent));
     }
     Free(Mm_Allocator, node, sizeof(*node));

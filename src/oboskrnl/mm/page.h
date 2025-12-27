@@ -145,10 +145,6 @@ typedef struct page_range
     size_t size;
     page_protection prot;
     RB_ENTRY(page_range) rb_node;
-    struct {
-        struct working_set_node *head, *tail;
-        size_t nNodes;
-    } working_set_nodes;
     size_t size_committed;
     struct context* ctx;
     bool pageable : 1;
@@ -176,7 +172,6 @@ typedef struct working_set_entry
         page_protection prot;
         page_range *range;
     } info;
-    struct working_set_node pr_node; // page range node
     uint16_t workingSets;
 #if OBOS_PAGE_REPLACEMENT_AGING
     uint8_t age;
