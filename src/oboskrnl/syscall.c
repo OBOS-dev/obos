@@ -146,12 +146,18 @@ void slp_handler(void* userdata)
 obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
 {
     OBOS_UNUSED(uleft);
-    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
-    while (deadline > CoreS_GetTimerTick())
-        OBOSS_SpinlockHint();
+    event evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    timer* tm = nullptr;
+    CoreH_MakeTimerEvent(&tm, ms*1000, &evnt, false);
+    obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(evnt));
+    Core_CancelTimer(tm);
+    Core_TimerObjectFree(tm);
+    // timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
+    // while (deadline > CoreS_GetTimerTick())
+    //     OBOSS_SpinlockHint();
     if (CoreS_ForceYieldOnSyscallReturn)
         CoreS_ForceYieldOnSyscallReturn();
-    return OBOS_STATUS_SUCCESS;
+    return status;
 }
 
 // desc can be set to HANDLE_INVALID to unset the
