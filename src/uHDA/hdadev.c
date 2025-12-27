@@ -595,6 +595,7 @@ obos_status ioctl_argp_size(uint32_t request, size_t* osize)
             *osize = sizeof(*(hda_stream_play)nullptr);
             break; 
         case IOCTL_HDA_STREAM_GET_BUFFER_SIZE:
+        case IOCTL_HDA_STREAM_GET_REMAINING:
             *osize = sizeof(*(hda_get_size_parameter)nullptr);
             break;
         case IOCTL_HDA_STREAM_GET_STATUS:
