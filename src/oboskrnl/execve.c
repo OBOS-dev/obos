@@ -137,7 +137,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     status = Vfs_FdOpen(&file, path, FD_OFLAGS_READ|FD_OFLAGS_EXECUTE);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, path, sz_path);
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         return status;
     }
     size_t szBuf = file.vn->filesize;
