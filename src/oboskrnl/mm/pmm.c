@@ -191,12 +191,16 @@ OBOS_NO_KASAN static uintptr_t allocate_phys_or_fail(size_t nPages, size_t align
 }
 OBOS_NO_KASAN void* Mm_AllocatePhysicalPages_p(size_t nPages, size_t alignmentPages, obos_status *status)
 {
-	OBOS_ENSURE(Core_GetIrql() <= IRQL_DISPATCH);
 	uintptr_t res = allocate_phys_or_fail(nPages, alignmentPages, status);
 	if (res)
 	{
 		//printf("pmm alloc 0x%p %d\n", res, nPages);
 		return (void*)res;
+	}
+	if (Core_GetIrql() > IRQL_DISPATCH)
+	{
+		if (status) *status = OBOS_STATUS_NOT_ENOUGH_MEMORY;
+		return nullptr;
 	}
 	if (!Mm_IsInitialized())
 		return 0; // oof.
