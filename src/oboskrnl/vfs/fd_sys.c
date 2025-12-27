@@ -2551,7 +2551,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
-    const struct sys_socket_io_params *params = 
+    struct sys_socket_io_params *params = 
         Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), OBOS_PROTECTION_READ_ONLY, true, &status);
     if (obos_is_error(status))
         return status;
@@ -2562,7 +2562,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     }
 
     status = OBOS_STATUS_SUCCESS;
-    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, OBOS_PROTECTION_READ_ONLY, true, &status);
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, 0, true, &status);
     if (obos_is_error(status))
         return status;
 
@@ -2575,7 +2575,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
             goto fail3;
     }
 
-    status = Net_SendTo(fd->un.fd, kbuf, size, flags, addr, params->addr_length);
+    status = Net_SendTo(fd->un.fd, kbuf, size, flags, &params->nRead, addr, params->addr_length);
 
     OBOS_MAYBE_UNUSED fail3:
     if (params->addr_length)
@@ -2682,23 +2682,31 @@ obos_status Sys_Accept(handle desc, handle empty_fd, sockaddr* uaddr_ptr, size_t
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     size_t addr_length = 0;
-    status = memcpy_usr_to_k(&addr_length, uaddr_length, sizeof(size_t));
-    if (obos_is_error(status))
-        return status;
+    if (uaddr_length)
+    {
+        status = memcpy_usr_to_k(&addr_length, uaddr_length, sizeof(size_t));
+        if (obos_is_error(status))
+            return status;
+    }
     size_t initial_addr_length = addr_length;
 
-    void* buf = Allocate(OBOS_KernelAllocator, addr_length, nullptr);
-    sockaddr *addr = buf;
-    status = memcpy_usr_to_k(addr, uaddr_ptr, addr_length);
-    if (obos_is_error(status))
-        goto fail1;
+    void* buf = uaddr_ptr ? Allocate(OBOS_KernelAllocator, addr_length, nullptr) : nullptr;
+    sockaddr *addr = uaddr_ptr ? buf : nullptr;
+    if (uaddr_ptr)
+    {
+        status = memcpy_usr_to_k(addr, uaddr_ptr, addr_length);
+        if (obos_is_error(status))
+            goto fail1;
+    }
 
-    status = Net_Accept(fd->un.fd, addr, &addr_length, flags, new_fd->un.fd);
+    status = Net_Accept(fd->un.fd, addr, uaddr_length ? &addr_length : 0, flags, new_fd->un.fd);
 
-    memcpy_k_to_usr(uaddr_length, &addr_length, sizeof(addr_length));
+    if (addr_length)
+        memcpy_k_to_usr(uaddr_length, &addr_length, sizeof(addr_length));
 
     OBOS_MAYBE_UNUSED fail1:
-    Free(OBOS_KernelAllocator, buf, initial_addr_length);
+    if (buf)
+        Free(OBOS_KernelAllocator, buf, initial_addr_length);
 
     if (CoreS_ForceYieldOnSyscallReturn)
         CoreS_ForceYieldOnSyscallReturn();
@@ -3008,16 +3016,19 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
     file_perm real_mode = unix_to_obos_mode(mode, true);
     
     mount* mount = Vfs_GetVnodeMount(target);
-    driver_header* header = Vfs_GetVnodeDriver(mount->root->vnode);
-    if (!header)
+    if (mount)
     {
-        status = OBOS_STATUS_INTERNAL_ERROR;
-        goto fail;
+        driver_header* header = Vfs_GetVnodeDriver(mount->root->vnode);
+        if (!header)
+        {
+            status = OBOS_STATUS_INTERNAL_ERROR;
+            goto fail;
+        }
+    
+        status = !header->ftable.set_file_perms ? OBOS_STATUS_UNIMPLEMENTED : header->ftable.set_file_perms(target->desc, real_mode);
+        if (obos_is_error(status))
+            goto fail;
     }
-
-    status = !header->ftable.set_file_perms ? OBOS_STATUS_UNIMPLEMENTED : header->ftable.set_file_perms(target->desc, real_mode);
-    if (obos_is_error(status))
-        goto fail;
     
     target->perm = real_mode;
 

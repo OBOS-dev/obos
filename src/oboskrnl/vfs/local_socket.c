@@ -77,8 +77,7 @@ static obos_status ringbuffer_read(struct ringbuffer* stream, void* buffer, size
     if (!peek)
     {
         stream->in_ptr += sz;
-        stream->ptr -= sz;
-        if (stream->ptr <= 0)
+        if (stream->in_ptr >= stream->ptr)
         {
             // Clear the data event, and set the pipe empty event.
             stream->in_ptr = 0;
@@ -297,11 +296,14 @@ static void stream_free(socket_desc* socket)
     {
         // Close the peer's connection.
         lsckt->peer->peer = nullptr;
+        struct ringbuffer* peer_incoming = lsckt->peer->incoming_stream;
         lsckt->peer->incoming_stream = nullptr;
         lsckt->peer->outgoing_stream = nullptr;
         // Free the buffers
-        ringbuffer_free(&lsckt->open->stream.client_bound);
-        ringbuffer_free(&lsckt->open->stream.server_bound);
+        if (peer_incoming != &lsckt->open->stream.client_bound)
+            ringbuffer_free(&lsckt->open->stream.client_bound);
+        if (peer_incoming != &lsckt->open->stream.server_bound)
+            ringbuffer_free(&lsckt->open->stream.server_bound);
     }
     else
     {
@@ -394,6 +396,7 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
     scon->incoming_stream = &con->stream.server_bound;
     scon->outgoing_stream = &con->stream.client_bound;
     scon->peer = con->lsckt;
+    con->lsckt->peer = scon;
         
     if (addr)
     {
@@ -611,7 +614,7 @@ static void irp_stream_on_event_set(irp* req)
             req->status = OBOS_STATUS_SUCCESS;
             return;
         }
-        // printf("reading %d bytes from local socket (%s->%s)\n", OBOS_MIN(nReady, req->blkCount), lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
+        printf("reading %d bytes from local socket (%s->%s)\n", OBOS_MIN(nReady, req->blkCount), lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
         req->status = ringbuffer_read(lsckt->incoming_stream, req->buff, OBOS_MIN(nReady, req->blkCount), &req->nBlkRead, req->socket_flags & MSG_PEEK);
     }
     else
@@ -627,7 +630,7 @@ static void irp_stream_on_event_set(irp* req)
             req->status = OBOS_STATUS_SUCCESS;
             return;
         }
-        // printf("writing %d bytes to local socket (%s->%s)\n", req->blkCount, lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
+        printf("writing %d bytes to local socket (%s->%s)\n", req->blkCount, lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
         req->status = ringbuffer_write(lsckt->outgoing_stream, req->cbuff, req->blkCount, &req->nBlkWritten);
     }
 }
@@ -653,7 +656,7 @@ static obos_status stream_submit_irp(irp* req)
         return OBOS_STATUS_SUCCESS;
     }
 
-    // printf("irp %s%s submit (%s->%s)\n", req->dryOp ? "dry " : "", req->op == IRP_READ ? "read" : "write", lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
+    printf("irp %s%s submit (%s->%s)\n", req->dryOp ? "dry " : "", req->op == IRP_READ ? "read" : "write", lsckt->is_server ? "server" : "client", !lsckt->is_server ? "server" : "client");
     switch (req->op) {
         case IRP_READ: 
         {
@@ -674,7 +677,7 @@ static obos_status stream_submit_irp(irp* req)
             }
             size_t nReady = 0;
             ringbuffer_ready_count(lsckt->outgoing_stream, &nReady);
-            // printf("%s has %d bytes ready to read, %d writeable bytes in input buffer, %d to be written\n", !lsckt->is_server ? "server" : "client", nReady, lsckt->outgoing_stream->size-nReady, req->blkCount);
+            printf("%s has %d bytes ready to read, %d writeable bytes in input buffer, %d to be written\n", !lsckt->is_server ? "server" : "client", nReady, lsckt->outgoing_stream->size-nReady, req->blkCount);
             if (req->blkCount >= lsckt->outgoing_stream->size)
                 req->blkCount = (lsckt->outgoing_stream->size - nReady);
             if ((lsckt->outgoing_stream->size - nReady) < req->blkCount)

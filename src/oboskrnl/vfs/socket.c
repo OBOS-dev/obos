@@ -516,7 +516,7 @@ obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t 
     return status;
 }
 
-obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, sockaddr* addr, size_t len_addr)
+obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, size_t *nWritten, sockaddr* addr, size_t len_addr)
 {
     irp* req = VfsH_IRPAllocate();
     req->blkCount = sz;
@@ -534,6 +534,8 @@ obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, soc
         return status;
     }
     status = VfsH_IRPWait(req);
+    if (nWritten)
+        *nWritten = req->nBlkWritten;
     VfsH_IRPUnref(req);
     return status;
 }

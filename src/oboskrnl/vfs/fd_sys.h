@@ -487,8 +487,10 @@ struct sys_socket_io_params {
     sockaddr* sock_addr;
     // Untouched in sendto, modified in recvfrom
     size_t addr_length;
-    // Only valid in recvfrom
-    size_t nRead;
+    union {
+        size_t nRead;
+        size_t nWritten;
+    };
 };
 obos_status Sys_SendTo(handle fd, const void* buffer, size_t size, int flags, struct sys_socket_io_params *params);
 obos_status Sys_RecvFrom(handle fd, void* buffer, size_t size, int flags, struct sys_socket_io_params *params);

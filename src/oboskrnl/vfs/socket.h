@@ -66,9 +66,9 @@ obos_status Net_GetPeerName(fd* socket, sockaddr* addr, size_t* addr_len);
 obos_status Net_GetSockName(fd* socket, sockaddr* addr, size_t* addr_len);
 obos_status Net_Listen(fd* socket, int backlog);
 obos_status Net_RecvFrom(fd* socket, void* buffer, size_t sz, int flags, size_t *nRead, sockaddr* addr, size_t* addr_len);
-obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, sockaddr* addr, size_t addr_len);
+obos_status Net_SendTo(fd* socket, const void* buffer, size_t sz, int flags, size_t *nWritten, sockaddr* addr, size_t addr_len);
 #define Net_Recv(socket,buffer,sz,flags,nRead) Net_RecvFrom(socket,buffer,sz,flags,nRead,nullptr,0)
-#define Net_Send(socket,buffer,sz,flags) Net_SendTo(socket,buffer,sz,flags,nullptr,0)
+#define Net_Send(socket,buffer,sz,flags,nWritten) Net_SendTo(socket,buffer,sz,flags,nWritten,nullptr,0)
 obos_status Net_Shutdown(fd* desc, int how);
 obos_status Net_SockAtMark(fd* desc);
 
