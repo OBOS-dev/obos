@@ -120,6 +120,12 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
         {
             if (signaled)
                 *signaled = obj;
+            for (size_t j = 0; j < i; j++)
+            {
+                irql spinlockIrql = Core_SpinlockAcquire(&nodes[j].obj->lock);
+                CoreH_ThreadListRemove(&nodes[j].obj->waiting, &nodes[j].node);
+                Core_SpinlockRelease(&nodes[j].obj->lock, spinlockIrql);
+            }
             Core_SpinlockRelease(&obj->lock, spinlockIrql);
             Core_LowerIrql(oldIrql);
             Free(OBOS_NonPagedPoolAllocator, nodes, nObjects * sizeof(*nodes));
