@@ -1671,12 +1671,12 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 if (status == OBOS_STATUS_PIPE_CLOSED)
                 {
                     curr->revents |= POLLERR;
-                    break;
+                    status = OBOS_STATUS_SUCCESS;
                 }
                 else if (status == OBOS_STATUS_INVALID_ARGUMENT)
                 {
                     curr->revents |= POLLNVAL;
-                    break;
+                    status = OBOS_STATUS_SUCCESS;
                 }
                 else
                     break;
@@ -1696,12 +1696,12 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 if (status == OBOS_STATUS_PIPE_CLOSED)
                 {
                     curr->revents |= POLLERR;
-                    break;
+                    status = OBOS_STATUS_SUCCESS;
                 }
                 else if (status == OBOS_STATUS_INVALID_ARGUMENT)
                 {
                     curr->revents |= POLLNVAL;
-                    break;
+                    status = OBOS_STATUS_SUCCESS;
                 }
                 else
                     break;
