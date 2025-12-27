@@ -2552,7 +2552,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     struct sys_socket_io_params *params = 
-        Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), OBOS_PROTECTION_READ_ONLY, true, &status);
+        Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)uparams, nullptr, sizeof(*params), 0, true, &status);
     if (obos_is_error(status))
         return status;
     if (params->sock_addr && (!params->addr_length || params->addr_length > 32))
@@ -2562,7 +2562,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
     }
 
     status = OBOS_STATUS_SUCCESS;
-    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, 0, true, &status);
+    void* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, (void*)buffer, nullptr, size, OBOS_PROTECTION_READ_ONLY, true, &status);
     if (obos_is_error(status))
         return status;
 
@@ -2575,7 +2575,7 @@ obos_status Sys_SendTo(handle desc, const void* buffer, size_t size, int flags, 
             goto fail3;
     }
 
-    status = Net_SendTo(fd->un.fd, kbuf, size, flags, &params->nRead, addr, params->addr_length);
+    status = Net_SendTo(fd->un.fd, kbuf, size, flags, &params->nWritten, addr, params->addr_length);
 
     OBOS_MAYBE_UNUSED fail3:
     if (params->addr_length)
