@@ -24,18 +24,17 @@
 #include <uhda/kernel_api.h>
 #include <uhda/types.h>
 
-#define IRQL_UHDA IRQL_DISPATCH
-// #if OBOS_IRQL_COUNT == 16
-// #	define IRQL_UHDA (14)
-// #elif OBOS_IRQL_COUNT == 8
-// #	define IRQL_UHDA (7)
-// #elif OBOS_IRQL_COUNT == 4
-// #	define IRQL_UHDA (3)
-// #elif OBOS_IRQL_COUNT == 2
-// #	define IRQL_UHDA (0)
-// #else
-// #	error Funny business.
-// #endif
+#if OBOS_IRQL_COUNT == 16
+#	define IRQL_UHDA (14)
+#elif OBOS_IRQL_COUNT == 8
+#	define IRQL_UHDA (7)
+#elif OBOS_IRQL_COUNT == 4
+#	define IRQL_UHDA (3)
+#elif OBOS_IRQL_COUNT == 2
+#	define IRQL_UHDA (0)
+#else
+#	error Funny business.
+#endif
 
 UhdaStatus uhda_kernel_pci_read(void* dev_ptr, uint8_t offset, uint8_t size, uint32_t* res)
 {
