@@ -266,7 +266,7 @@ obos_status OBOS_KillProcess(struct process* proc, int sigval)
     else if (blocked)
         status = OBOS_Kill(Core_GetCurrentThread(), blocked, sigval);
     else
-        status = OBOS_STATUS_NOT_FOUND;
+        status = OBOS_STATUS_SUCCESS;
 
     return status;
 }
