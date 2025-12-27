@@ -450,6 +450,15 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
                 *argp.get_size = uhda_stream_get_buffer_size(dev->selected_output_stream);
             else return OBOS_STATUS_UNINITIALIZED;
             break;
+        case IOCTL_HDA_STREAM_GET_REMAINING:
+        {
+            uint32_t res = 0;
+            if (dev->selected_output_stream)
+                uhda_stream_get_remaining(dev->selected_output_stream, &res);
+            else return OBOS_STATUS_UNINITIALIZED;
+            *argp.get_size = res;
+            break;
+        }
         case IOCTL_HDA_STREAM_GET_STATUS:
             if (dev->selected_output_stream)
                 *argp.stream_get_status = uhda_stream_get_status(dev->selected_output_stream);
