@@ -24,17 +24,18 @@
 #include <uhda/kernel_api.h>
 #include <uhda/types.h>
 
-#if OBOS_IRQL_COUNT == 16
-#	define IRQL_UHDA (14)
-#elif OBOS_IRQL_COUNT == 8
-#	define IRQL_UHDA (7)
-#elif OBOS_IRQL_COUNT == 4
-#	define IRQL_UHDA (3)
-#elif OBOS_IRQL_COUNT == 2
-#	define IRQL_UHDA (0)
-#else
-#	error Funny business.
-#endif
+#define IRQL_UHDA IRQL_DISPATCH
+// #if OBOS_IRQL_COUNT == 16
+// #	define IRQL_UHDA (14)
+// #elif OBOS_IRQL_COUNT == 8
+// #	define IRQL_UHDA (7)
+// #elif OBOS_IRQL_COUNT == 4
+// #	define IRQL_UHDA (3)
+// #elif OBOS_IRQL_COUNT == 2
+// #	define IRQL_UHDA (0)
+// #else
+// #	error Funny business.
+// #endif
 
 UhdaStatus uhda_kernel_pci_read(void* dev_ptr, uint8_t offset, uint8_t size, uint32_t* res)
 {
@@ -63,6 +64,8 @@ static void bootstrap_irq_handler_uhda(irq* i, interrupt_frame* f, void* udata, 
     UhdaIrqHandlerFn cb = (void*)user[0];
     cb((void*)user[1]);
 }
+static bool no_irq(OBOS_MAYBE_UNUSED irq* i, OBOS_MAYBE_UNUSED void* u)
+{ return false; }
 
 UhdaStatus uhda_kernel_pci_allocate_irq(
 	void* dev_ptr,
@@ -85,6 +88,7 @@ UhdaStatus uhda_kernel_pci_allocate_irq(
 
     isr->handlerUserdata = userdata;
     isr->handler = bootstrap_irq_handler_uhda;
+    isr->irqChecker = no_irq;
     Core_IrqObjectInitializeIRQL(isr, IRQL_UHDA, false, true);
 
     pci_resource* irq_res = nullptr;
@@ -103,6 +107,8 @@ UhdaStatus uhda_kernel_pci_allocate_irq(
     irq_res->irq->masked = true;
     irq_res->irq->irq = isr;
     Drv_PCISetResource(irq_res);
+    if (!isr->irqChecker)
+        isr->irqChecker = no_irq;
     isr->handlerUserdata = userdata;
     isr->handler = bootstrap_irq_handler_uhda;
 
@@ -117,6 +123,8 @@ void uhda_kernel_pci_deallocate_irq(void* pci_device, void* opaque_irq)
     res->irq->masked = false;
     res->irq->irq = nullptr;
     Drv_PCISetResource(res);
+    if (!res->irq->irq->irqChecker)
+        res->irq->irq->irqChecker = no_irq;
 }
 
 /*
@@ -129,6 +137,8 @@ void uhda_kernel_pci_enable_irq(void* pci_device, void* opaque_irq, bool enable)
     OBOS_ENSURE (res->type == PCI_RESOURCE_IRQ);
     res->irq->masked = !enable;
     Drv_PCISetResource(res);
+    if (!res->irq->irq->irqChecker)
+        res->irq->irq->irqChecker = no_irq;
 }
 
 static void* map_registers(uintptr_t phys, size_t size, bool uc)
@@ -138,25 +148,39 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     size = size + (OBOS_PAGE_SIZE - (size % OBOS_PAGE_SIZE));
     size += phys_page_offset;
     obos_status status = OBOS_STATUS_SUCCESS;
-    void* virt = Mm_VirtualMemoryAlloc(
-        &Mm_KernelContext, 
-        nullptr, size,
-        uc ? OBOS_PROTECTION_CACHE_DISABLE : 0, VMA_FLAGS_NON_PAGED,
-        nullptr, 
-        &status);
+    // void* virt = Mm_VirtualMemoryAlloc(
+    //     &Mm_KernelContext, 
+    //     nullptr, size,
+    //     uc ? OBOS_PROTECTION_CACHE_DISABLE : 0, VMA_FLAGS_NON_PAGED,
+    //     nullptr, 
+    //     &status);
+    irql oldIrql = Core_SpinlockAcquire(&Mm_KernelContext.lock);
+    void* virt = MmH_FindAvailableAddress(&Mm_KernelContext, size, 0, &status);
     if (obos_is_error(status))
     {
         OBOS_Error("%s: Status %d\n", __func__, status);
         OBOS_ENSURE(virt);
     }
+    page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
+    rng->size = size;
+    rng->virt = (uintptr_t)virt;
+    rng->ctx = &Mm_KernelContext;
+    rng->prot.present = true;
+    rng->prot.rw = true;
+    rng->prot.ro = false;
+    rng->prot.huge_page = false;
+    rng->prot.executable = false;
+    rng->prot.user = false;
+    rng->pageable = false;
+    RB_INSERT(page_tree, &Mm_KernelContext.pages, rng);
     for (uintptr_t offset = 0; offset < size; offset += OBOS_PAGE_SIZE)
     {
         page_info page = {.virt=offset+(uintptr_t)virt};
-        MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
-        page.prot.uc = uc;
+        page.prot = rng->prot;
         page.phys = phys+offset;
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
+    Core_SpinlockRelease(&Mm_KernelContext.lock, oldIrql);
     Drv_TLBShootdown(Mm_KernelContext.pt, (uintptr_t)virt, size);
     return virt+phys_page_offset;
 }
@@ -255,7 +279,7 @@ void uhda_kernel_free_spinlock(void* spinlock)
     Free(OBOS_NonPagedPoolAllocator, spinlock, sizeof(struct spinlock));
 }
 
-UhdaIrqState uhda_kernel_lock_spinlock(void* spinlock) { return Core_SpinlockAcquire(spinlock); }
+UhdaIrqState uhda_kernel_lock_spinlock(void* spinlock) { return Core_SpinlockAcquireExplicit(spinlock, IRQL_UHDA, true); }
 
 void uhda_kernel_unlock_spinlock(void* spinlock, UhdaIrqState irq_state)
 {
