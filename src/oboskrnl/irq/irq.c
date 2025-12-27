@@ -273,8 +273,6 @@ find:
 }
 obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allowWorkSharing, bool force)
 {
-	if (allowWorkSharing && force)
-		force = false;
 	if (!s_irqInterfaceInitialized)
 		return OBOS_STATUS_INVALID_INIT_PHASE;
 	if (!obj || requiredIrql > IRQL_MASKED || requiredIrql == 0
@@ -307,7 +305,6 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 				goto l1;
 			if (force)
 				goto l1;
-			continue;
 			l1:
 			found = vec;
 			if (shouldIgnoreObjectCapacity)
