@@ -272,6 +272,7 @@ obos_status Sys_GetHDADevices(handle* uarr, size_t* ucount, uint32_t oflags)
         oflags &= ~FD_OFLAGS_CREATE;
         Vfs_FdOpenDirent(desc->un.fd, dev, oflags);
         Free(OBOS_KernelAllocator, filename, strlen(filename)+1);
+        arr[i] = hnd;
     }
 
     return memcpy_k_to_usr(ucount, &Drv_uHDAControllerCount, sizeof(*ucount));

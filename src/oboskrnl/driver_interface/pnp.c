@@ -619,7 +619,7 @@ obos_status Drv_PnpLoad_uHDA()
                                               nullptr);
                     
                     Drv_uHDAControllersLocations = Reallocate(OBOS_KernelAllocator,
-                                              Drv_uHDAControllers, 
+                                              Drv_uHDAControllersLocations, 
                                               (Drv_uHDAControllerCount+1)*sizeof(*Drv_uHDAControllersLocations), 
                                               Drv_uHDAControllerCount*sizeof(*Drv_uHDAControllersLocations),
                                               nullptr);
