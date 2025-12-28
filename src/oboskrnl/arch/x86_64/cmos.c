@@ -11,6 +11,8 @@
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/cmos.h>
 
+#include <irq/timer.h>
+
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
 
@@ -98,9 +100,24 @@ obos_status Arch_CMOSGetEpochTime(long* out)
 
 obos_status SysS_ClockGet(int clock, long *secs, long *nsecs)
 {
-    OBOS_UNUSED(clock);
     if (!secs || !nsecs)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (clock == 1)
+    {
+        static uint64_t cached_rate = 0;
+        if (!cached_rate)
+            cached_rate = 1000000000/CoreS_GetNativeTimerFrequency();
+        long nsecs_res = CoreS_GetNativeTimerTick()*cached_rate;
+        obos_status status = memcpy_k_to_usr(nsecs, &nsecs_res, sizeof(long));
+        if (obos_is_error(status) && nsecs)
+            return status;
+        long res = nsecs_res / 1000000000;
+        status = memcpy_k_to_usr(secs, &res, sizeof(long));
+        if (obos_is_error(status) && secs)
+            return status;
+        return OBOS_STATUS_SUCCESS;
+    }
 
     cmos_timeofday tm = {};
     Arch_CMOSGetTimeOfDay(&tm);
