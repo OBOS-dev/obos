@@ -200,8 +200,8 @@ CoreS_SetupThreadContext:
 
 	push rdi
 	call Arch_AllocateXSAVERegion
-	mov qword [rdi+thread_ctx.extended_ctx_ptr], rax
 	pop rdi
+	mov qword [rdi+thread_ctx.extended_ctx_ptr], rax
 
 .kmode:
 
