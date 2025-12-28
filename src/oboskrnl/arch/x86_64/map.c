@@ -254,7 +254,7 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 		return false;
 	tlb_shootdown_packet* curr = CoreS_GetCPULocalPtr()->arch_specific.curr_pckt;
 	if (!curr)
-		curr = LIST_GET_HEAD(tlb_shootdown_queue, &g_tlb_shootdown_queue);
+		curr = LIST_GET_TAIL(tlb_shootdown_queue, &g_tlb_shootdown_queue);
 	else
 	 	curr = LIST_GET_NEXT(tlb_shootdown_queue, &g_tlb_shootdown_queue, curr);
 
