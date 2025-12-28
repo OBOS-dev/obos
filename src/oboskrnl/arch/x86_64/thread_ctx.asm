@@ -183,9 +183,6 @@ CoreS_SetupThreadContext:
 	mov qword [rdi+thread_ctx.frame+0xD0], 0x10      ; ctx->frame.ss
 	mov qword [rdi+thread_ctx.frame+0xC0], 0x200202  ; ctx->frame.rflags
 	lea rax, [r8+r9]
-%if OBOS_ENABLE_PROFILING
-	sub rax, 8
-%endif
 	mov qword [rdi+thread_ctx.frame+0xC8], rax       ; ctx->frame.rsp
 	mov qword [rdi+thread_ctx.extended_ctx_ptr], 0   ; ctx->extended_ctx_ptr
 	mov [rdi+thread_ctx.stackBase], r8
@@ -202,6 +199,7 @@ CoreS_SetupThreadContext:
 	call Arch_AllocateXSAVERegion
 	pop rdi
 	mov qword [rdi+thread_ctx.extended_ctx_ptr], rax
+	jmp .finish
 
 .kmode:
 
@@ -216,6 +214,12 @@ CoreS_SetupThreadContext:
 	;shl rdx, 32
 	;or rax, rdx
 	;mov qword [rdi+thread_ctx.gs_base], rax
+
+%if OBOS_ENABLE_PROFILING
+       mov rax, [rdi+thread_ctx.frame+0xC8]
+       sub rax, 8
+       mov [rdi+thread_ctx.frame+0xC8], rax
+%endif
 
 	xor rax, rax ; OBOS_STATUS_SUCCESS
 .finish:
