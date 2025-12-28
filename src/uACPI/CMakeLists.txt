@@ -20,7 +20,7 @@ target_compile_options(uacpi
 )
 
 if (OBOS_ENABLE_PROFILER)
-	target_compile_options(uacpi PRIVATE $<$<COMPILE_LANGUAGE:C>:-finstrument-functions>)
+	target_compile_options(uacpi PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-instrument-functions>)
 endif()
 
 if (OBOS_ENABLE_FANALYZER)
