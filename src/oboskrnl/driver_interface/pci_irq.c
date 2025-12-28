@@ -188,6 +188,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
             entry[3] &= ~BIT(0); // unmasked
         // Write back the header.
         DrvS_WritePCIRegister(dev->location, msix_offset+0, 4, header);
+        target_cpu->nMSIRoutedIRQs++;
         return OBOS_STATUS_SUCCESS;
     }
     if (has_msi)
@@ -218,6 +219,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
             // Set Mask.
             DrvS_WritePCIRegister(handle->dev->location, msi_offset + 0x10, 4, handle->masked);
         }
+        target_cpu->nMSIRoutedIRQs++;
         return OBOS_STATUS_SUCCESS;
     }
     fallback:
