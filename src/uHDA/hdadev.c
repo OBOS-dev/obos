@@ -125,14 +125,37 @@ struct stream_input_buffer {
     size_t buffer_size;
     uint32_t in_ptr;
 };
+#define MEMCPY_CHUNK_COMMON(type, name) \
+static void* name(void* vdest, const void* vsrc, size_t count)\
+{\
+    type *dest = vdest;\
+    const type *src = vsrc;\
+    OBOS_ENSURE(!(count % sizeof(type)));\
+    for (size_t i = 0; i < (count/sizeof(type)); i++)\
+        dest[i] = src[i];\
+    return dest;\
+}
+
+MEMCPY_CHUNK_COMMON(uint64_t, memcpy8)
+MEMCPY_CHUNK_COMMON(uint32_t, memcpy4)
+MEMCPY_CHUNK_COMMON(uint16_t, memcpy2)
+
 static uint32_t buffer_fill(void* arg, void* data, uint32_t space)
 {
     struct stream_input_buffer* ibuf = arg;
-    memcpy(data, ibuf->buffer_addr, OBOS_MIN(ibuf->buffer_size, space));
-    ibuf->in_ptr += OBOS_MIN(ibuf->buffer_size, space);
+    uint32_t bytes_to_read = OBOS_MIN(ibuf->buffer_size, space);
+    if (!(bytes_to_read % 8))
+        memcpy8(data, ibuf->buffer_addr, bytes_to_read);
+    else if (!(bytes_to_read % 8))
+        memcpy4(data, ibuf->buffer_addr, bytes_to_read);
+    else if (!(bytes_to_read % 2))
+        memcpy2(data, ibuf->buffer_addr, bytes_to_read);
+    else
+        memcpy(data, ibuf->buffer_addr, bytes_to_read);
+    ibuf->in_ptr += bytes_to_read;
     if (ibuf->in_ptr == ibuf->buffer_size)
         ibuf->in_ptr = 0;
-    return OBOS_MIN(ibuf->buffer_size, space);
+    return bytes_to_read;
 }
 
 enum {
