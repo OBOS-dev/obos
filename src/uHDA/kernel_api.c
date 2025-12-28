@@ -25,11 +25,11 @@
 #include <uhda/types.h>
 
 #if OBOS_IRQL_COUNT == 16
-#	define IRQL_UHDA (14)
+#	define IRQL_UHDA (2)
 #elif OBOS_IRQL_COUNT == 8
-#	define IRQL_UHDA (7)
+#	define IRQL_UHDA (1)
 #elif OBOS_IRQL_COUNT == 4
-#	define IRQL_UHDA (3)
+#	define IRQL_UHDA (1)
 #elif OBOS_IRQL_COUNT == 2
 #	define IRQL_UHDA (0)
 #else
