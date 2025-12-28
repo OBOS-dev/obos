@@ -156,6 +156,8 @@ static obos_status register_irq_vector(irq* obj, irq_vector_id id, bool allowWor
 {
 	irq_vector* vector = &s_irqVectors[id];
 	obj->vector = vector;
+	if (allowWorkSharing && force)
+		force = false;
 	if ((allowWorkSharing && vector->allowWorkSharing) || !vector->irqObjects.nNodes)
 	{
 		append_irq_to_vector(vector, obj);
@@ -305,6 +307,7 @@ obos_status Core_IrqObjectInitializeIRQL(irq* obj, irql requiredIrql, bool allow
 				goto l1;
 			if (force)
 				goto l1;
+			continue;
 			l1:
 			found = vec;
 			if (shouldIgnoreObjectCapacity)
