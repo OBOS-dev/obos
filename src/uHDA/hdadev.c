@@ -115,6 +115,8 @@ enum hda_ioctls {
     IOCTL_HDA_PATH_SHUTDOWN,
     IOCTL_HDA_PATH_VOLUME,
     IOCTL_HDA_PATH_MUTE,
+
+    IOCTL_HDA_STREAM_SETUP_USER,
 };
 
 enum {
@@ -139,8 +141,17 @@ typedef struct stream_parameters {
 typedef struct hda_stream_setup_parameters {
     stream_parameters stream_params;
     uint32_t ring_buffer_size;
-    void* resv;
+    // doesn't need to be a pipe
+    // can be nullptr
+    fd* ring_buffer_pipe; 
 } *hda_stream_setup_parameters;
+typedef struct hda_stream_setup_user_parameters {
+    stream_parameters stream_params;
+    uint32_t ring_buffer_size;
+    // doesn't need to be a pipe
+    // can be nullptr
+    handle ring_buffer_pipe; 
+} *hda_stream_setup_user_parameters;
 typedef const bool *hda_stream_play;
 typedef struct hda_path_find_parameters {
     bool same_stream; // whether all paths will be playing the same stream.
@@ -279,11 +290,69 @@ obos_status hda_write_sync(dev_desc desc, const void* buf, size_t blkCount, size
         Core_Yield();
         uhda_stream_get_remaining(dev->selected_output_stream, &remaining);
     } while(remaining);
+
     uhda_stream_queue_data(dev->selected_output_stream, buf, &count);
     dev->next_write_is_data_queue = false;
     if (nBlkWritten)
         *nBlkWritten = count;
     return OBOS_STATUS_SUCCESS;
+}
+
+struct fd_fill_userdata
+{
+    fd* pipe;
+    dpc dpc;
+    thread* thr;
+    event wake_thr;
+    bool request_thread_kill;
+    void* dest_buffer;
+    uint32_t space;
+};
+
+void fd_fill_worker(void* user)
+{
+    struct fd_fill_userdata *udata = user;
+    while (!udata->request_thread_kill)
+    {
+        if (obos_is_error(Core_WaitOnObject(WAITABLE_OBJECT(udata->wake_thr))))
+            break;
+        Core_EventClear(&udata->wake_thr);
+        if (udata->request_thread_kill)
+            break;
+        Vfs_FdRead(udata->pipe, udata->dest_buffer, udata->space, nullptr);
+    }
+    Core_ExitCurrentThread();
+    
+}
+void fd_fill_fn_start_thread(dpc* d, void* arg)
+{
+    OBOS_UNUSED(d);
+    struct fd_fill_userdata *udata = arg;
+    if (udata->thr)
+    {
+        Core_EventSet(&udata->wake_thr, false);
+        return;
+    }
+    udata->wake_thr = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    udata->thr = CoreH_ThreadAllocate(nullptr);
+    thread_ctx ctx = {};
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)fd_fill_worker, (uintptr_t)arg, false, 
+        Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr), 0x4000);
+    CoreH_ThreadInitialize(udata->thr, THREAD_PRIORITY_URGENT, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadReady(udata->thr);
+    Core_ProcessAppendThread(OBOS_KernelProcess, udata->thr);
+    // Vfs_FdRead(udata->pipe, udata->dest_buffer, udata->space, nullptr);
+}
+
+uint32_t fd_fill_fn(void* arg, void* buffer, uint32_t space)
+{
+    struct fd_fill_userdata *udata = arg;
+    udata->dest_buffer = buffer;
+    udata->space = space;
+    udata->dpc.userdata = udata;
+    // fd_fill_fn_impl(0, udata);
+    CoreH_InitializeDPC(&udata->dpc, fd_fill_fn_start_thread, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
+    return space;
 }
 
 obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
@@ -303,6 +372,7 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
         hda_path_find_parameters path_find;
         hda_path_get_status_parameter path_get_status;
         hda_stream_setup_parameters stream_setup;
+        hda_stream_setup_user_parameters stream_setup_user;
         hda_stream_play stream_play;
         hda_path_volume_parameter path_volume;
         hda_path_mute_parameter path_mute;
@@ -425,14 +495,34 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
             params.fmt = argp.stream_setup->stream_params.format;
             if (params.fmt > UHDA_FORMAT_PCM32 || params.fmt < 0)
                 return OBOS_STATUS_INVALID_ARGUMENT;
-
-            UhdaStatus ustatus = uhda_stream_setup(dev->selected_output_stream, 
-                                                &params, 
-                                                argp.stream_setup->ring_buffer_size, 
-                                                nullptr, nullptr, 
-                                                0, nullptr, nullptr);
-            if (ustatus != UHDA_STATUS_SUCCESS)
-                return OBOS_STATUS_INTERNAL_ERROR;
+            struct fd_fill_userdata *udata = nullptr;
+            if (argp.stream_setup->ring_buffer_pipe)
+            {
+                udata = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(struct fd_fill_userdata), nullptr);
+                udata->pipe = argp.stream_setup->ring_buffer_pipe;
+            }
+            uhda_stream_setup(dev->selected_output_stream, 
+                              &params, 
+                              argp.stream_setup->ring_buffer_size, 
+                              argp.stream_setup->ring_buffer_pipe ? fd_fill_fn : nullptr, udata, 
+                              0, nullptr, nullptr);
+            break;
+        }
+        case IOCTL_HDA_STREAM_SETUP_USER:
+        {
+            struct hda_stream_setup_parameters real_params = {};
+            real_params.stream_params = argp.stream_setup_user->stream_params;
+            real_params.ring_buffer_size = argp.stream_setup_user->ring_buffer_size;
+            if (HANDLE_TYPE(argp.stream_setup_user->ring_buffer_pipe) != HANDLE_TYPE_INVALID)
+            {
+                obos_status status = OBOS_STATUS_SUCCESS;
+                handle_desc* pipe_desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), argp.stream_setup_user->ring_buffer_pipe, HANDLE_TYPE_FD, false, &status);
+                if (obos_is_error(status))
+                    return status;
+                fd *pipe = pipe_desc->un.fd;
+                real_params.ring_buffer_pipe = pipe;
+            }
+            ioctl(what, IOCTL_HDA_STREAM_SETUP, &real_params);
             break;
         }
 
