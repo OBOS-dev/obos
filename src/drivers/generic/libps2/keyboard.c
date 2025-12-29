@@ -218,7 +218,12 @@ OBOS_PAGEABLE_FUNCTION void PS2_InitializeKeyboard(ps2_port* port)
         Core_LowerIrql(oldIrql);
         return;
     }
+    int retries = 0;
+    up:
     res = PS2_DeviceRead(1024, nullptr);
+    if (res == 0xff && retries++ < 5)
+        goto up;
+
     if (res != 0xAA)
     {
         OBOS_Warning("PS/2: While resetting PS/2 keyboard: Got 0x%02x instead of 0xaa (test success code). Aborting initialization\n", res);
