@@ -72,6 +72,14 @@ obos_status Mm_InitializePMM()
 			nPages--;
 #endif
 		}
+#if __x86_64__
+		// smp trampoline is on 0x1000
+		if (phys == 0x1000)
+		{
+			phys += OBOS_PAGE_SIZE;
+			nPages -= 1;
+		}
+#endif
 		Mm_TotalPhysicalPages += nPages;
 		if ((phys + nPages * OBOS_PAGE_SIZE) > Mm_PhysicalMemoryBoundaries)
 			Mm_PhysicalMemoryBoundaries = (phys + nPages * OBOS_PAGE_SIZE);
@@ -174,6 +182,8 @@ OBOS_NO_KASAN static uintptr_t allocate(size_t nPages, size_t alignmentPages, ob
 	Core_SpinlockRelease(&lock, oldIrql);
 	OBOS_ASSERT(phys);
 	OBOS_ASSERT(phys < Mm_PhysicalMemoryBoundaries);
+	if (phys == 0x1000)
+		printf("allocated %d pages at 0x%p\n", nPages, phys);
 	return phys;
 }
 OBOS_NO_KASAN static uintptr_t allocate_phys_or_fail(size_t nPages, size_t alignmentPages, obos_status *status)
