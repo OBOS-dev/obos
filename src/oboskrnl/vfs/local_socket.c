@@ -40,6 +40,7 @@ struct ringbuffer {
     event doorbell;
     event empty;
     mutex lock;
+    bool dead;
 };
 static obos_status ringbuffer_write(struct ringbuffer* buf, const void* buffer, size_t sz, size_t *bytes_written)
 {
@@ -67,6 +68,7 @@ static obos_status ringbuffer_ready_count(struct ringbuffer* stream, size_t* byt
     Core_MutexRelease(&stream->lock);
     return OBOS_STATUS_SUCCESS;
 }
+static void ringbuffer_free(struct ringbuffer* stream);
 static obos_status ringbuffer_read(struct ringbuffer* stream, void* buffer, size_t sz, size_t* bytes_read, bool peek)
 {
     if (!stream || !buffer)
@@ -76,6 +78,8 @@ static obos_status ringbuffer_read(struct ringbuffer* stream, void* buffer, size
         if (bytes_read) *bytes_read = 0;
         return OBOS_STATUS_SUCCESS;
     }
+    if (!stream->ptr && stream->dead)
+        ringbuffer_free(stream);
     Core_MutexAcquire(&stream->lock);
     const void* in_ptr = (void*)((uintptr_t)stream->buffer + stream->in_ptr);    
     memcpy(buffer, in_ptr, sz);
@@ -110,8 +114,11 @@ static void ringbuffer_initialize(struct ringbuffer* stream)
 }
 static void ringbuffer_free(struct ringbuffer* stream)
 {
+    Core_MutexAcquire(&stream->lock);
     Mm_VirtualMemoryFree(&Mm_KernelContext, stream->buffer, stream->size);
     stream->buffer = nullptr;
+    stream->dead = true;
+    Core_MutexRelease(&stream->lock);
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(stream->doorbell));
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(stream->empty));
 }
@@ -303,7 +310,16 @@ static void stream_free(socket_desc* socket)
         // Close the peer's connection.
         lsckt->peer->peer = nullptr;
         struct ringbuffer* peer_incoming = lsckt->peer->incoming_stream;
-        lsckt->peer->incoming_stream = nullptr;
+        if (lsckt->peer->incoming_stream)
+        {
+            if (!lsckt->peer->incoming_stream->ptr)
+            {
+                lsckt->peer->incoming_stream = nullptr;
+                ringbuffer_free(peer_incoming);
+            }
+            else
+                peer_incoming->dead = true;
+        }
         lsckt->peer->outgoing_stream = nullptr;
         // Free the buffers
         if (peer_incoming != &lsckt->open->stream.client_bound)
@@ -604,7 +620,7 @@ static void irp_stream_on_event_set(irp* req)
         if (!lsckt->incoming_stream)
         {
             req->nBlkRead = 0;
-            req->status = OBOS_STATUS_SUCCESS;
+            req->status = OBOS_STATUS_PIPE_CLOSED;
             return;
         }
         size_t nReady = 0;
@@ -629,8 +645,8 @@ static void irp_stream_on_event_set(irp* req)
     {
         if (!lsckt->outgoing_stream)
         {
-            req->nBlkRead = 0;
-            req->status = OBOS_STATUS_SUCCESS;
+            req->nBlkWritten = 0;
+            req->status = OBOS_STATUS_PIPE_CLOSED;
             return;
         }
         if (req->dryOp)
@@ -670,7 +686,7 @@ static obos_status stream_submit_irp(irp* req)
         {
             if (!lsckt->incoming_stream)
             {
-                req->status = OBOS_STATUS_INTERNAL_ERROR;
+                req->status = OBOS_STATUS_PIPE_CLOSED;
                 return OBOS_STATUS_SUCCESS;
             }
             req->evnt = &lsckt->incoming_stream->doorbell;
@@ -680,7 +696,7 @@ static obos_status stream_submit_irp(irp* req)
         {
             if (!lsckt->outgoing_stream)
             {
-                req->status = OBOS_STATUS_INTERNAL_ERROR;
+                req->status = OBOS_STATUS_PIPE_CLOSED;
                 return OBOS_STATUS_SUCCESS;
             }
             size_t nReady = 0;
