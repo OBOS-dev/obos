@@ -91,8 +91,7 @@ typedef struct memstat
     int64_t pageable;
     // The size of all non-pageable memory (memory that cannot be paged out).
     int64_t nonPaged;
-    // The size of all uncommitted (reserved) memory. (memory allocated with VMA_FLAGS_RESERVE that has not yet been committed).
-    int64_t reserved;
+    int64_t resv;
     // The amount of total page faults on this context.
     int64_t pageFaultCount;
     // The amount of soft page faults on this context.

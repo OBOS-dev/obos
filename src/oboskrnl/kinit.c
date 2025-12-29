@@ -339,24 +339,22 @@ void OBOS_KernelInit()
 
     OBOS_Log("%s: Done early boot.\n", __func__);
 #if OBOS_ARCHITECTURE_BITS == 64
-    OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, %ld KiB non-paged, and %ld KiB uncommitted. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
+    OBOS_Log("Currently at %ld KiB of committed memory (%ld KiB pageable), %ld KiB paged out, and %ld KiB non-paged. %ld KiB of physical memory in use. Page faulted %ld times (%ld hard, %ld soft).\n", 
         Mm_KernelContext.stat.committedMemory/0x400,
         Mm_KernelContext.stat.pageable/0x400,
         Mm_KernelContext.stat.paged/0x400,
         Mm_KernelContext.stat.nonPaged/0x400,
-        Mm_KernelContext.stat.reserved/0x400,
         Mm_PhysicalMemoryUsage/0x400,
         Mm_KernelContext.stat.pageFaultCount,
         Mm_KernelContext.stat.hardPageFaultCount,
         Mm_KernelContext.stat.softPageFaultCount
     );
 #else
-    OBOS_Log("Currently at %d KiB of committed memory (%d KiB pageable), %d KiB paged out, %d KiB non-paged, and %d KiB uncommitted. %d KiB of physical memory in use. Page faulted %d times (%d hard, %d soft).\n", 
+    OBOS_Log("Currently at %d KiB of committed memory (%d KiB pageable), %d KiB paged out, and %d KiB non-paged. %d KiB of physical memory in use. Page faulted %d times (%d hard, %d soft).\n", 
         Mm_KernelContext.stat.committedMemory/0x400,
         Mm_KernelContext.stat.pageable/0x400,
         Mm_KernelContext.stat.paged/0x400,
         Mm_KernelContext.stat.nonPaged/0x400,
-        Mm_KernelContext.stat.reserved/0x400,
         Mm_PhysicalMemoryUsage/0x400,
         Mm_KernelContext.stat.pageFaultCount,
         Mm_KernelContext.stat.hardPageFaultCount,

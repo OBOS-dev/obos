@@ -155,8 +155,6 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
         return nullptr;
     }
-    if (flags & VMA_FLAGS_RESERVE)
-        file = nullptr;
     if (file && flags & VMA_FLAGS_NON_PAGED)
     {
         set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
@@ -246,7 +244,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     // }
     page_range what = {.virt=base,.size=size};
     page_range* rng = RB_FIND(page_tree, &ctx->pages, &what);
-    if (rng && !rng->reserved)
+    if (rng)
     {
         if (flags & VMA_FLAGS_HINT)
         {
@@ -262,79 +260,44 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             return nullptr;
         }
     }
-    if (rng && rng->reserved)
-    {
-        // Check if the page(s) were already committed, and if so, fail.
-        page_info temp = {};
-        for (uintptr_t addr = base; addr < (base+size); addr += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE))
-        {
-            MmS_QueryPageInfo(ctx->pt, addr, &temp, nullptr);
-            page what = {.phys=temp.phys};
-            Core_MutexAcquire(&Mm_PhysicalPagesLock);
-            page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
-            Core_MutexRelease(&Mm_PhysicalPagesLock);
-            if (pg)
-            {
-                set_statusp(ustatus, OBOS_STATUS_IN_USE);
-                Core_SpinlockRelease(&ctx->lock, oldIrql);
-                return nullptr;
-            }
-            // Uncommitted
-            continue;
-        }
-    }
     // TODO: Optimize by splitting really big allocations (> OBOS_HUGE_PAGE_SIZE) into huge pages and normal pages.
     off_t currFileOff = file ? offset : 0;
 
     bool present = false;
-    volatile bool isNew = true;
+    
+    rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
 
-    if (!rng)
+    present = rng->prot.present = true;
+    rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
+    if (!(flags & VMA_FLAGS_PRIVATE) || !file)
     {
-        rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
-
-        present = rng->prot.present = !(flags & VMA_FLAGS_RESERVE);
-        rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
-        if (!(flags & VMA_FLAGS_PRIVATE) || !file)
-        {
-            rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
-            rng->pageable = !(flags & VMA_FLAGS_NON_PAGED);
-        }
-
-        rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
-        rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
-        rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
-        rng->prot.fb = flags & VMA_FLAGS_FRAMEBUFFER;
-        if (!rng->prot.fb)
-            rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
-        rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
-        rng->size = size;
-        rng->virt = base;
-
-        rng->pageable = ~flags & VMA_FLAGS_NON_PAGED;
-        rng->reserved = (flags & VMA_FLAGS_RESERVE);
-        rng->can_fork = ~flags & VMA_FLAGS_NO_FORK;
-
-        // this can be implied by doing '!rng->cow && rng->mapped_here'
-        // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
-        rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
-        rng->ctx = ctx;
-
-        if (file)
-            rng->un.mapped_vn = file->vn;
+        rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
+        rng->pageable = !(flags & VMA_FLAGS_NON_PAGED);
     }
-    else
-    {
-        isNew = false;
-        // OBOS_UNUSED(isNew);
-        rng->size_committed += size;
-        if (rng->size_committed >= rng->size)
-            rng->reserved = false;
-        present = true;
-    }
+
+    rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
+    rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
+    rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
+    rng->prot.fb = flags & VMA_FLAGS_FRAMEBUFFER;
+    if (!rng->prot.fb)
+        rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+    rng->hasGuardPage = (flags & VMA_FLAGS_GUARD_PAGE);
+    rng->size = size;
+    rng->virt = base;
+
+    rng->pageable = ~flags & VMA_FLAGS_NON_PAGED;
+    rng->can_fork = ~flags & VMA_FLAGS_NO_FORK;
+
+    // this can be implied by doing '!rng->cow && rng->mapped_here'
+    // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
+    rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
+    rng->ctx = ctx;
+
+    if (file)
+        rng->un.mapped_vn = file->vn;
 
     page* phys = nullptr;
-    if (!file && !(flags & VMA_FLAGS_NON_PAGED) && !(flags & VMA_FLAGS_RESERVE))
+    if (!file && !(flags & VMA_FLAGS_NON_PAGED))
     {
         OBOS_ASSERT(Mm_AnonPage);
         // Use the anon physical page.
@@ -416,36 +379,20 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
 
         currFileOff += pgSize;
     }
-    if (!(flags & VMA_FLAGS_RESERVE))
+    if (flags & VMA_FLAGS_GUARD_PAGE)
+        size -= pgSize;
+    if (!(flags & VMA_FLAGS_NON_PAGED))
     {
-        if (flags & VMA_FLAGS_GUARD_PAGE)
-            size -= pgSize;
-        if (!(flags & VMA_FLAGS_NON_PAGED))
-        {
-            ctx->stat.pageable += size;
-            Mm_GlobalMemoryUsage.pageable += size;
-        }
-        else
-        {
-            ctx->stat.nonPaged += size;
-            Mm_GlobalMemoryUsage.nonPaged += size;
-        }
-        if (!isNew)
-        {
-            ctx->stat.reserved -= size;
-            Mm_GlobalMemoryUsage.reserved -= size;
-        }
-        else
-        {
-            ctx->stat.committedMemory += size;
-            Mm_GlobalMemoryUsage.committedMemory += size;
-        }
+        ctx->stat.pageable += size;
+        Mm_GlobalMemoryUsage.pageable += size;
     }
     else
     {
-        ctx->stat.reserved += size;
-        Mm_GlobalMemoryUsage.reserved += size;
+        ctx->stat.nonPaged += size;
+        Mm_GlobalMemoryUsage.nonPaged += size;
     }
+    ctx->stat.committedMemory += size;
+    Mm_GlobalMemoryUsage.committedMemory += size;
     OBOS_ASSERT(rng->size);
     RB_INSERT(page_tree, &ctx->pages, rng);
     Core_SpinlockRelease(&ctx->lock, oldIrql);
@@ -573,16 +520,9 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     {
         if (sizeHasGuardPage)
             size -= (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        if (rng->reserved)
-        {
-            ctx->stat.reserved -= size;
-            Mm_GlobalMemoryUsage.reserved -= size;
-        }
-        else
-        {
-            ctx->stat.committedMemory -= size;
-            Mm_GlobalMemoryUsage.committedMemory -= size;
-        }
+        
+        ctx->stat.committedMemory -= size;
+        Mm_GlobalMemoryUsage.committedMemory -= size;
         if (rng->pageable)
         {
             ctx->stat.pageable -= size;
@@ -596,7 +536,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         OBOS_ASSERT(Mm_GlobalMemoryUsage.committedMemory >= 0);
         OBOS_ASSERT(Mm_GlobalMemoryUsage.nonPaged >= 0);
         OBOS_ASSERT(Mm_GlobalMemoryUsage.pageable >= 0);
-        OBOS_ASSERT(Mm_GlobalMemoryUsage.reserved >= 0);
     }
 
     if (full)

@@ -145,11 +145,9 @@ typedef struct page_range
     size_t size;
     page_protection prot;
     RB_ENTRY(page_range) rb_node;
-    size_t size_committed;
     struct context* ctx;
     bool pageable : 1;
     bool hasGuardPage : 1;
-    bool reserved : 1;
     bool can_fork : 1; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
     bool kernelStack : 1; // See Mm_AllocateKernelStack

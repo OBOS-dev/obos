@@ -34,7 +34,6 @@ obos_status Mm_ForkContext(context* into, context* toFork)
     Mm_GlobalMemoryUsage.committedMemory += into->stat.committedMemory;
     Mm_GlobalMemoryUsage.pageable += into->stat.pageable;
     Mm_GlobalMemoryUsage.nonPaged += into->stat.nonPaged;
-    Mm_GlobalMemoryUsage.reserved += into->stat.reserved;
 
     irql oldIrql = Core_SpinlockAcquire(&toFork->lock);
     page_range* curr = nullptr;
