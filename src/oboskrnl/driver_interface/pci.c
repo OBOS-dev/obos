@@ -386,6 +386,14 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
         vendorId, deviceId
     );
 
+    if (classCode == 0x3 && !(deviceId == 0x1111 && vendorId == 0x1234 /* Bochs VBE */))
+    {
+        OBOS_Warning("PCI: %02x:%02x:%02x: Skipping probe of GPU.\n",
+            dev->location.bus,dev->location.slot,dev->location.function
+        );
+        return PCI_ITERATION_DECISION_CONTINUE;
+    }
+
     // Initialize resources.
     // NOTE: The order of these matters.
     initialize_cmd_register_resource(dev);
