@@ -171,7 +171,10 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         {
             if (Core_GetCurrentThread()->signal_info && Core_GetCurrentThread()->signal_info->pending & BIT(SIGPIPE-1))
                 break;
-            status = write_sync(desc, write_buf + written_count, (blkCount - written_count) % pipe->size, 0, &tmp);
+            size_t nToWrite = (blkCount - written_count) % pipe->size;
+            if (!nToWrite)
+                nToWrite = pipe->size;
+            status = write_sync(desc, write_buf + written_count, nToWrite, 0, &tmp);
         }
         if (nBlkWritten)
             *nBlkWritten = written_count;
@@ -180,6 +183,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
 
     while (true)
     {
+        Core_EventClear(&pipe->write_evnt);
         size_t ready_count = 0;
         pipe_ready_count(pipe, &ready_count);
         if ((pipe->size - ready_count) >= blkCount)
