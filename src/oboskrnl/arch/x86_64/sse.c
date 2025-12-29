@@ -34,7 +34,7 @@ void Arch_FreeXSAVERegion(void* buf)
 #ifndef OBOS_DEBUG
     Free(OBOS_NonPagedPoolAllocator, buf, xsave_size);
 #else
-    OBOS_Debug("XSave Region 0x%p leaked!\n");
+    OBOS_Debug("XSave Region 0x%p leaked!\n", buf);
 #endif
 }
 
