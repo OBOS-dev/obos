@@ -115,48 +115,7 @@ enum hda_ioctls {
     IOCTL_HDA_PATH_SHUTDOWN,
     IOCTL_HDA_PATH_VOLUME,
     IOCTL_HDA_PATH_MUTE,
-
-    // takes in a handle instead of a struct fd
-    IOCTL_HDA_STREAM_SETUP_USER,
 };
-
-struct stream_input_buffer {
-    void* buffer_addr;
-    size_t buffer_size;
-    uint32_t in_ptr;
-};
-#define MEMCPY_CHUNK_COMMON(type, name) \
-static void* name(void* vdest, const void* vsrc, size_t count)\
-{\
-    type *dest = vdest;\
-    const type *src = vsrc;\
-    OBOS_ENSURE(!(count % sizeof(type)));\
-    for (size_t i = 0; i < (count/sizeof(type)); i++)\
-        dest[i] = src[i];\
-    return dest;\
-}
-
-MEMCPY_CHUNK_COMMON(uint64_t, memcpy8)
-MEMCPY_CHUNK_COMMON(uint32_t, memcpy4)
-MEMCPY_CHUNK_COMMON(uint16_t, memcpy2)
-
-static uint32_t buffer_fill(void* arg, void* data, uint32_t space)
-{
-    struct stream_input_buffer* ibuf = arg;
-    uint32_t bytes_to_read = OBOS_MIN(ibuf->buffer_size, space);
-    if (!(bytes_to_read % 8))
-        memcpy8(data, ibuf->buffer_addr, bytes_to_read);
-    else if (!(bytes_to_read % 8))
-        memcpy4(data, ibuf->buffer_addr, bytes_to_read);
-    else if (!(bytes_to_read % 2))
-        memcpy2(data, ibuf->buffer_addr, bytes_to_read);
-    else
-        memcpy(data, ibuf->buffer_addr, bytes_to_read);
-    ibuf->in_ptr += bytes_to_read;
-    if (ibuf->in_ptr == ibuf->buffer_size)
-        ibuf->in_ptr = 0;
-    return bytes_to_read;
-}
 
 enum {
     FORMAT_PCM8,
@@ -180,7 +139,7 @@ typedef struct stream_parameters {
 typedef struct hda_stream_setup_parameters {
     stream_parameters stream_params;
     uint32_t ring_buffer_size;
-    void* buffer; // should be ring_buffer_size bytes in length
+    void* resv;
 } *hda_stream_setup_parameters;
 typedef const bool *hda_stream_play;
 typedef struct hda_path_find_parameters {
@@ -455,7 +414,6 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
                 dev->next_write_is_data_queue = true;
             else return OBOS_STATUS_UNINITIALIZED;
             break;
-        case IOCTL_HDA_STREAM_SETUP_USER:
         case IOCTL_HDA_STREAM_SETUP:
         {
             if (!dev->selected_output_stream)
@@ -468,22 +426,13 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argpv)
             if (params.fmt > UHDA_FORMAT_PCM32 || params.fmt < 0)
                 return OBOS_STATUS_INVALID_ARGUMENT;
 
-            struct stream_input_buffer* buffer = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*buffer), nullptr);
-            if (Core_GetCurrentThread()->proc->pid != 0)
-                buffer->buffer_addr = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, 
-                                                             argp.stream_setup->buffer, NULL, 
-                                                             argp.stream_setup->ring_buffer_size, 
-                                                             OBOS_PROTECTION_READ_ONLY, 
-                                                             true, 
-                                                            nullptr);
-            else
-                buffer->buffer_addr = argp.stream_setup->buffer;
-            buffer->buffer_size = argp.stream_setup->ring_buffer_size;
-            uhda_stream_setup(dev->selected_output_stream, 
-                              &params, 
-                              argp.stream_setup->ring_buffer_size, 
-                              buffer_fill, buffer, 
-                              0, nullptr, nullptr);
+            UhdaStatus ustatus = uhda_stream_setup(dev->selected_output_stream, 
+                                                &params, 
+                                                argp.stream_setup->ring_buffer_size, 
+                                                nullptr, nullptr, 
+                                                0, nullptr, nullptr);
+            if (ustatus != UHDA_STATUS_SUCCESS)
+                return OBOS_STATUS_INTERNAL_ERROR;
             break;
         }
 
