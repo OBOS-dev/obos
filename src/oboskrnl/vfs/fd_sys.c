@@ -2364,7 +2364,7 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
             size_t curr_size = 0;
             status = Vfs_FdIoctl(fd->un.fd, 2, &curr_size);
             size_t new_size = args[0];
-            if (curr_size < new_size)
+            if (new_size < curr_size)
             {
                 // This is weird, but in obos' mlibc sysdep it translates to EBUSY.
                 status = OBOS_STATUS_WOULD_BLOCK;
