@@ -631,6 +631,9 @@ obos_status ioctl_argp_size(uint32_t request, size_t* osize)
         case IOCTL_HDA_PATH_FIND:
             *osize = sizeof(*(hda_path_find_parameters)nullptr);
             break;
+        case IOCTL_HDA_STREAM_SETUP_USER:
+            *osize = sizeof(*(hda_stream_setup_user_parameters)nullptr);
+            break;
         default:
             return OBOS_STATUS_INVALID_IOCTL;
     }
