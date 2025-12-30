@@ -1678,6 +1678,11 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                     curr->revents |= POLLNVAL;
                     status = OBOS_STATUS_SUCCESS;
                 }
+                else if (status == OBOS_STATUS_ABORTED)
+                {
+                    curr->revents |= POLLHUP;
+                    status = OBOS_STATUS_SUCCESS;
+                }
                 else
                     break;
             }
@@ -1701,6 +1706,11 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
                 else if (status == OBOS_STATUS_INVALID_ARGUMENT)
                 {
                     curr->revents |= POLLNVAL;
+                    status = OBOS_STATUS_SUCCESS;
+                }
+                else if (status == OBOS_STATUS_ABORTED)
+                {
+                    curr->revents |= POLLHUP;
                     status = OBOS_STATUS_SUCCESS;
                 }
                 else
