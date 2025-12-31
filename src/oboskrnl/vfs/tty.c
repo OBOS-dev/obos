@@ -757,7 +757,7 @@ static void poll_keyboard(struct screen_tty* data)
                     case SCANCODE_DELETE:
                         nReady += 3;
                         i += 3;
-                        char buf[4] = {"\x1b[3~"};
+                        __attribute__((nonstring)) char buf[4] = {"\x1b[3~"};
                         buffer = Vfs_Realloc(buffer, nReady);
                         memcpy(buffer, buf, nReady);
                         break;
@@ -778,7 +778,7 @@ static void poll_keyboard(struct screen_tty* data)
                         down:
                         nReady += 2;
                         i += 2;
-                        char buf[3] = {"\x1b[\0"};
+                        __attribute__((nonstring)) char buf[3] = {"\x1b[\0"};
                         buf[2] = ch;
                         buffer = Vfs_Realloc(buffer, nReady);
                         memcpy(buffer, buf, nReady);
@@ -788,7 +788,7 @@ static void poll_keyboard(struct screen_tty* data)
                     {
                         nReady += 1;
                         i += 1;
-                        char buf[2] = {"\x1b["};
+                        __attribute__((nonstring)) char buf[2] = {"\x1b["};
                         buffer = Vfs_Realloc(buffer, nReady);
                         memcpy(buffer, buf, nReady);
                         break;

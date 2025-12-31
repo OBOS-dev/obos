@@ -286,7 +286,7 @@ OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments,
     char* response = Kdbg_Calloc(memoryLen*2+1, sizeof(char));
     size_t i = 0;
     size_t nRead = 0;
-    static const char hexmask[16] = "0123456789abcdef";
+    static __attribute__((nonstring)) const char hexmask[16] = "0123456789abcdef";
     uintptr_t curr_phys = 0;
     uintptr_t last_virt = 0;
     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++)
@@ -488,12 +488,12 @@ static size_t parse_gdb_thread_id(const char* id, size_t len, uint32_t* pid, uin
     // p0.0
     if (hasPid && len < 4)
         return 0;
-    size_t idSize = 0;
+    // size_t idSize = 0;
     if (hasPid)
     {
         id++;
         size_t pidLen = strnchr(id, '.', len-1)-1;
-        idSize += pidLen + 1;
+        // idSize += pidLen + 1;
         if (id[0] == '-' && id[1] == '1')
             *pid = 0xffffffff;
         else
@@ -505,7 +505,7 @@ static size_t parse_gdb_thread_id(const char* id, size_t len, uint32_t* pid, uin
     if (!(*id))
         return 0;
     size_t tidLen = strnchr(id, ';', len);
-    idSize += tidLen;
+    // idSize += tidLen;
     if (id[0] == '-' && id[1] == '1')
         *tid = 0xffffffff;
     else
