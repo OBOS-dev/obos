@@ -306,7 +306,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
 
     if (!bar0 || !irq_res)
     {
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
@@ -333,7 +333,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
@@ -342,7 +342,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
@@ -356,7 +356,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     } else if (Devices[dev_index].hw.mac.type >= e1000_pch_spt) {
@@ -374,7 +374,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
@@ -398,7 +398,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
@@ -409,7 +409,7 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
         nDevices--;
         Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.", dev->location.bus, dev->location.slot, dev->location.function);
+        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
         dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
         return;
     }
