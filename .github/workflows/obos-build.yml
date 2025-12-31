@@ -46,7 +46,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=Release
         -DOBOS_USE_CLANG=ON
         -DOBOS_ENABLE_UBSAN=ON
-        -DOBOS_CLANG_SUFFIX="-=21"
+        -DOBOS_CLANG_SUFFIX="-21"
         -DLIBGCC=`realpath libgcc-binaries/libgcc-x86_64-no-red-zone.a`
         --toolchain ${{ github.workspace }}/src/build/x86_64/toolchain.cmake
         -S ${{ github.workspace }}
