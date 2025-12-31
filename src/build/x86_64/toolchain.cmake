@@ -69,7 +69,12 @@ if (NOT OBOS_USE_CLANG)
     string(STRIP "${LIBGCC_TARGET}" LIBGCC_TARGET)
     set (OBJCOPY "objcopy")
 else()
-    set (OBJCOPY "llvm-objcopy")
+    set (OBJCOPY "llvm-objcopy${OBOS_CLANG_SUFFIX}")
+
+    if (NOT EXISTS libgcc-x86_64.a)
+        file(DOWNLOAD https://github.com/osdev0/libgcc-binaries/releases/download/2025-12-08/libgcc-x86_64.a libgcc-x86_64.a)
+    endif()
+    file(REAL_PATH libgcc-x86_64.a LIBGCC_TARGET BASE_DIRECTORY .)
 endif()
 
 
