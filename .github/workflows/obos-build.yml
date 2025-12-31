@@ -43,9 +43,9 @@ jobs:
     - name: Configure CMake
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}/x86_64
-        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DOBOS_USE_CLANG=ON
-        -DOBOS_ENABLE_UBSAN=ON
+        -DOBOS_ENABLE_UBSAN=OFF
         -DOBOS_CLANG_SUFFIX="-21"
         -DLIBGCC=`realpath libgcc-binaries/libgcc-x86_64-no-red-zone.a`
         --toolchain ${{ github.workspace }}/src/build/x86_64/toolchain.cmake
