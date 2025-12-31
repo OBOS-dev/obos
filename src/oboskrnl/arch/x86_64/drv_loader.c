@@ -103,7 +103,7 @@ static uint32_t GnuHash(const char* name)
     uint32_t h = 5381 /* oooo magic number */;
 
     while (*name)
-        h = ((h<<5)+h) + *name++; // h*33 + *name++
+        h = ((h<<5)+h) + *(name++); // h*33 + *name++
 
     return h;
 }
@@ -120,18 +120,18 @@ static OBOS_NO_UBSAN Elf64_Sym* GetSymbolFromGnuTable(
     void* base = baseAddress+gnuHashTableOffset;
 
     uint32_t nbuckets = getEntryOffset(base, uint32_t, 0);
-    uint32_t symoffset = getEntryOffset(base, uint32_t , 4);
+    uint32_t symoffset = getEntryOffset(base, uint32_t, 4);
     uint32_t bloom_size = getEntryOffset(base, uint32_t, 8);
     uint32_t bloom_shift = getEntryOffset(base, uint32_t, 12);
     // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
     uint64_t* bloom = &getEntryOffset(base, uint64_t, 16);
-    uint32_t* buckets = &getEntryOffset(base, uint32_t, 16+bloom_size);
-    uint32_t* chain = &getEntryOffset(base, uint32_t, 16+bloom_size+nbuckets*sizeof(uint32_t));
+    uint32_t* buckets = &getEntryOffset(base, uint32_t, 16+bloom_size*sizeof(*bloom));
+    uint32_t* chain = &getEntryOffset(base, uint32_t, 16+bloom_size*sizeof(*bloom)+nbuckets*sizeof(uint32_t));
 
     uint32_t hash = GnuHash(_symbol);
 
     // Look at the bloom table (ooo fancy)
-    uint32_t bloom_value = bloom[hash/64 % bloom_size];
+    uint64_t bloom_value = bloom[hash/64 % bloom_size];
 
     // OpenBSD, you confuse me greatly.
     uint32_t h1 = hash % 64;
@@ -146,7 +146,7 @@ static OBOS_NO_UBSAN Elf64_Sym* GetSymbolFromGnuTable(
         return nullptr; // bruh
 
 
-    for (uint32_t currhash = chain[bucket-symoffset]; ~currhash & 1; currhash = chain[++bucket-symoffset])
+    for (uint32_t currhash = chain[bucket-symoffset]; true; currhash = chain[++bucket-symoffset])
     {
         Elf64_Sym* symbol = &symbolTable[bucket];
         const char* name = stringTable + (char*)fileStart + symbol->st_name;
@@ -768,7 +768,24 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         if (gnuHashTableOffset)
         {
             Elf64_Word* hashTable = OffsetPtr(file, gnuHashTableOffset, Elf64_Word*);
-            *nEntriesDynamicSymbolTable = hashTable[0]+hashTable[1];
+
+            uint32_t nbuckets = getEntryOffset(hashTable, uint32_t, 0);
+            uint32_t symoffset = getEntryOffset(hashTable, uint32_t, 4);
+            uint32_t bloom_size = getEntryOffset(hashTable, uint32_t, 8);
+            // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
+            uint64_t* bloom = &getEntryOffset(hashTable, uint64_t, 16);
+            uint32_t* buckets = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom));
+            uint32_t* chain = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom)+nbuckets*sizeof(uint32_t));
+
+            // Credit to mlibc
+            for (uint32_t i = 0; i < nbuckets; i++)
+            {
+                if (*nEntriesDynamicSymbolTable < buckets[i])
+                    *nEntriesDynamicSymbolTable = buckets[i];
+                while (!(chain[*nEntriesDynamicSymbolTable - symoffset] & 1))
+                    (*nEntriesDynamicSymbolTable)++;
+            }
+            (*nEntriesDynamicSymbolTable)++;
         }
         else if (hashTableOffset)
         {
