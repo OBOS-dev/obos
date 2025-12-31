@@ -487,6 +487,29 @@ static bool calculate_relocation(obos_status* status, driver_id* drv, Elf64_Sym*
     return true;
 }
 
+static OBOS_NO_UBSAN size_t get_dynsym_entry_count(Elf64_Word* hashTable)
+{
+    size_t nEntriesDynamicSymbolTable = 0;
+
+    uint32_t nbuckets = getEntryOffset(hashTable, uint32_t, 0);
+    uint32_t symoffset = getEntryOffset(hashTable, uint32_t, 4);
+    uint32_t bloom_size = getEntryOffset(hashTable, uint32_t, 8);
+    // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
+    uint64_t* bloom = &getEntryOffset(hashTable, uint64_t, 16);
+    uint32_t* buckets = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom));
+    uint32_t* chain = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom)+nbuckets*sizeof(uint32_t));
+
+    // Credit to mlibc
+    for (uint32_t i = 0; i < nbuckets; i++)
+    {
+        if (nEntriesDynamicSymbolTable < buckets[i])
+            nEntriesDynamicSymbolTable = buckets[i];
+        while (!(chain[nEntriesDynamicSymbolTable - symoffset] & 1))
+            nEntriesDynamicSymbolTable++;
+    }
+    return nEntriesDynamicSymbolTable + 1;
+}
+
 void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile, Elf_Sym** dynamicSymbolTable, size_t* nEntriesDynamicSymbolTable, const char** dynstrtab, void** top, obos_status* status)
 {
     OBOS_UNUSED(szFile);
@@ -768,24 +791,7 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
         if (gnuHashTableOffset)
         {
             Elf64_Word* hashTable = OffsetPtr(file, gnuHashTableOffset, Elf64_Word*);
-
-            uint32_t nbuckets = getEntryOffset(hashTable, uint32_t, 0);
-            uint32_t symoffset = getEntryOffset(hashTable, uint32_t, 4);
-            uint32_t bloom_size = getEntryOffset(hashTable, uint32_t, 8);
-            // NOTE: 32-bits on a 32-bit arch, if this code is ever copied.
-            uint64_t* bloom = &getEntryOffset(hashTable, uint64_t, 16);
-            uint32_t* buckets = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom));
-            uint32_t* chain = &getEntryOffset(hashTable, uint32_t, 16+bloom_size*sizeof(*bloom)+nbuckets*sizeof(uint32_t));
-
-            // Credit to mlibc
-            for (uint32_t i = 0; i < nbuckets; i++)
-            {
-                if (*nEntriesDynamicSymbolTable < buckets[i])
-                    *nEntriesDynamicSymbolTable = buckets[i];
-                while (!(chain[*nEntriesDynamicSymbolTable - symoffset] & 1))
-                    (*nEntriesDynamicSymbolTable)++;
-            }
-            (*nEntriesDynamicSymbolTable)++;
+            *nEntriesDynamicSymbolTable = get_dynsym_entry_count(hashTable);
         }
         else if (hashTableOffset)
         {
