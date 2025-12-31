@@ -29,6 +29,11 @@ if (NOT OBOS_USE_OBOS_GCC AND OBOS_COMPILE_USER_UTILS)
 	set(OBOS_COMPILE_USER_UTILS OFF)
 endif()
 
+if (OBOS_USE_CLANG AND OBOS_COMPILE_USER_UTILS)
+	message(WARNING "OBOS_COMPILE_USER_UTILS must be OFF if OBOS_USE_CLANG is ON")
+	set(OBOS_COMPILE_USER_UTILS OFF)
+endif()
+
 # String options
 
 # NOTE: Unless we add FORCE to the end, CMake shouldn't override user values.
@@ -66,6 +71,7 @@ if (OBOS_USE_CLANG)
 	add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=unknown-pragmas>
 						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unknown-pragmas>
 						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=unknown-attributes>
+						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unknown-warning-option>
 						$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=c23-extensions>)
 	if (OBOS_ENABLE_KASAN)
 		set (OBOS_ENABLE_KASAN OFF)
