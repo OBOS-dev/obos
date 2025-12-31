@@ -38,7 +38,7 @@ void Kdbg_Break()
 {
     asm("int3");
 }
-static mutex lock;
+static mutex lock = MUTEX_INITIALIZE();
 void Kdbg_CallDebugExceptionHandler(interrupt_frame* frame, bool isSource)
 {
     if (!Kdbg_CurrentConnection)
