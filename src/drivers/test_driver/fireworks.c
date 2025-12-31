@@ -15,6 +15,7 @@
 #include <scheduler/thread_context_info.h>
 #include <scheduler/thread.h>
 #include <scheduler/process.h>
+#include <scheduler/schedule.h>
 
 #include <mm/context.h>
 #include <mm/alloc.h>
@@ -47,87 +48,35 @@ static timer* delay(timer_tick ms, timer* cached_t)
 	// timer* t = cached_t ? cached_t : Core_TimerObjectAllocate(nullptr);
 	// memzero(t, sizeof(*t));
 	// t->handler = delay_impl;
-	// t->userdata = &e;
+	// t->userdata = (void*)&e;
 	// // printf("wait for %d ms\n", ms);
 	// obos_status status = Core_TimerObjectInitialize(t, TIMER_MODE_DEADLINE, ms*1000);
 	// OBOS_ASSERT(status == OBOS_STATUS_SUCCESS && "Core_TimerObjectInitialize");
 	// status = Core_WaitOnObject(WAITABLE_OBJECT(e));
 	// OBOS_ASSERT(status == OBOS_STATUS_SUCCESS && "Core_WaitOnObject");
 	// return t;
-	OBOS_UNUSED(cached_t);
-	// irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
 	timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
 	while(CoreS_GetTimerTick() < deadline)
-		OBOSS_SpinlockHint();
-	// Core_LowerIrql(oldIrql);
+		Core_Yield();
 	return nullptr;
 }
 #define FRAMEBUFFER_WIDTH (OBOS_TextRendererState.fb.width)
 #define FRAMEBUFFER_HEIGHT (OBOS_TextRendererState.fb.height)
-typedef struct thr_free_stack
-{
-	void* base; // 0x10000 bytes
-	struct thr_free_stack *next, *prev;
-} thr_free_stack;
-typedef struct thr_free_stack_list
-{
-	thr_free_stack *head, *tail;
-	size_t nNodes;
-	spinlock lock;
-} thr_free_stack_list;
-thr_free_stack_list free_thread_stacks = {};
-void reuse_stack(void* base, size_t sz, void* userdata)
-{
-	OBOS_UNUSED(sz);
-	OBOS_UNUSED(userdata);
-	thr_free_stack *node = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*node), nullptr);
-	node->base = base;
-	irql oldIrql = Core_SpinlockAcquire(&free_thread_stacks.lock);
-	if (!free_thread_stacks.head)
-		free_thread_stacks.head = node;
-	if (free_thread_stacks.tail)
-		free_thread_stacks.tail->next = node;
-	node->prev = free_thread_stacks.tail;
-	free_thread_stacks.tail = node;
-	free_thread_stacks.nNodes++;
-	Core_SpinlockRelease(&free_thread_stacks.lock, oldIrql);
-}
+
 thread* create_thread(void* entry, uintptr_t udata, thread_priority priority, thread** out)
 {
     thread* new = CoreH_ThreadAllocate(nullptr);
     thread_ctx ctx = {};
     void* stack = nullptr;
-	irql oldIrql = Core_SpinlockAcquire(&free_thread_stacks.lock);
-	if (free_thread_stacks.nNodes)
-	{
-		thr_free_stack* node = free_thread_stacks.head;
-		stack = node->base;
-		if (node == free_thread_stacks.head)
-			free_thread_stacks.head = node->next;
-		if (node == free_thread_stacks.tail)
-			free_thread_stacks.tail = node->prev;
-		if (node->next)
-			node->next->prev = node->prev;
-		if (node->prev)
-			node->prev->next = node->next;
-		free_thread_stacks.nNodes--;
-		Core_SpinlockRelease(&free_thread_stacks.lock, oldIrql);
-		Free(OBOS_NonPagedPoolAllocator, node, sizeof(*node));
-	}
-	else 
-	{
-		Core_SpinlockRelease(&free_thread_stacks.lock, oldIrql);
-		stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext,
-			nullptr, 0x10000,
-			0, VMA_FLAGS_KERNEL_STACK,
-			nullptr, nullptr);
-	}
-    CoreS_SetupThreadContext(&ctx, (uintptr_t)entry, udata, false, stack, 0x10000);
-    CoreH_ThreadInitialize(new, priority, 0b1, &ctx);
+	stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext,
+		nullptr, 0x8000,
+		0, VMA_FLAGS_KERNEL_STACK,
+		nullptr, nullptr);
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)entry, udata, false, stack, 0x8000);
+    CoreH_ThreadInitialize(new, priority, Core_DefaultThreadAffinity, &ctx);
     new->references++;
-    // new->stackFree = CoreH_VMAStackFree;
-    // new->stackFreeUserdata = &Mm_KernelContext;
-    new->stackFree = reuse_stack;
+    new->stackFree = CoreH_VMAStackFree;
+    new->stackFreeUserdata = &Mm_KernelContext;
 	if (out)
 	{
 		new->references++;
@@ -226,6 +175,7 @@ static void particle_update(void* udata_)
 		return;
 	}
 	plot_pixel(OBOS_TEXT_BACKGROUND, data->x, data->y);
+	Core_Yield();
 	fixedptd temp_pt = fixedpt_div(fixedpt_fromint(17), fixedpt_fromint(1000));
 	data->act_x = fixedpt_add(fixedpt_mul(data->vel_x, temp_pt), data->act_x);
 	data->act_y = fixedpt_add(data->act_y, fixedpt_mul(data->vel_y, temp_pt));
@@ -257,6 +207,7 @@ static void particle_update(void* udata_)
 	}
 	data->vel_y += fixedpt_fromint(10)*temp_pt;
 	plot_pixel(data->rgbx, data->x, data->y);
+	Core_Yield();
 }
 _Atomic(size_t) nParticlesLeft = 0;
 void particle_handler(void* udata)
@@ -277,7 +228,7 @@ void particle_handler(void* udata)
 	if (!data.stress_test)
 	{
 		timer t = {};
-		event e = {};
+		event e = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 		uint64_t udata[] = {
 			(uintptr_t)&data,
 			(uintptr_t)&e,
@@ -337,7 +288,7 @@ static void explodeable_handler(bool stress_test)
 	data.vel_x = fixedpt_mul(fixedpt_fromint(x_offset), data.direction);
 	data.rgbx = random_pixel();
 	data.explosion_range = mt_random() % 100 + 100;
-	int expires_in = 500 + mt_random() % 500;
+	int expires_in = 250 + (mt_random() % 500);
 	int t = 0;
 	timer* timer = nullptr;
 	for (int i = 0; i < expires_in; )
@@ -372,7 +323,7 @@ static void explodeable_handler(bool stress_test)
 	{
 		fw_clone->can_free = false;
 		fw_clone->refcount++;
-		create_thread((void*)particle_handler, (uintptr_t)fw_clone, THREAD_PRIORITY_HIGH, nullptr);
+		create_thread((void*)particle_handler, (uintptr_t)fw_clone, THREAD_PRIORITY_IDLE, nullptr);
 	}
 	fw_clone->can_free = true;
 	Core_ExitCurrentThread();
