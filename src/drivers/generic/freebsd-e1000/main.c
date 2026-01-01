@@ -287,18 +287,21 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc, bool mmio, bool
 static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
 {
     pci_resource* bar0 = nullptr;
+    pci_resource* bar1 = nullptr;
     pci_resource* io_bar = nullptr;
     pci_resource* irq_res = nullptr;
     for (pci_resource* res = LIST_GET_HEAD(pci_resource_list, &dev->resources); res; )
     {
         if (res->type == PCI_RESOURCE_BAR && res->bar->idx == 0)
             bar0 = res;
+        if (res->type == PCI_RESOURCE_BAR && res->bar->idx == 1)
+            bar1 = res;
         if (res->type == PCI_RESOURCE_BAR && res->bar->type == PCI_BARIO)
             io_bar = res;
         if (res->type == PCI_RESOURCE_IRQ)
             irq_res = res;
 
-        if (bar0 && irq_res && io_bar)
+        if (bar0 && irq_res && io_bar && bar1)
             break;
 
         res = LIST_GET_NEXT(pci_resource_list, &dev->resources, res);
@@ -352,13 +355,19 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
         (Devices[dev_index].hw.mac.type == e1000_ich10lan) || (Devices[dev_index].hw.mac.type == e1000_pchlan) ||
         (Devices[dev_index].hw.mac.type == e1000_pch2lan) || (Devices[dev_index].hw.mac.type == e1000_pch_lpt))
     {
-        OBOS_Warning("%02x:%02x:%02x: e1000: Mapping of flash unimplemented\n", dev->location.bus, dev->location.slot, dev->location.function);
-        Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
-        nDevices--;
-        Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
-        OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
-        dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
-        return;
+        // (not taken from managarm)
+        if (!bar1 || bar1->bar->type == PCI_BARIO)
+        {
+            OBOS_Warning("%02x:%02x:%02x: Cannot map flash: unimplemented.\n", dev->location.bus, dev->location.slot, dev->location.function);
+            Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)Devices[dev_index].osdep.membase, bar0->bar->size);
+            nDevices--;
+            Devices = Reallocate(OBOS_NonPagedPoolAllocator, Devices, nDevices*sizeof(e1000_device), (nDevices+1)*sizeof(e1000_device), nullptr);
+            OBOS_Warning("%02x:%02x:%02x: Bogus E1000 PCI node.\n", dev->location.bus, dev->location.slot, dev->location.function);
+            dev = LIST_GET_NEXT(pci_device_list, &bus->devices, dev);
+            return;
+        }
+
+        hw2flashbase(&Devices[dev_index].hw) = (uintptr_t)map_registers(bar1->bar->phys, bar1->bar->size, true, true, false);
     } else if (Devices[dev_index].hw.mac.type >= e1000_pch_spt) {
         /**
         * In the new SPT device flash is not a separate BAR, rather it is also in BAR0,
@@ -516,8 +525,11 @@ s32 e1000_read_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value)
         }
         hw2pcicap(hw) = cached_cap;        
     }
+    if (!cached_cap)
+        cached_cap = hw2pcicap(hw) = (void*)0x1;
+    uint32_t offset = cached_cap == (void*)0x1 ? 0 : cached_cap->offset;
     uint64_t res = 0;
-    *value = DrvS_ReadPCIRegister(hw2pci(hw)->location, cached_cap->offset+reg, 2, &res);
+    *value = DrvS_ReadPCIRegister(hw2pci(hw)->location, offset+reg, 2, &res);
     *value = res;
     return E1000_SUCCESS;
 }
@@ -537,7 +549,10 @@ s32 e1000_write_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value)
         }
         hw2pcicap(hw) = cached_cap;        
     }
-    *value = DrvS_WritePCIRegister(hw2pci(hw)->location, cached_cap->offset+reg, 2, *value);
+    if (!cached_cap)
+        cached_cap = hw2pcicap(hw) = (void*)0x1;
+    uint32_t offset = cached_cap == (void*)0x1 ? 0 : cached_cap->offset;
+    *value = DrvS_WritePCIRegister(hw2pci(hw)->location, offset+reg, 2, *value);
     return E1000_SUCCESS;
 }
 
