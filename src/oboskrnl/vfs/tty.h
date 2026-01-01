@@ -120,6 +120,7 @@ typedef struct tty {
     struct process_group* fg_job;
     atomic_bool paused;
     bool quoted : 1;
+    bool input_enabled : 1;
 } tty;
 
 #define TTY_IOCTL_SETATTR 0x01

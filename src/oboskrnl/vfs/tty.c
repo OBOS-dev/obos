@@ -371,6 +371,14 @@ static obos_status tty_submit_irp(void* request)
 
     // Reads can be done asynchronously, so do that.
 
+    if (!tty->input_enabled)
+    {
+        req->nBlkRead = 0;
+        // Won't ever be set, be we need the program to not die immediately.
+        req->evnt = &tty->data_ready_evnt;
+        return OBOS_STATUS_SUCCESS;
+    }
+
     if (tty->fg_job && tty->fg_job != Core_GetCurrentThread()->proc->pgrp)
     {
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGTTIN);
@@ -560,7 +568,7 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
 obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty) 
 {
     pty = !!pty;
-    if (!i || !i->set_data_ready_cb || !i->write)
+    if (!i || !i->write)
         return OBOS_STATUS_INVALID_ARGUMENT;
     tty *tty = Vfs_Calloc(1, sizeof(struct tty));
 
@@ -592,14 +600,22 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     snprintf((name = Vfs_Malloc(szName + 1)), szName + 1, "tty%ld", index);
     OBOS_Log("%s: Registering TTY %s\n", __func__, name);
     dirent *node = Drv_RegisterVNode(vn, name);
-    Vfs_Free(name);
 
     tty->ent = node;
     tty->vn = vn;
     if (onode)
         *onode = node;
+    
+    tty->input_enabled = true;
+    if (i->set_data_ready_cb)
+        i->set_data_ready_cb(tty, data_ready);
+    else
+    {
+        tty->input_enabled = false;
+        OBOS_Warning("Disabled input on %s%c%s\n", OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? '\0' : '/', name);
+    }
 
-    i->set_data_ready_cb(tty, data_ready);
+    Vfs_Free(name);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -860,9 +876,14 @@ obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_
     if (!conout && !fconout)
         return OBOS_STATUS_INVALID_ARGUMENT;
     struct screen_tty* screen = Vfs_Calloc(1, sizeof(*screen));
-    obos_status status = Vfs_FdOpenVnode(&screen->keyboard, keyboard, FD_OFLAGS_READ|FD_OFLAGS_UNCACHED);
-    if (obos_is_error(status))
-        return status;
+    if (keyboard)
+    {
+        obos_status status = Vfs_FdOpenVnode(&screen->keyboard, keyboard, FD_OFLAGS_READ|FD_OFLAGS_UNCACHED);
+        if (obos_is_error(status))
+            return status;
+    }
+    else
+        OBOS_Warning("Screen TTY will not receive input.\n");
     if (conout)
     {
         screen->tout = conout;
@@ -882,8 +903,8 @@ obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_
         i->size.height = row*16;
     }
     i->write = screen_write;
-    i->set_data_ready_cb = screen_set_data_ready_cb;
+    i->set_data_ready_cb = keyboard ? screen_set_data_ready_cb : nullptr;
     i->userdata = screen;
     
-    return status;
+    return OBOS_STATUS_SUCCESS;
 }

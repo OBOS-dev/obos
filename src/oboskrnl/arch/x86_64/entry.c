@@ -734,16 +734,13 @@ void OBOSS_MakeTTY()
 {
     Core_SetProcessGroup(Core_GetCurrentThread()->proc, 0);
     dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
-    if (ps2k1)
-    {
-        tty_interface i = {};
-        VfsH_MakeScreenTTY(&i, ps2k1->vnode, nullptr, OBOS_FlantermContext);
-        dirent* tty = nullptr;
-        Vfs_RegisterTTY(&i, &tty, false);
-        process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
-        ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
-        pgrp->controlling_tty = (void*)tty->vnode->desc;
-    }
+    tty_interface i = {};
+    VfsH_MakeScreenTTY(&i, ps2k1 ? ps2k1->vnode : nullptr, nullptr, OBOS_FlantermContext);
+    dirent* tty = nullptr;
+    Vfs_RegisterTTY(&i, &tty, false);
+    process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
+    ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
+    pgrp->controlling_tty = (void*)tty->vnode->desc;
 }
 
 static bool isnum(char ch)
