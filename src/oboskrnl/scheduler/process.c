@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/process.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -239,6 +239,10 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	MmS_FreePageTable(proc->ctx->pt);
 	Free(Mm_Allocator, proc->ctx, sizeof(context));
 	CoreS_GetCPULocalPtr()->currentThread->userStack = 0;
+#if defined(__x86_64__) || defined (__m68k__)
+	CoreS_GetCPULocalPtr()->currentThread->context.stackBase = nullptr;
+	CoreS_GetCPULocalPtr()->currentThread->context.stackSize = 0;
+#endif
 	CoreS_GetCPULocalPtr()->currentContext = &Mm_KernelContext;
 
 	thread* ready = nullptr;
