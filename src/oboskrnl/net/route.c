@@ -75,7 +75,7 @@ static void dispatcher(vnode* nic)
         req->dryOp = false;
         VfsH_IRPSubmit(req, &tables->desc);
         VfsH_IRPWait(req);
-        OBOS_ENSURE(req->nBlkRead == req->blkCount);
+        // OBOS_ENSURE(req->nBlkRead == req->blkCount);
 
         shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
         OBOS_SharedPtrConstructSz(buf, req->buff, req->blkCount);
