@@ -156,9 +156,9 @@ static obos_status do_uncached_write(fd* desc, const void* from, size_t nBytes, 
         }
         else
             status = VfsH_IRPWait(req);
-        VfsH_IRPUnref(req);
         if (nWritten_)
             *nWritten_ = req->nBlkRead * desc->vn->blkSize;
+        VfsH_IRPUnref(req);
         if (obos_is_success(status))
         {
             desc->vn->times.change = get_current_time();
@@ -632,10 +632,11 @@ obos_status VfsH_IRPSignal(irp* request, obos_status status)
     return Core_EventSet(request->evnt, true);
 }
 
-void VfsH_IRPRef(irp* request)
+irp* VfsH_IRPRef(irp* request)
 {
     if (request)
         ++(request->refs);
+    return request;
 }
 void VfsH_IRPUnref(irp* request)
 {

@@ -83,6 +83,12 @@ OBOS_EXPORT obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc);
 OBOS_EXPORT obos_status VfsH_IRPBytesToBlockCount(vnode* vn, size_t nBytes, size_t *out);
 OBOS_EXPORT obos_status VfsH_IRPWait(irp* request);
 OBOS_EXPORT obos_status VfsH_IRPSignal(irp* request, obos_status status);
-OBOS_EXPORT void VfsH_IRPRef(irp* request);
+
 OBOS_EXPORT void VfsH_IRPUnref(irp* request);
+#ifndef __clang__
+OBOS_EXPORT __attribute__((malloc, malloc(VfsH_IRPUnref, 1))) irp* VfsH_IRPRef(irp* request);
+OBOS_EXPORT __attribute__((malloc, malloc(VfsH_IRPUnref, 1))) irp* VfsH_IRPAllocate();
+#else
+OBOS_EXPORT irp* VfsH_IRPRef(irp* request);
 OBOS_EXPORT irp* VfsH_IRPAllocate();
+#endif
