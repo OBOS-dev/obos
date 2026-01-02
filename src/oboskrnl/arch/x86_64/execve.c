@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/execve.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -171,6 +171,8 @@ OBOS_NORETURN OBOS_NO_KASAN void OBOSS_HandControlTo(struct context* ctx, struct
 
     OBOS_Debug("Handing off control to user program.\n");
     OBOS_Debug("NOTE: RSP=0x%p.\n", Core_GetCurrentThread()->context.frame.rsp);
+
+    OBOS_ENSURE(!(Core_GetCurrentThread()->context.frame.rsp & 0xf));
 
     Core_GetCurrentThread()->context.frame.rbp = 0;
     uintptr_t udata[3] = { aux->elf.real_entry, ctx->pt, Core_GetCurrentThread()->context.frame.rsp };

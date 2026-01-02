@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -436,7 +436,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
         return OBOS_STATUS_UNINITIALIZED;
     OBOS_ENSURE(desc->vn);
     if (desc->vn->vtype == VNODE_TYPE_FIFO || desc->vn->vtype == VNODE_TYPE_SOCK || desc->vn->vtype == VNODE_TYPE_CHR)
-        return OBOS_STATUS_SUCCESS; // act like it worked
+        return OBOS_STATUS_SEEK_UNALLOWED;
     off_t finalOff = 0;
     driver_header* driver = Vfs_GetVnodeDriver(desc->vn);
     size_t blkSize = 0;

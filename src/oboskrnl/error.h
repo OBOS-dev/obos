@@ -1,7 +1,7 @@
 /*
  * oboskrnl/error.h
  * 
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -204,4 +204,9 @@ typedef enum
 	/// unreachable (port unreachable)
 	/// </summary>
 	OBOS_STATUS_CONNECTION_REFUSED,
+	/// <summary>
+	/// The seek failed because the object is unseekable.
+	/// Translates to the ESPIPE errno. 
+	/// </summary>
+	OBOS_STATUS_SEEK_UNALLOWED,
 } obos_status;

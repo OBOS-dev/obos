@@ -1,7 +1,7 @@
 /*
  * oboskrnl/syscall.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -114,7 +114,7 @@ obos_status Sys_SysConf(int num, long *ret_)
             ret = Core_CpuCount;
             break;
         case _SC_OPEN_MAX:
-            ret = 0x2000; // we don't really impose a limit, but a reasonable limit is returned here to prevent stuff like gdb from hanging.
+            ret = Core_GetCurrentThread()->proc->handles.size;
             break;
         case _SC_PHYS_PAGES:
             ret = Mm_UsablePhysicalPages;
