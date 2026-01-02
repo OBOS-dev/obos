@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/fork.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -65,38 +65,24 @@ obos_status Mm_ForkContext(context* into, context* toFork)
                 Core_MutexRelease(&Mm_PhysicalPagesLock);
                 if (phys)
                 {
-                    if (phys->cow_type == COW_SYMMETRIC)
-                    {
-                        uintptr_t fault_addr = addr;
-                        Core_SpinlockRelease(&toFork->lock, oldIrql);
-                        Mm_HandlePageFault(toFork, fault_addr, PF_EC_RW|((uint32_t)info.prot.present<<PF_EC_PRESENT)|PF_EC_UM);
-                        oldIrql = Core_SpinlockAcquire(&toFork->lock);
-                        MmS_QueryPageInfo(toFork->pt, fault_addr, nullptr, &info.phys);
-                        what.phys = info.phys;
-                        Core_MutexAcquire(&Mm_PhysicalPagesLock);
-                        phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
-                        Core_MutexRelease(&Mm_PhysicalPagesLock);
-                        if (obos_expect(!phys, false))
-                            goto down;
-                    }
-
                     MmH_RefPage(phys);
                     phys->pagedCount++;
                     if (!phys->backing_vn)
                     {
-                        if (phys->cow_type != COW_ASYMMETRIC)
+                        if (phys->cow_type == COW_DISABLED)
+                        {
                             phys->cow_type = COW_SYMMETRIC;
-                        else
-                            info.prot.present = false;
+                            info.prot.rw = false;
+                        }
+                        // else
+                        //     info.prot.present = false;
                     }
-                    info.prot.rw = (phys->cow_type == COW_DISABLED) ? info.prot.rw : false;
                     
                 } else if (info.prot.is_swap_phys)
                 {
                     swap_allocation* swap_alloc = MmH_LookupSwapAllocation(info.phys);
                     MmH_RefSwapAllocation(swap_alloc);
                 }
-                down:
                 MmS_SetPageMapping(toFork->pt, &info, info.phys, false);
                 MmS_SetPageMapping(into->pt, &info, info.phys, false);
             }
