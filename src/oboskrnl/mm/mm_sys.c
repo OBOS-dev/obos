@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/mm_sys.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -81,6 +81,7 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
     prot |= OBOS_PROTECTION_USER_PAGE;
     prot &= ~OBOS_PROTECTION_CACHE_DISABLE;
     flags &= ~VMA_FLAGS_32BITPHYS; // userspace doesn't need this as much as kernel mode
+    flags |= VMA_FLAGS_POSIX_COMPAT;
 
     if (flags & VMA_FLAGS_NON_PAGED)
     {
@@ -91,6 +92,8 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
             return nullptr;
         }
     }
+
+    OBOS_Debug("%s: flags=0x%x, fd=0x%x, offset=0x%x, prot=%d\n", __func__, flags, args.file, args.offset, prot);
 
     void* ret = Mm_VirtualMemoryAllocEx(vmm_ctx, base, size, prot, flags, file, args.offset, &status);
     if (pstatus)

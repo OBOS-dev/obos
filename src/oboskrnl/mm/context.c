@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/context.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -112,8 +112,11 @@ page* MmH_AllocatePage(uintptr_t phys, bool huge)
 	Core_MutexAcquire(&Mm_PhysicalPagesLock);
 	page* buf = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
 	Core_MutexRelease(&Mm_PhysicalPagesLock);
-	if (buf) 
+	if (buf)
+	{
+		MmH_RefPage(buf);
 		return buf;
+	}
 	buf = ZeroAllocate(Mm_Allocator, 1, sizeof(page), nullptr);
 	buf->phys = phys;
 	if (huge)
@@ -132,15 +135,14 @@ page* MmH_RefPage(page* buf)
 	if (buf)
 		buf->refcount++;
 	return buf;
-	// printf("refed page %p (now at %d) (paged count = %d)\n", buf->phys, buf->refcount, buf->pagedCount);
 }
 void MmH_DerefPage(page* buf)
 {
 	if (!buf)
 		return;
-	// printf("derefed page %p (now at %d) (paged count = %d)\n", buf->phys, buf->refcount - 1, buf->pagedCount);
 	if (!(--buf->refcount))
 	{
+		OBOS_ENSURE(Mm_AnonPage != buf);
 		if (~buf->flags & PHYS_PAGE_MMIO)
 			Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
 

@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/page.h
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -151,10 +151,12 @@ typedef struct page_range
     bool can_fork : 1; // see madvise(MADV_DONTFORK)
     bool phys32 : 1; // See VMA_FLAGS_32BITPHYS
     bool kernelStack : 1; // See Mm_AllocateKernelStack
+    bool priv : 1; // True if this is a private file mapping
     union {
         struct context* userContext; // valid if kernelStack != nullptr
         struct vnode* mapped_vn;
     } un;
+    size_t base_file_offset;
 } page_range;
 
 typedef struct working_set_node

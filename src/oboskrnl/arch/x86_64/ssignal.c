@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/ssignal.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -77,6 +77,7 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     {
         if (!Core_GetCurrentThread()->userStack)
             Core_GetCurrentThread()->userStack = Mm_VirtualMemoryAlloc(Core_GetCurrentThread()->proc->ctx, nullptr, 0x10000, 0, VMA_FLAGS_GUARD_PAGE, nullptr, nullptr);
+        OBOS_ENSURE(Core_GetCurrentThread()->userStack);
         frame->rsp = (uintptr_t)Core_GetCurrentThread()->userStack + 0x10000;
     }
     
@@ -84,7 +85,8 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     
     frame->rsp -= sizeof(ctx);
     uint8_t *rsp = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, (void*)frame->rsp, nullptr, sizeof(ucontext_t), 0, true, nullptr);
-    OBOS_ENSURE(rsp);
+    if (!rsp)
+        Core_ExitCurrentThread();
     memcpy(rsp, &ctx, sizeof(ctx));
     Mm_VirtualMemoryFree(&Mm_KernelContext, rsp, sizeof(ucontext_t));
     frame->rsp -= sizeof(sig->trampoline_base);

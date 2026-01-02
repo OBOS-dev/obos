@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/swap.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -408,6 +408,11 @@ void Mm_MarkAsStandbyPhys(page* node)
     LIST_APPEND(phys_page_list, &Mm_StandbyPageList, node);
     node->flags |= PHYS_PAGE_STANDBY;
     Mm_ReleaseSwapLock(oldIrql);
+    if (node->flags & PHYS_PAGE_DIRTY)
+    {
+        node->flags &= ~PHYS_PAGE_DIRTY;
+        MmH_DerefPage(node);
+    }
 }
 
 void Mm_InitializePageWriter()

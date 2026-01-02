@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/handler.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -43,12 +43,12 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         *type = ACCESS_FAULT;
         return;
     }
-    page what = {.backing_vn=rng->un.mapped_vn,.file_offset=addr-rng->virt};
+    page what = {.backing_vn=rng->un.mapped_vn,.file_offset = rng->base_file_offset + (addr-rng->virt)};
     page* phys = RB_FIND(pagecache_tree, &rng->un.mapped_vn->cache, &what);
     if (!phys)
     {
         *type = HARD_FAULT;
-        phys = VfsH_PageCacheCreateEntry(rng->un.mapped_vn, addr-rng->virt);
+        phys = VfsH_PageCacheCreateEntry(rng->un.mapped_vn, what.file_offset);
     }
     else
         *type = SOFT_FAULT;
@@ -63,7 +63,13 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         Mm_MarkAsDirtyPhys(phys);
     info->phys = phys->phys;
     info->prot.present = true;
-    info->prot.rw = rng->prot.rw && !(ec & PF_EC_RW);
+    if (rng->priv)
+    {
+        info->prot.rw = false;
+        phys->cow_type = COW_SYMMETRIC;
+    }
+    else
+        info->prot.rw = rng->prot.rw;
     
     phys->pagedCount++;
     MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
@@ -71,31 +77,32 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
     Core_SpinlockRelease(&rng->ctx->lock, oldIrql);
 }
 
-static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page* pg, page_info* info)
+static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page** pg, page_info* info)
 {
     OBOS_UNUSED(addr && ec);
     info->prot.present = true;
-    if (pg->refcount == 1 /* we're the only one left */)
+    if ((*pg)->refcount == 1 /* we're the only one left */)
     {
         // Steal the page.
         info->prot.rw = true;
         info->prot.ro = false;
-        MmS_SetPageMapping(ctx->pt, info, pg->phys, false);
+        MmS_SetPageMapping(ctx->pt, info, (*pg)->phys, false);
         MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        pg->cow_type = COW_DISABLED;
+        (*pg)->cow_type = COW_DISABLED;
         return true;
     }
     page* new = MmH_PgAllocatePhysical(rng->phys32, info->prot.huge_page);
     if (!new)
         return false;
     new->pagedCount++;
-    memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys(pg->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    memcpy(MmS_MapVirtFromPhys(new->phys), MmS_MapVirtFromPhys((*pg)->phys), info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->prot.rw = true;
     info->prot.ro = false;
     MmS_SetPageMapping(ctx->pt, info, new->phys, false);
     MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-    pg->pagedCount--;
-    MmH_DerefPage(pg);
+    (*pg)->pagedCount--;
+    MmH_DerefPage((*pg));
+    (*pg) = new;
     return true;
 }
 
@@ -107,7 +114,6 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     bool allocated_ent = false;
     if (!ent)
     {
-        for (volatile bool b = (rng->ctx != ctx); b; );
         ent = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
         ent->info.virt = curr->virt;
         ent->info.prot = curr->prot;
@@ -242,7 +248,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
         switch (pg->cow_type) {
             case COW_SYMMETRIC:
-                handled = sym_cow_cpy(ctx, rng, addr, ec, pg, &curr);
+                handled = sym_cow_cpy(ctx, rng, addr, ec, &pg, &curr);
                 break;
             case COW_ASYMMETRIC:
                 handled = asym_cow_cpy(ctx, rng, addr, ec, &pg, &curr, &oldIrql);
@@ -281,6 +287,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     done:
     if (!handled && type == INVALID_FAULT)
         type = ACCESS_FAULT;
+    if (type == ACCESS_FAULT)
+        handled = false;
     if (type == ACCESS_FAULT && rng)
         if (rng->hasGuardPage && (rng->virt==addr))
             OBOS_Debug("Page fault happened on guard page. Stack overflow possible\n");

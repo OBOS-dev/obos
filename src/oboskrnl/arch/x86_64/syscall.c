@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/syscall.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -300,11 +300,12 @@ const char* status_to_string[] = {
     "OBOS_STATUS_NOT_A_TTY",
     "OBOS_STATUS_IRP_RETRY",
     "OBOS_STATUS_PORT_IN_USE",
-	"OBOS_STATUS_ADDRESS_IN_USE",
+    "OBOS_STATUS_ADDRESS_IN_USE",
     "OBOS_STATUS_ADDRESS_NOT_AVAILABLE",
-	"OBOS_STATUS_NO_ROUTE_TO_HOST",
-	"OBOS_STATUS_MESSAGE_TOO_BIG",
-	"OBOS_STATUS_CONNECTION_REFUSED",
+    "OBOS_STATUS_NO_ROUTE_TO_HOST",
+    "OBOS_STATUS_MESSAGE_TOO_BIG",
+    "OBOS_STATUS_CONNECTION_REFUSED",
+    "OBOS_STATUS_SEEK_UNALLOWED",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)

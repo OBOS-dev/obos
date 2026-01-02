@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/alloc.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 #include <int.h>
 #include <klog.h>
@@ -193,10 +193,8 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             set_statusp(ustatus, OBOS_STATUS_INVALID_ARGUMENT);
             return nullptr;
         }
-        if (file->vn->filesize < size)
-            size = file->vn->filesize; // Truncated.
         if ((offset+size > file->vn->filesize))
-            size = (offset+size) - file->vn->filesize;
+            size = (file->vn->filesize - offset); // Truncated.
         if (size % pgSize)
             size += (pgSize-(size%pgSize));
         if (!(file->flags & FD_FLAGS_READ))
@@ -251,6 +249,17 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             base = 0;
             goto top;
         }
+        else if (flags & VMA_FLAGS_POSIX_COMPAT)
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            status = Mm_VirtualMemoryFree(ctx, (void*)base, size);
+            if (obos_is_error(status))
+            {
+                set_statusp(ustatus, status);
+                return nullptr;
+            }
+            oldIrql = Core_SpinlockAcquire(&ctx->lock);
+        }
         else
         {
             if (!base_)
@@ -270,10 +279,8 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     present = rng->prot.present = true;
     rng->prot.huge_page = flags & VMA_FLAGS_HUGE_PAGE;
     if (!(flags & VMA_FLAGS_PRIVATE) || !file)
-    {
-        rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
         rng->pageable = !(flags & VMA_FLAGS_NON_PAGED);
-    }
+    rng->prot.rw = !(prot & OBOS_PROTECTION_READ_ONLY);
 
     rng->prot.executable = prot & OBOS_PROTECTION_EXECUTABLE;
     rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
@@ -287,6 +294,8 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
 
     rng->pageable = ~flags & VMA_FLAGS_NON_PAGED;
     rng->can_fork = ~flags & VMA_FLAGS_NO_FORK;
+    rng->priv = flags & VMA_FLAGS_PRIVATE;
+    rng->base_file_offset = offset;
 
     // this can be implied by doing '!rng->cow && rng->mapped_here'
     // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
@@ -306,7 +315,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
     {
         bool isPresent = !(rng->hasGuardPage && (base==addr)) && present;
-        bool cow = false;
+        bool cow = flags & VMA_FLAGS_PRIVATE;
         // for (volatile bool b = (addr==0xffffff00003d3000); b; )
         //     ;
 
@@ -333,6 +342,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
                     }
                     Free(Mm_Allocator, rng, sizeof(*rng));
                     Core_SpinlockRelease(&ctx->lock, oldIrql);
+                    set_statusp(ustatus, OBOS_STATUS_NOT_ENOUGH_MEMORY);
                     return nullptr;
                 }
             }
@@ -352,10 +362,12 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
             }
             else
             {
-                MmH_RefPage(phys);
                 phys->cow_type = COW_ASYMMETRIC;
+                cow = true;
             }
         }
+        
+        MmH_RefPage(phys);
 
         // Append the virtual page to *phys on demand as apposed to now to save memory.
         // An example of where it'd be added is on swap out, as the virtual_pages list is not needed until then.
@@ -428,7 +440,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_NOT_FOUND;
     }
-    if ((base + size) > size)
+    if ((base + size) >= (rng->virt + rng->size))
         size = rng->size - (base - rng->virt); // TODO: Fix
 
     // printf("freeing %d at %p. called from %p\n", size, base, __builtin_return_address(0));
@@ -458,7 +470,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         // Split at base (size: ((base-rng->virt)+rng->size-size)-rng->virt)
         if (rng->virt != base && rng->size != size)
         {
-            if ((base + size) >= (rng->virt+rng->size))
+            if ((base + size) > (rng->virt+rng->size))
             {
                 Core_SpinlockRelease(&ctx->lock, oldIrql);
                 return OBOS_STATUS_INVALID_ARGUMENT;
