@@ -781,6 +781,11 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
     rng->prot.user = prot & OBOS_PROTECTION_USER_PAGE;
     rng->prot.ro = prot & OBOS_PROTECTION_READ_ONLY;
     rng->prot.uc = prot & OBOS_PROTECTION_CACHE_DISABLE;
+#if OBOS_DEBUG
+    rng->un.userContext = user_context;
+    rng->view_map_address = __builtin_return_address(0);
+    rng->user_view = true;
+#endif
     RB_INSERT(page_tree, &Mm_KernelContext.pages, rng);
 
     page_range* user_rng = nullptr;

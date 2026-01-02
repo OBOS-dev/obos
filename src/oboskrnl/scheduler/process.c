@@ -236,6 +236,12 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 		rng = next;
 	}
 
+#if OBOS_DEBUG
+	RB_FOREACH(rng, page_tree, &Mm_KernelContext.pages)
+		if (rng->user_view && rng->un.userContext == proc->ctx)
+			OBOS_Warning("Leaked view of user memory at %p\n", rng->view_map_address);
+#endif
+
 	MmS_FreePageTable(proc->ctx->pt);
 	Free(Mm_Allocator, proc->ctx, sizeof(context));
 	CoreS_GetCPULocalPtr()->currentThread->userStack = 0;

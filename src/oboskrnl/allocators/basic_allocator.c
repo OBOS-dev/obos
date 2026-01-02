@@ -233,7 +233,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 	nBytes += 32;
 #endif
 
-#if OBOS_DEBUG
+#if OBOS_DEBUG_FREE_SIZE
 	nBytes += (sizeof(uintptr_t)*2);
 #endif
 
@@ -282,7 +282,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 	memset((void*)((uintptr_t)ret+nBytes-32), OBOS_ASANPoisonValues[ASAN_POISON_ALLOCATED], 32);
 #endif
 
-#if OBOS_DEBUG
+#if OBOS_DEBUG_FREE_SIZE
 	nBytes -= sizeof(uintptr_t)*2;
 	unrounded_nBytes -= sizeof(uintptr_t)*2;
 	((uintptr_t*)ret)[0] = unrounded_nBytes;
@@ -312,7 +312,7 @@ OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t b
 	{
 		if (s_enable_alloc_logs)
 			printf("kalloc alloc 0x%p %d 0x%p\n", blk, size, __builtin_return_address(0));
-#if OBOS_DEBUG
+#if OBOS_DEBUG_FREE_SIZE
 		((void**)((uintptr_t)blk - sizeof(uintptr_t)*2))[1] = __builtin_return_address(0);
 #endif
 		return memset(blk, 0, size);
@@ -348,7 +348,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void* blk, s
 			nBytes_old = (size_t)1 << (64-__builtin_clzll(nBytes_old));
 		if (nBytes == nBytes_old)
 		{
-#if OBOS_DEBUG
+#if OBOS_DEBUG_FREE_SIZE
 			*((uintptr_t*)((uintptr_t)blk - sizeof(uintptr_t)*2)) = new_size;
 #endif
 			return blk;
@@ -373,8 +373,9 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	OBOS_MAYBE_UNUSED void* initial_blk = blk;
 	OBOS_MAYBE_UNUSED size_t initial_nBytes = nBytes;
 
-	OBOS_ASSERT(!((uintptr_t)blk & 0xf)); 
-#if OBOS_DEBUG
+	OBOS_ASSERT(!((uintptr_t)blk & 0xf));
+
+#ifdef OBOS_DEBUG_FREE_SIZE
 	blk = (void*)((uintptr_t)blk - (sizeof(uintptr_t)*2));
 	do {
 		uintptr_t *debug_info = blk;
@@ -382,6 +383,16 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 			OBOS_Panic(OBOS_PANIC_ALLOCATOR_ERROR, "MISMATCHED ALLOCATION/FREE SIZES! nBytes on alloc: %d, nBytes on free: %d. Block 0x%p allocated by 0x%p\n", debug_info[0], nBytes, blk, debug_info[1]);			
 	} while(0);
 	nBytes += (sizeof(uint64_t)*2);
+#endif
+
+#if OBOS_DEBUG
+	if (This_ != Mm_Allocator)
+	{
+		page_range key = {.virt=(uintptr_t)blk,.size=nBytes};
+		page_range* rng = RB_FIND(page_tree, &Mm_KernelContext.pages, &key);
+		if (rng)
+			OBOS_ENSURE(rng->user_view == false && "Attempted Free() of a view of user memory.");	
+	}
 #endif
 	
 #if OBOS_KASAN_ENABLED
@@ -414,10 +425,12 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	{
 		irql oldIrql = lock(c);
 		append_node(c->free, (freelist_node*)blk);
-#if OBOS_KASAN_ENABLED || OBOS_DEBUG
+#if OBOS_KASAN_ENABLED
 		memset(((freelist_node*)blk)+1, OBOS_ASANPoisonValues[ASAN_POISON_FREED], nBytes-sizeof(freelist_node));
+#elif OBOS_DEBUG
+		memset(((freelist_node*)blk)+1, 0xde, nBytes-sizeof(freelist_node));
 #endif
-		unlock(c, oldIrql);
+unlock(c, oldIrql);
 	}
 	return OBOS_STATUS_SUCCESS;
 }

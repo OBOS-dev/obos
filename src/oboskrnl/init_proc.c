@@ -130,6 +130,12 @@ void OBOS_LoadInit()
     aux.envp = nullptr;
     aux.envpc = 0;
 
+    // aux.envpc = 2;
+    // aux.envp = ZeroAllocate(OBOS_KernelAllocator, aux.envpc+1, sizeof(char*), nullptr);
+    // aux.envp[0] = memcpy(Allocate(OBOS_KernelAllocator, sizeof("MLIBC_RTLD_DEBUG_VERBOSE=1"), nullptr), "MLIBC_RTLD_DEBUG_VERBOSE=1", sizeof("MLIBC_RTLD_DEBUG_VERBOSE=1"));
+    // aux.envp[1] = memcpy(Allocate(OBOS_KernelAllocator, sizeof("MLIBC_RTLD_DEBUG=1"), nullptr), "MLIBC_RTLD_DEBUG=1", sizeof("MLIBC_RTLD_DEBUG=1"));
+    // aux.envp[2] = nullptr;
+
     thread* thr = CoreH_ThreadAllocate(nullptr);
     thread_ctx thr_ctx = {};
 

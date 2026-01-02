@@ -43,6 +43,10 @@ obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
     void* ubuf = Mm_MapViewOfUserMemory(ctx, usr_dest, nullptr, count, 0, true, &status);
     if (obos_is_error(status))
         return status;
+// #if OBOS_DEBUG && !OBOS_KASAN_ENABLED
+//     for (size_t i = 0; i < count; i++)
+//         OBOS_ENSURE((((unsigned char*)k_src)[i]) != 0xde);
+// #endif
     memcpy(ubuf, k_src, count);
     Mm_VirtualMemoryFree(&Mm_KernelContext, ubuf, count);
     return OBOS_STATUS_SUCCESS;
