@@ -172,6 +172,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         {
             ext_dirent_cache* ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache), nullptr);
             ent_cache->ent = *ent;
+            ent_cache->cache = cache;
             ent_cache->ent_block = ext_get_block_at_index(cache, parent->ent.ino, ext_get_blk_index_from_offset(cache, offset));
             ent_cache->ent_offset = offset % cache->block_size;
             ent_cache->rel_offset = offset;
@@ -210,12 +211,19 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
             ent_cache->ent_block = ext_get_block_at_index(cache, parent->ent.ino, ext_get_blk_index_from_offset(cache, offset));
             ent_cache->ent_offset = offset % cache->block_size;
             ent_cache->rel_offset = offset;
+            ent_cache->cache = cache;
 
             ext_dirent_adopt(parent, ent_cache);
         }
 
         down:
         offset += ent->rec_len;
+        if (!ent->rec_len)
+        {
+            MmH_DerefPage(pg);
+            OBOS_Error("extfs: %s: directory corrupted, returning nullptr\n", __func__);
+            return nullptr;
+        }
     }
 
     parent->populated = true;
@@ -236,6 +244,7 @@ static ext_dirent_cache* on_match(ext_dirent_cache** const curr_, ext_dirent_cac
                         size_t* const path_len)
 {
     ext_dirent_cache *curr = *curr_;
+    ext_dirent_populate(curr->cache, curr->ent.ino, curr->ent.name, false, curr->parent);
     *root = curr;
     const char *newtok = (*tok) + str_search(*tok, '/');
     if (newtok >= (*path + *path_len))

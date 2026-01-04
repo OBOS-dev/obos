@@ -163,7 +163,7 @@ handle Sys_FindDriverByName(const char* uname /* assumed to be 64-bytes at max *
 
         curr = curr->next;
     }
-    Free(OBOS_KernelAllocator, name, sz_name);
+    Free(OBOS_KernelAllocator, name, sz_name+1);
     if (!id)
         return HANDLE_INVALID;
 

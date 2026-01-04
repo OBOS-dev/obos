@@ -139,6 +139,10 @@ vnode* ext_make_vnode(ext_cache* cache, uint32_t ino, mount* mnt)
         cache->inode_vnode_table[ino-1]->refs++;
         return cache->inode_vnode_table[ino-1];
     }
+    
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
 
     ext_inode* inode = ext_read_inode(cache, ino);
     OBOS_ASSERT(inode);

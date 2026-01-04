@@ -38,6 +38,9 @@ obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffse
     ext_inode_handle *hnd = (void*)desc;
     if (!hnd || !buf)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
     Core_MutexAcquire(&hnd->lock);
     obos_status status = ext_ino_read_blocks(hnd->cache, hnd->ino, blkOffset, blkCount, buf, nBlkRead);
     Core_MutexRelease(&hnd->lock);

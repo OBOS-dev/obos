@@ -229,6 +229,7 @@ typedef struct ext_dirent_cache {
     page* pg;
     uint32_t ent_block, ent_offset, rel_offset;
     ext_dirent ent;
+    struct ext_cache* cache;
     bool populated;
 } ext_dirent_cache;
 

@@ -19,6 +19,36 @@
 
 #include "structs.h"
 
+static obos_status expand_directory(ext_cache* cache, ext_dirent_cache* parent, size_t* new_ent_offset, size_t* prev_ent_offset)
+{
+    size_t block = 0, old_size = ext_ino_filesize(cache, parent->inode);
+
+    obos_status status = ext_ino_resize(cache, parent->ent.ino, old_size + block, true);
+    if (obos_is_error(status))
+        return status;
+    status = ext_ino_commit_blocks(cache, parent->ent.ino, old_size, block);
+    if (obos_is_error(status))
+        return status;
+
+    size_t nToRead = le32_to_host(parent->inode->blocks) * 512;
+    uint8_t* buffer = Allocate(EXT_Allocator, nToRead, nullptr);
+    ext_ino_read_blocks(cache, parent->ent.ino, 0, nToRead, buffer, nullptr);
+
+    ext_dirent* iter = nullptr;
+    size_t offset = 0;
+    for (; offset < old_size; )
+    {
+        iter = (void*)(buffer+offset);
+        offset += iter->rec_len;
+    }
+
+    *prev_ent_offset = offset - iter->rec_len;
+    // the last entry should already point to the new entry.
+    *new_ent_offset = old_size;
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 static obos_status make_dirent(
     ext_dirent_cache** out, 
     ext_cache* cache,
@@ -90,17 +120,31 @@ static obos_status make_dirent(
         offset += iter->rec_len;
     }
 
+    Free(OBOS_KernelAllocator, buffer, nToRead);
+    buffer = nullptr;
+
     if (!hole_begin)
-        return OBOS_STATUS_NO_SPACE;
+    {
+        obos_status status = expand_directory(cache, parent, &ent_offset, &prev_ent_offset);
+        if (obos_is_error(status))
+            return status;
+    }
 
     if (hole_begin && !hole_end)
     {
         hole_end = offset;
         size_t hole_size = hole_end - hole_begin;
         if (hole_size < ent_len)
-            return OBOS_STATUS_NO_SPACE;
-        ent_offset = hole_begin;
-        ent_len += (hole_size-ent_len);
+        {
+            obos_status status = expand_directory(cache, parent, &ent_offset, &prev_ent_offset);
+            if (obos_is_error(status))
+                return status;
+        }
+        else
+        {
+            ent_offset = hole_begin;
+            ent_len += (hole_size-ent_len);
+        }
     }
 
     ext_dirent_cache* ent = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache), nullptr);
@@ -233,6 +277,10 @@ obos_status pmk_file(dev_desc* newDesc,
     if (!newDesc || !parent_path || !vn || !name || (type > FILE_TYPE_SYMBOLIC_LINK))
         return OBOS_STATUS_INVALID_ARGUMENT;
 
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
+
     ext_cache *cache = nullptr;
     for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
     {
@@ -336,6 +384,10 @@ obos_status pmk_file(dev_desc* newDesc,
 obos_status phardlink_file(dev_desc desc, const char* parent_path, void* vn, const char* name)
 {
     ext_inode_handle* to_link = (void*)desc;
+
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
 
     if (!parent_path || !to_link || !name)
         return OBOS_STATUS_INVALID_ARGUMENT;

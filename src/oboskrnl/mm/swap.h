@@ -40,7 +40,7 @@ enum {
     PAGE_WRITER_SYNC_ALL = PAGE_WRITER_SYNC_FILE|PAGE_WRITER_SYNC_ANON,
 };
 
-extern uint32_t Mm_PageWriterOperation;
+extern OBOS_EXPORT uint32_t Mm_PageWriterOperation;
 
 extern phys_page_list Mm_DirtyPageList;
 extern phys_page_list Mm_StandbyPageList;
@@ -54,7 +54,7 @@ OBOS_EXPORT void Mm_MarkAsStandbyPhys(page* pg);
 void Mm_InitializePageWriter();
 // Wakes up the page writer to free up memory
 // Set 'wait' to true to wait for the page writer to release
-void Mm_WakePageWriter(bool wait);
+OBOS_EXPORT void Mm_WakePageWriter(bool wait);
 irql Mm_TakeSwapLock();
 void Mm_ReleaseSwapLock(irql oldIrql);
 

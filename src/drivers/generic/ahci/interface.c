@@ -412,6 +412,8 @@ obos_status finalize_irp(void* request_)
     if (!request_)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irp* request = request_;
+    if (!request->drvData)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     struct command_data* data = request->drvData;
     if (obos_is_success(data->commandStatus))
         request->nBlkRead = request->blkCount;

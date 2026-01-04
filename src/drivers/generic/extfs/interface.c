@@ -223,6 +223,10 @@ obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn)
 
 obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata)
 {
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
+
     uint32_t ino = 0;
     ext_cache* cache = nullptr;
     if (dir == UINTPTR_MAX)
@@ -353,7 +357,11 @@ obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc pa
 {
     if (!found || (!vn && parent == UINTPTR_MAX) || !path)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    
+
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);        
+
     uint32_t parent_ino  = 0;
     ext_cache* cache = nullptr;
     if (parent == UINTPTR_MAX)
@@ -445,6 +453,14 @@ obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc pa
 
         down:
         offset += ent->rec_len;
+        if (!ent->rec_len)
+        {
+            // Directory corruption.
+            OBOS_Error("extfs: %s: directory corrupted, returning OBOS_STATUS_INTERNAL_ERROR (EIO)\n", __func__);
+            MmH_DerefPage(pg);
+            Free(EXT_Allocator, buffer, nToRead);
+            return OBOS_STATUS_INTERNAL_ERROR;
+        }
     }
 
     MmH_DerefPage(pg);
