@@ -228,21 +228,39 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
     // printf("opening %s\n", name);
     real_dent = VfsH_DirentLookupFrom(name, parent_dent);
 
-    if (!real_dent)
+    if (!real_dent && (oflags & FD_OFLAGS_CREATE))
     {
-        if (~oflags & FD_OFLAGS_CREATE)
+        size_t index = strrfind(name, '/');
+        bool index_bumped = false;
+        if (index == 0)
+        {
+            index_bumped = true;
+            index++;
+        }
+        if (index == SIZE_MAX)
+            index = 0;
+        char ch = name[index];
+        name[index] = 0;
+        
+        const char* dirname = name;
+        dirent* parent = VfsH_DirentLookupFrom(dirname, parent_dent);
+        name[index] = ch;
+        if (!parent)
         {
             Free(OBOS_KernelAllocator, name, sz_name+1);
-            return OBOS_STATUS_NOT_FOUND;
+            return OBOS_STATUS_NOT_FOUND; // parent wasn't found.
         }
-        status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode, true));
+        file_perm real_mode = unix_to_obos_mode(mode, true);
+        status = Vfs_CreateNode(parent, name+(index == 0 ? 0 : (index_bumped ? index : index+1)), VNODE_TYPE_REG, real_mode);
         if (obos_is_error(status))
         {
             Free(OBOS_KernelAllocator, name, sz_name+1);
             return status;
         }
-        real_dent = VfsH_DirentLookupFrom(name, parent_dent);
-        OBOS_ASSERT(real_dent);
+        real_dent = VfsH_DirentLookupFrom(name+(index == 0 ? 0 : (index_bumped ? index : index+1)), parent);
+        if (index_bumped)
+            index--;
+        OBOS_ENSURE(ent);
     }
     
     Free(OBOS_KernelAllocator, name, sz_name+1);
@@ -1911,6 +1929,8 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
 
     file_perm perm = {.mode=0777};
     status = Vfs_CreateNode(parent, link_name, VNODE_TYPE_LNK, perm);
+    if (obos_is_error(status))
+        goto fail;
     dirent* node = VfsH_DirentLookupFrom(link_name, parent);
     node->vnode->un.linked = target;
 
@@ -2286,6 +2306,8 @@ obos_status Sys_Fcntl(handle desc, int request, uintptr_t* uargs, size_t nArgs, 
     if (!fd)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        if (HANDLE_TYPE(desc) == HANDLE_TYPE_DIRENT)
+            return OBOS_STATUS_SUCCESS;
         return status;
     }
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
