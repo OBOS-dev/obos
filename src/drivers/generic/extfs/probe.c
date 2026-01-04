@@ -119,7 +119,7 @@ bool probe(void* vn_)
     // We don't need the root inode except to check for its existence
     Free(EXT_Allocator, root, sizeof(*root));
     root = nullptr;
-    // cache->root = ext_dirent_populate(cache, 2, "/", true);
+    cache->root = ext_dirent_populate(cache, 2, "/", false, nullptr);
 
     cache->inode_vnode_table_size = cache->inodes_per_group*cache->block_group_count*sizeof(vnode*);
     cache->inode_vnode_table = Mm_VirtualMemoryAlloc(&Mm_KernelContext, 

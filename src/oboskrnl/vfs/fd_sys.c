@@ -232,20 +232,20 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
     {
         if (~oflags & FD_OFLAGS_CREATE)
         {
-            Free(OBOS_KernelAllocator, name, sz_name);
+            Free(OBOS_KernelAllocator, name, sz_name+1);
             return OBOS_STATUS_NOT_FOUND;
         }
         status = Vfs_CreateNode(parent_dent, name, VNODE_TYPE_REG, unix_to_obos_mode(mode, true));
         if (obos_is_error(status))
         {
-            Free(OBOS_KernelAllocator, name, sz_name);
+            Free(OBOS_KernelAllocator, name, sz_name+1);
             return status;
         }
         real_dent = VfsH_DirentLookupFrom(name, parent_dent);
         OBOS_ASSERT(real_dent);
     }
     
-    Free(OBOS_KernelAllocator, name, sz_name);
+    Free(OBOS_KernelAllocator, name, sz_name+1);
     return Vfs_FdOpenDirent(fd->un.fd, real_dent, oflags & ~FD_OFLAGS_CREATE);
 }
 obos_status Sys_FdCreat(handle desc, const char* name, uint32_t mode)
@@ -684,7 +684,8 @@ obos_status Sys_Stat(int fsfdt, handle desc, const char* upath, int flags, struc
         drv_fs_info fs_info = {};
         OBOS_ENSURE (to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info);
         to_stat->mount_point->fs_driver->driver->header.ftable.stat_fs_info(to_stat->mount_point->device, &fs_info);
-        st.st_blocks = (to_stat->filesize+(fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)))/512;
+        size_t pad = to_stat->filesize % fs_info.fsBlockSize ? (fs_info.fsBlockSize-(to_stat->filesize%fs_info.fsBlockSize)) : 0;
+        st.st_blocks = (to_stat->filesize+pad)/512;
         st.st_blksize = fs_info.fsBlockSize;
     }
     st.st_atim.tv_sec = to_stat->times.access;
@@ -726,6 +727,9 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
         return status;
     path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upath, path, nullptr);
+    const char* last_component = path + strrfind(path, '/');
+    if (strcmp(last_component, ".."))
+        return OBOS_STATUS_IN_USE;
     if (parent == AT_FDCWD || path[0] == '/')
     {
         dirent* dent = VfsH_DirentLookup(path);
@@ -757,7 +761,9 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
 
     if (node->vnode->vtype == VNODE_TYPE_DIR && ~flags & AT_REMOVEDIR)
         return OBOS_STATUS_NOT_A_FILE;
-
+    if (node->vnode->vtype == VNODE_TYPE_DIR && node->tree_info.children.nChildren)
+        return OBOS_STATUS_IN_USE;
+    
     return Vfs_UnlinkNode(node);
 }
 
@@ -804,6 +810,7 @@ obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t
             default:
                 OBOS_UNREACHABLE;
         }   
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     }
 
     if (!vn)
@@ -1035,7 +1042,7 @@ void Sys_Sync()
     if (obos_is_error(status))
         return;
 
-    Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(true);
     Mm_WakePageWriter(true);
 }
@@ -1091,8 +1098,8 @@ obos_status Sys_Mount(const char* uat, const char* uon)
 
     done:
 
-    Free(OBOS_KernelAllocator, at, sz_path);
-    Free(OBOS_KernelAllocator, on, sz_path_2);
+    Free(OBOS_KernelAllocator, at, sz_path+1);
+    Free(OBOS_KernelAllocator, on, sz_path_2+1);
 
     return status;
 }
@@ -1113,7 +1120,7 @@ obos_status Sys_Unmount(const char* uat)
 
     status = Vfs_UnmountP(at);
 
-    Free(OBOS_KernelAllocator, at, sz_path);
+    Free(OBOS_KernelAllocator, at, sz_path+1);
 
     return status;
 }
@@ -1839,7 +1846,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     status = OBOSH_ReadUserString(ulink, nullptr, &sz_path2);
     if (obos_is_error(status))
     {
-        Free(OBOS_KernelAllocator, link, sz_path+1);
+        Free(OBOS_KernelAllocator, link, sz_path2+1);
         return status;
     }
     link = ZeroAllocate(OBOS_KernelAllocator, sz_path2+1, sizeof(char), nullptr);
@@ -1907,10 +1914,16 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     dirent* node = VfsH_DirentLookupFrom(link_name, parent);
     node->vnode->un.linked = target;
 
+    driver_header* header = Vfs_GetVnodeDriver(parent->vnode);
+
+    if (!header->ftable.symlink_set_path)
+        // "EPERM - The filesystem containing linkpath does not support the creation of symbolic links."
+        status = OBOS_STATUS_ACCESS_DENIED; 
+    else
+        status = header->ftable.symlink_set_path(node->vnode->desc, target);
+
     fail:
-    Free(OBOS_KernelAllocator, link, sz_path+1);
-    if (obos_is_error(status))
-        Free(OBOS_KernelAllocator, target, sz_path+1);
+    Free(OBOS_KernelAllocator, link, sz_path2+1);
     return status;
 }
 
@@ -2085,8 +2098,14 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     if (!target_header->ftable.hardlink_file)
         // "EPERM - The filesystem containing oldpath and newpath does not support the creation of hard links."
         status = OBOS_STATUS_ACCESS_DENIED; 
-    else
+    else if (~target_header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
         status = target_header->ftable.hardlink_file(vtarget->desc, plink->vnode->desc, linkname);
+    else
+    {
+        char* parent_path = VfsH_DirentPath(plink, link_mount->root);
+        status = target_header->ftable.phardlink_file(vtarget->desc, parent_path, link_mount->device, linkname);
+        Vfs_Free(parent_path);
+    }
     if (obos_is_success(status))
     {
         dirent* ent = Vfs_Calloc(1, sizeof(dirent));

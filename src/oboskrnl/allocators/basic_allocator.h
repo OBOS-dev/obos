@@ -55,4 +55,4 @@ typedef struct basic_allocator
 	enum blockSource blkSource;
 } basic_allocator;
 
-obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This);
+OBOS_EXPORT obos_status OBOSH_ConstructBasicAllocator(basic_allocator* This);

@@ -253,10 +253,13 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	if (!LIST_GET_NODE_COUNT(tlb_shootdown_queue, &g_tlb_shootdown_queue))
 		return false;
 	tlb_shootdown_packet* curr = CoreS_GetCPULocalPtr()->arch_specific.curr_pckt;
+
+	irql oldIrql = Core_SpinlockAcquire(&g_tlb_shootdown_queue_lock);
 	if (!curr)
 		curr = LIST_GET_TAIL(tlb_shootdown_queue, &g_tlb_shootdown_queue);
 	else
 	 	curr = LIST_GET_NEXT(tlb_shootdown_queue, &g_tlb_shootdown_queue, curr);
+	Core_SpinlockRelease(&g_tlb_shootdown_queue_lock, oldIrql);
 
 	while (curr)
 	{
@@ -270,7 +273,9 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 			deref_tlb_shootdown_pckt(curr);
 		else
 			CoreS_GetCPULocalPtr()->arch_specific.curr_pckt = curr;
+		oldIrql = Core_SpinlockAcquire(&g_tlb_shootdown_queue_lock);
 		curr = LIST_GET_NEXT(tlb_shootdown_queue, &g_tlb_shootdown_queue, curr);
+		Core_SpinlockRelease(&g_tlb_shootdown_queue_lock, oldIrql);
 	}
 
 	return true;

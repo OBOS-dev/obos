@@ -10,6 +10,7 @@
 #include <error.h>
 
 #include <allocators/base.h>
+#include <allocators/basic_allocator.h>
 
 #include <scheduler/thread.h>
 
@@ -85,6 +86,8 @@ OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* 
 void driver_cleanup_callback()
 {
 }
+OBOS_WEAK obos_status symlink_set_path(dev_desc desc, const char* to);;
+OBOS_WEAK obos_status phardlink_file(dev_desc desc, const char* parent_path, void* vn, const char* name);
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
@@ -114,7 +117,7 @@ obos_status get_file_inode(dev_desc desc, uint32_t *out)
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_NO_ENTRY|DRIVER_HEADER_DIRENT_CB_PATHS,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_DIRENT_CB_PATHS,
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
         .ioctl = ioctl,
@@ -131,7 +134,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .path_search = path_search,
         .get_linked_path = get_linked_path,
         .pmove_desc_to = pmove_desc_to, // TODO: Implement
-        .pmk_file = pmk_file, // TODO: Implement
+        .pmk_file = pmk_file,
         .premove_file = premove_file,
         .trunc_file = trunc_file, // TODO: Implement
         .get_file_perms = get_file_perms,
@@ -143,7 +146,20 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .vnode_search = vnode_search,
         .stat_fs_info = stat_fs_info,
         .probe = probe,
+        .phardlink_file = phardlink_file,
+        .symlink_set_path = symlink_set_path,
         .mount = nullptr,
     },
     .driverName = "EXT Driver",
+    .version = 1,
 };
+
+allocator_info* EXT_Allocator;
+static basic_allocator ext_alloc = {};
+
+driver_init_status OBOS_DriverEntry(driver_id* this)
+{
+    OBOSH_ConstructBasicAllocator(&ext_alloc);
+    EXT_Allocator = (allocator_info*)&ext_alloc;
+    return (driver_init_status){.status=OBOS_STATUS_SUCCESS};
+}

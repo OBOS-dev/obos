@@ -19,7 +19,7 @@
 
 #include "structs.h"
 
-static uint32_t get_block_at_index(ext_cache* cache, uint32_t ino, struct inode_offset_location loc)
+uint32_t ext_get_block_at_index(ext_cache* cache, uint32_t ino, struct inode_offset_location loc)
 {
     ext_inode* inode = ext_read_inode(cache, ino);
     OBOS_ASSERT(inode);
@@ -121,7 +121,7 @@ static uint32_t get_block_at_index(ext_cache* cache, uint32_t ino, struct inode_
 #undef idx_doubly_indirect_block
 #undef idx_triply_indirect_block
 
-ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories)
+ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories, ext_dirent_cache* parent)
 {
     if (!cache || !ino)
         return nullptr;
@@ -140,13 +140,21 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         return nullptr;
     }
 
-    ext_dirent_cache* parent = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + strlen(parent_name), nullptr);
-    parent->ent.ino = ino;
-    parent->inode = inode;
-    MmH_RefPage(pg);
-    parent->pg = pg;
-    parent->ent.name_len = strlen(parent_name);
-    memcpy(parent->ent.name, parent_name, parent->ent.name_len);
+    if (!parent)
+    {
+        parent = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + strlen(parent_name), nullptr);
+        parent->ent.ino = ino;
+        parent->inode = inode;
+        MmH_RefPage(pg);
+        parent->pg = pg;
+        parent->ent.name_len = strlen(parent_name);
+        memcpy(parent->ent.name, parent_name, parent->ent.name_len);
+    }
+    else if (parent->populated)
+    {
+        MmH_DerefPage(pg);
+        return parent;
+    }
 
     size_t nToRead = le32_to_host(inode->blocks) * 512;
     uint8_t* buffer = Allocate(EXT_Allocator, nToRead, nullptr);
@@ -157,13 +165,16 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         ent = (void*)(buffer+offset);
         if (!ent->ino)
             goto down;
-        if (strcmp(ent->name, ".") || strcmp(ent->name, ".."))
-            goto down;
+        // if (strcmp(ent->name, ".") || strcmp(ent->name, ".."))
+        //     goto down;
 
         if (!recurse_directories)
         {
-            ext_dirent_cache* ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + ent->name_len, nullptr);
+            ext_dirent_cache* ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache), nullptr);
             ent_cache->ent = *ent;
+            ent_cache->ent_block = ext_get_block_at_index(cache, parent->ent.ino, ext_get_blk_index_from_offset(cache, offset));
+            ent_cache->ent_offset = offset % cache->block_size;
+            ent_cache->rel_offset = offset;
             ent_cache->inode = ext_read_inode_pg(cache, ent->ino, &ent_cache->pg);
             memcpy(ent_cache->ent.name, ent->name, ent->name_len);
             ext_dirent_adopt(parent, ent_cache);
@@ -183,10 +194,10 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
             ext_dirent_cache* ent_cache = nullptr;
         
             if (is_directory)
-                ent_cache = ext_dirent_populate(cache, ent->ino, ent->name, true);
+                ent_cache = ext_dirent_populate(cache, ent->ino, ent->name, true, nullptr);
             else
             {
-                ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache) + ent->name_len, nullptr);
+                ent_cache = ZeroAllocate(EXT_Allocator, 1, sizeof(ext_dirent_cache), nullptr);
                 ent_cache->ent = *ent;
                 ent_cache->inode = ext_read_inode_pg(cache, ent->ino, &ent_cache->pg);
                 MmH_RefPage(ent_cache->pg);
@@ -196,7 +207,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
             ent_cache->ent.file_type = ent->file_type;
             ent_cache->ent.name_len = ent->name_len;
             ent_cache->ent.rec_len = ent->rec_len;
-            ent_cache->ent_block = get_block_at_index(cache, parent->ent.ino, ext_get_blk_index_from_offset(cache, offset));
+            ent_cache->ent_block = ext_get_block_at_index(cache, parent->ent.ino, ext_get_blk_index_from_offset(cache, offset));
             ent_cache->ent_offset = offset % cache->block_size;
             ent_cache->rel_offset = offset;
 
@@ -207,6 +218,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
         offset += ent->rec_len;
     }
 
+    parent->populated = true;
     MmH_DerefPage(pg);
     return parent;
 }
@@ -249,7 +261,7 @@ ext_dirent_cache* ext_dirent_lookup_from(const char* path, ext_dirent_cache* roo
         return nullptr;
     size_t path_len = strlen(path);
     if (!path_len)
-        return nullptr;
+        return root;
     for (; *path == '/'; path++, path_len--)
         ;
     const char* tok = path;

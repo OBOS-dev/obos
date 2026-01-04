@@ -37,6 +37,7 @@
 swap_dev* Mm_SwapProvider;
 
 static thread page_writer_thread;
+static _Atomic(size_t) page_writer_waiters = 0;
 static event page_writer_wake = EVENT_INITIALIZE(EVENT_SYNC);
 static event page_writer_done = EVENT_INITIALIZE(EVENT_SYNC);
 static mutex swap_lock = MUTEX_INITIALIZE();
@@ -301,7 +302,7 @@ static __attribute__((no_instrument_function)) void page_writer()
                 driver->ftable.get_blk_size(pg->backing_vn->desc, &blkSize);
                 nBytes /= blkSize;
                 const size_t base_offset = pg->backing_vn->flags & VFLAGS_PARTITION ? (pg->backing_vn->partitions[0].off/blkSize) : 0;
-                const uintptr_t offset = pg->file_offset + base_offset;
+                const uintptr_t offset = (pg->file_offset / pg->backing_vn->blkSize) + base_offset;
                 // if (!VfsH_LockMountpoint(point))
                 //     goto abort;
                 Mm_ReleaseSwapLock(oldIrql);
@@ -382,7 +383,7 @@ void Mm_MarkAsDirtyPhys(page* node)
     //     printf("%p:%d\n", node->backing_vn, node->file_offset);
     Mm_DirtyPagesBytes += (node->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     Mm_ReleaseSwapLock(oldIrql);
-    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_ANON;
     if (Mm_DirtyPagesBytes > Mm_DirtyPagesBytesThreshold && !node->backing_vn)
         Mm_WakePageWriter(false);
 }
@@ -433,7 +434,12 @@ void Mm_WakePageWriter(bool wait)
     Core_EventPulse(&page_writer_wake, true);
     obos_status status = OBOS_STATUS_SUCCESS;
     if (wait)
+    {
+        page_writer_waiters++;
         status = Core_WaitOnObject(WAITABLE_OBJECT(page_writer_done));
+        if (!(--page_writer_waiters))
+            Core_EventClear(&page_writer_done);
+    }
     OBOS_UNUSED(status);
 }
 

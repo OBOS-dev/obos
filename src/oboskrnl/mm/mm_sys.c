@@ -267,7 +267,7 @@ void Sys_SyncAnonPages()
     obos_status status = OBOS_CapabilityCheck("mm/sync-anon", true);
     if (obos_is_error(status))
         return;
-    Mm_PageWriterOperation = PAGE_WRITER_SYNC_ANON;
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_ANON;
     Mm_WakePageWriter(true);
 }
 

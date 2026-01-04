@@ -444,17 +444,17 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
     switch (whence)
     {
         case SEEK_SET:
-            if (off % blkSize)
+            if ((off % blkSize) && (desc->flags & FD_FLAGS_UNCACHED))
                 return OBOS_STATUS_INVALID_ARGUMENT;
             finalOff = off;
             break;
         case SEEK_END:
-            if (off % blkSize)
+            if ((off % blkSize) && (desc->flags & FD_FLAGS_UNCACHED))
                 return OBOS_STATUS_INVALID_ARGUMENT;
             finalOff = (off_t)desc->vn->filesize - 1 + off;
             break;
         case SEEK_CUR:
-            if (off % blkSize)
+            if ((off % blkSize) && (desc->flags & FD_FLAGS_UNCACHED))
                 return OBOS_STATUS_INVALID_ARGUMENT;
             finalOff = (off_t)desc->offset + off;
             break;
@@ -518,7 +518,7 @@ obos_status Vfs_FdFlush(fd* desc)
     mount* point = desc->vn->mount_point ? desc->vn->mount_point : desc->vn->un.mounted;
     if (!VfsH_LockMountpoint(point))
         return OBOS_STATUS_ABORTED;
-    Mm_PageWriterOperation = PAGE_WRITER_SYNC_FILE;
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
     Mm_WakePageWriter(false);
     VfsH_UnlockMountpoint(point);
     return OBOS_STATUS_SUCCESS;

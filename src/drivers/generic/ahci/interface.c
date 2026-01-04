@@ -400,7 +400,8 @@ obos_status submit_irp(void* request_)
     {
         Free(OBOS_NonPagedPoolAllocator, data, sizeof(struct command_data));
         request->drvData = nullptr;
-        return status;
+        VfsH_IRPSignal(request, status);
+        return OBOS_STATUS_SUCCESS;
     }
     SendCommand(port, data, request->blkOffset, 0x40, request->blkCount == 0x10000 ? 0 : request->blkCount);
     HBA->ghc |= BIT(1) /* GhcIE */;

@@ -71,6 +71,9 @@ obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid)
     Core_MutexAcquire(&hnd->lock);
     page* pg = nullptr;
     ext_inode* ino = ext_read_inode_pg(hnd->cache, hnd->ino, &pg);
+    OBOS_ASSERT(ino);
+    if (!ino)
+        return OBOS_STATUS_INTERNAL_ERROR;
     MmH_RefPage(pg);
     
     if (owner_uid != -1)
@@ -150,6 +153,8 @@ obos_status premove_file(void* vn, const char* path)
     ext_dirent_cache* dent = ext_dirent_lookup_from(path, cache->root);
     if (!dent)
         return OBOS_STATUS_NOT_FOUND;
+    if (strncmp(dent->ent.name, ".", dent->ent.name_len) || strncmp(dent->ent.name, "..", dent->ent.name_len))
+        return OBOS_STATUS_ACCESS_DENIED;
 
     ext_dirent_cache* prev = dent->prev;
     ext_dirent_cache* next = dent->next;
@@ -159,7 +164,6 @@ obos_status premove_file(void* vn, const char* path)
         ext_dirent_flush(cache, prev);
     }
     
-    dent->ent.rec_len = 0;
     dent->ent.ino = 0;
     dent->ent.file_type = 0;
     ext_dirent_flush(cache, dent);
@@ -267,6 +271,9 @@ obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc
             goto down;
 
         ext_inode* ent_ino = ext_read_inode(cache, ent->ino);
+        OBOS_ASSERT(ent_ino);
+        if (!ent_ino)
+            goto down;
 
         memcpy(name, ent->name, ent->name_len);
         if (cb(get_desc(cache, ent->ino), 1, ext_ino_filesize(cache, ent_ino), userdata, name) == ITERATE_DECISION_STOP)
@@ -280,6 +287,12 @@ obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc
         
         down:
         offset += ent->rec_len;
+        if (!ent->rec_len)
+        {
+            // Corrupted directory.
+            MmH_DerefPage(pg);
+            return OBOS_STATUS_INTERNAL_ERROR;
+        }
     }
 
     MmH_DerefPage(pg);

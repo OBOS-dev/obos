@@ -16,6 +16,8 @@
 
 #include <mm/page.h>
 
+#include <allocators/base.h>
+
 #include <utils/list.h>
 
 #if defined(__x86_64__)
@@ -213,7 +215,7 @@ typedef struct ext_dirent {
     uint16_t rec_len;
     uint8_t name_len;
     uint8_t file_type; // ignore, use inode->mode. also invalid in revision 0
-    char name[]; // 255 bytes max
+    char name[255]; // 255 bytes max
 } OBOS_PACK ext_dirent;
 
 typedef struct ext_dirent_cache {
@@ -227,6 +229,7 @@ typedef struct ext_dirent_cache {
     page* pg;
     uint32_t ent_block, ent_offset, rel_offset;
     ext_dirent ent;
+    bool populated;
 } ext_dirent_cache;
 
 #define ext_dirent_adopt(parent_, child_) \
@@ -242,6 +245,21 @@ do {\
     _parent->children.nChildren++;\
     _child->parent = _parent;\
 } while(0)
+#define ext_dirent_emplace_at(parent_, child_, after_) \
+do {\
+    ext_dirent_cache* _parent = (parent_);\
+    ext_dirent_cache* _child = (child_);\
+    ext_dirent_cache* _after = (after_);\
+    if (_after->next)\
+        _after->next->prev = _child;\
+    _child->next = _after->next;\
+    _after->next = _child;\
+    _child->prev = _after;\
+    if (_parent->children.tail == _after)\
+        _parent->children.tail = _child;\
+    _parent->children.nChildren++;\
+    _child->parent = _parent;\
+} while(0)
 
 #define ext_dirent_disown(parent_, child_) \
 do {\
@@ -251,9 +269,9 @@ do {\
         _parent->children.head = _child->next;\
     if (_parent->children.tail == _child)\
         _parent->children.tail = _child->prev;\
-    if (_child->prev->next)\
+    if (_child->prev)\
         _child->prev->next = _child->next;\
-    if (_child->next->prev)\
+    if (_child->next)\
         _child->next->prev = _child->prev;\
     _parent->children.nChildren--;\
 } while(0)
@@ -349,9 +367,11 @@ void ext_writeback_sb(ext_cache* cache);
 // ino: The directory inode
 // parent_name: The directory's name
 // recurse_directories: Whether to recursively populate child directories.
-ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories);
+ext_dirent_cache *ext_dirent_populate(ext_cache* cache, uint32_t ino, const char* parent_name, bool recurse_directories, ext_dirent_cache* parent);
 ext_dirent_cache *ext_dirent_lookup_from(const char* path, ext_dirent_cache* root);
 void ext_dirent_flush(ext_cache* cache, ext_dirent_cache* ent);
+
+uint32_t ext_get_block_at_index(ext_cache* cache, uint32_t ino, struct inode_offset_location loc);
 
 #define ext_read_block(cache, block_number, pg) (VfsH_PageCacheGetEntry((cache)->vn, (block_number)*(cache->block_size), (pg)))
 #define ext_block_group_from_block(cache, block_number) ((block_number) / (cache)->blocks_per_group)
@@ -380,4 +400,4 @@ vnode* ext_make_vnode(ext_cache* cache, uint32_t ino, mount* mnt);
 #define ext_sb_inodes_per_group(superblock) (le16_to_host((superblock)->inodes_per_group))
 #define ext_sb_inode_size(superblock) (le32_to_host((superblock)->revision) == EXT_DYNAMIC_REV ? le16_to_host((superblock)->dynamic_rev.inode_size) : 128)
 
-#define EXT_Allocator OBOS_KernelAllocator
+extern allocator_info* EXT_Allocator;

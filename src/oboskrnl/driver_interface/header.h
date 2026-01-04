@@ -199,7 +199,11 @@ typedef struct driver_ftable
     obos_status(*trunc_file)(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 
     // hard links the file 'desc' to 'parent/name'
-    obos_status(*hardlink_file)(dev_desc desc, dev_desc parent, const char* name);
+    union {
+        obos_status(*hardlink_file)(dev_desc desc, dev_desc parent, const char* name);
+        obos_status(*phardlink_file)(dev_desc desc, const char* parent_path, void* vn, const char* name);
+    };
+    obos_status(*symlink_set_path)(dev_desc desc, const char* to);
 
     // times is of type 'struct file_times' defined in vfs/vnode.h
     obos_status(*set_file_times)(dev_desc desc, void* times);

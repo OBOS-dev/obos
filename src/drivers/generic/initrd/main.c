@@ -51,6 +51,8 @@ OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* 
 void driver_cleanup_callback()
 {}
 
+obos_status symlink_set_path(dev_desc desc, const char* to) { OBOS_UNUSED(desc && to); return OBOS_STATUS_SUCCESS; }
+
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
@@ -157,6 +159,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_inode = get_file_inode,
         .list_dir = list_dir,
         .stat_fs_info = stat_fs_info,
+        .symlink_set_path = symlink_set_path,
     },
     .driverName = INITRD_DRIVER_NAME,
     .version = 1,

@@ -28,7 +28,7 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (transactions_halted)
         return OBOS_STATUS_RETRY;
-    StopCommandEngine(&HBA->ports[port->hbaPortIndex]);
+    // StopCommandEngine(&HBA->ports[port->hbaPortIndex]);
     Core_SemaphoreAcquire(&port->lock);
     HBA->ports[port->hbaPortIndex].is = 0xffffffff;
     Core_MutexAcquire(&port->bitmask_lock);
@@ -100,7 +100,7 @@ obos_status SendCommand(Port* port, struct command_data* data, uint64_t lba, uin
     // Issue the command
     data->internal.cmdSlot = cmdSlot;
     // HBA->ports[port->hbaPortIndex].sact |= (1 << cmdSlot);
-    StartCommandEngine(&HBA->ports[port->hbaPortIndex]);
+    // StartCommandEngine(&HBA->ports[port->hbaPortIndex]);
     HBA->ports[port->hbaPortIndex].ci |= (1 << cmdSlot);
     // Release the semaphore in the IRQ handler instead.
     // Core_SemaphoreRelease(&port->lock);

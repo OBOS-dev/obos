@@ -649,7 +649,7 @@ char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 
     size_t left = path_len;
     dirent* curr = ent;
-    while (left && (relative_to == Vfs_Root ? (!!curr) : (relative_to == curr)))
+    while (left && (relative_to == Vfs_Root ? (!!curr) : (relative_to != curr)))
     {
         memcpy(&path[left-OBOS_GetStringSize(&curr->name)], OBOS_GetStringCPtr(&curr->name), OBOS_GetStringSize(&curr->name));
 
