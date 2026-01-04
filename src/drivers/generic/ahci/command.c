@@ -1,7 +1,7 @@
 /*
  * drivers/generic/ahci/command.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -125,13 +125,13 @@ void StopCommandEngine(volatile HBA_PORT* hPort)
     // Disable it.
     hPort->cmd &= ~(1<<0);
     timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(3000000 /* 1s */);
-    while(hPort->cmd & (1<<15) /*PxCMD.CR*/ && deadline > CoreS_GetTimerTick())
+    while(hPort->cmd & (1<<15) /*PxCMD.CR*/ && CoreS_GetTimerTick() < deadline)
         OBOSS_SpinlockHint();
     if (hPort->cmd & (1<<15) /*PxCMD.CR*/)
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Port did not go idle after 3 seconds (PxCMD.CR=1). PxCMD: 0x%08x\n", hPort->cmd);
     hPort->cmd &= ~(1<<4);
     deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(3000000);
-    while(hPort->cmd & (1<<14) /*PxCMD.FR*/ && deadline > CoreS_GetTimerTick())
+    while(hPort->cmd & (1<<14) /*PxCMD.FR*/ && CoreS_GetTimerTick() < deadline)
         OBOSS_SpinlockHint();
     if (hPort->cmd & (1<<14) /*PxCMD.FR*/)
         OBOS_Panic(OBOS_PANIC_DRIVER_FAILURE, "Port did not go idle after 3 seconds (PxCMD.FR=1). PxCMD: 0x%08x\n", hPort->cmd);
