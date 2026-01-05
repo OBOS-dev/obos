@@ -781,7 +781,7 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
     if (state == TCP_STATE_ESTABLISHED)
     {
         if (!con->state.rcv.wnd)
-            con->state.rcv.wnd = 0x1000;
+            con->state.rcv.wnd = 0x10000;
         con->recv_buffer.size = con->state.rcv.wnd;
         con->recv_buffer.ptr = 0;
         con->recv_buffer.closed = false;
@@ -1397,7 +1397,7 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     s->connection->src.port = src_port;
     s->connection->dest.addr = addr->addr;
     s->connection->dest.port = be16_to_host(addr->port);
-    s->connection->recv_buffer.size = 0x1000;
+    s->connection->recv_buffer.size = 0x10000;
     s->connection->state.state_change_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     s->connection->inbound_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     s->connection->inbound_urg_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
