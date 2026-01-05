@@ -340,7 +340,7 @@ void Arch_LogSyscallRet(uint32_t ret, uint32_t sysnum)
     if (opt || 
         (ret == 0 || sysnum == 22 || sysnum == 42 || sysnum == 58 || sysnum == 34 || sysnum == 0
          || sysnum == 20 || sysnum == 59 || sysnum == 61 || sysnum == 9 || sysnum == 1 || sysnum == 19
-         || sysnum == 2 || sysnum == 16 || (sysnum == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
+         || sysnum == 2 || sysnum == 6 || sysnum == 16 || (sysnum == 91 || ret == OBOS_STATUS_NOT_A_TTY)))
         OBOS_Debug("(thread %d, process %d) syscall %s returned 0x%x (%s)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
     else
         OBOS_Log("(thread %d, process %d) syscall %s returned 0x%x (%s)\n", (uint32_t)Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[sysnum], ret, (ret < sizeof(status_to_string)/sizeof(status_to_string[0])) ? status_to_string[ret] : "no status string");
