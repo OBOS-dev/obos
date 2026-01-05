@@ -132,7 +132,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
         {
             if (handle->un.msix_entry)
             {
-                // has_msix = true;
+                has_msix = true;
                 msix_offset = handle->msi_capability->offset;
             }
             else
