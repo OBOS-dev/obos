@@ -1789,7 +1789,7 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         {
             tm.handler = pselect_tm_handler;
             tm.userdata = (void*)&tm_evnt;
-            Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, timeout);
+            Core_TimerObjectInitialize(&tm, TIMER_MODE_DEADLINE, timeout*1000);
             waitable_list[n_waitable_objects++] = WAITABLE_OBJECT(tm_evnt);
         }
 
