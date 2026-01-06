@@ -421,6 +421,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     uintptr_t base = (uintptr_t)base_;
     // if (base % OBOS_PAGE_SIZE)
     //     return OBOS_STATUS_INVALID_ARGUMENT;
+    size += (base%OBOS_PAGE_SIZE);
     base -= (base%OBOS_PAGE_SIZE);
     if (!ctx || !base || !size)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -461,6 +462,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     new_prot.present = false;
     if (rng->virt != base || rng->size != size)
     {
+        if (rng->user_view)
+            OBOS_Debug("%s: splitting view of user memory is potentially a memory leak.\n", __func__);
         // OBOS_Debug("untested code path\n");
         full = false;
         // Split.
