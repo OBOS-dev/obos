@@ -462,8 +462,10 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     new_prot.present = false;
     if (rng->virt != base || rng->size != size)
     {
+#if OBOS_DEBUG
         if (rng->user_view)
             OBOS_Debug("%s: splitting view of user memory is potentially a memory leak.\n", __func__);
+#endif
         // OBOS_Debug("untested code path\n");
         full = false;
         // Split.
