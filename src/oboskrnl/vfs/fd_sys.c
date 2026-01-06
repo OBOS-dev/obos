@@ -1551,7 +1551,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         for (size_t i = 0; i < unsignaledIRPIndex; i++)
             waitable_list[i] = WAITABLE_OBJECT(*unsignaledIRPs[i]->evnt);
         timer tm = {};
-        event tm_evnt = {};
+        event tm_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
         if (timeout != UINTPTR_MAX)
         {
             tm.handler = pselect_tm_handler;
@@ -1597,8 +1597,8 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         memcpy_k_to_usr(extra.num_events, &num_events, sizeof(num_events));
 
     out2:
-    Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, read_set, 128);
-    Mm_VirtualMemoryFree(CoreS_GetCPULocalPtr()->currentContext, write_set, 128);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, read_set, 128);
+    Mm_VirtualMemoryFree(&Mm_KernelContext, write_set, 128);
 
     if (CoreS_ForceYieldOnSyscallReturn)
         CoreS_ForceYieldOnSyscallReturn();
