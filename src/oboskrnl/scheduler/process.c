@@ -239,7 +239,10 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 #if OBOS_DEBUG
 	RB_FOREACH(rng, page_tree, &Mm_KernelContext.pages)
 		if (rng->user_view && rng->un.userContext == proc->ctx)
-			OBOS_Warning("Leaked view of user memory at %p\n", rng->view_map_address);
+			OBOS_Debug("Leaked user memory view at 0x%p. %d page%c leaked."
+		  			   		   " Memory was allocated at %p\n", rng->virt, 
+					   rng->size / OBOS_PAGE_SIZE, (rng->size / OBOS_PAGE_SIZE) != 1 ? 's' : '\0',
+					   rng->view_map_address);
 #endif
 
 	MmS_FreePageTable(proc->ctx->pt);
