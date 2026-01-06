@@ -171,7 +171,7 @@ obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
     timer_list.nNodes++;
     Core_SpinlockRelease(&timer_list.lock, oldIrql2);
     Core_LowerIrql(oldIrql);
-    OBOS_Log("Seen timer object init (obj=0x%p)\n", obj);
+    OBOS_Debug("Seen timer object init (obj=0x%p)\n", obj);
     return OBOS_STATUS_SUCCESS;
 }
 obos_status Core_CancelTimer(timer* timer)
@@ -194,7 +194,7 @@ obos_status Core_CancelTimer(timer* timer)
         timer_list.tail = timer->prev;
     timer_list.nNodes--;
     Core_SpinlockRelease(&timer_list.lock, oldIrql);
-    OBOS_Log("Seen timer object cancel (obj=0x%p)\n", timer);
+    OBOS_Debug("Seen timer object cancel (obj=0x%p)\n", timer);
     timer->mode = TIMER_EXPIRED;
     return OBOS_STATUS_SUCCESS;
     
