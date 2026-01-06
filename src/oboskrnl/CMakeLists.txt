@@ -99,3 +99,6 @@ if (OBOS_ENABLE_UHDA)
 endif()
 
 include("${CMAKE_SOURCE_DIR}/src/isogen/isogen.cmake")
+
+install(FILES ${CMAKE_SOURCE_DIR}/src/oboskrnl/vfs/keycode.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/obos/)
+install(FILES ${CMAKE_SOURCE_DIR}/src/oboskrnl/vfs/mouse.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/obos/)
