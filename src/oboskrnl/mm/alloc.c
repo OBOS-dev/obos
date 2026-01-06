@@ -990,3 +990,101 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
 
     return blk;
 }
+
+obos_status DrvH_ScatterGather(context* ctx, void* base_, size_t size, struct physical_region** regions_o, size_t* nRegions_o, size_t maxRegionCount, bool rw)
+{
+    uintptr_t base = (uintptr_t)base_;
+    base &= ~1;
+
+    long bytesLeft = size;
+    size_t pgSize = 0;
+    uintptr_t lastPhys = 0;
+
+    struct physical_region curr = {};
+
+    bool wroteback = false;
+
+    size_t nRegions = 0;
+    struct physical_region* regions = nullptr;
+
+    for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
+    {
+        if (nRegions >= maxRegionCount)
+        {
+            Free(Mm_Allocator, regions, nRegions * sizeof(*regions));
+            return OBOS_STATUS_INTERNAL_ERROR;
+        }
+
+        if (Core_GetIrql() < IRQL_DISPATCH)
+            Mm_HandlePageFault(ctx, addr, (rw ? PF_EC_RW : 0) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
+        
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+
+        page key = {.phys=info.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
+        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
+        OBOS_ENSURE(pg != Mm_AnonPage);
+        OBOS_ENSURE(pg != Mm_UserAnonPage);
+        
+        MmH_RefPage(pg);
+        
+        if ((lastPhys + pgSize) != info.phys)
+        {
+            if (addr != base)
+            {
+                size_t old_sz = nRegions * sizeof(*regions);
+                regions = Reallocate(Mm_Allocator, regions, ++nRegions * sizeof(*regions), old_sz, nullptr);
+                struct physical_region* reg = &regions[nRegions - 1];
+                *reg = curr;
+                wroteback = true;
+            }
+            pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+            curr.phys = info.phys + (addr % pgSize);
+            curr.sz = 0;
+        }
+        pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+        size_t addend = (bytesLeft > (long)pgSize ? pgSize : (size_t)bytesLeft);
+        curr.sz += addend;
+        if (curr.sz > (pgSize-(addr % pgSize)))
+        {
+            curr.sz -= addend;
+            curr.sz += pgSize-(addr % pgSize);
+        }
+        lastPhys = info.phys;
+        wroteback = false;
+    }
+    if (!wroteback && curr.phys)
+    {
+        size_t old_sz = nRegions * sizeof(*regions);
+        regions = Reallocate(Mm_Allocator, regions, ++nRegions * sizeof(struct physical_region), old_sz, nullptr);
+        struct physical_region* reg = &regions[nRegions - 1];
+        *reg = curr;
+    }
+    *nRegions_o = nRegions;
+    *regions_o = regions;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status DrvH_FreeScatterGatherList(context* ctx, void* base_, size_t size, struct physical_region* regions, size_t nRegions)
+{
+    uintptr_t base = (uintptr_t)base_;
+    base &= ~1;
+
+    size_t pgSize = 0;
+    for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
+    {
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+        page key = {.phys=info.phys};
+        Core_MutexAcquire(&Mm_PhysicalPagesLock);
+        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+        Core_MutexRelease(&Mm_PhysicalPagesLock);
+        MmH_DerefPage(pg);
+        pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
+    Free(Mm_Allocator, regions, nRegions * sizeof(struct physical_region));
+
+    return OBOS_STATUS_SUCCESS;
+}

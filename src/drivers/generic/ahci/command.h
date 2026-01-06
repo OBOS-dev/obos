@@ -1,7 +1,7 @@
 /*
  * drivers/generic/ahci/command.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -11,21 +11,18 @@
 
 #include <locks/event.h>
 
+#include <mm/alloc.h>
+
 #include "structs.h"
 
-struct ahci_phys_region
-{
-    uintptr_t phys;
-    uint32_t sz : 22;
-};
 enum {
     COMMAND_DIRECTION_READ,
     COMMAND_DIRECTION_WRITE,
 };
 struct command_data
 {
-    struct ahci_phys_region* phys_regions;
-    uint16_t physRegionCount;
+    struct physical_region* phys_regions;
+    size_t physRegionCount;
     uint8_t direction;
     uint8_t cmd;
     bool awaitingSignal;

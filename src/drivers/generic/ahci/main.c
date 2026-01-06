@@ -356,7 +356,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         HBA->ports[port->hbaPortIndex].ie = 0xffffffff;
         HBA->ports[port->hbaPortIndex].serr = 0xffffffff;
         // Send Identify ATA.
-        struct ahci_phys_region reg = {
+        struct physical_region reg = {
             .phys = HBAAllocate(512, 0),
             .sz = 512
         };

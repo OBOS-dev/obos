@@ -1,7 +1,7 @@
 /*
  * drivers/generic/ahci/interface.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -54,24 +54,6 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
 // #pragma GCC optimize ("-O0")
 static obos_status populate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
 {
-    // obos_status status = 
-    //     *wasPageable ?
-    //         Mm_VirtualMemoryProtect(CoreS_GetCPULocalPtr()->currentContext, (void*)(base - base % OBOS_PAGE_SIZE), size, OBOS_PROTECTION_SAME_AS_BEFORE|OBOS_PROTECTION_CACHE_DISABLE, 0) :
-    //         OBOS_STATUS_SUCCESS;
-    // if (obos_is_error(status))
-    //     return status;
-
-    base &= ~1;
-    const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
-/*
-    data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), nullptr);
-    struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-*/
-    long bytesLeft = size;
-    size_t pgSize = 0;
-    uintptr_t lastPhys = 0;
-    struct ahci_phys_region curr = {};
-    bool wroteback = false;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
 #ifndef __x86_64__
     if (base >= OBOS_KERNEL_ADDRESS_SPACE_BASE && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
@@ -80,59 +62,14 @@ static obos_status populate_physical_regions(uintptr_t base, size_t size, struct
     if (base >= 0xffff800000000000 && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
         ctx = &Mm_KernelContext;
 #endif
-    for (uintptr_t addr = base; bytesLeft >= 0; bytesLeft -= (pgSize-(addr%pgSize)), addr += (pgSize-(addr%pgSize)))
-    {
-        if (data->physRegionCount >= MAX_PRDT_COUNT)
-            return OBOS_STATUS_INTERNAL_ERROR;
+    const size_t MAX_PRDT_COUNT = sizeof(((HBA_CMD_TBL*)nullptr))->prdt_entry/sizeof(HBA_PRDT_ENTRY);
 
-        if (Core_GetIrql() < IRQL_DISPATCH)
-            Mm_HandlePageFault(ctx, addr, (data->direction == COMMAND_DIRECTION_WRITE ? 0 : PF_EC_RW) | (ctx == &Mm_KernelContext ? 0 : PF_EC_UM));
-        
-        page_info info = {};
-        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
-
-        page key = {.phys=info.phys};
-        Core_MutexAcquire(&Mm_PhysicalPagesLock);
-        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
-        Core_MutexRelease(&Mm_PhysicalPagesLock);
-        OBOS_ENSURE(pg != Mm_AnonPage);
-        OBOS_ENSURE(pg != Mm_UserAnonPage);
-        
-        MmH_RefPage(pg);
-        
-        if ((lastPhys + pgSize) != info.phys)
-        {
-            if (addr != base)
-            {
-                size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
-                data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
-                struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-                *reg = curr;
-                wroteback = true;
-            }
-            pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-            curr.phys = info.phys + (addr % pgSize);
-            curr.sz = 0;
-        }
-        pgSize = (info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        size_t addend = (bytesLeft > (long)pgSize ? pgSize : (size_t)bytesLeft);
-        curr.sz += addend;
-        if (curr.sz > (pgSize-(addr % pgSize)))
-        {
-            curr.sz -= addend;
-            curr.sz += pgSize-(addr % pgSize);
-        }
-        lastPhys = info.phys;
-        wroteback = false;
-    }
-    if (!wroteback && curr.phys)
-    {
-        size_t old_sz = data->physRegionCount*sizeof(struct ahci_phys_region);
-        data->phys_regions = Reallocate(Mm_Allocator, data->phys_regions, ++data->physRegionCount*sizeof(struct ahci_phys_region), old_sz, nullptr);
-        struct ahci_phys_region* reg = &data->phys_regions[data->physRegionCount - 1];
-        *reg = curr;
-    }
-    return OBOS_STATUS_SUCCESS;
+    return DrvH_ScatterGather(
+        ctx, 
+        (void*)base, size,
+        &data->phys_regions, &data->physRegionCount,
+        MAX_PRDT_COUNT,
+        data->direction == COMMAND_DIRECTION_READ ? true : false);
 }
 static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, struct command_data* data)
 {
@@ -147,21 +84,11 @@ static obos_status unpopulate_physical_regions(uintptr_t base, size_t size, stru
     if (base >= 0xffff800000000000 && (base + size) < OBOS_KERNEL_ADDRESS_SPACE_LIMIT)
         ctx = &Mm_KernelContext;
 #endif
-    size_t pgSize = 0;
-    for (uintptr_t addr = base; addr < (base+size); addr += pgSize)
-    {
-        page_info info = {};
-        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
-        page key = {.phys=info.phys};
-        Core_MutexAcquire(&Mm_PhysicalPagesLock);
-        page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
-        Core_MutexRelease(&Mm_PhysicalPagesLock);
-        MmH_DerefPage(pg);
-        pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
-    }
-    Free(Mm_Allocator, data->phys_regions, data->physRegionCount*sizeof(struct ahci_phys_region));
+    
+    obos_status status = DrvH_FreeScatterGatherList(ctx, (void*)base, size, data->phys_regions, data->physRegionCount);
     data->phys_regions = nullptr;
-    return OBOS_STATUS_SUCCESS;
+
+    return status;
 }
 // #pragma GCC pop_options
 obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead)
