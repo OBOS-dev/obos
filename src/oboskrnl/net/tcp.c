@@ -37,6 +37,8 @@
 
 #include <allocators/base.h>
 
+#include <contrib/random.h>
+
 DefineNetFreeSharedPtr
 
 static uint16_t tcp_chksum(const void *seg1, size_t sz_seg1, const void* seg2, size_t sz_seg2)
@@ -201,8 +203,6 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     return OBOS_STATUS_SUCCESS;
 }
 
-uintptr_t mt_random(void);
-
 void tx_tm_hnd(void* udata)
 {
     event* evnt = udata;
@@ -352,7 +352,7 @@ PacketProcessSignature(TCP, ip_header*)
             con = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(tcp_connection), nullptr);
             con->state.rcv.nxt = be32_to_host(hdr->seq)+1;
             con->state.rcv.irs = be32_to_host(hdr->seq);
-            con->state.snd.iss = mt_random();
+            con->state.snd.iss = random32();
             con->state.snd.nxt = con->state.snd.iss + 1;
             con->state.snd.una = con->state.snd.iss;
             con->state.state_change_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
@@ -1351,7 +1351,7 @@ static obos_status get_src_port(vnode* nic, ip_table_entry* ent, ip_addr dest, u
     // bru
     for (int i = 0; i < 0x10000; i++)
     {
-        *src_port = mt_random() % 0x10000 + 1;
+        *src_port = random16() + 1;
         key.src.port = *src_port;
         if (!RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &key))
         {
@@ -1405,7 +1405,7 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     s->connection->state.state = TCP_STATE_SYN_SENT;
     s->connection->state.rcv.wnd = s->connection->recv_buffer.size;
     s->connection->state.rcv.up = 0;
-    s->connection->state.snd.iss = (uint32_t)mt_random();
+    s->connection->state.snd.iss = random32();
     s->connection->state.snd.nxt = s->connection->state.snd.iss+1;
     s->connection->state.snd.una = s->connection->state.snd.iss;
     s->connection->state.snd.up = 0;

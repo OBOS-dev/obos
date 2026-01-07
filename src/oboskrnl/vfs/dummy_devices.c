@@ -10,10 +10,15 @@
 #include <memmanip.h>
 #include <klog.h>
 
+#include <mm/alloc.h>
 #include <mm/context.h>
 #include <mm/page.h>
 
+#include <contrib/random.h>
+
 #include <driver_interface/header.h>
+
+#include <scheduler/cpu_local.h>
 
 #include <vfs/dirent.h>
 #include <vfs/vnode.h>
@@ -22,82 +27,61 @@
 
 #include <irq/timer.h>
 
-// shamelessly stolen from https://osdev.wiki/wiki/Random_Number_Generator#Mersenne_Twister
+//+ Random
 
-#if OBOS_ARCHITECTURE_BITS == 32
-#define STATE_SIZE  624
-#define MIDDLE      397
-#define INIT_SHIFT  30
-#define INIT_FACT   1812433253
-#define TWIST_MASK  0x9908b0df
-#define SHIFT1      11
-#define MASK1       0xffffffff
-#define SHIFT2      7
-#define MASK2       0x9d2c5680
-#define SHIFT3      15
-#define MASK3       0xefc60000
-#define SHIFT4      18
-#else
-#define STATE_SIZE  312
-#define MIDDLE      156
-#define INIT_SHIFT  62
-#define TWIST_MASK  0xb5026f5aa96619e9
-#define INIT_FACT   6364136223846793005
-#define SHIFT1      29
-#define MASK1       0x5555555555555555
-#define SHIFT2      17
-#define MASK2       0x71d67fffeda60000
-#define SHIFT3      37
-#define MASK3       0xfff7eee000000000
-#define SHIFT4      43
-#endif
+static tjec_memory tjec_memory_state;
 
-#define LOWER_MASK  0x7fffffff
-#define UPPER_MASK  (~(uintptr_t)LOWER_MASK)
-static uintptr_t state[STATE_SIZE];
-static size_t index = STATE_SIZE + 1;
-
-static void mt_seed(uintptr_t s)
+uint8_t random8(void)
 {
-    index = STATE_SIZE;
-    state[0] = s;
-    for (size_t i = 1; i < STATE_SIZE; i++)
-        state[i] = (INIT_FACT * (state[i - 1] ^ (state[i - 1] >> INIT_SHIFT))) + i;
+    struct cpu_local* local = CoreS_GetCPULocalPtr();
+
+    uint8_t value = 0;
+    int64_t res   = local && local->csprng_state ? csprng_read_random(local->csprng_state, &value, sizeof(value)) : -1;
+    (void) res;
+    return value;
 }
 
-static void twist(void)
+uint16_t random16(void)
 {
-    for (size_t i = 0; i < STATE_SIZE; i++)
-    {
-        uintptr_t x = (state[i] & UPPER_MASK) | (state[(i + 1) % STATE_SIZE] & LOWER_MASK);
-        x = (x >> 1) ^ (x & 1? TWIST_MASK : 0);
-        state[i] = state[(i + MIDDLE) % STATE_SIZE] ^ x;
-    }
-    index = 0;
+    struct cpu_local* local = CoreS_GetCPULocalPtr();
+
+    uint16_t value = 0;
+    int64_t  res   = local && local->csprng_state ? csprng_read_random(local->csprng_state, &value, sizeof(value)) : -1;
+    (void) res;
+    return value;
 }
 
-uintptr_t mt_random(void)
+uint32_t random32(void)
 {
-    if (index >= STATE_SIZE)
-    {
-        OBOS_ASSERT(index == STATE_SIZE || !"Generator never seeded");
-        twist();
-    }
+    struct cpu_local* local = CoreS_GetCPULocalPtr();
 
-    uintptr_t y = state[index];
-    y ^= (y >> SHIFT1) & MASK1;
-    y ^= (y << SHIFT2) & MASK2;
-    y ^= (y << SHIFT3) & MASK3;
-    y ^= y >> SHIFT4;
-
-    index++;
-    return y;
+    uint32_t value = 0;
+    int64_t  res   = local && local->csprng_state ? csprng_read_random(local->csprng_state, &value, sizeof(value)) : -1;
+    (void) res;
+    return value;
 }
 
-static uintptr_t random_seed()
+uint64_t random64(void)
 {
-    return CoreS_GetNativeTimerTick();
+    struct cpu_local* local = CoreS_GetCPULocalPtr();
+
+    uint64_t value = 0;
+    int64_t  res   = local && local->csprng_state ? csprng_read_random(local->csprng_state, &value, sizeof(value)) : -1;
+    (void) res;
+    return value;
 }
+
+bool random_buffer(void* buffer, size_t size)
+{
+    struct cpu_local* local = CoreS_GetCPULocalPtr();
+
+    int64_t res = local && local->csprng_state ? csprng_read_random(local->csprng_state, buffer, size) : -1;
+    if (res < 0)
+        memset(buffer, 0, size);
+    return res >= 0;
+}
+
+//- Random
 
 enum {
     // /dev/null
@@ -160,10 +144,15 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
                 *nBlkRead = blkCount;
             break;
         case DUMMY_RANDOM:
-            for (size_t i = 0; i  < blkCount / sizeof(mt_random()); i++)
-                ((uintptr_t*)buf)[i] = mt_random();
-            if (nBlkRead)
-                *nBlkRead = blkCount;
+            if (random_buffer(buf, blkCount))
+            {
+                if (nBlkRead)
+                    *nBlkRead = blkCount;
+            }
+            else if (nBlkRead)
+            {
+                *nBlkRead = 0;
+            }
             break;
         case DUMMY_FB0:
             return OBOS_STATUS_INVALID_OPERATION;
@@ -484,13 +473,205 @@ static void init_desc(dev_desc desc)
     VfsH_DirentAppendChild(parent, ent);
 }
 
+static void init_random()
+{
+    uint64_t memory_flags = 0;
+    uint64_t tjec_flags   = 0;
+    uint8_t  tjec_osr     = 1;
+    if (OBOS_GetOPTF("tjec-random-access"))
+        memory_flags |= TJEC_MEM_RANDOM_ACCESS;
+    {
+        uint64_t max_memory_size = OBOS_GetOPTD_Ex("tjec-max-memory-size", 0);
+        if (max_memory_size == 0)
+            memory_flags |= 0; // no-op hopefully
+        else if (max_memory_size <= 32 << 10)
+            memory_flags |= TJEC_MEM_32KIB;
+        else if (max_memory_size <= 64 << 10)
+            memory_flags |= TJEC_MEM_64KIB;
+        else if (max_memory_size <= 128 << 10)
+            memory_flags |= TJEC_MEM_128KIB;
+        else if (max_memory_size <= 256 << 10)
+            memory_flags |= TJEC_MEM_256KIB;
+        else if (max_memory_size <= 512 << 10)
+            memory_flags |= TJEC_MEM_512KIB;
+        else if (max_memory_size <= 1 << 20)
+            memory_flags |= TJEC_MEM_1MIB;
+        else if (max_memory_size <= 2 << 20)
+            memory_flags |= TJEC_MEM_2MIB;
+        else if (max_memory_size <= 4 << 20)
+            memory_flags |= TJEC_MEM_4MIB;
+        else if (max_memory_size <= 8 << 20)
+            memory_flags |= TJEC_MEM_8MIB;
+        else if (max_memory_size <= 16 << 20)
+            memory_flags |= TJEC_MEM_16MIB;
+        else if (max_memory_size <= 32 << 20)
+            memory_flags |= TJEC_MEM_32MIB;
+        else if (max_memory_size <= 64 << 20)
+            memory_flags |= TJEC_MEM_64MIB;
+        else if (max_memory_size <= 128 << 20)
+            memory_flags |= TJEC_MEM_128MIB;
+        else if (max_memory_size <= 256 << 20)
+            memory_flags |= TJEC_MEM_256MIB;
+        else
+            memory_flags |= TJEC_MEM_512MIB;
+    }
+    if (!OBOS_GetOPTF("tjec-no-fips"))
+        tjec_flags |= TJEC_USE_FIPS;
+    if (!OBOS_GetOPTF("tjec-no-lag-predictor"))
+        tjec_flags |= TJEC_USE_LAG_PREDICTOR;
+    {
+        uint64_t max_acc_loop_bits = OBOS_GetOPTD_Ex("tjec-max-acc-loop-bits", 7);
+        if (max_acc_loop_bits < 0)
+            max_acc_loop_bits = 1;
+        else if (max_acc_loop_bits > 8)
+            max_acc_loop_bits = 8;
+        switch (max_acc_loop_bits)
+        {
+        case 1: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_1; break;
+        case 2: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_2; break;
+        case 3: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_3; break;
+        case 4: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_4; break;
+        case 5: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_5; break;
+        case 6: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_6; break;
+        case 7: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_7; break;
+        case 8: tjec_flags |= TJEC_MAX_ACC_LOOP_BITS_8; break;
+        }
+    }
+    {
+        uint64_t max_hash_loop_bits = OBOS_GetOPTD_Ex("tjec-max-hash-loop-bits", 3);
+        if (max_hash_loop_bits < 1)
+            max_hash_loop_bits = 1;
+        else if (max_hash_loop_bits > 8)
+            max_hash_loop_bits = 8;
+        switch (max_hash_loop_bits)
+        {
+        case 1: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_1; break;
+        case 2: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_2; break;
+        case 3: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_3; break;
+        case 4: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_4; break;
+        case 5: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_5; break;
+        case 6: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_6; break;
+        case 7: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_7; break;
+        case 8: tjec_flags |= TJEC_MAX_HASH_LOOP_BITS_8; break;
+        }
+    }
+    {
+        uint64_t osr = OBOS_GetOPTD_Ex("tjec-osr", 1);
+        if (osr < 1)
+            osr = 1;
+        else if (osr > 255)
+            osr = 255;
+        tjec_osr = (uint8_t) osr;
+    }
+    uint32_t err = tjec_memory_init(&tjec_memory_state, memory_flags);
+    if (err)
+    {
+        switch (err)
+        {
+        case TJEC_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Invalid argument!"); break;
+        case TJEC_ENOMEM: OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC Memory: Not enough memory available!"); break;
+        case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_NOTIME???"); break;
+        case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_ECOARSETIME???"); break;
+        case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_ENOMONOTONIC???"); break;
+        case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_ERCT???"); break;
+        case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_EHEALTH???"); break;
+        case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_ESTUCK???"); break;
+        case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? TJEC_EMINVARVAR???"); break;
+        default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC Memory: Huh? Unknown error %u", err); break;
+        }
+        return; // Unreachable
+    }
+    OBOS_Log("TJEC Memory: Allocated %llu bytes of access memory\n", tjec_memory_get_size(&tjec_memory_state));
+
+    tjec* tjec_states = (tjec*) Mm_QuickVMAllocate(Core_CpuCount * sizeof(tjec), false);
+    if (!tjec_states)
+    {
+        OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC: Not enough memory available for %u cores", Core_CpuCount);
+        return;
+    }
+    csprng* csprng_states = (csprng*) Mm_QuickVMAllocate(Core_CpuCount * sizeof(csprng), false);
+    if (!csprng_states)
+    {
+        OBOS_Panic(OBOS_PANIC_NO_MEMORY, "CSPRNG: Not enough memory available for %u cores", Core_CpuCount);
+        return;
+    }
+
+    err = tjec_pre_init_ex(tjec_states, &tjec_memory_state, tjec_flags, tjec_osr);
+    if (err)
+    {
+        switch (err)
+        {
+        case TJEC_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Invalid argument!"); break;
+        case TJEC_ENOMEM: OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC: Not enough memory available!"); break;
+        case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Non functional timer!"); break;
+        case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Timer too coarse!"); break;
+        case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Timer is not monotonic!"); break;
+        case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: RCT failure during pre-test!"); break;
+        case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Health Failure during pre-test 0x%08X", tjec_states->health_failure); break;
+        case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Bit generator got stuck during pre-test!"); break;
+        case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: OSR is unreasonable or something \\_(-_-)_/"); break;
+        default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Huh? Unknown error %u", err); break;
+        }
+        return; // Unreachable
+    }
+    OBOS_Log("TJEC: Pre initialized with Common Time GCD %llu\n", tjec_states->common_time_gcd);
+
+    for (size_t i = 0; i < Core_CpuCount; ++i)
+    {
+        err = tjec_init_ex(&tjec_states[i], &tjec_memory_state, tjec_flags, tjec_osr);
+        if (err)
+        {
+            switch (err)
+            {
+            case TJEC_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Invalid argument!", i); break;
+            case TJEC_ENOMEM: OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC %llu: Not enough memory available!", i); break;
+            case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Non functional timer!", i); break;
+            case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Timer too coarse!", i); break;
+            case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Timer is not monotonic!", i); break;
+            case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: RCT failure during pre-test!", i); break;
+            case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Health Failure during pre-test 0x%08X", i, tjec_states[i].health_failure); break;
+            case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Bit generator got stuck during pre-test!", i); break;
+            case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: OSR is unreasonable or something \\_(-_-)_/", i); break;
+            default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Huh? Unknown error %u", i, err); break;
+            }
+            return; // Unreachable
+        }
+
+        csprng_callbacks callbacks = (csprng_callbacks) {
+            .userdata     = &tjec_states[i],
+            .read_entropy = &csprng_tjec_read_entropy,
+        };
+
+        err = csprng_init(&csprng_states[i], &callbacks, 0);
+        if (err)
+        {
+            switch (err)
+            {
+            case CSPRNG_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "CSPRNG %llu: Invalid argument!", i); break;
+            default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "CSPRNG %llu: Huh? Unknown error %u", i, err); break;
+            }
+            return; // Unreachable
+        }
+    }
+
+    for (size_t i = 0; i < Core_CpuCount; ++i)
+    {
+        struct cpu_local* local = &Core_CpuInfo[i];
+
+        local->tjec_state   = &tjec_states[i];
+        local->csprng_state = &csprng_states[i];
+    }
+    OBOS_Log("TJEC: Initialized\n");
+    OBOS_Log("CSPRNG: Initialized\n");
+}
+
 void Vfs_InitDummyDevices()
 {
     init_desc(DUMMY_NULL);
     init_desc(DUMMY_FULL);
     init_desc(DUMMY_ZERO);
     init_desc(DUMMY_FB0);
-    mt_seed(random_seed());
+    init_random();
     init_desc(DUMMY_RANDOM);
 }
 

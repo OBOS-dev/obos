@@ -8,6 +8,8 @@
 
 #include <int.h>
 
+#include <contrib/random.h>
+
 #include <scheduler/thread.h>
 
 #include <irq/dpc.h>
@@ -44,6 +46,9 @@ typedef struct cpu_local
 
 	struct cpu_local* curr;
 	bool ever_yielded;
+
+	tjec* tjec_state;
+	csprng* csprng_state;
 } cpu_local;
 extern DRV_EXPORT cpu_local* Core_CpuInfo;
 extern DRV_EXPORT size_t Core_CpuCount;

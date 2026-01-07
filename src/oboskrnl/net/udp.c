@@ -42,6 +42,8 @@ DefineNetFreeSharedPtr
 
 #include <scheduler/cpu_local.h>
 
+#include <contrib/random.h>
+
 static void pckt_onDeref(struct shared_ptr* ptr)
 {
     udp_recv_packet* pckt = ptr->obj;
@@ -345,8 +347,6 @@ obos_status udp_bind(socket_desc* socket, struct sockaddr* saddr, size_t addrlen
     return OBOS_STATUS_SUCCESS;
 }
 
-uintptr_t mt_random();
-
 obos_status udp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addrlen)
 {
     struct sockaddr_in* addr = (void*)saddr;
@@ -377,7 +377,7 @@ obos_status udp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     udp_port* found = nullptr;
     uint32_t i = 0;
     do {
-        ports->ports[0]->port = mt_random() % 0x10000 + 1;
+        ports->ports[0]->port = random16() + 1;
         found = RB_FIND(udp_port_tree, &source_interface->udp_ports,ports->ports[0]);
     } while(found && i++ < 0x10000);
     ports->read_event = &ports->ports[0]->recv_event;
