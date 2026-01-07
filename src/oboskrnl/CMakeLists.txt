@@ -40,6 +40,7 @@ target_compile_options(oboskrnl
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wextra>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-protector>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-pie>
 	# https://discord.com/channels/440442961147199490/1141057599584878645/1269032825579901069
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Werror=incompatible-pointer-types>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error=address>
@@ -74,7 +75,7 @@ target_include_directories(oboskrnl
 
 target_link_options(oboskrnl
 	PRIVATE "-nostdlib"
-#	PRIVATE "-fvisibility=hidden"
+	PRIVATE "-fno-pie"
 	PRIVATE "-Wl,--export-dynamic"
 	PRIVATE "-T" PRIVATE ${LINKER_SCRIPT}
 	PRIVATE ${TARGET_LINKER_OPTIONS}
