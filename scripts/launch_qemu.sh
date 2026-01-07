@@ -1,6 +1,7 @@
-cd ../
+old_wd=$PWD
+cd `git rev-parse --show-toplevel`
 
-rm qemu_log.txt
+rm -f qemu_log.txt
 
 echo $@
 qemu-system-x86_64 \

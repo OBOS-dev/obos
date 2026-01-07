@@ -1,6 +1,7 @@
-cd ../
+old_wd=$PWD
+cd `git rev-parse --show-toplevel`
 
-rm qemu_log.txt
+rm -f qemu_log.txt
 
 qemu-system-m68k \
 -M virt \
@@ -15,4 +16,4 @@ qemu-system-m68k \
 -append "--root-fs-uuid=initrd --log-level=2 --initrd-module=initrd --initrd-driver-module=initrd_driver --working-set-cap=8388608 --init-args -cignore /usr/bin/bash --login" \
 -initrd "config/initrd.tar"
 
-cd scripts
+cd $old_wd
