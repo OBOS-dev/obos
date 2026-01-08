@@ -16,7 +16,7 @@ typedef struct tjec_sha3
 	uint16_t r;
 	uint16_t rword;
 	uint16_t digest_size;
-	uint8_t partial[136];
+	uint8_t  partial[136];
 	uint64_t state[25];
 	uint64_t msg_len;
 } tjec_sha3;
@@ -24,9 +24,9 @@ typedef struct tjec_sha3
 typedef struct tjec_memory
 {
     atomic_uchar* memory;
-    size_t cell_size;
-    size_t size;
-    uint64_t flags;
+    size_t        cell_size;
+    size_t        size;
+    uint64_t      flags;
 } tjec_memory;
 
 typedef struct tjec
@@ -35,11 +35,11 @@ typedef struct tjec
 
     uint32_t health_failure;
     uint16_t base_acc_count;
-    uint8_t osr;
-    uint8_t apt_base_set  : 1;
-    uint8_t fips_enabled  : 1;
-    uint8_t random_access : 1;
-    uint8_t lag_predictor : 1;
+    uint8_t  osr;
+    uint8_t  apt_base_set  : 1;
+    uint8_t  fips_enabled  : 1;
+    uint8_t  random_access : 1;
+    uint8_t  lag_predictor : 1;
     uint64_t flags;
 
     uint64_t prev_time;
@@ -49,7 +49,7 @@ typedef struct tjec
     uint64_t common_time_gcd;
 
     const tjec_memory* memory;
-    size_t location;
+    size_t             location;
 
     uint64_t apt_base;
     uint32_t apt_count;
@@ -79,9 +79,15 @@ typedef struct csprng_callbacks
 
 typedef struct csprng
 {
+    mutex mtx;
+
     csprng_callbacks callbacks;
     
     uint64_t flags;
+
+    uint64_t reseed_counter;
+    uint8_t  v[16];
+    uint8_t  key[16];
 } csprng;
 
 static const uint64_t TJEC_MEM_32KIB            = 1;
