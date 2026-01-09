@@ -521,9 +521,7 @@ static void init_random()
         tjec_flags |= TJEC_USE_LAG_PREDICTOR;
     {
         uint64_t max_acc_loop_bits = OBOS_GetOPTD_Ex("tjec-max-acc-loop-bits", 7);
-        if (max_acc_loop_bits < 0)
-            max_acc_loop_bits = 1;
-        else if (max_acc_loop_bits > 8)
+        if (max_acc_loop_bits > 8)
             max_acc_loop_bits = 8;
         switch (max_acc_loop_bits)
         {

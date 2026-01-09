@@ -126,25 +126,25 @@ static const uint64_t TJEC_MAX_HASH_LOOP_BITS_6 = UINT64_C(5) << 11;
 static const uint64_t TJEC_MAX_HASH_LOOP_BITS_7 = UINT64_C(6) << 11;
 static const uint64_t TJEC_MAX_HASH_LOOP_BITS_8 = UINT64_C(7) << 11;
 
-static const uint32_t TJEC_ENOERR       = 0;
-static const uint32_t TJEC_EINVAL       = 1;
-static const uint32_t TJEC_ENOMEM       = 2;
-static const uint32_t TJEC_ENOTIME      = 3;
-static const uint32_t TJEC_ECOARSETIME  = 4;
-static const uint32_t TJEC_ENOMONOTONIC = 5;
-static const uint32_t TJEC_ERCT         = 6;
-static const uint32_t TJEC_EHEALTH      = 7;
-static const uint32_t TJEC_ESTUCK       = 8;
-static const uint32_t TJEC_EMINVARVAR   = 9;
+#define TJEC_ENOERR 0
+#define TJEC_EINVAL 1
+#define TJEC_ENOMEM 2
+#define TJEC_ENOTIME 3
+#define TJEC_ECOARSETIME 4
+#define TJEC_ENOMONOTONIC 5
+#define TJEC_ERCT 6
+#define TJEC_EHEALTH 7
+#define TJEC_ESTUCK 8
+#define TJEC_EMINVARVAR 9
 
-static const int64_t TJEC_OSR_FAILURE           = -1;
-static const int64_t TJEC_RCT_FAILURE           = -2;
-static const int64_t TJEC_APT_FAILURE           = -3;
-static const int64_t TJEC_LAG_FAILURE           = -4;
-static const int64_t TJEC_UNKNOWN_FAILURE       = -5;
-static const int64_t TJEC_RCT_FAILURE_PERMANENT = -6;
-static const int64_t TJEC_APT_FAILURE_PERMANENT = -7;
-static const int64_t TJEC_LAG_FAILURE_PERMANENT = -8;
+#define TJEC_OSR_FAILURE -1
+#define TJEC_RCT_FAILURE -2
+#define TJEC_APT_FAILURE -3
+#define TJEC_LAG_FAILURE -4
+#define TJEC_UNKNOWN_FAILURE -5
+#define TJEC_RCT_FAILURE_PERMANENT -6
+#define TJEC_APT_FAILURE_PERMANENT -7
+#define TJEC_LAG_FAILURE_PERMANENT -8
 
 uint32_t tjec_memory_init(tjec_memory* mem, uint64_t flags);
 void     tjec_memory_destroy(tjec_memory* mem);
@@ -158,8 +158,8 @@ void     tjec_destroy(tjec* ec);
 int64_t  tjec_read_entropy(tjec* ec, void* data, size_t size);
 int64_t  tjec_read_entropy_safe(tjec* ec, void* data, size_t size);
 
-static const uint32_t CSPRNG_ENOERR = 0;
-static const uint32_t CSPRNG_EINVAL = 1;
+#define CSPRNG_ENOERR 0
+#define CSPRNG_EINVAL 1
 
 size_t csprng_tjec_read_entropy(void* userdata, void* data, size_t size);
 
