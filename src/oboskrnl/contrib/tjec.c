@@ -37,15 +37,6 @@
 #   include <arch/x86_64/asm_helpers.h>
 #endif
 
-static uint64_t temp_time()
-{
-#if __x86_64__
-    return rdtsc();
-#else
-    return CoreS_GetTimerTick();
-#endif
-}
-
 static uint64_t temp_l1_cache_size()
 {
 #if __x86_64__
@@ -547,7 +538,8 @@ uint32_t tjec_health_failure(tjec* ec)
 
 uint64_t tjec_loop_shuffle(tjec* ec, uint32_t bits, uint32_t min)
 {
-    uint64_t time_now = (uint64_t) temp_time();
+    (void) ec;
+    uint64_t time_now = (uint64_t) CoreS_GetNativeTimerTick();
 
     uint64_t mask = (UINT64_C(1) << bits) - 1;
     uint64_t shuffle = 0;
@@ -613,7 +605,10 @@ void tjec_random_memory_access(tjec* ec)
 
     for (size_t i = 0; i < sizeof(prng_state) / sizeof(*prng_state); ++i)
     {
-        prng_state[i] = (temp_time() & 0xFF) | ((temp_time() & 0xFF) << 8) | ((temp_time() & 0xFF) << 16) | ((temp_time() & 0xFF) << 24);
+        // It is very likely prng_state[i] = v & 0xFF | ((v & 0xFF) << 8) | ((v & 0xFF) << 16) | ((v & 0xFF) << 24), i.e. same byte repeated, because taking the time and doing bitwise and + shift left shouldn't generally cost enough to cause timer increments.
+        // for that reason, the following code is commented out, and replaced with a broadcast instead.
+        // prng_state[i] = (CoreS_GetNativeTimerTick() & 0xFF) | ((CoreS_GetTimerTick() & 0xFF) << 8) | ((CoreS_GetTimerTick() & 0xFF) << 16) | ((CoreS_GetTimerTick() & 0xFF) << 24);
+        prng_state[i] = (CoreS_GetNativeTimerTick() & 0xFF) * 0x01010101;
     }
 
     for (uint64_t i = 0; i < loop_count; ++i)
@@ -644,7 +639,7 @@ int tjec_measure_jitter(tjec* ec, uint64_t* current_delta)
     else
         tjec_memory_access(ec);
 
-    uint64_t time_now = temp_time();
+    uint64_t time_now = (uint64_t) CoreS_GetNativeTimerTick();
     uint64_t delta    = (time_now - ec->prev_time) / ec->common_time_gcd;
     ec->prev_time     = time_now;
 

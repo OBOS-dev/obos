@@ -86,6 +86,7 @@ void ctr_drbg_reseed(csprng* ctx)
 {
     uint8_t seed_material[32];
     size_t  read = ctx->callbacks.read_entropy(ctx->callbacks.userdata, seed_material, sizeof(seed_material));
+    (void) read;
 
     ctr_drbg_update(seed_material, ctx->key, ctx->v);
     ctx->reseed_counter = 1;
