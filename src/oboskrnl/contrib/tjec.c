@@ -42,7 +42,7 @@ static uint64_t temp_time()
 #if __x86_64__
     return rdtsc();
 #else
-    return CoreS_GetNativeTimerTick();
+    return CoreS_GetTimerTick();
 #endif
 }
 
@@ -130,7 +130,7 @@ uint32_t tjec_memory_init(tjec_memory* mem, uint64_t flags)
 
     uint64_t memory_size = tjec_memory_size(flags);
 
-    mem->memory    = (atomic_uchar*) Mm_QuickVMAllocate(memory_size, true);
+    mem->memory    = (atomic_uchar*) Mm_QuickVMAllocate(memory_size, false);
     mem->cell_size = CELL_SIZE;
     mem->size      = memory_size;
     mem->flags     = flags;
@@ -308,7 +308,10 @@ int64_t tjec_read_entropy_safe(tjec* ec, void* data, size_t size)
             uint64_t flags = ec->flags;
             
             if (osr > 20)
+            {
+                Core_MutexRelease(&ec->mtx);
                 return ret;
+            }
                 
             while (tjec_init_ex(ec, mem, flags, (uint8_t) osr))
             {

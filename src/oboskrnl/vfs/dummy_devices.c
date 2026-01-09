@@ -603,13 +603,13 @@ static void init_random()
         {
         case TJEC_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Invalid argument!"); break;
         case TJEC_ENOMEM: OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC: Not enough memory available!"); break;
-        case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Non functional timer!"); break;
-        case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Timer too coarse!"); break;
-        case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Timer is not monotonic!"); break;
-        case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: RCT failure during pre-test!"); break;
-        case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Health Failure during pre-test 0x%08X", tjec_states->health_failure); break;
-        case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: Bit generator got stuck during pre-test!"); break;
-        case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC: OSR is unreasonable or something \\_(-_-)_/"); break;
+        case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Non functional timer!"); break;
+        case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Timer too coarse!"); break;
+        case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Timer is not monotonic!"); break;
+        case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: RCT failure during pre-test!"); break;
+        case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Health Failure during pre-test 0x%08X", tjec_states->health_failure); break;
+        case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Bit generator got stuck during pre-test!"); break;
+        case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: OSR is unreasonable or something \\_(-_-)_/"); break;
         default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC: Huh? Unknown error %u", err); break;
         }
         return; // Unreachable
@@ -625,13 +625,13 @@ static void init_random()
             {
             case TJEC_EINVAL: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Invalid argument!", i); break;
             case TJEC_ENOMEM: OBOS_Panic(OBOS_PANIC_NO_MEMORY, "TJEC %llu: Not enough memory available!", i); break;
-            case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Non functional timer!", i); break;
-            case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Timer too coarse!", i); break;
-            case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Timer is not monotonic!", i); break;
-            case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: RCT failure during pre-test!", i); break;
-            case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Health Failure during pre-test 0x%08X", i, tjec_states[i].health_failure); break;
-            case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: Bit generator got stuck during pre-test!", i); break;
-            case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_EXCEPTION, "TJEC %llu: OSR is unreasonable or something \\_(-_-)_/", i); break;
+            case TJEC_ENOTIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Non functional timer!", i); break;
+            case TJEC_ECOARSETIME: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Timer too coarse!", i); break;
+            case TJEC_ENOMONOTONIC: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Timer is not monotonic!", i); break;
+            case TJEC_ERCT: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: RCT failure during pre-test!", i); break;
+            case TJEC_EHEALTH: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Health Failure during pre-test 0x%08X", i, tjec_states[i].health_failure); break;
+            case TJEC_ESTUCK: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Bit generator got stuck during pre-test!", i); break;
+            case TJEC_EMINVARVAR: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: OSR is unreasonable or something \\_(-_-)_/", i); break;
             default: OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "TJEC %llu: Huh? Unknown error %u", i, err); break;
             }
             return; // Unreachable
