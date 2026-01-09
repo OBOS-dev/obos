@@ -47,6 +47,13 @@ static const char* const help_message =
 "--pnp-module-path=pathspec: Where to find kernel modules for PnP during kernel init.\n"
 "--disable-libc-log: Disables the logs from the C library (see Sys_LibcLog) .\n"
 "--disable-syscall-error-log: Makes all syscall logs happen at DEBUG level.\n"
+"--tjec-random-access: Makes the underlying TJEC memory accessing randomized.\n"
+"--tjec-max-memory-size=bytes: Specifies the maximum amount of memory TJEC is allowed to allocate.\n"
+"--tjec-no-fips: Tells TJEC to not over sample per block of bits generated.\n"
+"--tjec-no-lag-predictor: Disables TJEC LAG Predictor health checks.\n"
+"--tjec-max-acc-loop-bits=<1-8>: Specifies a maximum number of random additional memory accesses TJEC makes per block in 2^k, default k=7 or 128.\n"
+"--tjec-max-hash-loop-bits=<1-8>: Specifies a maximum number of random additional hash iterations TJEC makes per block in 2^k, default k=3 or 8.\n"
+"--tjec-osr=<1-255>: Specifies the over sampling ratio for TJEC, in other words, how many blocks to collect per block generated.\n"
 "--help: Displays this help message.\n";
 
 struct cmd_allocation_header
