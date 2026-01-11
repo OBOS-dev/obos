@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     int fd = open(argv[1], O_RDONLY);
     if (fd == -1)
     {
-        fprintf(stderr, "open(%s): %s", argv[1], strerror(errno));
+        fprintf(stderr, "open(%s): %s\n", argv[1], strerror(errno));
         return -1;
     }
     
