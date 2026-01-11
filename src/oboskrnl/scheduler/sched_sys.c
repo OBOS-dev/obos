@@ -225,18 +225,20 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
         return HANDLE_INVALID;
     }
 
-    thread* thr = CoreH_ThreadAllocate(nullptr);
-
     status = check_priority(priority);
     if (obos_is_error(status))
     {
+        
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         return HANDLE_INVALID;
     }
     
+    thread* thr = CoreH_ThreadAllocate(nullptr);
+    
     status = CoreH_ThreadInitialize(thr, priority, affinity, ctx->un.thread_ctx->ctx);
     if (obos_is_error(status))
     {
+        Free(OBOS_NonPagedPoolAllocator, thr, sizeof(*thr));
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         return HANDLE_INVALID;
     }
