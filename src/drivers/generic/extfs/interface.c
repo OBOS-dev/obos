@@ -178,6 +178,32 @@ obos_status premove_file(void* vn, const char* path)
     return OBOS_STATUS_SUCCESS;    
 }
 
+obos_status set_file_times(dev_desc desc, void* times_)
+{
+    struct file_times* times = times_;
+    ext_inode_handle* hnd = (void*)desc;
+
+    if (!hnd || !times)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    page* pg = nullptr;
+    Core_MutexAcquire(&hnd->lock);
+
+    ext_inode* ino = ext_read_inode_pg(hnd->cache, hnd->ino, &pg);
+
+    ino->access_time = times->access;
+    ino->creation_time = times->birth;
+    ino->modification_time = times->change;
+    ino->delete_time = 0;
+
+    Mm_MarkAsDirtyPhys(pg);
+    MmH_DerefPage(pg);
+    
+    Core_MutexRelease(&hnd->lock);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 static dev_desc get_desc(ext_cache* cache, uint32_t ino)
 {
     if (cache->inode_vnode_table[ino-1])

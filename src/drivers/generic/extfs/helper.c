@@ -851,6 +851,19 @@ uint32_t ext_ino_allocate(ext_cache* cache, const uint32_t* block_group_ptr)
     return ret;
 }
 
+#ifdef __x86_64__
+#   include <arch/x86_64/cmos.h>
+#endif
+
+static long get_current_epoch_time()
+{
+    long current_time = 0;
+#ifdef __x86_64__
+    Arch_CMOSGetEpochTime(&current_time);
+#endif
+    return current_time;
+}
+
 void ext_ino_free(ext_cache* cache, uint32_t ino)
 {
     if (!cache || !ino)
@@ -860,6 +873,7 @@ void ext_ino_free(ext_cache* cache, uint32_t ino)
     ext_inode* inode = ext_read_inode_pg(cache, ino, &pg);
     MmH_RefPage(pg);
     memzero(inode, sizeof(*inode));
+    inode->delete_time = get_current_epoch_time();
     Mm_MarkAsDirtyPhys(pg);
     MmH_DerefPage(pg);
 
