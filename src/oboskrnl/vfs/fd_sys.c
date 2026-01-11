@@ -2125,7 +2125,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     // Now for the magic..?
     if (!target_header->ftable.hardlink_file)
         // "EPERM - The filesystem containing oldpath and newpath does not support the creation of hard links."
-        status = OBOS_STATUS_ACCESS_DENIED; 
+        status = !target_mount->device ? OBOS_STATUS_SUCCESS : OBOS_STATUS_ACCESS_DENIED; 
     else if (~target_header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
         status = target_header->ftable.hardlink_file(vtarget->desc, plink->vnode->desc, linkname);
     else
@@ -2143,9 +2143,6 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     }
 
     Free(OBOS_KernelAllocator, link, sz_path+1);
-
-    // NOTE: DO NOT COMMIT!!!!
-    return OBOS_STATUS_SUCCESS;
 
     return status;
 }
