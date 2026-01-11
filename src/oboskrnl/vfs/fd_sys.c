@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd_sys.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -528,7 +528,15 @@ obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_ar
         if (header->ftable.ioctl_argp_size)
             status = header->ftable.ioctl_argp_size(request, &sz_argp);
         else
-            status = OBOS_STATUS_UNIMPLEMENTED;
+        {
+            if (request == 0x5451)
+            {
+                fd->un.fd->flags |= FD_FLAGS_NOEXEC;
+                return OBOS_STATUS_SUCCESS;
+            }
+            else
+                status = OBOS_STATUS_INVALID_IOCTL;
+        }
         if (obos_is_error(status))
             return status;
     }
