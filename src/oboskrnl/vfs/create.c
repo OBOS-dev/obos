@@ -246,8 +246,11 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
         obos_status status = OBOS_STATUS_SUCCESS;
         if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
         {
-            char* node_path = VfsH_DirentPath(node, Vfs_Root);
-            status = header->ftable.pmove_desc_to(node->vnode, node_path, nullptr, name);
+            mount* mount = Vfs_GetVnodeMount(node->vnode);
+            if (!mount)
+                return OBOS_STATUS_INTERNAL_ERROR;
+            char* node_path = VfsH_DirentPath(node, mount->root);
+            status = header->ftable.pmove_desc_to(mount->device, node_path, nullptr, name);
             Vfs_Free(node_path);
         }
         else
@@ -267,9 +270,12 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
         obos_status status = OBOS_STATUS_SUCCESS;
         if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
         {
-            char* node_path = VfsH_DirentPath(node, Vfs_Root);
-            char* parent_path = VfsH_DirentPath(newparent, Vfs_Root);
-            status = header->ftable.pmove_desc_to(node->vnode, node_path, parent_path, nullptr);
+            mount* mount = Vfs_GetVnodeMount(node->vnode);
+            if (!mount)
+                return OBOS_STATUS_INTERNAL_ERROR;
+            char* node_path = VfsH_DirentPath(node, mount->root);
+            char* parent_path = VfsH_DirentPath(newparent, mount->root);
+            status = header->ftable.pmove_desc_to(mount->device, node_path, parent_path, nullptr);
             Vfs_Free(parent_path);
             Vfs_Free(node_path);
         }
@@ -294,9 +300,13 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
     status = OBOS_STATUS_SUCCESS;
     if (header->flags & DRIVER_HEADER_DIRENT_CB_PATHS)
     {
-        char* node_path = VfsH_DirentPath(node, Vfs_Root);
-        char* parent_path = VfsH_DirentPath(newparent, Vfs_Root);
-        status = header->ftable.pmove_desc_to(node->vnode, node_path, parent_path, name);
+        mount* mount = Vfs_GetVnodeMount(node->vnode);
+        if (!mount)
+            return OBOS_STATUS_INTERNAL_ERROR;
+
+        char* node_path = VfsH_DirentPath(node, mount->root);
+        char* parent_path = VfsH_DirentPath(newparent, mount->root);
+        status = header->ftable.pmove_desc_to(mount->device, node_path, parent_path, name);
         Vfs_Free(parent_path);
         Vfs_Free(node_path);
     }

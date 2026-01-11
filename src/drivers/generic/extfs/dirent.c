@@ -137,7 +137,7 @@ ext_dirent_cache* ext_dirent_populate(ext_cache* cache, uint32_t ino, const char
     if (!ext_ino_test_type(inode, EXT2_S_IFDIR))
     {
         MmH_DerefPage(pg);
-        return nullptr;
+        return parent;
     }
 
     if (!parent)
@@ -244,7 +244,7 @@ static ext_dirent_cache* on_match(ext_dirent_cache** const curr_, ext_dirent_cac
                         size_t* const path_len)
 {
     ext_dirent_cache *curr = *curr_;
-    ext_dirent_populate(curr->cache, curr->ent.ino, curr->ent.name, false, curr->parent);
+    curr = ext_dirent_populate(curr->cache, curr->ent.ino, curr->ent.name, false, curr);
     *root = curr;
     const char *newtok = (*tok) + str_search(*tok, '/');
     if (newtok >= (*path + *path_len))
@@ -267,7 +267,7 @@ static ext_dirent_cache* on_match(ext_dirent_cache** const curr_, ext_dirent_cac
 ext_dirent_cache* ext_dirent_lookup_from(const char* path, ext_dirent_cache* root)
 {
     if (!path)
-        return nullptr;
+        return root;
     size_t path_len = strlen(path);
     if (!path_len)
         return root;

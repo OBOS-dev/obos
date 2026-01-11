@@ -158,6 +158,7 @@ static obos_status make_dirent(
     ent->ent.ino = ino;
     ent->ent.rec_len = ent_len;
     ent->ent.name_len = strlen(name);
+    ent->cache = cache;
     memcpy(ent->ent.name, name, ent->ent.name_len);
 
     ext_dirent_cache* emplace_at = nullptr;
@@ -507,20 +508,8 @@ obos_status symlink_set_path(dev_desc desc, const char* to)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status premove_file(void* vn, const char* path)
-{
-    ext_cache *cache = nullptr;
-    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
-    {
-        if (curr->vn == vn)
-            cache = curr;
-
-        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
-    }
-
-    if (!cache)
-        return OBOS_STATUS_NOT_FOUND;
-    
+static obos_status premove_file_impl(ext_cache *cache, const char* path, bool unlink)
+{   
     ext_dirent_cache* dent = ext_dirent_lookup_from(path, cache->root);
     if (!dent)
         return OBOS_STATUS_NOT_FOUND;
@@ -540,11 +529,94 @@ obos_status premove_file(void* vn, const char* path)
     ext_dirent_flush(cache, dent);
 
     ext_dirent_disown(dent->parent, dent);
-    if (!(--dent->inode->link_count))
-        ext_ino_free(cache, dent->ent.ino);
+    if (unlink)
+        if (!(--dent->inode->link_count))
+            ext_ino_free(cache, dent->ent.ino);
     MmH_DerefPage(dent->pg);
 
     Free(EXT_Allocator, dent, sizeof(*dent));
     
     return OBOS_STATUS_SUCCESS;    
+}
+
+obos_status premove_file(void* vn, const char* path)
+{
+    ext_cache *cache = nullptr;
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+
+    if (!cache)
+        return OBOS_STATUS_NOT_FOUND;
+
+    return premove_file_impl(cache, path, true);
+}
+
+OBOS_WEAK obos_status pmove_desc_to(void* vn, const char* path, const char* newpath, const char* name)
+{
+    if (strcmp(name, "."))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (strcmp(name, ".."))
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    ext_cache *cache = nullptr;
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+
+    if (!cache)
+        return OBOS_STATUS_NOT_FOUND;
+    
+    ext_dirent_cache* ent = nullptr;
+
+    ext_dirent_cache* parent = ext_dirent_lookup_from(newpath, cache->root);
+    if (!parent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    ext_dirent_cache* dent = ext_dirent_lookup_from(path, cache->root);
+    if (!dent)
+        return OBOS_STATUS_NOT_FOUND;
+
+    if (!newpath)
+        parent = dent->parent;
+
+    if (strncmp(dent->ent.name, ".", dent->ent.name_len) || strncmp(dent->ent.name, "..", dent->ent.name_len))
+        return OBOS_STATUS_ACCESS_DENIED;
+
+    uint32_t ino = dent->ent.ino;
+    dent = nullptr;
+
+    obos_status status = premove_file_impl(cache, path, false);
+    if (obos_is_error(status))
+        return status;
+
+    file_type type = 0;
+    ext_inode* inode = ext_read_inode(cache, ino);
+    if (ext_ino_test_type(inode, EXT2_S_IFDIR))
+        type = FILE_TYPE_DIRECTORY;
+    else if (ext_ino_test_type(inode, EXT2_S_IFREG))
+        type = FILE_TYPE_REGULAR_FILE;
+    else if (ext_ino_test_type(inode, EXT2_S_IFLNK))
+        type = FILE_TYPE_SYMBOLIC_LINK;
+    else
+    {
+        Free(EXT_Allocator, inode, sizeof(*inode));
+        return OBOS_STATUS_UNIMPLEMENTED;
+    }
+
+    Free(EXT_Allocator, inode, sizeof(*inode));
+
+    Mm_PageWriterOperation |= PAGE_WRITER_SYNC_FILE;
+    Mm_WakePageWriter(true);
+    Mm_WakePageWriter(true);
+
+    return make_dirent(&ent, cache, parent, name, ino, false, type);
 }
