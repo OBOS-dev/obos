@@ -404,6 +404,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         Mm_VirtualMemoryFree(ctx, (void*)virt, limit-virt);
         rng = next;
     }
+    OBOS_ASSERT(!ctx->stat.committedMemory);
 
     // Load the ELF into the process.
     elf_info info = {};

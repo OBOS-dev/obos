@@ -1,7 +1,7 @@
 /*
  * oboskrnl/mm/swap.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -51,6 +51,11 @@ OBOS_EXPORT void Mm_MarkAsDirty(page_info* pg);
 OBOS_EXPORT void Mm_MarkAsStandby(page_info* pg);
 OBOS_EXPORT void Mm_MarkAsDirtyPhys(page* pg);
 OBOS_EXPORT void Mm_MarkAsStandbyPhys(page* pg);
+// Page needs to be prefaulted!
+OBOS_EXPORT obos_status Mm_LockPage(context* ctx, page_info* pg);
+OBOS_EXPORT obos_status Mm_UnlockPage(context* ctx, page_info* pg);
+OBOS_EXPORT obos_status Mm_LockPagePhys(page* pg);
+OBOS_EXPORT obos_status Mm_UnlockPagePhys(page* pg);
 void Mm_InitializePageWriter();
 // Wakes up the page writer to free up memory
 // Set 'wait' to true to wait for the page writer to release

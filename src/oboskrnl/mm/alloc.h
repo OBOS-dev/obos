@@ -95,12 +95,7 @@ OBOS_EXPORT obos_status Mm_VirtualMemoryProtect(context* ctx, void* base, size_t
 // NOTE: The returned address is not aligned down to the page size.
 OBOS_EXPORT void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase, void* kbase, size_t nBytes, prot_flags protection, bool respectUserProtection, obos_status* status);
 
-// Locks pages from base to base+sz in the working-set.
-// If space is not avaliable in the working-set, pages are removed until space can be satisified.
-// If the working-set's capacity is too small, then it can be inflated until the pages are unlocked.
 OBOS_EXPORT obos_status Mm_VirtualMemoryLock(context* ctx, void* base, size_t sz);
-// Unlocks pages from base to base+sz from the working-set.
-// If the pages caused the working-set capacity to be inflated, then it is deflated once again.
 OBOS_EXPORT obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base, size_t sz);
 
 OBOS_EXPORT void* Mm_AllocateKernelStack(context* target_user, obos_status* status);

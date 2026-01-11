@@ -30,10 +30,15 @@ obos_status Mm_ForkContext(context* into, context* toFork)
     if (!toFork || !into)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    memcpy(&into->stat, &toFork->stat, sizeof(memstat));
+    // memcpy(&into->stat, &toFork->stat, sizeof(memstat));
+    into->stat.committedMemory = toFork->stat.committedMemory;
+    into->stat.pageable = toFork->stat.pageable;
+    into->stat.nonPaged = toFork->stat.nonPaged;
+    into->stat.paged = toFork->stat.paged;
     Mm_GlobalMemoryUsage.committedMemory += into->stat.committedMemory;
     Mm_GlobalMemoryUsage.pageable += into->stat.pageable;
     Mm_GlobalMemoryUsage.nonPaged += into->stat.nonPaged;
+    Mm_GlobalMemoryUsage.paged += into->stat.paged;
 
     irql oldIrql = Core_SpinlockAcquire(&toFork->lock);
     page_range* curr = nullptr;

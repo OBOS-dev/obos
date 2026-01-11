@@ -227,14 +227,16 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 	for ((rng) = RB_MIN(page_tree, &proc->ctx->pages); (rng) != nullptr; )
 	{
 		OBOS_ENSURE(rng);
-		next = RB_NEXT(page_tree, &ctx->pages, rng);
+		next = RB_NEXT(page_tree, &proc->ctx->pages, rng);
 		uintptr_t virt = rng->virt;
 		if (rng->hasGuardPage)
 			virt += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		uintptr_t limit = rng->virt+rng->size;
-		Mm_VirtualMemoryFree(proc->ctx, (void*)virt, limit-virt);
+		OBOS_ASSERT(obos_is_success(Mm_VirtualMemoryFree(proc->ctx, (void*)virt, limit-virt)));
 		rng = next;
 	}
+
+	OBOS_ASSERT(!proc->ctx->stat.committedMemory);
 
 #if OBOS_DEBUG
 	RB_FOREACH(rng, page_tree, &Mm_KernelContext.pages)

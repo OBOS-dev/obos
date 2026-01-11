@@ -207,6 +207,11 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     }
     page_info curr = {};
     MmS_QueryPageInfo(ctx->pt, addr, &curr, nullptr);
+    if (curr.prot.lck)
+    {
+        OBOS_Debug("Fatal Page Fault: Page is locked in memory, nothing to do.\n");
+        goto done;
+    }
     page* pg = nullptr;
     do
     {
@@ -220,6 +225,13 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
             goto done;
         }
     } while(0);
+    if (pg && (pg->flags & PHYS_PAGE_LOCKED))
+    {
+        curr.prot.lck = true;
+        MmS_SetPageMapping(ctx->pt, &curr, curr.phys, false);
+        OBOS_Debug("Fatal Page Fault: Page is locked in memory, nothing to do.\n");
+        goto done;
+    }
     curr.range = rng;
     curr.prot.user = ec & PF_EC_UM;
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).

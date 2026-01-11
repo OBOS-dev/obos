@@ -23,6 +23,7 @@ typedef struct page_protection
     bool uc : 1;           // If set, this page is uncacheable.
     bool fb : 1;           // If set, this page is meant to be mapped as a framebuffer page. On x86-64, this uses WC caching.
     bool ro : 1;           // If set, this page was originally allocated as read-only. This is only for decoration, and is only really guaranteed to be set in page ranges.
+    bool lck : 1;          // If set, this page is locked in memory. On x86-64, this uses bit 52 of the PTE.
     bool is_swap_phys : 1; // If set, the physical address of the page is actually a swap id. On x86-64, this uses bit 9 of the PTE.
 } page_protection;
 
@@ -49,6 +50,7 @@ typedef enum phys_page_flags
     PHYS_PAGE_DIRTY = BIT(1),
     PHYS_PAGE_HUGE_PAGE = BIT(2),
     PHYS_PAGE_MMIO = BIT(3),
+    PHYS_PAGE_LOCKED = BIT(4),
 } phys_page_flags;
 
 // TODO: Move this into an array for faster allocation and lookup?

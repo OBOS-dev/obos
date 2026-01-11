@@ -146,6 +146,7 @@ void* Mm_VirtualMemoryAlloc(context* ctx, void* base, size_t size, prot_flags pr
 
 page* Mm_AnonPage = nullptr;
 page* Mm_UserAnonPage = nullptr;
+
 void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags prot, vma_flags flags, fd* file, size_t offset, obos_status* ustatus)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -393,6 +394,7 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     }
     if (flags & VMA_FLAGS_GUARD_PAGE)
         size -= pgSize;
+
     if (!(flags & VMA_FLAGS_NON_PAGED))
     {
         ctx->stat.pageable += size;
@@ -405,13 +407,41 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     }
     ctx->stat.committedMemory += size;
     Mm_GlobalMemoryUsage.committedMemory += size;
+
     OBOS_ASSERT(rng->size);
     RB_INSERT(page_tree, &ctx->pages, rng);
     Core_SpinlockRelease(&ctx->lock, oldIrql);
     if (flags & VMA_FLAGS_GUARD_PAGE)
         base += pgSize;
-    // printf("mapped %d bytes at %p\n", size, base);
     return (void*)base;
+}
+
+static void remove_pages_from_memstat(context* ctx, size_t size, page_range* rng, bool sizeHasGuardPage)
+{
+    if (!rng)
+        return;
+
+    if (sizeHasGuardPage)
+        size -= (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    
+    ctx->stat.committedMemory -= size;
+    Mm_GlobalMemoryUsage.committedMemory -= size;
+    if (rng->pageable)
+    {
+        ctx->stat.pageable -= size;
+        Mm_GlobalMemoryUsage.pageable -= size;
+    }
+    else
+    {
+        ctx->stat.nonPaged -= size;
+        Mm_GlobalMemoryUsage.nonPaged -= size;
+    }
+    OBOS_ASSERT(Mm_GlobalMemoryUsage.committedMemory >= 0);
+    OBOS_ASSERT(Mm_GlobalMemoryUsage.nonPaged >= 0);
+    OBOS_ASSERT(Mm_GlobalMemoryUsage.pageable >= 0);
+    OBOS_ASSERT(ctx->stat.committedMemory >= 0);
+    OBOS_ASSERT(ctx->stat.nonPaged >= 0);
+    OBOS_ASSERT(ctx->stat.pageable >= 0);
 }
 
 // TODO: Make this support freeing multiple 'page_range's at the same time without bugging out.
@@ -441,7 +471,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         Core_SpinlockRelease(&ctx->lock, oldIrql);
         return OBOS_STATUS_NOT_FOUND;
     }
-    if ((base + size) >= (rng->virt + rng->size))
+    if ((base + size) > (rng->virt + rng->size))
         size = rng->size - (base - rng->virt); // TODO: Fix
 
     // printf("freeing %d at %p. called from %p\n", size, base, __builtin_return_address(0));
@@ -493,6 +523,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             RB_INSERT(page_tree, &ctx->pages, before);
             RB_INSERT(page_tree, &ctx->pages, after);
             rng->ctx = nullptr;
+            remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
             Free(Mm_Allocator, rng, sizeof(*rng));
             rng = nullptr;
         }
@@ -501,6 +532,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             rng->size = (rng->size-size);
             rng->virt += size;
             // printf("split %p-%p into %p-%p\n", base, size+base, rng->virt, rng->virt+rng->size);
+            remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
             rng = nullptr;
         }
     }
@@ -533,27 +565,7 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     }
     MmS_TLBShootdown(ctx->pt, base, size);
 
-    if (rng)
-    {
-        if (sizeHasGuardPage)
-            size -= (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        
-        ctx->stat.committedMemory -= size;
-        Mm_GlobalMemoryUsage.committedMemory -= size;
-        if (rng->pageable)
-        {
-            ctx->stat.pageable -= size;
-            Mm_GlobalMemoryUsage.pageable -= size;
-        }
-        else
-        {
-            ctx->stat.nonPaged -= size;
-            Mm_GlobalMemoryUsage.nonPaged -= size;
-        }
-        OBOS_ASSERT(Mm_GlobalMemoryUsage.committedMemory >= 0);
-        OBOS_ASSERT(Mm_GlobalMemoryUsage.nonPaged >= 0);
-        OBOS_ASSERT(Mm_GlobalMemoryUsage.pageable >= 0);
-    }
+    remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
 
     if (full)
     {
@@ -1085,6 +1097,114 @@ obos_status DrvH_FreeScatterGatherList(context* ctx, void* base_, size_t size, s
         pgSize = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
     }
     Free(Mm_Allocator, regions, nRegions * sizeof(struct physical_region));
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+static obos_status fault_page(context *ctx, page_info *info, irql *oldIrql)
+{
+    Core_SpinlockRelease(&ctx->lock, *oldIrql);
+    int um = ctx->owner->pid == 0 ? 0 : PF_EC_UM;
+    obos_status status = Mm_HandlePageFault(ctx, info->virt, PF_EC_RW|((uint32_t)info->prot.present<<PF_EC_PRESENT)|um);
+    *oldIrql = Core_SpinlockAcquire(&ctx->lock);
+    MmS_QueryPageInfo(ctx->pt, info->virt, info, nullptr);
+    return status;
+}
+
+obos_status Mm_VirtualMemoryLock(context* ctx, void* base_, size_t size)
+{
+    uintptr_t base = (uintptr_t)base_;
+    if (base % OBOS_PAGE_SIZE)
+    {
+        size += (base % OBOS_PAGE_SIZE);
+        base -= (base%OBOS_PAGE_SIZE);
+    }
+    if (!ctx || !base || !size)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+
+    size_t pg_size = 0;
+    for (uintptr_t addr = base; addr < (base+size); addr += pg_size)
+    {
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+
+        pg_size = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+
+        if (info.prot.is_swap_phys)
+            status = fault_page(ctx, &info, &oldIrql);
+        else
+        {
+            page key = {.phys=info.phys};
+            Core_MutexAcquire(&Mm_PhysicalPagesLock);
+            page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
+            Core_MutexRelease(&Mm_PhysicalPagesLock);
+            if (!pg)
+            {
+                Core_SpinlockRelease(&ctx->lock, oldIrql);
+                return OBOS_STATUS_NOT_FOUND;
+            }
+
+            if (pg->cow_type != COW_DISABLED)
+                status = fault_page(ctx, &info, &oldIrql);
+        }
+
+        if (obos_is_error(status))
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            return status;
+        }
+
+        status = Mm_LockPage(ctx, &info);
+        if (obos_is_error(status))
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            return status;
+        }
+    }
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Mm_VirtualMemoryUnlock(context* ctx, void* base_, size_t size)
+{
+    uintptr_t base = (uintptr_t)base_;
+    if (base % OBOS_PAGE_SIZE)
+    {
+        size += (base % OBOS_PAGE_SIZE);
+        base -= (base%OBOS_PAGE_SIZE);
+    }
+    if (!ctx || !base || !size)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (size % OBOS_PAGE_SIZE)
+        size += (OBOS_PAGE_SIZE-(size%OBOS_PAGE_SIZE));
+
+    obos_status status = OBOS_STATUS_SUCCESS;
+
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
+
+    size_t pg_size = 0;
+    for (uintptr_t addr = base; addr < (base+size); addr += pg_size)
+    {
+        page_info info = {};
+        MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
+
+        status = Mm_UnlockPage(ctx, &info);
+        if (obos_is_error(status))
+        {
+            Core_SpinlockRelease(&ctx->lock, oldIrql);
+            return status;
+        }
+
+        pg_size = info.prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+    }
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
 
     return OBOS_STATUS_SUCCESS;
 }

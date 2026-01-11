@@ -58,6 +58,8 @@ obos_status Mm_SwapOut(uintptr_t virt, context* ctx)
         return status;
     if (page.prot.is_swap_phys)
         return OBOS_STATUS_SUCCESS;
+    if (page.prot.lck)
+        return OBOS_STATUS_UNPAGED_POOL;
 
     struct page key = { .phys = page.phys };
     Core_MutexAcquire(&Mm_PhysicalPagesLock);
@@ -68,6 +70,8 @@ obos_status Mm_SwapOut(uintptr_t virt, context* ctx)
         OBOS_Warning("%s: Could not find 'struct page' for physical page 0x%p\n", __func__, page.phys);
         return OBOS_STATUS_INTERNAL_ERROR;
     }
+    if (pg->flags & PHYS_PAGE_LOCKED)
+        return OBOS_STATUS_UNPAGED_POOL;
     
     uintptr_t swap_id = 0;
     irql oldIrql = IRQL_INVALID;
@@ -141,6 +145,8 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         }
         else if (onStandbyList && !node->pagedCount)
             LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, node);
+        node->flags &= ~PHYS_PAGE_DIRTY;
+        node->flags &= ~PHYS_PAGE_STANDBY;
         // else
         //     OBOS_ASSERT(!"Funny business");
         node->pagedCount++;
@@ -162,7 +168,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
     {
         // Not swapped out.
         Mm_ReleaseSwapLock(oldIrql);
-        return OBOS_STATUS_NOT_FOUND; 
+        return OBOS_STATUS_SUCCESS; 
     }
     down:
     OBOS_UNUSED(0);
@@ -188,14 +194,25 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
     }
     else
         MmH_RefPage(alloc->phys);
+    
     if (alloc->phys->flags & PHYS_PAGE_STANDBY)
+    {
         LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, alloc->phys);
+        if (type)
+            *type = SOFT_FAULT;
+        type = nullptr;
+    }
     else if (alloc->phys->flags & PHYS_PAGE_DIRTY)
     {
         if (!alloc->phys->pagedCount)
             LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, alloc->phys);
         Mm_DirtyPagesBytes -= page->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        if (type)
+            *type = SOFT_FAULT;
+        type = nullptr;
     }
+    alloc->phys->flags &= ~PHYS_PAGE_DIRTY;
+    alloc->phys->flags &= ~PHYS_PAGE_STANDBY;
     phys = alloc->phys->phys;
     if (page->range)
         page->prot = page->range->prot;
@@ -414,6 +431,79 @@ void Mm_MarkAsStandbyPhys(page* node)
         node->flags &= ~PHYS_PAGE_DIRTY;
         MmH_DerefPage(node);
     }
+}
+
+obos_status Mm_LockPage(context* ctx, page_info* pg)
+{
+    OBOS_ASSERT(pg->phys);
+    OBOS_ENSURE (!pg->prot.is_swap_phys);
+    
+    page what = {.phys=pg->phys};
+    Core_MutexAcquire(&Mm_PhysicalPagesLock);
+    page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    Core_MutexRelease(&Mm_PhysicalPagesLock);
+    
+    obos_status status = Mm_LockPagePhys(node);
+    if (obos_is_error(status))
+        return status;
+
+    pg->prot.lck = true;
+    return MmS_SetPageMapping(ctx->pt, pg, pg->phys, false);
+}
+
+obos_status Mm_UnlockPage(context* ctx, page_info* pg)
+{
+    OBOS_ASSERT(pg->phys);
+    OBOS_ENSURE (!pg->prot.is_swap_phys);
+
+    page what = {.phys=pg->phys};
+    Core_MutexAcquire(&Mm_PhysicalPagesLock);
+    page* node = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what);
+    Core_MutexRelease(&Mm_PhysicalPagesLock);
+
+    if (~node->flags & PHYS_PAGE_LOCKED)
+        return OBOS_STATUS_SUCCESS;
+
+    obos_status status = Mm_UnlockPagePhys(node);
+    if (obos_is_error(status))
+        return status;
+
+    pg->prot.lck = false;
+    return MmS_SetPageMapping(ctx->pt, pg, pg->phys, false);
+}
+
+obos_status Mm_LockPagePhys(page* pg)
+{
+    OBOS_ENSURE(pg != Mm_AnonPage);
+    OBOS_ENSURE(pg != Mm_UserAnonPage);
+
+    if (pg->backing_vn)
+        return OBOS_STATUS_INVALID_OPERATION;
+    pg->flags |= PHYS_PAGE_LOCKED;
+    if (pg->flags & PHYS_PAGE_STANDBY)
+    {
+        LIST_REMOVE(phys_page_list, &Mm_StandbyPageList, pg);
+        pg->flags &= ~PHYS_PAGE_STANDBY;
+        MmH_DerefPage(pg);
+    }
+    else if (pg->flags & PHYS_PAGE_DIRTY)
+    {
+        if (!pg->pagedCount)
+            LIST_REMOVE(phys_page_list, &Mm_DirtyPageList, pg);
+        Mm_DirtyPagesBytes -= (pg->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE;
+        pg->flags &= ~PHYS_PAGE_DIRTY;
+        MmH_DerefPage(pg);
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Mm_UnlockPagePhys(page* pg)
+{
+    OBOS_ENSURE(pg != Mm_AnonPage);
+    OBOS_ENSURE(pg != Mm_UserAnonPage);
+    
+    pg->flags &= ~PHYS_PAGE_LOCKED;
+    return OBOS_STATUS_SUCCESS;
 }
 
 void Mm_InitializePageWriter()

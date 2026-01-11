@@ -1,7 +1,7 @@
 /*
-	oboskrnl/arch/x86_64/map.c
-
-	Copyright (c) 2024-2025 Omar Berrow
+ * oboskrnl/arch/x86_64/map.c
+ * 
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -168,7 +168,7 @@ obos_status Arch_MapPage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t fla
 	if (phys & ~0xffffffffff000)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 3);
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~(BIT(9) | BIT_TYPE(52, UL)), 3);
 	uintptr_t entry = phys | flags;
 	// for (volatile bool b = !(flags & 1); b; )
 	// 	;
@@ -192,7 +192,7 @@ obos_status Arch_MapHugePage(uintptr_t cr3, void* at_, uintptr_t phys, uintptr_t
 	if (flags & ((uintptr_t)1 << 7))
 		flags |= ((uintptr_t)1 << 12);
 	phys = Arch_MaskPhysicalAddressFromEntry(phys);
-	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~512, 2);
+	uintptr_t* pm = Arch_AllocatePageMapAt(cr3, at, flags & ~(BIT(9) | BIT_TYPE(52, UL)), 2);
 	uintptr_t entry = phys | flags | ((uintptr_t)1 << 7);
 	pm[AddressToIndex(at, 1)] = entry;
 	if (free_pte && ~flags & BIT_TYPE(0, UL))
@@ -501,6 +501,7 @@ obos_status MmS_QueryPageInfo(page_table pt, uintptr_t addr, page_info* ppage, u
 	page.prot.user = entry & BIT_TYPE(2, UL);
 	page.accessed = entry & BIT_TYPE(5, UL);
 	page.dirty = entry & BIT_TYPE(6, UL);
+	page.prot.lck = entry & BIT_TYPE(52, UL);
 	page.prot.executable = !(entry & BIT_TYPE(63, UL));
 	page.prot.is_swap_phys = entry & BIT_TYPE(9, UL);
     // page.prot.uc = (entry & BIT_TYPE(4, UL));
@@ -543,6 +544,8 @@ obos_status MmS_SetPageMapping(page_table pt, const page_info* page, uintptr_t p
 		flags |= BIT_TYPE(0, UL);
 	if (page->prot.is_swap_phys)
 		flags |= BIT_TYPE(9, UL); /* Available bit */
+	if (page->prot.lck)
+		flags |= BIT_TYPE(52, UL); /* Available bit */
 	if (page->prot.uc && !page->prot.uc)
 		flags |= BIT_TYPE(4, UL);
 	if (page->prot.fb)
