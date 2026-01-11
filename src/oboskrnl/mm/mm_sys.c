@@ -113,13 +113,13 @@ obos_status Sys_VirtualMemoryProtect(handle ctx, void* base, size_t size, prot_f
 }
 obos_status Sys_VirtualMemoryLock(handle ctx, void* base, size_t size)
 {
-    OBOS_UNUSED(ctx && base && size);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    context* vmm_ctx = context_from_handle(ctx, false, 0, true);
+    return Mm_VirtualMemoryLock(vmm_ctx, base, size);
 }
 obos_status Sys_VirtualMemoryUnlock(handle ctx, void* base, size_t size)
 {
-    OBOS_UNUSED(ctx && base && size);
-    return OBOS_STATUS_UNIMPLEMENTED;
+    context* vmm_ctx = context_from_handle(ctx, false, 0, true);
+    return Mm_VirtualMemoryUnlock(vmm_ctx, base, size);
 }
 
 #ifndef OBOS_DEFAULT_WS_CAPACITY
@@ -210,7 +210,7 @@ obos_status Sys_MakeDiskSwap(const char* upath)
     OBOSH_ReadUserString(upath, path, nullptr);
 
     dirent* dent = VfsH_DirentLookup(path);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
     if (!dent)
         return OBOS_STATUS_NOT_FOUND;
 
@@ -235,7 +235,7 @@ obos_status Sys_SwitchSwap(const char* upath)
     OBOSH_ReadUserString(upath, path, nullptr);
 
     dirent* dent = VfsH_DirentLookup(path);
-    Free(OBOS_KernelAllocator, path, sz_path);
+    Free(OBOS_KernelAllocator, path, sz_path+1);
     if (!dent)
         return OBOS_STATUS_NOT_FOUND;
 
