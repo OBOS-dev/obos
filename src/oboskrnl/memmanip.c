@@ -23,6 +23,8 @@
 #if !OBOS_ARCH_HAS_USR_MEMCPY
 obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
 {
+    if (!count)
+        return OBOS_STATUS_SUCCESS;
     if (CoreS_GetCPULocalPtr()->currentContext == &Mm_KernelContext)
         return memcpy(k_dest, usr_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
@@ -36,6 +38,8 @@ obos_status memcpy_usr_to_k(void* k_dest, const void* usr_src, size_t count)
 }
 obos_status memcpy_k_to_usr(void* usr_dest, const void* k_src, size_t count)
 {
+    if (!count)
+        return OBOS_STATUS_SUCCESS;
     if (CoreS_GetCPULocalPtr()->currentContext == &Mm_KernelContext)
         return memcpy(usr_dest, k_src, count) ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
     context* ctx = CoreS_GetCPULocalPtr()->currentContext;
