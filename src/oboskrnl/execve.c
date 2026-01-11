@@ -1,7 +1,7 @@
 /*
  * oboskrnl/execve.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -98,7 +98,7 @@ static char** get_user_string_vector(context* ctx, char* const* vec, size_t coun
         obos_status status = OBOSH_ReadUserString(vec[i], nullptr, &str_len);
         if (obos_is_error(status))
         {
-            Free(OBOS_KernelAllocator, ret, count*sizeof(char*));
+            Free(OBOS_KernelAllocator, ret, (count + 1) * sizeof(char*));
             if (statusp) *statusp = status;
             return nullptr;
         }
@@ -109,6 +109,16 @@ static char** get_user_string_vector(context* ctx, char* const* vec, size_t coun
     }
     Mm_VirtualMemoryFree(&Mm_KernelContext, (void*)vec, count*sizeof(char*));
     return ret;
+}
+
+static void free_user_string_vector(char** vec, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+    {
+        Free(OBOS_KernelAllocator, vec[i], strlen(vec[i]) + 1);
+        vec[i] = nullptr;
+    }
+    Free(OBOS_KernelAllocator, vec, (count+1) * sizeof(*vec));
 }
 
 obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
@@ -151,6 +161,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     char** kargv = map_user_vector(ctx, argv, &argc, &status);
     if (obos_is_error(status))
     {
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
         return status;
     }
@@ -158,33 +169,138 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     char** knvp = map_user_vector(ctx, envp, &envpc, &status);
     if (obos_is_error(status))
     {
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kargv, argc*sizeof(char*));
         return status;
     }
 
     // Reallocate kargv+knvp to only use kernel pointers
     kargv = get_user_string_vector(ctx, kargv, argc, &status);
     if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, path, sz_path+1);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kargv, argc*sizeof(char*));
+        Mm_VirtualMemoryFree(&Mm_KernelContext, knvp, envpc*sizeof(char*));
         return status;
+    }
 
     knvp = get_user_string_vector(ctx, knvp, envpc, &status);
     if (obos_is_error(status))
     {
+        Free(OBOS_KernelAllocator, path, sz_path+1);
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        Mm_VirtualMemoryFree(&Mm_KernelContext, knvp, envpc*sizeof(char*));
+        free_user_string_vector(kargv, argc);
         return status;
     }
 
+    bool has_interpreter = false;
+    bool chas_interpreter = false;
+    char* interpreter_path = nullptr;
+    char* interpreter_arg = nullptr;
+    size_t len_interpreter_path = 0;
+    size_t len_interpreter_arg = 0;
+    char* last_path = path;
+    size_t interpreter_recursion = 0;
+
+    do {
+        chas_interpreter = memcmp(kbuf, "#!", 2);
+        if (!chas_interpreter)
+            break;
+        has_interpreter = true;
+
+        const char* buf = kbuf+2;
+        size_t this_bufLen = szBuf-2;
+        size_t len1 = strnchr(buf, '\n', this_bufLen);
+        size_t len2 = strnchr(buf, ' ', this_bufLen);
+        len_interpreter_path = OBOS_MIN(len1, len2);
+        len_interpreter_path -= buf[len_interpreter_path-1] == '\n' || buf[len_interpreter_path-1] == ' ';
+        if (!len_interpreter_path)
+        {
+            if (interpreter_recursion > 0)
+                Free(OBOS_KernelAllocator, path, sz_path+1);
+            free_user_string_vector(kargv, argc);
+            free_user_string_vector(knvp, envpc);
+            return OBOS_STATUS_NOT_FOUND;
+        }
+        if (buf[len_interpreter_path] == ' ')
+        {
+            const char* arg = kbuf + 2 + len_interpreter_path + 1;
+            len_interpreter_arg = len1 - len_interpreter_path - 2;
+            interpreter_arg = Allocate(OBOS_KernelAllocator, len_interpreter_arg+1, nullptr);
+            memcpy(interpreter_arg, arg, len_interpreter_arg);
+            interpreter_arg[len_interpreter_arg] = 0;
+        }
+        interpreter_path = Allocate(OBOS_KernelAllocator, len_interpreter_path+1, nullptr);
+        memcpy(interpreter_path, buf, len_interpreter_path);
+        interpreter_path[len_interpreter_path] = 0;
+
+        size_t new_argc = argc+1;
+        if (len_interpreter_arg)
+            new_argc += 1;
+        char** new_argv = ZeroAllocate(OBOS_KernelAllocator, new_argc+1, sizeof(char*), nullptr);
+        memcpy(&new_argv[new_argc-argc], kargv, argc * sizeof(char*));
+        new_argv[0] = interpreter_path;
+        if (len_interpreter_arg)
+            new_argv[1] = interpreter_arg;
+        new_argv[1+(len_interpreter_arg?1:0)] = last_path;
+        new_argv[new_argc] = nullptr;
+
+        Free(OBOS_KernelAllocator, kargv, (argc+1)*sizeof(char*));
+        argc = new_argc;
+        kargv = new_argv;
+
+        last_path = interpreter_path;
+
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        kbuf = nullptr;
+        szBuf = 0;
+        
+        memzero(&file, sizeof(file));
+        status = Vfs_FdOpen(&file, interpreter_path, FD_OFLAGS_READ);
+        if (obos_is_error(status))
+        {
+            free_user_string_vector(kargv, argc);
+            free_user_string_vector(knvp, envpc);
+            return status;
+        }
+
+        szBuf = file.vn->filesize;
+        kbuf = Mm_VirtualMemoryAlloc(
+            &Mm_KernelContext, 
+            nullptr, szBuf, 
+            OBOS_PROTECTION_READ_ONLY, VMA_FLAGS_PRIVATE,
+            &file, 
+            nullptr);
+        OBOS_ENSURE(kbuf);
+        Vfs_FdClose(&file);
+    } while(chas_interpreter && interpreter_recursion++ <= 4);
+
+    if (interpreter_recursion == 4)
+    {
+        Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        free_user_string_vector(kargv, argc);
+        free_user_string_vector(knvp, envpc);
+        return OBOS_STATUS_INVALID_FILE;
+    }
+    
     status = OBOS_LoadELF(ctx, kbuf, szBuf, nullptr, true, false);
     if (obos_is_error(status))
     {
         Mm_VirtualMemoryFree(&Mm_KernelContext, kbuf, szBuf);
+        if (!has_interpreter)
+            Free(OBOS_KernelAllocator, path, sz_path+1);
+        free_user_string_vector(kargv, argc);
+        free_user_string_vector(knvp, envpc);
         return status;
     }
 
     do {
         if (Core_GetCurrentThread()->proc->exec_file)
             Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->exec_file, strlen(Core_GetCurrentThread()->proc->exec_file)+1);
-        Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPathKAlloc(VfsH_DirentLookup(path), nullptr);
+        Core_GetCurrentThread()->proc->exec_file = VfsH_DirentPathKAlloc(VfsH_DirentLookup(last_path), nullptr);
         if (Core_GetCurrentThread()->proc->cmdline)
             Free(OBOS_KernelAllocator, Core_GetCurrentThread()->proc->cmdline, strlen(Core_GetCurrentThread()->proc->cmdline)+1);
         Core_GetCurrentThread()->proc->cmdline = nullptr;
@@ -211,9 +327,12 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
                               OBOS_GetStringSize(&cmd_line)+1);
         OBOS_FreeString(&cmd_line);
     } while(0);
-
-    Free(OBOS_KernelAllocator, path, sz_path+1);
-    path = nullptr;
+        
+    if (!has_interpreter)
+    {
+        Free(OBOS_KernelAllocator, path, sz_path+1);
+        path = nullptr;
+    }
 
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     // For each thread in the current process, send SIGKILL, and wait for it to die.
@@ -292,7 +411,7 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
     if (obos_is_error(status))
     {
         OBOS_Error("OBOS_LoadELF failed in %s after already having verified ELF file status. Status: %d\n", __func__, status);
-        Core_ExitCurrentProcess(9 | (9<<8));
+        Core_ExitCurrentProcess(9 | (9<<8)); // SIGKILL
 //      OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "OBOS_LoadELF failed in %s after already having verified ELF file status.\nStatus: %d\n", __func__, status);
     }
 
