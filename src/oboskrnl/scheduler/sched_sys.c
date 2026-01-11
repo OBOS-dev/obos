@@ -328,8 +328,9 @@ obos_status Sys_ThreadPriority(handle thread_hnd, const thread_priority *new, th
         thread_priority old_priority = thr->priority;
         memcpy_usr_to_k(&new_priority, new, sizeof(thr->priority));
         status = check_priority(new_priority);
+        if (obos_is_success(status))
+            thr->priority = new_priority;
 
-        thr->priority = new_priority;
         if (thr->priority != old_priority && thr->masterCPU) 
         {
             CoreH_ThreadListRemove(&thr->masterCPU->priorityLists[old_priority].list, &thr->snode);
