@@ -1,7 +1,7 @@
 /*
  * oboskrnl/locks/sys_futex.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -15,6 +15,7 @@
 
 #include <mm/context.h>
 #include <mm/pmm.h>
+#include <mm/alloc.h>
 
 #include <locks/sys_futex.h>
 #include <locks/mutex.h>
@@ -70,8 +71,7 @@ obos_status Sys_FutexWait(uint32_t *futex, uint32_t cmp_with, uint64_t timeout)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
 
-    // TODO: F****** implement virtual page locking
-    // Mm_VirtualMemoryLock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
+    Mm_VirtualMemoryLock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
 
     uintptr_t phys = 0;
     page_info info = {};
@@ -89,16 +89,16 @@ obos_status Sys_FutexWait(uint32_t *futex, uint32_t cmp_with, uint64_t timeout)
     futex_object* obj = find_futex(futex, cmp_val);
     if (cmp_val)
     {
-        // Mm_VirtualMemoryUnlock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
         obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*obj));
         deref_futex(obj);
         CoreH_ClearSignaledState(WAITABLE_OBJECT(*obj));
         if (CoreS_ForceYieldOnSyscallReturn)
             CoreS_ForceYieldOnSyscallReturn();
+        Mm_VirtualMemoryUnlock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
         return status;
     }
 
-    // Mm_VirtualMemoryUnlock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
+    Mm_VirtualMemoryUnlock(CoreS_GetCPULocalPtr()->currentThread->proc->ctx, futex, sizeof(*futex));
     return OBOS_STATUS_RETRY /* linux does this, so we will too */;
 }
 
