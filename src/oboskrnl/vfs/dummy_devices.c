@@ -94,11 +94,13 @@ enum {
     DUMMY_FB0,
     // /dev/random
     DUMMY_RANDOM,
-    DUMMY_MAX = DUMMY_RANDOM,
+    // /dev/entropy
+    DUMMY_ENTROPY,
+    DUMMY_MAX = DUMMY_ENTROPY,
 };
 static const char* names[DUMMY_MAX+1] = {
     nullptr,
-    "null", "full", "zero", "fb0", "random"
+    "null", "full", "zero", "fb0", "random", "entropy"
 };
 
 static obos_status get_blk_size(dev_desc desc, size_t* blkSize)
@@ -150,9 +152,16 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
                     *nBlkRead = blkCount;
             }
             else if (nBlkRead)
-            {
                 *nBlkRead = 0;
+            break;
+        case DUMMY_ENTROPY:
+            if (tjec_read_entropy_safe(CoreS_GetCPULocalPtr()->tjec_state, buf, blkCount))
+            {
+                if (nBlkRead)
+                    *nBlkRead = blkCount;
             }
+            else if (nBlkRead)
+                *nBlkRead = 0;
             break;
         case DUMMY_FB0:
             return OBOS_STATUS_INVALID_OPERATION;
@@ -175,8 +184,8 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         case DUMMY_FULL:
             return OBOS_STATUS_NOT_ENOUGH_MEMORY;
         case DUMMY_FB0:
-            return OBOS_STATUS_INVALID_OPERATION;
         case DUMMY_RANDOM:
+        case DUMMY_ENTROPY:
             return OBOS_STATUS_INVALID_OPERATION;
         default:
             return OBOS_STATUS_INVALID_ARGUMENT;
@@ -671,6 +680,7 @@ void Vfs_InitDummyDevices()
     init_desc(DUMMY_FB0);
     init_random();
     init_desc(DUMMY_RANDOM);
+    init_desc(DUMMY_ENTROPY);
 }
 
 OBOS_EXPORT const char* OBOS_ScancodeToString[84] = {
