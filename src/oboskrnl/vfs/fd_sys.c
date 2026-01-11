@@ -916,8 +916,9 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
                                     true,
                                     false,
                                     false);
-        if (obos_is_error(status))
-            return status;
+        if (statusp)
+            memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+        return HANDLE_INVALID;
     }
 
     Vfs_PopulateDirectory(dent);
@@ -932,6 +933,12 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
 
     if (statusp)
         memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+
+    if (obos_is_error(status))
+    {
+        Sys_HandleClose(ret);
+        ret = HANDLE_INVALID;
+    }
 
     return ret;
 }
