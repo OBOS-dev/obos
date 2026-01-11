@@ -350,7 +350,7 @@ obos_status Sys_ThreadAffinity(handle thread_hnd, const thread_affinity *new, th
             return status;
         thread_affinity old = thr->affinity;
         memcpy_usr_to_k(&thr->affinity, new, sizeof(thr->affinity));
-        thr->affinity &= ~Core_DefaultThreadAffinity;
+        thr->affinity &= Core_DefaultThreadAffinity;
         if (!thr->affinity)
         {
             thr->affinity = old;
