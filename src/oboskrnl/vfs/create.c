@@ -224,6 +224,12 @@ obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name)
     if (!newparent && !name)
         return OBOS_STATUS_SUCCESS;
 
+    if (newparent && node)
+    {
+        if (Vfs_GetVnodeMount(newparent->vnode) != Vfs_GetVnodeMount(node->vnode))
+            return OBOS_STATUS_ACCESS_DENIED; // todo: EXDEV
+    }
+
     driver_header* header = Vfs_GetVnodeDriver(node->vnode);
     if (!header)
         return OBOS_STATUS_INVALID_ARGUMENT;
