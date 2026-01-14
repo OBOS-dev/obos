@@ -320,6 +320,8 @@ event* e1000_tx_packet(e1000_device* dev, const void* buffer, size_t size, bool 
         nPages++;
     if (nPages > TX_BUFFER_PAGES)
     {
+        if (status)
+            *status = OBOS_STATUS_MESSAGE_TOO_BIG;
         Core_LowerIrql(oldIrql);
         return nullptr;
     }
