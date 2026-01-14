@@ -165,7 +165,7 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     seg->ptr.free = OBOS_SharedPtrDefaultFree;
     seg->ptr.freeUdata = OBOS_KernelAllocator;
     seg->con = con;
-    seg->expired = false;
+    seg->expired = defer_send;
     seg->sent = !defer_send;
     seg->nBytesUnACKed = dat->payload_size + !dat->payload_size;
     seg->nBytesInFlight = dat->payload_size + !dat->payload_size;
@@ -355,6 +355,7 @@ PacketProcessSignature(TCP, ip_header*)
             con->state.snd.iss = random32();
             con->state.snd.nxt = con->state.snd.iss + 1;
             con->state.snd.una = con->state.snd.iss;
+            con->state.rcv.wnd = 0x10000-1;
             con->state.state_change_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
             con->state.state = TCP_STATE_SYN_RECEIVED;
             con->ttl = 64;
@@ -781,7 +782,7 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
     if (state == TCP_STATE_ESTABLISHED)
     {
         if (!con->state.rcv.wnd)
-            con->state.rcv.wnd = 0x10000;
+            con->state.rcv.wnd = 0x10000-1;
         con->recv_buffer.size = con->state.rcv.wnd;
         con->recv_buffer.ptr = 0;
         con->recv_buffer.closed = false;
@@ -942,6 +943,8 @@ void Net_TCPRetransmitSegment(tcp_unacked_segment* seg)
         seg->sent = true;
         seg->segment.ack = seg->con->state.rcv.nxt;
     }
+
+    OBOS_SharedPtrRef(seg->segment.payload);
     NetH_SendTCPSegment(seg->con->nic, nullptr, seg->con->ip_ent, seg->con->dest.addr, &seg->segment);
 
     OBOS_SharedPtrRef(&seg->ptr);
@@ -967,7 +970,8 @@ void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t siz
     uint32_t window_bytes_until_close = con->state.snd.nxt - (con->state.snd.wnd + con->state.snd.una);
     
     shared_ptr* payload = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
-    OBOS_SharedPtrConstructSz(payload, (void*)buffer, size);
+    OBOS_SharedPtrConstructSz(payload, (void*)Allocate(OBOS_KernelAllocator, size, nullptr), size);
+    memcpy(payload->obj, buffer, size);
     payload->free = OBOS_SharedPtrDefaultFree;
     payload->freeUdata = OBOS_KernelAllocator;
     payload->onDeref = NetFreeSharedPtr;
@@ -1353,7 +1357,7 @@ static obos_status get_src_port(vnode* nic, ip_table_entry* ent, ip_addr dest, u
     {
         *src_port = random16() + 1;
         key.src.port = *src_port;
-        if (!RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &key))
+        if (*src_port && !RB_FIND(tcp_connection_tree, &nic->net_tables->tcp_outgoing_connections, &key))
         {
             found_port = true;
             break;
@@ -1397,7 +1401,7 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     s->connection->src.port = src_port;
     s->connection->dest.addr = addr->addr;
     s->connection->dest.port = be16_to_host(addr->port);
-    s->connection->recv_buffer.size = 0x10000;
+    s->connection->recv_buffer.size = 0x10000-1;
     s->connection->state.state_change_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     s->connection->inbound_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     s->connection->inbound_urg_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
