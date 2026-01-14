@@ -21,7 +21,7 @@
 
 #define RX_QUEUE_SIZE (32)
 #define TX_QUEUE_SIZE (32)
-#define TX_BUFFER_PAGES (4)
+#define TX_BUFFER_PAGES (16)
 
 typedef struct e1000_frame {
     void* buff;
