@@ -924,6 +924,14 @@ handle Sys_OpenDir(const char* upath, obos_status *statusp)
         }
     }
 
+    if (dent->vnode->vtype != VNODE_TYPE_DIR)
+    {
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+        if (statusp)
+            memcpy_k_to_usr(statusp, &status, sizeof(obos_status));
+        return HANDLE_INVALID;
+    }
+
     Vfs_PopulateDirectory(dent);
     
     handle_desc* desc = nullptr;

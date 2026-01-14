@@ -134,6 +134,8 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
 
 static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
 {
+    if (root_par->vnode->vtype != VNODE_TYPE_DIR)
+        return nullptr;
     // for (volatile bool b = true; b;)
     //     ;
     if (!path)
@@ -690,8 +692,10 @@ obos_status VfsH_Chdir(void* target_, const char *path)
 
     process* target = target_;
     dirent* ent = VfsH_DirentLookup(path);
-    if (!ent)
+    if (!ent || !ent->vnode)
         return OBOS_STATUS_NOT_FOUND;
+    if (ent->vnode->vtype != VNODE_TYPE_DIR)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     
     if (!check_chdir_perms(ent))
         return OBOS_STATUS_ACCESS_DENIED;
@@ -706,7 +710,9 @@ obos_status VfsH_Chdir(void* target_, const char *path)
 obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
 {
     process* target = target_;
-    if (!ent || !target)
+    if (!ent || !ent->vnode || !target)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (ent->vnode->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
    
     if (!check_chdir_perms(ent))
