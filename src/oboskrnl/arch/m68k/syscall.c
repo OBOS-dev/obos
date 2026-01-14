@@ -221,6 +221,7 @@ const char* status_to_string[] = {
     "OBOS_STATUS_MESSAGE_TOO_BIG",
     "OBOS_STATUS_CONNECTION_REFUSED",
     "OBOS_STATUS_SEEK_UNALLOWED",
+    "OBOS_STATUS_NETWORK_UNREACHABLE",
 };
 
 void Arch_RawRegisterInterrupt(uint8_t vec, uintptr_t f);

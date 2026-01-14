@@ -209,4 +209,8 @@ typedef enum
 	/// Translates to the ESPIPE errno. 
 	/// </summary>
 	OBOS_STATUS_SEEK_UNALLOWED,
+	/// <summary>
+	/// The network cannot be reached.
+	/// </summary>
+	OBOS_STATUS_NETWORK_UNREACHABLE,
 } obos_status;

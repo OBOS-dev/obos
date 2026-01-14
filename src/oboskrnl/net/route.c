@@ -352,7 +352,7 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
     if (optimal_route)
         return OBOS_STATUS_SUCCESS;
     else
-        return OBOS_STATUS_NO_ROUTE_TO_HOST;
+        return OBOS_STATUS_NETWORK_UNREACHABLE;
 }
 
 static obos_status interface_has_address(net_tables* interface, ip_addr addr, ip_table_entry** oent)
@@ -513,7 +513,7 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             Core_PushlockRelease(&nic->net_tables->table_lock, true);
             if (!dest_ent)
             {
-                status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+                status = OBOS_STATUS_NETWORK_UNREACHABLE;
                 break;
             }
             gateway* new_ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(gateway), nullptr);
@@ -555,7 +555,7 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             Core_PushlockRelease(&nic->net_tables->table_lock, true);
             if (!dest_ent)
             {
-                status = OBOS_STATUS_NO_ROUTE_TO_HOST;
+                status = OBOS_STATUS_NETWORK_UNREACHABLE;
                 break;
             }
 
