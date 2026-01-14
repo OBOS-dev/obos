@@ -53,7 +53,7 @@ OBOS_NO_KASAN OBOS_NO_UBSAN static void timer_irq(struct irq* i, interrupt_frame
     CoreS_ResetTimer();
 #endif
     if (!work->cpu || LIST_IS_NODE_UNLINKED(dpc_queue, &work->cpu->dpcs, work))
-        CoreH_InitializeDPC(work, timer_dispatcher, Core_DefaultThreadAffinity);
+        CoreH_InitializeDPC(work, timer_dispatcher, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id));
 }
 static void notify_timer_dpc(dpc* dpc, void* userdata)
 {
