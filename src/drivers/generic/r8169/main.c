@@ -1,13 +1,14 @@
 /*
  * drivers/generic/r8169/main.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  */
 
 #include <int.h>
 #include <error.h>
 #include <memmanip.h>
 #include <klog.h>
+#include <perm.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
@@ -247,8 +248,13 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
         return OBOS_STATUS_INVALID_ARGUMENT;
     switch (request) {
         case IOCTL_IFACE_MAC_REQUEST:
+        {
+            obos_status status = OBOS_CapabilityCheck("net/mac-query", true);
+            if (obos_is_error(status))
+                break;
             memcpy(argp, dev->mac, sizeof(mac_address));
             return OBOS_STATUS_SUCCESS;
+        }
         default:
             return Net_InterfaceIoctl(dev->vn, request, argp);
     }

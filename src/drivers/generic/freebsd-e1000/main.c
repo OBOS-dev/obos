@@ -1,12 +1,13 @@
 /*
  * drivers/generic/freebsd-1000/main.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
 */
 
 #include <int.h>
 #include <klog.h>
 #include <error.h>
+#include <perm.h>
 
 #include <e1000/e1000_hw.h>
 
@@ -53,6 +54,9 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     switch (request) {
         case IOCTL_IFACE_MAC_REQUEST:
         {
+            obos_status status = OBOS_CapabilityCheck("net/mac-query", true);
+            if (obos_is_error(status))
+                break;
             e1000_read_mac_addr(&hnd->dev->hw);
             memcpy(argp, hnd->dev->hw.mac.addr, sizeof(mac_address));
             break;

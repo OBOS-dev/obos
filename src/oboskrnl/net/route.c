@@ -1,7 +1,7 @@
 /*
  * oboskrnl/net/route.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -9,6 +9,7 @@
 #include <klog.h>
 #include <memmanip.h>
 #include <syscall.h>
+#include <perm.h>
 
 #include <vfs/irp.h>
 #include <vfs/mount.h>
@@ -445,6 +446,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
     switch (request) {
         case IOCTL_IFACE_ADD_IP_TABLE_ENTRY:
         {
+            status = OBOS_CapabilityCheck("net/ip-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             ip_table_entry_user* ent = argp;
             if (get_ip_table_entry(nic, *ent))
             {
@@ -463,6 +468,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_REMOVE_IP_TABLE_ENTRY:
         {
+            status = OBOS_CapabilityCheck("net/ip-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             ip_table_entry_user* key = argp;
             ip_table_entry* ent = get_ip_table_entry(nic, *key);
             if (!ent)
@@ -477,6 +486,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_SET_IP_TABLE_ENTRY:
         {
+            status = OBOS_CapabilityCheck("net/ip-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             ip_table_entry_user* ent = argp;
             ip_table_entry* found = nullptr;
             if (!(found = get_ip_table_entry(nic, *ent)))
@@ -492,6 +505,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_ADD_ROUTING_TABLE_ENTRY:
         {
+            status = OBOS_CapabilityCheck("net/routing-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             gateway_user *ent = argp;
             if (get_gateway(nic, *ent))
             {
@@ -533,6 +550,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY:
         {
+            status = OBOS_CapabilityCheck("net/routing-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             gateway_user* key = argp;
             gateway* ent = get_gateway(nic, *key);
             if (!ent)
@@ -545,6 +566,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_SET_DEFAULT_GATEWAY:
         {
+            status = OBOS_CapabilityCheck("net/routing-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             ip_table_entry* dest_ent = nullptr;
             Core_PushlockAcquire(&nic->net_tables->table_lock, true);
             for (ip_table_entry* curr_ent = LIST_GET_HEAD(ip_table, &nic->net_tables->table); curr_ent; )
@@ -580,6 +605,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_UNSET_DEFAULT_GATEWAY:
         {
+            status = OBOS_CapabilityCheck("net/routing-table-mod", false);
+            if (obos_is_error(status))
+                break;
+
             if (nic->net_tables->default_gateway)
             {
                 LIST_REMOVE(gateway_list, &nic->net_tables->gateways, nic->net_tables->default_gateway);
@@ -591,6 +620,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_CLEAR_ARP_CACHE:
         {
+            status = OBOS_CapabilityCheck("net/clear-arp-cache", true);
+            if (obos_is_error(status))
+                break;
+
             address_table_entry *ent = nullptr, *next = nullptr;
             Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, false);
             RB_FOREACH_SAFE(ent, address_table, &nic->net_tables->arp_cache, next)
@@ -604,6 +637,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_CLEAR_ROUTE_CACHE:
         {
+            status = OBOS_CapabilityCheck("net/clear-route-cache", true);
+            if (obos_is_error(status))
+                break;
+
             struct route *ent = nullptr, *next = nullptr;
             Core_PushlockAcquire(&nic->net_tables->cached_routes_lock, false);
             RB_FOREACH_SAFE(ent, route_tree, &nic->net_tables->cached_routes, next)
@@ -616,6 +653,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_GET_IP_TABLE:
         {
+            status = OBOS_CapabilityCheck("net/get-ip-table", true);
+            if (obos_is_error(status))
+                break;
+            
             struct {
                 void* buf;
                 size_t sz;
@@ -648,6 +689,10 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_GET_ROUTING_TABLE:
         {
+            status = OBOS_CapabilityCheck("net/get-routing-table", true);
+            if (obos_is_error(status))
+                break;
+            
             struct {
                 void* buf;
                 size_t sz;
@@ -677,6 +722,9 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
         }
         case IOCTL_IFACE_INITIALIZE:
         {
+            status = OBOS_CapabilityCheck("net/iface-start", false);
+            if (obos_is_error(status))
+                break;
             status = Net_Initialize(nic);
             break;
         }
