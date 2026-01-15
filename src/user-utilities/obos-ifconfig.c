@@ -417,6 +417,8 @@ int main(int argc, char** argv)
         res = ioctl(dev, IOCTL_IFACE_REMOVE_ROUTING_TABLE_ENTRY, &ent);
         if (res < 0) goto fail;
     }
+    else if (strcasecmp(cmd, "help") == 0)
+        printf("Valid commands: init, clear-arp-cache, clear-route-cache, unset-default-router, ip-table, routing-table, ip-address-add, ip-address-delete, set-default-router, router-add, router-delete, help\n");
     else
         fprintf(stderr, "Unrecognized command %s\n", cmd);
     

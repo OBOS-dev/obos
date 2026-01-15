@@ -481,7 +481,7 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             ip_table_entry* found = nullptr;
             if (!(found = get_ip_table_entry(nic, *ent)))
             {
-                status = OBOS_STATUS_ALREADY_INITIALIZED;
+                status = OBOS_STATUS_NOT_FOUND;
                 break;
             }
             found->ip_entry_flags = ent->ip_entry_flags;
@@ -496,6 +496,11 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             if (get_gateway(nic, *ent))
             {
                 status = OBOS_STATUS_ALREADY_INITIALIZED;
+                break;
+            }
+            if (!ent->src.addr)
+            {
+                status = OBOS_STATUS_INVALID_ARGUMENT;
                 break;
             }
             Core_PushlockAcquire(&nic->net_tables->table_lock, true);
