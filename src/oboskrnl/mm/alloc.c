@@ -479,9 +479,9 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     if (rng->hasGuardPage)
     {
         const size_t pgSize = (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-        base -= pgSize;
-        if (size == (rng->size - pgSize))
+        if (base == (rng->virt + pgSize))
         {
+            base -= pgSize;
             size += pgSize;
             sizeHasGuardPage = true;
         }
