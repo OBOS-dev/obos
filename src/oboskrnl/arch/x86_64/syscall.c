@@ -15,6 +15,8 @@
 #include <scheduler/schedule.h>
 #include <scheduler/cpu_local.h>
 
+#include <irq/timer.h>
+
 #include <arch/x86_64/asm_helpers.h>
 #include <arch/x86_64/sse.h>
 #include <arch/x86_64/cmos.h>
@@ -99,6 +101,14 @@ handle SysS_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, ha
     return hnd;
 }
 
+bool Arch_UsingInvTSCFrequency();
+uint64_t SysS_QueryTSCFrequency()
+{
+    if (Arch_UsingInvTSCFrequency())
+        return CoreS_GetNativeTimerFrequency();
+    return UINT64_MAX;
+}
+
 uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
     (uintptr_t)SysS_SetFSBase,
     (uintptr_t)SysS_ThreadContextCreateFork,
@@ -106,6 +116,7 @@ uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
     (uintptr_t)SysS_GDBStubBindInet,
     (uintptr_t)SysS_GDBStubBindDevice,
     (uintptr_t)SysS_GDBStubStart,
+    (uintptr_t)SysS_QueryTSCFrequency,
 };
 
 const char* syscall_to_string[] = {
@@ -115,7 +126,7 @@ const char* syscall_to_string[] = {
     "OBOS_Shutdown/SysS_GDBStubBindInet",
     "Sys_HandleClose/SysS_GDBStubBindDevice",
     "Sys_HandleClone/SysS_GDBStubStart",
-    "Sys_ThreadContextCreate", // 6
+    "Sys_ThreadContextCreate/SysS_QueryTSCFrequency", // 6
     "OBOS_Suspend",
     "Sys_ThreadOpen",
     "Sys_ThreadCreate",

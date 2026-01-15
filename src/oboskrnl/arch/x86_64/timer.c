@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/timer.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -37,12 +37,10 @@
 extern uint64_t Arch_FindCounter(uint64_t hz);
 atomic_size_t nCPUsWithInitializedTimer;
 
+static irq_handler s_timer_cb;
+
 void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
-    OBOS_UNUSED(obj);
-    OBOS_UNUSED(frame);
-    OBOS_UNUSED(userdata);
-    OBOS_UNUSED(oldIrql);
     if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
     {
         Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
@@ -54,6 +52,8 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
     }
     else
     {
+        if (s_timer_cb && CoreS_GetCPULocalPtr() == Core_CpuInfo)
+            s_timer_cb(obj, frame, userdata, oldIrql);
         if (frame->cs & 0x3)
             Arch_UserYield(Core_GetCurrentThread()->kernelStack); // switches to the kernel stack passed, then yields, then returns.
         else
@@ -121,6 +121,14 @@ OBOS_NO_KASAN OBOS_NO_UBSAN void hpet_irq_handler(struct irq* i, interrupt_frame
     // Arch_HPETAddress->generalInterruptStatus &= ~(1<<timerIndex);
     ((irq_handler)userdata)(i, frame, nullptr, oldIrql);
 }
+
+static bool s_use_invariant_tsc = false;
+static uint64_t s_invariant_tsc_frequency = 0;
+extern uint64_t Arch_FindTSCChangeRate(uint64_t deadline);
+
+bool Arch_UsingInvTSCFrequency()
+{ return s_use_invariant_tsc; }
+
 OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 {
     static bool initialized = false;
@@ -129,6 +137,62 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
         return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!handler)
         return OBOS_STATUS_INVALID_ARGUMENT;
+
+    // Check for the Invariant TSC
+
+    uint32_t edx = 0;
+    __cpuid__(0x80000007, 0, nullptr, nullptr, nullptr, &edx);
+    if (edx & BIT(8))
+    {
+        s_use_invariant_tsc = true;
+
+        Core_IrqObjectFree(Core_TimerIRQ);
+        Core_TimerIRQ = Core_SchedulerIRQ;
+        s_timer_cb = handler;
+
+        CoreS_TimerFrequency = Core_SchedulerTimerFrequency;
+
+        uint32_t oeax = 0;
+        __cpuid__(0, 0, &oeax, nullptr, nullptr, nullptr);
+        if (oeax < 0x15)
+        {
+            uint32_t ebx = 0, eax = 0, ecx = 0;
+            __cpuid__(0x15, 0, &eax, &ebx, &ecx, nullptr);
+            if (eax == 0 || ecx == 0 || ebx == 0)
+            {
+                // Shitty hardware, or qemu.
+
+                goto calibrate;
+            }
+            s_invariant_tsc_frequency = ecx * (ebx / eax);
+            goto down;
+        }
+        calibrate:
+        do {
+            const int n = 1;
+            uint64_t change_rate = 0;
+    
+            fixedptd tp = fixedpt_fromint(1); // us.0
+            const fixedptd divisor = fixedpt_fromint(Arch_HPETFrequency); // 1000.0
+            // OBOS_ASSERT(fixedpt_toint(tp) == (int64_t)1);
+            // OBOS_ASSERT(fixedpt_toint(divisor) == Arch_HPETFrequency);
+            tp = fixedpt_xdiv(tp, divisor);
+
+            for (int i = 0; i < n; i++)
+                change_rate += Arch_FindTSCChangeRate(Arch_HPETAddress->mainCounterValue + (fixedpt_toint(tp)+1));
+       
+            s_invariant_tsc_frequency = (change_rate / n) * 100000;
+            // s_invariant_tsc_frequency = 2380800000UL;
+        } while(0);
+
+        down:
+        (void)0;
+
+        OBOS_Debug("Using invariant TSC. TSC Frequency is %zu Hz\n", s_invariant_tsc_frequency);
+
+        return OBOS_STATUS_SUCCESS;
+    }    
+
     obos_status status = Core_IrqObjectInitializeIRQL(Core_TimerIRQ, IRQL_TIMER, false, true);
     if (obos_is_error(status))
         return status;
@@ -173,16 +237,20 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
     return OBOS_STATUS_SUCCESS;
 }
 
-static uint64_t cached_divisor = 0;
 __attribute__((no_instrument_function)) timer_tick CoreS_GetTimerTick()
 {
+    static volatile uint64_t cached_divisor = 0;
     if (!cached_divisor)
-        cached_divisor = Arch_HPETFrequency/CoreS_TimerFrequency;
-    return Arch_HPETAddress->mainCounterValue/cached_divisor;
+        cached_divisor = CoreS_GetNativeTimerFrequency() / CoreS_TimerFrequency;
+    if (obos_expect(s_use_invariant_tsc, true))
+        return rdtsc() / cached_divisor;
+    return Arch_HPETAddress->mainCounterValue / cached_divisor;
 }
 
 __attribute__((no_instrument_function)) timer_tick CoreS_GetNativeTimerTick()
 {
+    if (obos_expect(s_use_invariant_tsc, true))
+        return rdtsc();
     if (obos_expect(!Arch_HPETAddress, false))
         return 0;
     return Arch_HPETAddress->mainCounterValue;
@@ -190,6 +258,8 @@ __attribute__((no_instrument_function)) timer_tick CoreS_GetNativeTimerTick()
 
 __attribute__((no_instrument_function)) uint64_t CoreS_GetNativeTimerFrequency()
 {
+    if (obos_expect(s_use_invariant_tsc, true))
+        return s_invariant_tsc_frequency;
     return Arch_HPETFrequency;
 }
 

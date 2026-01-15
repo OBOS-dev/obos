@@ -1,6 +1,6 @@
 ; oboskrnl/arch/x86_64/lapic_timer_calibration.asm
 ;
-; Copyright (c) 2024 Omar Berrow
+; Copyright (c) 2024-2026 Omar Berrow
 
 [BITS 64]
 [DEFAULT ABS]
@@ -47,6 +47,41 @@ Arch_FindCounter:
 	sub rax, r9
 
 .end:
+	pop r13
+	pop r15
+	leave
+	ret
+extern rdtsc
+global Arch_FindTSCChangeRate
+Arch_FindTSCChangeRate:
+	push rbp
+	mov rbp, rsp
+	push r15
+	push r13
+	
+	mov r15, rdi
+
+	call rdtsc
+	mov r13, rax
+
+	mov r11, [Arch_HPETAddress]
+
+	; Start the HPET timer.
+	mov rax, [r11+0x10]
+	or rax, (1<<0)
+	mov [r11+0x10], rax
+
+	lea r11, [r11+0xf0]
+	
+.loop:
+	cmp [r11], r15
+	jnge .loop
+
+.end:
+
+	call rdtsc
+	sub rax, r13
+
 	pop r13
 	pop r15
 	leave

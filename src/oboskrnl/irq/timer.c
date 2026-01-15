@@ -1,7 +1,7 @@
 /*
  * oboskrnl/irq/timer.c
  * 
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include "locks/event.h"
@@ -206,7 +206,7 @@ timer_tick CoreH_TimeFrameToTick(uint64_t us)
 //     return ((double)us/1000.0*(double)CoreS_TimerFrequency)+1;
 // #else
     fixedptd tp = fixedpt_fromint(us); // us.0
-    const fixedptd divisor = fixedpt_fromint(1000); // 1000.0
+    const fixedptd divisor = fixedpt_fromint(CoreS_TimerFrequency); // 1000.0
     OBOS_ASSERT(fixedpt_toint(tp) == (int64_t)us);
     OBOS_ASSERT(fixedpt_toint(divisor) == 1000);
     tp = fixedpt_xdiv(tp, divisor);

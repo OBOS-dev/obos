@@ -1,6 +1,6 @@
 ; oboskrnl/arch/x86_64/asm_helpers.asm
 ;
-; Copyright (c) 2024 Omar Berrow
+; Copyright (c) 2024-2026 Omar Berrow
 
 [BITS 64]
 [DEFAULT ABS]
@@ -228,7 +228,7 @@ rdtsc:
 	xor eax,eax
 	xor edx,edx
 	rdtsc
-	shl edx, 32
+	shl rdx, 32
 	or rax, rdx
 	ret
 MmS_GetCurrentPageTable:
