@@ -77,6 +77,11 @@ obos_status NetH_ResolveExternalIP(vnode* nic, ip_addr addr, mac_address* out)
         ap = LIST_GET_NEXT(gateway_list, &nic->net_tables->gateways, ap);
     }
     gateway *const default_gateway = nic->net_tables->default_gateway;
+    if (!default_gateway)
+    {
+        memzero(out, sizeof(mac_address));
+        return OBOS_STATUS_NETWORK_UNREACHABLE;
+    }
     if (default_gateway->cache)
     {
         memcpy(out, default_gateway->cache->phys, sizeof(mac_address));
