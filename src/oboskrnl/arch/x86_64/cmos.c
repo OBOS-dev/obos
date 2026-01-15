@@ -100,8 +100,8 @@ obos_status Arch_CMOSGetEpochTime(long* out)
 
 obos_status SysS_ClockGet(int clock, long *secs, long *nsecs)
 {
-    if (!secs || !nsecs)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!secs && !nsecs)
+        return OBOS_STATUS_SUCCESS;
 
     if (clock == 1)
     {
@@ -124,11 +124,11 @@ obos_status SysS_ClockGet(int clock, long *secs, long *nsecs)
 
     long days = days_from_civil(tm.year, tm.month, tm.day_of_month);
     long res = (days * 86400) + (tm.hours*60*60) + (tm.minutes * 60) + tm.seconds;
-    obos_status status = memcpy_k_to_usr(secs, &res, sizeof(long));
+    obos_status status = secs ? memcpy_k_to_usr(secs, &res, sizeof(long)) : OBOS_STATUS_SUCCESS;
     if (obos_is_error(status))
         return status;
     res *= 1000000000;
-    status = memcpy_k_to_usr(nsecs, &res, sizeof(long));
+    status = nsecs ? memcpy_k_to_usr(nsecs, &res, sizeof(long)) : OBOS_STATUS_SUCCESS;
     if (obos_is_error(status))
         return status;
 
