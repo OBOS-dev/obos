@@ -384,7 +384,8 @@ PacketProcessSignature(TCP, ip_header*)
             resp.flags = TCP_SYN|TCP_ACK;
             resp.window = con->state.rcv.wnd;
             NetH_SendTCPSegment(nic, con, ent, ip_hdr->src_address, &resp);
-            OBOS_SharedPtrUnref(&resp.unacked_seg->ptr);
+            if (resp.unacked_seg)
+                OBOS_SharedPtrUnref(&resp.unacked_seg->ptr);
         }
         else
             ExitPacketHandler(); // Drop the segment. FIXME do we need to increase rx_dropped in the nic or not?
@@ -1073,15 +1074,18 @@ void tcp_free(socket_desc* socket)
         Core_PushlockAcquire(&iface->tcp_connections_lock, false);
         if (s->connection->is_client)
             RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
-        else
+        else if (s->connection)
         {
             tcp_port key = {.port=s->connection->src.port};
             Core_PushlockAcquire(&iface->tcp_ports_lock, true);
             tcp_port* port = RB_FIND(tcp_port_tree, &iface->tcp_ports, &key);
             Core_PushlockRelease(&iface->tcp_ports_lock, true);
-            Core_PushlockAcquire(&port->connection_tree_lock, false);
-            RB_REMOVE(tcp_connection_tree, &port->connections, s->connection);
-            Core_PushlockRelease(&port->connection_tree_lock, false);
+            if (port)
+            {
+                Core_PushlockAcquire(&port->connection_tree_lock, false);
+                RB_REMOVE(tcp_connection_tree, &port->connections, s->connection);
+                Core_PushlockRelease(&port->connection_tree_lock, false);
+            }
         }
         Core_PushlockRelease(&iface->tcp_connections_lock, false);
         Free(OBOS_KernelAllocator, s->connection, sizeof(*s->connection));
@@ -1639,7 +1643,10 @@ obos_status tcp_finalize_irp(irp* req)
         return OBOS_STATUS_UNINITIALIZED;
     tcp_socket* s = desc->protocol_data;
     if (s->is_server)
-        return OBOS_STATUS_INVALID_ARGUMENT;
+    {
+        Core_EventClear(s->serv.listen_event);
+        return OBOS_STATUS_SUCCESS;
+    }
     if (req->op != IRP_WRITE || req->dryOp)
         return OBOS_STATUS_SUCCESS;
     shared_ptr *payload = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(struct shared_ptr), nullptr);
