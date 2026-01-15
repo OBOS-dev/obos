@@ -649,7 +649,7 @@ obos_status Net_InterfaceIoctl(vnode* nic, uint32_t request, void* argp)
             } *buffer = argp;
             
             size_t bytesCopied = 0, bytesToCopy = LIST_GET_NODE_COUNT(gateway_list, &nic->net_tables->gateways)*sizeof(gateway_user);
-            if (buffer->buf && buffer->sz >= sizeof(ip_table_entry_user))
+            if (buffer->buf && buffer->sz >= sizeof(gateway_user))
             {
                 char* kbuf = Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, buffer->buf, nullptr, buffer->sz, 0, true, &status);
                 if (obos_is_error(status))
