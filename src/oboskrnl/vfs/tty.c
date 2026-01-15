@@ -679,8 +679,6 @@ static void poll_keyboard(struct screen_tty* data)
         OBOS_ENSURE(obos_is_success(header->ftable.reference_device(&desc)));
     while (1)
     {
-        while (data->input_paused)
-            Core_Yield();
         size_t nReady = 1;
         irp* req = VfsH_IRPAllocate();
         req->vn = data->keyboard.vn;
@@ -817,7 +815,7 @@ static void poll_keyboard(struct screen_tty* data)
                 i++;
             }
         }
-        if (nReady)
+        if (nReady && !data->input_paused)
             data->data_ready(data->tty, buffer, nReady);
         Vfs_Free(buffer);
     }
