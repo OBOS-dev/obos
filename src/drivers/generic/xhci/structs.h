@@ -69,7 +69,7 @@ typedef struct xhci_runtime_registers {
 } OBOS_PACK xhci_runtime_registers;
 
 enum {
-    PORTSC_CSS = BIT(0),
+    PORTSC_CCS = BIT(0),
     PORTSC_PED = BIT(1),
     PORTSC_OCA = BIT(3),
     PORTSC_PR = BIT(4),
@@ -436,6 +436,8 @@ typedef struct xhci_get_port_bandwith_command_trb {
     uint32_t dw3;
 } xhci_get_port_bandwith_command_trb;
 
+#define XHCI_TRB_TYPE(trb) ((((uint32_t*)trb)[3] >> 10) & 0x3f)
+
 enum {
     XHCI_TRB_NORMAL = 1,
     XHCI_TRB_SETUP_STAGE,
@@ -535,6 +537,7 @@ typedef struct xhci_device {
 
     irq irq;
     dpc dpc;
+    bool handling_irq : 1;
 
     // Same bitfield as usbsts, but only the interrupt status bits
     uint32_t irqsts;
@@ -556,6 +559,7 @@ typedef struct xhci_device {
         size_t len;
         size_t nEntries;
         page* pg;
+        bool ccs : 1;
     } event_ring;
 
     struct {

@@ -196,6 +196,7 @@ obos_status xhci_initialize_device(xhci_device* dev)
     dev->rt_regs->interrupters[0].erstba = dev->event_ring.pg->phys + (OBOS_PAGE_SIZE-0x40);
     dev->rt_regs->interrupters[0].erstsz = 1;
     dev->rt_regs->interrupters[0].erdp = dev->event_ring.pg->phys;
+    dev->event_ring.ccs = true;
 
     dev->rt_regs->interrupters[0].iman |= BIT(1);
     dev->rt_regs->interrupters[0].imod = 4000;
@@ -205,19 +206,104 @@ obos_status xhci_initialize_device(xhci_device* dev)
     return status;
 }
 
+static void continue_port_attach(xhci_device* dev, uint8_t port_id)
+{
+    OBOS_ENSURE(!"unimplemented");
+}
+
+static void process_port_attach(xhci_device* dev, uint8_t port_id)
+{
+    volatile xhci_port_registers* port = &dev->op_regs->ports[port_id];
+    // TODO: Is this valid?
+    bool usb3 = (port->port_sc & PORTSC_PLS) != 0;
+
+    if (usb3)
+    {
+        OBOS_Debug("xhci: USB3 Port Connected\n");
+        while (port->port_sc & PORTSC_PED)
+        {
+            if (((port->port_sc & PORTSC_PLS) >> 5) == 5)
+            {
+                OBOS_Debug("xhci: USB3 error while initializing port\n");
+                return;
+            }
+        }
+    }
+    else
+    {
+        OBOS_Debug("xhci: USB2 Port Connected\n");
+        port->port_sc |= PORTSC_PR;
+        return;
+    }
+
+    continue_port_attach(dev, port_id);
+}
+
+static void process_port_detach(xhci_device* dev, uint8_t port_id)
+{
+    OBOS_UNUSED(dev && port_id);
+}
+
+static void process_port_status_change(xhci_device* dev, uint8_t port_id)
+{
+    volatile xhci_port_registers* port = &dev->op_regs->ports[port_id];
+    if (port->port_sc & PORTSC_CSC)
+    {
+        if (port->port_sc & PORTSC_CCS)
+            process_port_attach(dev, port_id);
+        else
+            process_port_detach(dev, port_id);
+    }
+    if (port->port_sc & PORTSC_PRC)
+        continue_port_attach(dev, port_id);
+}
+
 bool xhci_irq_checker(irq* i, void* udata)
 {
     OBOS_UNUSED(i);
     xhci_device* dev = udata;
     return dev->op_regs->usbsts & 0x41C;
 }
+
+static void dpc_handler(dpc* d, void* userdata)
+{
+    OBOS_UNUSED(d);
+
+    xhci_device* dev = userdata;
+
+    volatile uint32_t usbsts = dev->op_regs->usbsts & 0x41C;
+    uint32_t* curr_trb = MmS_MapVirtFromPhys(dev->rt_regs->interrupters[0].erdp & ~0xf);
+    uint32_t* end = ((uint32_t*)dev->event_ring.virt) + dev->event_ring.nEntries;
+    while (!!(curr_trb[3] & BIT(0)) == dev->event_ring.ccs && curr_trb < end)
+    {
+        switch (XHCI_TRB_TYPE(curr_trb)) {
+            case XHCI_TRB_PORT_STATUS_EVENT: process_port_status_change(dev, curr_trb[0] >> 24); break;
+            default:
+                OBOS_Debug("xhci: skipping unrecognized TBR type %d\n", XHCI_TRB_TYPE(curr_trb));
+                break;
+        }
+        curr_trb += 4;
+    }
+    if (curr_trb == end)
+    {
+        curr_trb = dev->event_ring.virt;
+        dev->event_ring.ccs = !dev->event_ring.ccs;
+    }
+    
+    dev->rt_regs->interrupters[0].erdp = MmS_UnmapVirtFromPhys(curr_trb);
+    dev->rt_regs->interrupters[0].erdp |= BIT(3);
+
+    dev->op_regs->usbsts |= usbsts;
+    dev->handling_irq = false;
+}
+
 void xhci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql)
 {
     OBOS_UNUSED(i && frame && oldIrql);
     xhci_device* dev = userdata;
-    printf("XHCI Interrupt\n");
-    dev->op_regs->usbsts |= dev->op_regs->usbsts;
-    return;
+    dev->dpc.userdata = dev;
+    dev->handling_irq = true;
+    CoreH_InitializeDPC(&dev->dpc, dpc_handler, Core_DefaultThreadAffinity);
 }
 
 static obos_status do_bios_handoff(xhci_device* dev)
