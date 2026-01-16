@@ -2,7 +2,7 @@
 # 
 # Copyright (c) 2026 Omar Berrow
 
-add_executable(xhci "main.c" "init.c")
+add_executable(xhci "main.c" "xhci.c")
 
 target_compile_options(xhci
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:${TARGET_DRIVER_COMPILE_OPTIONS_C}>
