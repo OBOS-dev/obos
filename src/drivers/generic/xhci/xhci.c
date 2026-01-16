@@ -1,5 +1,5 @@
 /*
- * drivers/x86_64/xhci/init.c
+ * drivers/x86_64/xhci/xhci.c
  *
  * Copyright (c) 2026 Omar Berrow
 */
@@ -332,9 +332,6 @@ obos_status xhci_reset_device(xhci_device* dev)
     if (!dev->did_bios_handoff)
         if (obos_is_error(status = do_bios_handoff(dev)))
             return status;
-    // dev->op_regs->usbcmd |= USBCMD_RESET;
-    // while (dev->op_regs->usbcmd & USBCMD_RESET)
-    //     OBOSS_SpinlockHint();
     OBOS_Log("XHCI: Reset XHCI controller at %02x:%02x:%02x\n", dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function);
     return OBOS_STATUS_SUCCESS;
 }
