@@ -12,6 +12,8 @@
 
 #include <driver_interface/pci.h>
 
+#include <mm/page.h>
+
 #include <irq/irq.h>
 #include <irq/irql.h>
 #include <irq/dpc.h>
@@ -29,6 +31,42 @@ typedef struct xhci_registers {
     uint32_t hccparams2;
     char resv2[];
 } OBOS_PACK xhci_registers;
+
+typedef struct xhci_port_registers {
+    uint32_t port_sc;
+    uint32_t port_pmsc;
+    uint32_t port_li;
+    uint32_t port_hlpmc;
+} OBOS_PACK xhci_port_registers;
+
+typedef struct xhci_op_registers {
+    uint32_t usbcmd;
+    uint32_t usbsts;
+    uint32_t pagesize;
+    uint64_t resv1;
+    uint32_t dnctrl;
+    uint64_t crcr;
+    uint64_t resv2[2];
+    uint64_t dcbaap;
+    uint32_t config;
+    uint8_t resv3[0x3c4];
+    xhci_port_registers ports[];
+} OBOS_PACK xhci_op_registers;
+
+typedef struct xhci_interrupter_registers {
+    uint32_t iman;
+    uint32_t imod;
+    uint32_t erstsz;
+    uint32_t resv;
+    uint64_t erstba;
+    uint64_t erdp;
+} OBOS_PACK xhci_interrupter_registers;
+
+typedef struct xhci_runtime_registers {
+    uint32_t mfindex;
+    uint32_t resv[7];
+    xhci_interrupter_registers interrupters[1024];
+} OBOS_PACK xhci_runtime_registers;
 
 enum {
     PORTSC_CSS = BIT(0),
@@ -76,13 +114,6 @@ enum {
     USB3_PORTLI_TLC_MASK = 0xF00000,
 };
 
-typedef struct xhci_port_registers {
-    uint32_t port_sc;
-    uint32_t port_pmsc;
-    uint32_t port_li;
-    uint32_t port_hlpmc;
-} OBOS_PACK xhci_port_registers;
-
 enum {
     USBCMD_RUN = BIT(0),
     USBCMD_RESET = BIT(1),
@@ -129,19 +160,364 @@ enum {
     OP_CONFIG_CIE = BIT(9),
 };
 
-typedef struct xhci_op_registers {
-    uint32_t usbcmd;
-    uint32_t usbsts;
-    uint32_t pagesize;
-    uint64_t resv1;
-    uint32_t dnctrl;
-    uint32_t crcr;
-    uint64_t resv2[2];
-    uint64_t dcbaap;
-    uint64_t config;
-    uint8_t resv3[0x3c4];
-    xhci_port_registers ports[];
-} OBOS_PACK xhci_op_registers;
+// Transfer TRBs
+
+typedef struct xhci_normal_trb {
+    uint64_t dbp;
+
+    uint16_t length;
+    // Bits 16-21: TD Size, how many packets remaining in the TD
+    // Bits 22-32: Interrupter Target
+    uint16_t td_size_target;
+
+    // Bits 0-9: Flags
+    // Bits 10-15: TRB Type
+    uint16_t flags_type;
+    // Bit zero: direction, rest is reserved, only applicable if is a data stage TRB
+    uint16_t dir_resv;
+} OBOS_PACK xhci_normal_trb, xhci_data_stage_trb;
+
+typedef struct xhci_setup_stage_trb {
+    uint8_t bmRequestType;
+    uint8_t bRequest;
+    uint8_t wValue;
+
+    uint16_t wIndex;
+    uint16_t wLength;
+
+    uint16_t length; // always 8!
+    // Bits 16-21: Reserved
+    // Bits 22-32: Interrupter Target
+    uint16_t td_size_target;
+
+    // Bits 0-9: Flags
+    // Bits 10-15: TRB Type
+    uint16_t flags_type;
+    uint8_t trt; // only bits 0 and 1, rest is reserved
+    uint8_t resv;
+} OBOS_PACK xhci_setup_stage_trb;
+
+typedef struct xhci_status_stage_trb {
+    uint32_t resv1[2];
+
+    uint16_t resv2;
+    // Bits 22:31
+    uint16_t interrupter_target;
+
+    // Bits 0-9: Flags
+    // Bits 10-15: TRB Type
+    uint16_t flags_type;
+    // Bit zero: direction, rest is reserved
+    uint16_t dir_resv;
+} OBOS_PACK xhci_status_stage_trb;
+
+typedef struct xhci_isoch_trb {
+    uint64_t dbp;
+
+    uint16_t length;
+    // Bits 16-21: TD Size/TBC (If ETC=0, TD Size, otherwise, is the TBC)
+    // Bits 22-32: Interrupter Target
+    uint16_t td_size_target;
+
+    // Bits 0-9: Flags
+    // Bits 10-15: TRB Type
+    uint16_t flags_type;
+    // Bits 0-3: TLBPC (Transfer Last Burst Packet Count)
+    // Bits 4-15: Frame Id
+    // Bit 16: Start Iosch ASAP (SIA)
+    uint16_t tlbpc_frame_sia;
+} OBOS_PACK xhci_isoch_trb;
+
+typedef struct xhci_nop_trb {
+    uint16_t resv1[4+1];
+
+    // Bits 22:31 of dword 2
+    uint16_t interrupter_target;
+
+    // Bits 0-5: Flags
+    // Bits 6-9: Resv
+    // Bits 10-15: TRB Type
+    uint16_t flags_type;
+    uint16_t resv3;
+} OBOS_PACK xhci_nop_trb;
+
+// Event TRBs
+
+typedef struct xhci_transfer_event_trb {
+    uint64_t trbp;
+
+    // Bits 0-23: TRB Transfer Length
+    // Bits 24-31: Completion Code
+    uint32_t trb_transfer_length_code;
+
+    // Bit 0: Cycle Bit
+    // Bit 1: Reserved
+    // Bit 2: Event Data
+    // Bits 3-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-20: Endpoint ID
+    // Bits 21-23: Reserved
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} OBOS_PACK xhci_transfer_event_trb;
+
+typedef struct xhci_comamnd_completion_event_trb {
+    uint64_t ctrbp; // aligned to 16 bytes
+
+    // Bits 0-23: Command Completion Parameter
+    // Bits 24-31: Completion Code
+    uint32_t trb_transfer_length_code;
+
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: VF ID
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} OBOS_PACK xhci_comamnd_completion_event_trb;
+
+typedef struct xhci_port_status_change_event_trb {
+    // Bits 0-23: Reserved
+    // Bits 24-31: Port ID
+    uint32_t dw0;
+    
+    uint32_t dw1; // reserved
+    
+    // Bits 0-23: Reserved
+    // Bits 24-31: Completion Code
+    uint32_t dw2;
+
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-31: Reserved
+    uint32_t dw3;    
+} OBOS_PACK xhci_port_status_change_event_trb;
+
+typedef struct xhci_bandwith_request_event_trb {
+    uint8_t resv[11];
+    
+    // Completion code
+    uint8_t completion_code;
+
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Reserved
+    // Bits 24-31: Slot ID 
+    uint32_t dw3;
+} OBOS_PACK xhci_bandwith_request_event_trb;
+
+typedef struct xhci_doorbell_event_trb {
+    uint8_t db_reason;
+    uint16_t resv1;
+    uint8_t resv2;
+    
+    uint32_t resv3;
+
+    // Bits 0-23: Reserved
+    // Bits 24-31: Completion Code
+    uint32_t dw2;
+
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: VF ID
+    // Bits 24-31: Slot ID 
+    uint32_t dw3;    
+} OBOS_PACK xhci_doorbell_event_trb;
+
+typedef struct xhci_host_ctlr_event_trb {
+    uint8_t resv[11];
+    
+    // Completion code
+    uint8_t completion_code;
+
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-31: Reserved
+    uint32_t dw3;
+} OBOS_PACK xhci_host_ctlr_event_trb;
+
+typedef struct xhci_device_notification_event_trb {
+    // Bits 0-3: Reserved
+    // Bits 4-7: Notification type
+    // Bits 8-63: Device notification data pointer.
+    uint64_t dndp_notification_type; // aligned to 256 bytes
+
+    uint8_t resv1[3];
+    uint8_t completion_code;
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Reserved
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} OBOS_PACK xhci_device_notification_event_trb;
+
+// Command TRBs
+
+typedef struct xhci_nop_command_trb {
+    uint32_t resv[3];
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Slot Type
+    // Bits 24-31: Reserved
+    uint32_t dw3;
+} xhci_nop_command_trb, xhci_enable_slot_command_trb;
+
+typedef struct xhci_disable_slot_command_trb {
+    uint32_t resv[3];
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Reserved
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} xhci_disable_slot_command_trb;
+
+typedef struct xhci_address_device_command_trb {
+    uint64_t icp; // aligned to 16 bytes
+    
+    uint32_t resv;
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-8: Reserved
+    // Bit 9: Block Set Address Request (BSR) Bit
+    // Bit 9: Deconfigure (DC) Bit
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Reserved
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} xhci_address_device_command_trb, xhci_configure_endpoint_command_trb;
+
+typedef struct xhci_reset_endpoint_command_trb {
+    uint32_t resv[3];
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-8: Reserved
+    // Bit 9: Transfer State Preserve (TSP) Bit
+    // Bit 9: Reserved, for reset device.
+    // Bits 10-15: TRB Type
+    // Bits 16-23: Reserved
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} xhci_reset_endpoint_command_trb, xhci_reset_device_comamnd_trb;
+
+typedef struct xhci_stop_endpoint_command_trb {
+    uint32_t resv[3];
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-20: Endpoint ID
+    // Bits 21-22: Reserved
+    // Bit 23: Suspend (SP) Bit
+    // Bits 24-31: Slot ID
+    uint32_t dw3;
+} xhci_stop_endpoint_command_trb;
+
+typedef struct xhci_get_port_bandwith_command_trb {
+    uint64_t pbcp; // aligned to 16 bytes
+
+    uint32_t resv;
+    
+    // Bit 0: Cycle Bit
+    // Bits 1-9: Reserved
+    // Bits 10-15: TRB Type
+    // Bits 16-19: Dev Speed
+    // Bits 20-23: Reserved
+    // Bits 24-31: Hub Slot ID
+    uint32_t dw3;
+} xhci_get_port_bandwith_command_trb;
+
+enum {
+    XHCI_TRB_NORMAL = 1,
+    XHCI_TRB_SETUP_STAGE,
+    XHCI_TRB_DATA_STAGE,
+    XHCI_TRB_STATUS_STAGE,
+    XHCI_TRB_ISOCH,
+    XHCI_TRB_LINK,
+    XHCI_TRB_NOP,
+    XHCI_TRB_ENABLE_SLOT_COMMAND,
+    XHCI_TRB_DISABLE_SLOT_COMMAND,
+    XHCI_TRB_ADDRESS_DEVICE_COMMAND,
+    XHCI_TRB_CONFIGURE_ENDPOINT_COMMAND,
+    XHCI_TRB_EVALUATE_CONTEXT_COMMAND,
+    XHCI_TRB_RESET_ENDPOINT_COMMAND,
+    XHCI_TRB_STOP_ENDPOINT_COMMAND,
+    XHCI_TRB_SET_TR_DEQUEUE_POINTER_COMMAND,
+    XHCI_TRB_RESET_DEVICE_COMMAND,
+    XHCI_TRB_FORCE_EVENT_COMMAND,
+    XHCI_TRB_NEGOTIATE_BANDWITH_COMMAND,
+    XHCI_TRB_SET_LATENCY_TOLERANCE_VALUE_COMMAND,
+    XHCI_TRB_GET_PORT_BANDWITH_COMMAND,
+    XHCI_TRB_FORCE_HEADER_COMMAND,
+    XHCI_TRB_NOP_COMMAND,
+    XHCI_TRB_GET_EXTENDED_PROPERTY_COMMAND,
+    XHCI_TRB_SET_EXTENDED_PROPERTY_COMMAND,
+    XHCI_TRB_TRANSFER_EVENT = 32,
+    XHCI_TRB_COMMAND_COMPLETION_EVENT,
+    XHCI_TRB_PORT_STATUS_EVENT,
+    XHCI_TRB_DOORBELL_EVENT,
+    XHCI_TRB_HOST_CONTROLLER_EVENT,
+    XHCI_TRB_DEVICE_NOTIFICATION_EVENT,
+    XHCI_TRB_MFINDEX_WRAP_EVENT,
+};
+
+union xhci_device_context_element {
+    uint64_t scratchpad_array_base;
+    uint64_t device_context_base;
+};
+
+typedef struct xhci_endpoint_context {
+    uint16_t flags1;
+    uint8_t interval;
+    uint8_t max_esit_payload_high;
+    uint8_t flags2;
+    uint8_t max_burst_size;
+    uint8_t max_packet_size;
+    uint32_t tr_dequeue_pointer; // bit zero: dcs, aligned to 16 bytes
+    uint16_t average_trb_length;
+    uint16_t max_esit_payload_low;
+    uint32_t resv[3];
+} OBOS_PACK xhci_endpoint_context;
+typedef struct xhci_slot_context {
+    uint32_t dw0;
+    uint32_t dw1;
+    uint32_t dw2;
+    uint32_t dw3;
+    uint32_t resv[4];
+} OBOS_PACK xhci_slot_context;
+
+typedef struct xhci_event_ring_segment_table_entry {
+    uint64_t rsba; // ring segment base address
+    uint16_t rss; // ring segment size
+    uint16_t resv[3];
+} OBOS_PACK xhci_event_ring_segment_table_entry;
+
+typedef struct xhci_slot {
+    struct {
+        struct {
+            void* virt;
+            size_t len;
+            page* pg;
+        } buffer;
+        uint64_t enqueue_ptr;
+    } trb_ring[16]; // indexed by endpoint
+    uint32_t* doorbell;
+    // to be part of the dev_desc for a slot
+    // should change on each allocation
+    // TODO: if a value is eventually reused and a reference still exists,
+    // could a driver try to send bogus IRPs on this slot?
+    uint16_t uuid;
+    bool allocated;
+} xhci_slot;
 
 typedef struct xhci_device {
     pci_device* dev;
@@ -152,6 +528,7 @@ typedef struct xhci_device {
     };
 
     volatile xhci_op_registers* op_regs; 
+    volatile xhci_runtime_registers* rt_regs; 
 
     pci_resource* pci_bar;
     pci_resource* pci_irq;
@@ -165,10 +542,41 @@ typedef struct xhci_device {
     bool did_bios_handoff : 1;
     bool has_64bit_support : 1;
     bool port_power_control_supported : 1;
+    bool hccparams1_csz : 1;
     uint16_t xecp;
+    uint16_t max_slots;
 
+    struct {
+        void* virt;
+        size_t len;
+        page* pg;
+    } command_ring;
+    struct {
+        void* virt;
+        size_t len;
+        size_t nEntries;
+        page* pg;
+    } event_ring;
+
+    struct {
+        union {
+            void* virt;
+            union xhci_device_context_element* base;
+        };
+        size_t len;
+        page* pg;
+    } device_context_array;
+
+    xhci_slot *slots;
+    
     struct xhci_device *next, *prev;
 } xhci_device;
+
+static inline void* get_xhci_endpoint_context(xhci_device* dev, void* device_context, int dci)
+{
+    return (void*)(((uintptr_t)device_context) + dci * (dev->hccparams1_csz ? 64 : 32));
+}
+
 #ifndef INIT_C
 extern struct {
 #else
@@ -181,6 +589,14 @@ struct {
 void xhci_probe_bus(pci_bus* bus);
 obos_status xhci_initialize_device(xhci_device* dev);
 obos_status xhci_reset_device(xhci_device* dev);
+
+obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot);
+obos_status xhci_slot_free(xhci_device* dev, uint8_t slot);
+
+// Rings the doorbell of the target slot, endpoint, and direction
+void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, bool direction /* true for OUT, false for IN */);
+// Rings the control doorbell of the host controller.
+void xhci_doorbell_control(xhci_device* dev);
 
 OBOS_WEAK bool xhci_irq_checker(irq*, void*);
 OBOS_WEAK void xhci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
@@ -201,9 +617,9 @@ do {\
 } while(0)
 
 #if OBOS_IRQL_COUNT == 16
-#	define IRQL_XHCI (7)
+#	define IRQL_XHCI (9)
 #elif OBOS_IRQL_COUNT == 8
-#	define IRQL_XHCI (3)
+#	define IRQL_XHCI (4)
 #elif OBOS_IRQL_COUNT == 4
 #	define IRQL_XHCI (2)
 #elif OBOS_IRQL_COUNT == 2
