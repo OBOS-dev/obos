@@ -1,7 +1,7 @@
 /*
-	oboskrnl/klog.c
-
-	Copyright (c) 2024-2025 Omar Berrow
+ * oboskrnl/klog.c
+ *
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -197,7 +197,8 @@ static uint32_t getPID()
 		return (uint32_t)-1;
 	return CoreS_GetCPULocalPtr()->currentThread->proc->pid;
 }
-static int panic_max_depth = 5; 
+
+static int panic_max_depth = 5;
 OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) void OBOS_Panic(panic_reason reason, const char* format, ...)
 {
 	static const char ascii_art[] =
@@ -315,8 +316,13 @@ OBOS_NORETURN OBOS_NO_KASAN OBOS_EXPORT  __attribute__((no_stack_protector)) voi
 		next:
 		node = node->next;
 	}
+#if __x86_64__
+	while (1)
+		asm volatile("hlt" :::"memory");
+#else
 	while (1)
 		asm volatile("");
+#endif
 }
 
 static void outputCallback(int val, void* a)
