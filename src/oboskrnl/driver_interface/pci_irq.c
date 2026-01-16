@@ -36,7 +36,7 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     for (uintptr_t offset = 0; offset < size; offset += OBOS_PAGE_SIZE)
     {
         page_info page = {.virt=offset+(uintptr_t)virt};
-        MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, &phys);
+        MmS_QueryPageInfo(Mm_KernelContext.pt, page.virt, &page, nullptr);
         page.prot.uc = uc;
         MmS_SetPageMapping(Mm_KernelContext.pt, &page, phys + offset, false);
     }
@@ -111,7 +111,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
                     OBOS_Debug("Found MSI capability at 0x%02x.\n", msi_offset);
                     break;
                 case 0x11:
-                    // has_msix = true;
+                    has_msix = true;
                     msix_offset = curr->offset;
                     handle->msi_capability = curr;
                     OBOS_Debug("Found MSI-X capability at 0x%02x.\n", msix_offset);
@@ -155,29 +155,43 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
     if (has_msix)
     {
         // Prefer MSI-X over MSI.
-        uint64_t header = 0; // 32-bit
-        DrvS_ReadPCIRegister(dev->location, msix_offset+0, 4, &header);
-        header |= BIT(31) /* Enable */;
-        uint64_t bar_info = 0; // 32-bit register
-        DrvS_ReadPCIRegister(dev->location, 4+msix_offset, 4, &bar_info);
-        uint8_t bar_index = bar_info & 0x7;
-        uint64_t bar = 0;
-        DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
-        if (((bar >> 1) & 0b11) == 0x2)
-            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, (uint64_t*)(((uint32_t*)&bar) + 1));
-        bar &= ~0xf;
-        uint32_t bar_offset = bar_info & ~0x7;
-        handle->un.msix_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
-        bar_info = 0; // 32-bit register
-        DrvS_ReadPCIRegister(dev->location, 8+msix_offset, 4, &bar_info);
-        bar_index = bar_info & 0x7;
-        bar = 0;
-        DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
-        if (((bar >> 1) & 0b11) == 0x2)
-            DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, (uint64_t*)(((uint32_t*)&bar) + 1));
-        bar &= ~0xf;
-        bar_offset = bar_info & ~0x7;
-        handle->msix_pending_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
+        if (!handle->un.msix_entry)
+        {
+            uint64_t header = 0; // 32-bit
+            DrvS_ReadPCIRegister(dev->location, msix_offset+0, 4, &header);
+            header |= BIT(31) /* Enable */;
+            // Write back the header.
+            DrvS_WritePCIRegister(dev->location, msix_offset+0, 4, header);
+    
+            uint64_t bar_info = 0; // 32-bit register
+            DrvS_ReadPCIRegister(dev->location, 4+msix_offset, 4, &bar_info);
+            uint8_t bar_index = bar_info & 0x7;
+    
+            uint64_t bar = 0;
+            uint64_t bar2 = 0;
+            DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
+            if (((bar >> 1) & 0b11) == 0x2)
+                DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, &bar2);
+            bar |= (bar2 << 32);
+            bar &= ~0xf;
+    
+            uint32_t bar_offset = bar_info & ~0x7;
+            handle->un.msix_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
+            bar_info = 0; // 32-bit register
+            DrvS_ReadPCIRegister(dev->location, 8+msix_offset, 4, &bar_info);
+            bar_index = bar_info & 0x7;
+    
+            bar = 0;
+            DrvS_ReadPCIRegister(dev->location, (bar_index+4)*4, 4, &bar);
+            if (((bar >> 1) & 0b11) == 0x2)
+                DrvS_ReadPCIRegister(dev->location, (bar_index+5)*4, 4, &bar2);
+            bar |= (bar2 << 32);
+            bar &= ~0xf;
+            bar_offset = bar_info & ~0x7;
+    
+            handle->msix_pending_entry = (uintptr_t)map_registers(bar+bar_offset, OBOS_PAGE_SIZE, true);
+        }
+
         uint32_t* entry = (uint32_t*)handle->un.msix_entry;
         entry[0] = msi_address & UINT32_MAX;
         entry[1] = msi_address >> 32;
@@ -186,9 +200,8 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
             entry[3] |= BIT(0); // masked
         else
             entry[3] &= ~BIT(0); // unmasked
-        // Write back the header.
-        DrvS_WritePCIRegister(dev->location, msix_offset+0, 4, header);
         target_cpu->nMSIRoutedIRQs++;
+
         return OBOS_STATUS_SUCCESS;
     }
     if (has_msi)
