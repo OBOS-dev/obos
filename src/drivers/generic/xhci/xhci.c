@@ -240,7 +240,8 @@ static void continue_port_attach_impl(uintptr_t *userdata)
 {
     xhci_device* dev = (void*)userdata[0];
     uint8_t port_number = userdata[1];
-    Free(OBOS_KernelAllocator, userdata, sizeof(*userdata)*2);
+    bool usb3 = userdata[2];
+    Free(OBOS_KernelAllocator, userdata, sizeof(*userdata)*3);
     
     xhci_enable_slot_command_trb trb = {};
     xhci_inflight_trb* itrb = nullptr;
@@ -248,7 +249,7 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     
     XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_ENABLE_SLOT_COMMAND);
 
-    status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
+    status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, &itrb, true));
     if (obos_is_error(status))
         Core_ExitCurrentThread();
 
@@ -271,7 +272,7 @@ static void continue_port_attach_impl(uintptr_t *userdata)
         OBOS_Debug("xhci: port attached\n");
 
     Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
-    Free(OBOS_KernelAllocator, itrb, sizeof(itrb->resp));
+    Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
 
     while (!dev->ctlr)
         Sys_SleepMS(10, nullptr);
@@ -293,17 +294,20 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     info.address = dev->slots[slot-1].address;
     info.slot = slot;
     info.speed = speed;
+    info.usb3 = usb3;
 
-    Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc);
+    if (obos_is_success(Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc)))
+        Drv_USBPortPostAttached(dev->ctlr, dev->slots[slot-1].desc);
 
     Core_ExitCurrentThread();
 }
 
-static void continue_port_attach(xhci_device* dev, uint8_t port_id)
+static void continue_port_attach(xhci_device* dev, uint8_t port_id, bool usb3)
 {
-    uintptr_t* userdata = ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(uintptr_t), nullptr);
+    uintptr_t* userdata = ZeroAllocate(OBOS_KernelAllocator, 3, sizeof(uintptr_t), nullptr);
     userdata[0] = (uintptr_t)dev;
     userdata[1] = port_id;
+    userdata[2] = usb3;
 
     thread* thr = CoreH_ThreadAllocate(nullptr);
     thread_ctx ctx = {};
@@ -341,7 +345,7 @@ static void process_port_attach(xhci_device* dev, uint8_t port_id)
         return;
     }
 
-    continue_port_attach(dev, port_id);
+    continue_port_attach(dev, port_id, usb3);
 }
 
 static void process_port_detach_worker(uintptr_t *userdata)
@@ -355,7 +359,7 @@ static void process_port_detach_worker(uintptr_t *userdata)
     
     XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_DISABLE_SLOT_COMMAND);
     trb.dw3 |= (slot<<24);
-    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
+    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, &itrb, true));
     if (obos_is_error(status))
         Core_ExitCurrentThread();
 
@@ -400,7 +404,7 @@ static void process_port_status_change(xhci_device* dev, uint8_t port_id)
             process_port_detach(dev, port_id);
     }
     if (port->port_sc & PORTSC_PRC)
-        continue_port_attach(dev, port_id);
+        continue_port_attach(dev, port_id, false);
 }
 
 static void signal_inflight_trb(xhci_device* dev, uintptr_t dequeue_ptr, uintptr_t trb_ptr)
@@ -560,6 +564,28 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     ctrl_ep->flags2 |= (0x3<<1);
     // EPType = Control (4)
     ctrl_ep->flags2 |= (0x4<<3);
+    uint8_t pspeed = (dev->op_regs->ports[port-1].port_sc >> 10) & 0xf;
+    bool fs_device = false;
+    switch (pspeed) {
+        case 1:
+            fs_device = true;
+            ctrl_ep->max_packet_size = 8;
+            break;
+        case 2:
+            ctrl_ep->max_packet_size = 8;
+            break;
+        case 3:
+            ctrl_ep->max_packet_size = 64;
+            break;
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+            ctrl_ep->max_packet_size = 512;
+            break;
+        default: OBOS_ENSURE(!"unimplemented port speed value");
+    }
+    ctrl_ep->max_packet_size = 8;
     // DCS=1
     ctrl_ep->tr_dequeue_pointer |= BIT(0);
     ctrl_ep->tr_dequeue_pointer |= dev->slots[slot-1].trb_ring[0].enqueue_ptr;
@@ -571,7 +597,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     // trb.dw3 |= BIT(9);
     
     xhci_inflight_trb* itrb = nullptr;
-    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
+    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, &itrb, true));
     if (obos_is_error(status))
         return status;
     status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
@@ -596,15 +622,90 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 
     if (obos_is_success(status))
     {
+        Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+        Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+
         dev->port_to_slot_id[port-1] = slot;
         dev->slots[slot-1].port_id = port;
         dev->slots[slot-1].allocated = true;
 
+        if (fs_device)
+        {
+            xhci_inflight_trb* itrb2 = nullptr;
+            xhci_inflight_trb* itrb3 = nullptr;
+
+            xhci_setup_stage_trb setup_stage_trb = {};
+            XHCI_SET_TRB_TYPE(&setup_stage_trb, XHCI_TRB_SETUP_STAGE);
+            setup_stage_trb.trt = 3;
+            setup_stage_trb.flags_type |= BIT(6);
+            setup_stage_trb.bmRequestType = 0x80;
+            setup_stage_trb.bRequest = USB_GET_DESCRIPTOR;
+            setup_stage_trb.wValue = 0x0100;
+            setup_stage_trb.wIndex = 0;
+            setup_stage_trb.wLength = 0;
+            setup_stage_trb.td_size_target |= 8;
+            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&setup_stage_trb, &itrb, false);
+
+            xhci_data_stage_trb data_stage_trb = {};
+            XHCI_SET_TRB_TYPE(&setup_stage_trb, XHCI_TRB_DATA_STAGE);
+            data_stage_trb.dir_resv = BIT(0);
+            data_stage_trb.length_td_size |= (8<<17);
+            data_stage_trb.dbp = xhci_allocate_pages(1, 1, dev);
+            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&data_stage_trb, &itrb2, false);
+
+            xhci_status_stage_trb status_stage_trb = {};
+            XHCI_SET_TRB_TYPE(&status_stage_trb, XHCI_TRB_STATUS_STAGE);
+            status_stage_trb.flags_type |= BIT(5);
+            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&status_stage_trb, &itrb3, true);
+
+            if (itrb)
+            {
+                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
+                Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+                Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+            }
+            if (itrb2)
+            {
+                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb2->evnt));
+                Free(OBOS_KernelAllocator, itrb2->resp, itrb2->resp_length*4);
+                Free(OBOS_KernelAllocator, itrb2, sizeof(*itrb2));
+            }
+            if (itrb3)
+                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb3->evnt));
+
+            uint8_t* buf = MmS_MapVirtFromPhys(data_stage_trb.dbp);
+            if (buf[7] != ctrl_ep->max_packet_size)
+            {
+                ctrl_ep->max_packet_size = buf[7];
+                xhci_evaluate_context_command_trb ecc_trb = {};
+                XHCI_SET_TRB_TYPE(&ecc_trb, XHCI_TRB_EVALUATE_CONTEXT_COMMAND);
+                ecc_trb.dw3 |= BIT(9);                
+                ecc_trb.dw3 |= (slot<<24);                
+                ecc_trb.icp = input_context_base;
+                xhci_trb_enqueue_command(dev, (void*)&ecc_trb, &itrb, true);
+                
+                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
+                Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+                Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+            }
+
+            Mm_FreePhysicalPages(data_stage_trb.dbp, 1);
+            if (itrb3)
+            {
+                Free(OBOS_KernelAllocator, itrb3->resp, itrb3->resp_length*4);
+                Free(OBOS_KernelAllocator, itrb3, sizeof(*itrb3));
+            }
+        }
+
         OBOS_Debug("%s: sucessfully initialized slot %d on port %d with address %d\n", __func__, slot, port, dev->slots[slot-1].address);
     }
+    else
+    {
+        Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+        Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+    }
 
-    Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
-    Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+    Mm_FreePhysicalPages(input_context_base, xhci_page_count_for_size(sz2, nPages));
 
     return status;
 }
@@ -649,11 +750,18 @@ void xhci_doorbell_control(xhci_device* dev)
     *(uint32_t*)(((uint8_t*)dev->base) + dev->cap_regs->dboff) = 0;
 }
 
+void* xhci_get_device_context(xhci_device* dev, uint8_t slot)
+{
+    return MmS_MapVirtFromPhys(dev->device_context_array.base[slot].device_context_base);
+}
+
 RB_GENERATE(xhci_trbs_inflight, xhci_inflight_trb, node, cmp_inflight_trb);
 
 static xhci_inflight_trb* add_inflight_trb(xhci_device* dev, uintptr_t ptr)
 {
+    Core_MutexRelease(&dev->trbs_inflight_lock);
     xhci_inflight_trb* inflight = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*inflight), nullptr);
+    Core_MutexAcquire(&dev->trbs_inflight_lock);
     inflight->ptr = ptr;
     inflight->resp = nullptr;
     inflight->resp_length = 0;
@@ -662,64 +770,69 @@ static xhci_inflight_trb* add_inflight_trb(xhci_device* dev, uintptr_t ptr)
     return inflight;
 }
 
-obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb)
+obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t endpoint, xhci_direction direction, uint32_t* trb, xhci_inflight_trb** itrb, bool doorbell)
 {
     xhci_slot* slot = &dev->slots[slot_id];
-    if (trb_count < 1 || !trb || !dev || !itrb)
+    if (!trb || !dev || !itrb)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
     if (!slot->allocated)
         return OBOS_STATUS_UNINITIALIZED;
 
-    if (!slot->trb_ring[endpoint+direction*2].enqueue_ptr)
+    const uint8_t target = endpoint == 0 ? 0 : ((endpoint+1)*2 + !direction);
+
+    if (!slot->trb_ring[target].enqueue_ptr)
         return OBOS_STATUS_UNINITIALIZED;
     
-    if ((slot->trb_ring[endpoint+direction*2].enqueue_ptr + (trb_count*16)) == slot->trb_ring[endpoint+direction*2].dequeue_ptr)
+    if ((slot->trb_ring[target].enqueue_ptr + (16)) == slot->trb_ring[target].dequeue_ptr)
         return OBOS_STATUS_WOULD_BLOCK;
 
     Core_MutexAcquire(&dev->trbs_inflight_lock);
 
-    const uint8_t target = endpoint == 0 ? 1 : ((endpoint+1)*2 + !direction);
-
     void* ptr = MmS_MapVirtFromPhys(slot->trb_ring[target].enqueue_ptr);
-    memcpy(ptr, trb, trb_count*16);
-    *itrb = add_inflight_trb(dev, slot->trb_ring[target].enqueue_ptr);
-    (*itrb)->dequeue_ptr = &slot->trb_ring[target].dequeue_ptr;
-    ((uint32_t*)ptr)[(trb_count-1)*4+3] |= BIT(0);
-    slot->trb_ring[target].enqueue_ptr += trb_count*16;
+    memcpy(ptr, trb, 16);
+    if (trb[3] & BIT(5))
+    {
+        *itrb = add_inflight_trb(dev, slot->trb_ring[target].enqueue_ptr);
+        (*itrb)->dequeue_ptr = &slot->trb_ring[target].dequeue_ptr;
+    }
+    ((uint32_t*)ptr)[3] |= BIT(0);
+    slot->trb_ring[target].enqueue_ptr += 16;
     
     Core_MutexRelease(&dev->trbs_inflight_lock);
 
-    xhci_doorbell_slot(slot, endpoint, direction);
+    if (doorbell)
+        xhci_doorbell_slot(slot, endpoint, direction);
 
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb)
+obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, xhci_inflight_trb** itrb, bool doorbell)
 {
-    if (!dev || !trb || trb_count < 1 || !itrb)
+    if (!dev || !trb || !itrb)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!dev->command_ring.pg)
         return OBOS_STATUS_UNINITIALIZED;
     
-    if ((dev->command_ring.enqueue_ptr + (trb_count*16)) == dev->command_ring.dequeue_ptr)
+    if ((dev->command_ring.enqueue_ptr + (16)) == dev->command_ring.dequeue_ptr)
         return OBOS_STATUS_WOULD_BLOCK;
 
     Core_MutexAcquire(&dev->trbs_inflight_lock);
 
     void* ptr = MmS_MapVirtFromPhys(dev->command_ring.enqueue_ptr);
-    memcpy(ptr, trb, trb_count*16);
+    memcpy(ptr, trb, 16);
     if (dev->op_regs->crcr & BIT(0))
-        ((uint32_t*)ptr)[(trb_count-1)*4+3] |= BIT(0); // cycle bit
+        ((uint32_t*)ptr)[3] |= BIT(0); // cycle bit
     else
-        ((uint32_t*)ptr)[(trb_count-1)*4+3] &= ~BIT(0); // cycle bit
+        ((uint32_t*)ptr)[3] &= ~BIT(0); // cycle bit
     *itrb = add_inflight_trb(dev, dev->command_ring.enqueue_ptr);
     (*itrb)->dequeue_ptr = &dev->command_ring.dequeue_ptr;
-    dev->command_ring.enqueue_ptr += trb_count*16;
+    dev->command_ring.enqueue_ptr += 16;
 
     Core_MutexRelease(&dev->trbs_inflight_lock);
     
-    xhci_doorbell_control(dev);
+    if (doorbell)
+        xhci_doorbell_control(dev);
 
     return OBOS_STATUS_SUCCESS;
 }

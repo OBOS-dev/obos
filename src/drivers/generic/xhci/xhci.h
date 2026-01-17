@@ -171,10 +171,10 @@ enum {
 typedef struct xhci_normal_trb {
     uint64_t dbp;
 
-    uint16_t length;
-    // Bits 16-21: TD Size, how many packets remaining in the TD
-    // Bits 22-32: Interrupter Target
-    uint16_t td_size_target;
+    // Bits 0-16: Length
+    // Bits 17-21: TD Size
+    // Bits 22-31: Interrupter Target
+    uint32_t length_td_size;
 
     // Bits 0-9: Flags
     // Bits 10-15: TRB Type
@@ -186,7 +186,7 @@ typedef struct xhci_normal_trb {
 typedef struct xhci_setup_stage_trb {
     uint8_t bmRequestType;
     uint8_t bRequest;
-    uint8_t wValue;
+    uint16_t wValue;
 
     uint16_t wIndex;
     uint16_t wLength;
@@ -400,7 +400,7 @@ typedef struct xhci_address_device_command_trb {
     // Bits 16-23: Reserved
     // Bits 24-31: Slot ID
     uint32_t dw3;
-} xhci_address_device_command_trb, xhci_configure_endpoint_command_trb;
+} xhci_address_device_command_trb, xhci_evaluate_context_command_trb, xhci_configure_endpoint_command_trb;
 
 typedef struct xhci_reset_endpoint_command_trb {
     uint32_t resv[3];
@@ -443,7 +443,7 @@ typedef struct xhci_get_port_bandwith_command_trb {
 } xhci_get_port_bandwith_command_trb;
 
 #define XHCI_GET_TRB_TYPE(trb) ((((uint32_t*)(trb))[3] >> 10) & 0x3f)
-#define XHCI_SET_TRB_TYPE(trb, type) ({ (((uint32_t*)(trb))[3]) |= ((type & 0x3f) << 10); type; })
+#define XHCI_SET_TRB_TYPE(trb, type) ({ (((uint32_t*)(trb))[3]) |= (((type) & 0x3f) << 10); (type); })
 #define XHCI_GET_COMPLETION_CODE(trb) (((((uint32_t*)(trb))[2]) >> 24) & 0xff)
 #define XHCI_GET_COMPLETION_PARAMETER(trb) ((((uint32_t*)(trb))[2]) & 0xffffff)
 // NOTE: is transfer length - transferred bytes count
@@ -557,6 +557,12 @@ typedef struct xhci_inflight_trb {
     RB_ENTRY(xhci_inflight_trb) node;
 } xhci_inflight_trb;
 
+struct xhci_inflight_trb_array {
+    uint32_t count;
+    uint32_t index;
+    xhci_inflight_trb* itrbs[];
+};
+
 static inline int cmp_inflight_trb(xhci_inflight_trb *lhs, xhci_inflight_trb *rhs)
 {
     return (lhs->ptr < rhs->ptr) ? -1 : ((lhs->ptr == rhs->ptr) ? 0 : 1);
@@ -655,13 +661,15 @@ enum {
 };
 typedef bool xhci_direction;
 
-obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb);
-obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb);
+obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoint, xhci_direction direction, uint32_t* trb, xhci_inflight_trb** itrb, bool doorbell);
+obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, xhci_inflight_trb** itrb, bool doorbell);
 
 // Rings the doorbell of the target slot, endpoint, and direction
 void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, xhci_direction direction /* true for OUT, false for IN */);
 // Rings the control doorbell of the host controller.
 void xhci_doorbell_control(xhci_device* dev);
+
+void* xhci_get_device_context(xhci_device* dev, uint8_t slot);
 
 OBOS_WEAK bool xhci_irq_checker(irq*, void*);
 OBOS_WEAK void xhci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
