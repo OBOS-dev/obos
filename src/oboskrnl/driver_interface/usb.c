@@ -9,6 +9,7 @@
 #include <struct_packing.h>
 
 #include <mm/sglist.h>
+#include <mm/pmm.h>
 
 #include <driver_interface/usb.h>
 #include <driver_interface/header.h>
@@ -93,6 +94,16 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
     return OBOS_STATUS_SUCCESS;
 }
 
+OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_desc* desc)
+{
+    OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
+
+    if (!ctlr || !desc)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
+    return OBOS_STATUS_SUCCESS;
+}
+
 obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
 {
     OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
@@ -119,4 +130,25 @@ obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req_p)
     irp* req = req_p;
     req->desc = (dev_desc)desc;
     return desc->controller->hdr->ftable.submit_irp(req_p);
+}
+OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req)
+{
+    OBOS_ENSURE(Core_GetIrql() <= IRQL_DISPATCH);
+    irp* request = req;
+    if (!request)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    while (request->evnt)
+    {
+        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        if (obos_is_error(status))
+            return status;
+        if (request->on_event_set)
+            request->on_event_set(request);
+        if (request->status != OBOS_STATUS_IRP_RETRY)
+            break;
+    }
+    driver_header* driver = desc->controller->hdr;
+    if (driver->ftable.finalize_irp)
+        driver->ftable.finalize_irp(request);
+    return request->status;
 }

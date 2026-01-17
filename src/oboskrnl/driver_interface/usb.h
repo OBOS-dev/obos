@@ -32,7 +32,7 @@ typedef union {
 typedef enum usb_trb_type {
     USB_TRB_NORMAL,
     // only legal for endpoint zero (control)
-    USB_TRB_SETUP,
+    USB_TRB_CONTROL,
     USB_TRB_ISOCH,
     USB_TRB_NOP,
     // NOTE: Should be done in both directions
@@ -62,6 +62,7 @@ typedef struct usb_irp_payload {
                 uint16_t wIndex;
                 uint16_t wLength;
             } OBOS_PACK;
+            // idk
             struct physical_region* regions;
             size_t nRegions;
             // TODO: Return status in some way from the status stage TRB (xhci-only)? 
@@ -87,6 +88,8 @@ typedef struct usb_device_info {
     uint8_t slot;
 
     uint8_t speed;
+
+    bool usb3 : 1;
 } usb_device_info;
 
 typedef struct usb_dev_desc {
@@ -125,10 +128,60 @@ LIST_PROTOTYPE(usb_controller_list, struct usb_controller, node);
 extern usb_controller_list Drv_USBControllers;
 extern mutex Drv_USBControllersLock;
 
+enum {
+    USB_GET_STATUS = 0,
+    USB_CLEAR_FEATURE = 1,
+    USB_SET_FEATURE = 3,
+    USB_SET_ADDRESS = 5,
+    USB_GET_DESCRIPTOR = 6,
+    USB_SET_DESCRIPTOR = 7,
+    USB_GET_CONFIGURATION = 8,
+    USB_SET_CONFIGURATION = 9,
+    USB_GET_INTERFACE = 10,
+    USB_SET_INTERFACE = 11,
+    USB_SYNCH_FRAME = 12,
+    USB_SET_SEL = 48,
+    USB_SET_ISOCH_DELAY = 49,
+};
+
+enum {
+    USB_DESCRIPTOR_TYPE_DEVICE = 1,
+    USB_DESCRIPTOR_TYPE_CONFIGURATION = 2,
+    USB_DESCRIPTOR_TYPE_STRING = 3,
+    USB_DESCRIPTOR_TYPE_INTERFACE = 4,
+    USB_DESCRIPTOR_TYPE_ENDPOINT = 5,
+    USB_DESCRIPTOR_TYPE_INTERFACE_POWER = 8,
+    USB_DESCRIPTOR_TYPE_OTG = 9,
+    USB_DESCRIPTOR_TYPE_DEBUG = 10,
+    USB_DESCRIPTOR_TYPE_INTERFACE_ASSOCIATION = 11,
+    USB_DESCRIPTOR_TYPE_BOS = 15,
+    USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY = 16,
+    USB_DESCRIPTOR_TYPE_SUPERSPEED_USB_ENDPOINT_COMPANION = 48,
+};
+
+typedef struct usb_device_descriptor {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    uint16_t bcdUSB;
+    uint8_t bDeviceClass;
+    uint8_t bDeviceSubclass;
+    uint8_t bDeviceProtocol;
+    uint8_t bMaxPacketSize0;
+    uint16_t idVendor;
+    uint16_t idProduct;
+    uint16_t bcdDevice;
+    uint8_t iManufacturer;
+    uint8_t iProduct;
+    uint8_t iSerialNumber;
+    uint8_t bNumConfigurations;
+} OBOS_PACK usb_device_descriptor;
+
 OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header, usb_controller** out);
 
 OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
+OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_desc* desc);
 OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
 
 // req is struct irp*
 OBOS_EXPORT obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req);
+OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req);

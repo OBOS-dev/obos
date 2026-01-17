@@ -52,7 +52,10 @@ typedef struct irp {
     // if vnode is not a socket, flags does not apply
     uint32_t socket_flags;
     void* socket_data;
-    size_t sz_socket_data;
+    union {
+        size_t sz_socket_data;
+        size_t usb_packet_length;
+    };
 
     void* drvData;
     size_t refs;
