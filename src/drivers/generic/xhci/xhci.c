@@ -294,7 +294,7 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     info.slot = slot;
     info.speed = speed;
 
-    status = Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc);
+    Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc);
 
     Core_ExitCurrentThread();
 }
