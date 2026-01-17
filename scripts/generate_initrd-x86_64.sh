@@ -11,7 +11,9 @@ cp out/r8169 tar
 cp out/i8042 tar
 cp out/libps2 tar
 cp out/e1000 tar
+cp out/xhci tar
 cp out/init tar
+cp out/usb-hid tar
 cd tar
 tar -H ustar -cf ../config/initrd.tar `ls -A`
 cd $old_pwd
