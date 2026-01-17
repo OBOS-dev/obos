@@ -607,9 +607,21 @@ obos_status VfsH_IRPWait(irp* request)
     if (!request || !request->vn)
         return OBOS_STATUS_INVALID_ARGUMENT;
     vnode* const vn = request->vn;
+    struct waitable_header* signaled = nullptr;
+    struct waitable_header* objs[2] = {};
     while (request->evnt)
     {
-        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (!request->detach_event)
+            status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        else
+        {
+            objs[0] = WAITABLE_OBJECT(*request->evnt);
+            objs[1] = WAITABLE_OBJECT(*request->detach_event);
+            status = Core_WaitOnObjects(2, objs, &signaled);
+            if (signaled == objs[1])
+                status = OBOS_STATUS_INTERNAL_ERROR;
+        }
         if (obos_is_error(status))
             return status;
         if (request->on_event_set)
