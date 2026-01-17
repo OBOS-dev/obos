@@ -40,6 +40,13 @@ typedef enum usb_trb_type {
     USB_TRB_CONFIGURE_ENDPOINT,
 } usb_trb_type;
 
+typedef enum usb_endpoint_type {
+    USB_ENDPOINT_CONTROL = 0,
+    USB_ENDPOINT_ISOCH,
+    USB_ENDPOINT_BULK,
+    USB_ENDPOINT_INTERRUPT,
+} usb_endpoint_type;
+
 // TRB Direction is defined by irp.op
 
 typedef struct usb_irp_payload {
@@ -67,6 +74,11 @@ typedef struct usb_irp_payload {
             size_t nRegions;
             // TODO: Return status in some way from the status stage TRB (xhci-only)? 
         } setup;
+        struct {
+            usb_endpoint_type endpoint_type;
+            uint16_t max_packet_size;
+            uint16_t max_burst_size;
+        } configure_endpoint;
     } payload;
 } usb_irp_payload;
 
@@ -175,6 +187,30 @@ typedef struct usb_device_descriptor {
     uint8_t iSerialNumber;
     uint8_t bNumConfigurations;
 } OBOS_PACK usb_device_descriptor;
+
+typedef struct usb_interface_descriptor {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    uint8_t bInterfaceNumber;
+    uint8_t bAlternateSetting;
+    uint8_t bNumEndpoints;
+    uint8_t bInterfaceClass;
+    uint8_t bInterfaceSublass;
+    uint8_t bInterfaceProtocol;
+    uint8_t iInterface;
+} OBOS_PACK usb_interface_descriptor;
+
+typedef struct usb_endpoint_descriptor {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    // bit 7: direction, OUT=0, IN=1
+    // bits 0-3: endpoint number
+    uint8_t bEndpointAddress;
+    uint8_t bmAttributes;
+    // bits 0-10: max packet size
+    uint16_t wMaxPacketSize;
+    uint8_t bInterval;
+} OBOS_PACK usb_endpoint_descriptor;
 
 OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header, usb_controller** out);
 

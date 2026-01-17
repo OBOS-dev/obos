@@ -93,9 +93,6 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     return virt+phys_page_offset;
 }
 
-#define xhci_allocate_pages(nPages, alignment, dev) (dev->has_64bit_support ? Mm_AllocatePhysicalPages(nPages, alignment, nullptr) : Mm_AllocatePhysicalPages32(nPages, alignment, nullptr))
-#define xhci_page_count_for_size(size, nPages) ((size) / (nPages) + !!((size) / (nPages)))
-
 extern driver_id* this_driver;
 
 obos_status xhci_initialize_device(xhci_device* dev)
@@ -549,21 +546,22 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     const size_t sz2 = dev->hccparams1_csz ? 0x840 : 0x420;
     uintptr_t input_context_base = xhci_allocate_pages(xhci_page_count_for_size(sz2, nPages), nPages, dev);
     xhci_input_context* input_context = MmS_MapVirtFromPhys(input_context_base);
-    memzero(input_context, xhci_page_count_for_size(sz, nPages)*OBOS_PAGE_SIZE);
+    memzero(input_context, xhci_page_count_for_size(sz2, nPages)*OBOS_PAGE_SIZE);
     input_context->icc.add_context |= 3;
     
-    xhci_slot_context* slot_ctx = get_xhci_endpoint_context(dev, input_context->device_context, 0);
+    xhci_slot_context* slot_ctx = get_xhci_endpoint_context(dev, input_context, 1);
     // TODO: correct value
     slot_ctx->dw0 = 0;
     // Context entries = 1
     slot_ctx->dw0 |= 1<<27;
     slot_ctx->dw1 |= (port<<16);
 
-    xhci_endpoint_context* ctrl_ep = get_xhci_endpoint_context(dev, input_context->device_context, 1);
+    xhci_endpoint_context* ctrl_ep = get_xhci_endpoint_context(dev, input_context, 2);
     // CErr=3
     ctrl_ep->flags2 |= (0x3<<1);
     // EPType = Control (4)
     ctrl_ep->flags2 |= (0x4<<3);
+    ctrl_ep->average_trb_length = 8;
     uint8_t pspeed = (dev->op_regs->ports[port-1].port_sc >> 10) & 0xf;
     bool fs_device = false;
     switch (pspeed) {
@@ -765,6 +763,7 @@ static xhci_inflight_trb* add_inflight_trb(xhci_device* dev, uintptr_t ptr)
     inflight->ptr = ptr;
     inflight->resp = nullptr;
     inflight->resp_length = 0;
+    memcpy(inflight->trb_cpy, MmS_MapVirtFromPhys(ptr), 16);
     inflight->evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     RB_INSERT(xhci_trbs_inflight, &dev->trbs_inflight, inflight);
     return inflight;

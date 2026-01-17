@@ -6,6 +6,7 @@
 
 #include <int.h>
 #include <klog.h>
+#include <memmanip.h>
 
 #include <driver_interface/usb.h>
 
@@ -108,6 +109,12 @@ obos_status submit_irp(void* reqp)
         return OBOS_STATUS_SUCCESS;
     }
 
+    if (payload->endpoint > 15)
+    {
+        req->status = OBOS_STATUS_INVALID_ARGUMENT;
+        return OBOS_STATUS_SUCCESS;
+    }
+
     OBOS_ENSURE(desc->info.slot);
 
     xhci_device* dev = desc->controller->handle;
@@ -115,11 +122,17 @@ obos_status submit_irp(void* reqp)
 
     bool in_endpoint = req->op == IRP_READ;
     const uint8_t target = payload->endpoint == 0 ? 0 : ((payload->endpoint+1)*2 + (req->op == IRP_WRITE));
-    if (!slot->trb_ring[target].buffer.pg)
+    if (!slot->trb_ring[target].buffer.pg && payload->trb_type != USB_TRB_CONFIGURE_ENDPOINT)
     {
         req->status = OBOS_STATUS_UNINITIALIZED;
         return OBOS_STATUS_SUCCESS;
     }
+    if (slot->trb_ring[target].buffer.pg && payload->trb_type == USB_TRB_CONFIGURE_ENDPOINT)
+    {
+        req->status = OBOS_STATUS_ALREADY_INITIALIZED;
+        return OBOS_STATUS_SUCCESS;
+    }
+
     xhci_endpoint_context* ep_ctx = get_xhci_endpoint_context(dev, xhci_get_device_context(dev, desc->info.slot), target+1);
     OBOS_ENSURE(MmS_UnmapVirtFromPhys(ep_ctx));
     uint8_t ep_type = ((ep_ctx->flags2 >> 3) & 0b111);
@@ -130,6 +143,11 @@ obos_status submit_irp(void* reqp)
         return OBOS_STATUS_SUCCESS;
     }
     if ((payload->trb_type != USB_TRB_CONTROL) && ep_type == 4 /* control */)
+    {
+        req->status = OBOS_STATUS_INVALID_OPERATION;
+        return OBOS_STATUS_SUCCESS;
+    }
+    if ((payload->trb_type == USB_TRB_CONTROL) && ep_type != 4 /* control */)
     {
         req->status = OBOS_STATUS_INVALID_OPERATION;
         return OBOS_STATUS_SUCCESS;
@@ -321,7 +339,64 @@ obos_status submit_irp(void* reqp)
         }
         case USB_TRB_CONFIGURE_ENDPOINT:
         {
-            req->status = OBOS_STATUS_UNIMPLEMENTED;
+            OBOS_ENSURE(payload->endpoint != 0);
+            
+            xhci_direction dir = 0;
+            if (req->op == IRP_READ) dir = XHCI_DIRECTION_IN;
+            else if (req->op == IRP_WRITE) dir = XHCI_DIRECTION_OUT;
+
+            const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
+            const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
+            uint8_t slot = desc->info.slot;
+            
+            dev->slots[slot-1].trb_ring[target].buffer.pg = MmH_PgAllocatePhysical(!dev->has_64bit_support, false);
+            OBOS_ENSURE(dev->slots[slot-1].trb_ring[target].buffer.pg);
+            dev->slots[slot-1].trb_ring[target].buffer.virt = MmS_MapVirtFromPhys(dev->slots[slot-1].trb_ring[target].buffer.pg->phys);
+            dev->slots[slot-1].trb_ring[target].buffer.len = OBOS_PAGE_SIZE;
+            memzero(dev->slots[slot-1].trb_ring[target].buffer.virt, dev->slots[slot-1].trb_ring[target].buffer.len);
+            dev->slots[slot-1].trb_ring[target].enqueue_ptr = dev->slots[slot-1].trb_ring[target].buffer.pg->phys;
+
+            const uint8_t target_dci = (payload->endpoint-1)*2+dir + 2;
+            
+            uintptr_t icp = xhci_allocate_pages(xhci_page_count_for_size(sz_icp, nPages), nPages, dev);
+            xhci_input_context* input_context = MmS_MapVirtFromPhys(icp);
+            memzero(input_context, xhci_page_count_for_size(sz_icp, nPages)*OBOS_PAGE_SIZE);
+            input_context->icc.add_context |= BIT(target_dci);
+
+            xhci_endpoint_context* ep_ctx = get_xhci_endpoint_context(dev, input_context, target_dci+1);
+            ep_ctx->flags2 |= 3<<1;
+            ep_ctx->max_burst_size = payload->payload.configure_endpoint.max_burst_size;
+            ep_ctx->max_packet_size = payload->payload.configure_endpoint.max_packet_size;
+            ep_ctx->tr_dequeue_pointer = dev->slots[slot-1].trb_ring[target].enqueue_ptr;
+            ep_ctx->tr_dequeue_pointer |= BIT(0);
+            switch (payload->payload.configure_endpoint.endpoint_type) {
+                case USB_ENDPOINT_CONTROL:
+                    OBOS_UNREACHABLE;
+                case USB_ENDPOINT_ISOCH:
+                    ep_ctx->flags2 |= ((dir ? 0x5 : 0x1) << 3);
+                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
+                    break;
+                case USB_ENDPOINT_BULK:
+                    ep_ctx->flags2 |= ((dir ? 0x6 : 0x2) << 3);
+                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
+                    break;
+                case USB_ENDPOINT_INTERRUPT:
+                    ep_ctx->flags2 |= ((dir ? 0x7 : 0x3) << 3);
+                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 2;
+                    break;
+                default: OBOS_ENSURE(!"invalid endpoint type");
+            }
+
+            xhci_configure_endpoint_command_trb trb = {};
+            XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_CONFIGURE_ENDPOINT_COMMAND);
+            trb.dw3 |= ((uint32_t)slot << 24);
+            trb.icp = icp;
+            
+            xhci_inflight_trb* itrb = nullptr;
+            req->status = xhci_trb_enqueue_command(dev, (uint32_t*)&trb, &itrb, true);
+            req->evnt = &itrb->evnt;
+            req->drvData = itrb;
+
             break;
         }
         default: return OBOS_STATUS_INVALID_ARGUMENT;
@@ -342,6 +417,27 @@ obos_status finalize_irp(void* reqp)
         xhci_inflight_trb* itrb = req->drvData;
         req->status = (itrb->resp[2] >> 24) == 1 ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
         req->nBlkRead -= XHCI_GET_TRB_TRANSFER_LENGTH(itrb->resp);
+        Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+        Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+        return OBOS_STATUS_SUCCESS;
+    }
+    else if (payload->trb_type == USB_TRB_CONFIGURE_ENDPOINT)
+    {
+        xhci_inflight_trb* itrb = req->drvData;
+
+        usb_dev_desc* desc = (void*)req->desc;
+        xhci_device* dev = desc->controller->handle;
+
+        const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
+        const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
+
+        xhci_configure_endpoint_command_trb* trb = (void*)itrb->trb_cpy;
+
+        Mm_FreePhysicalPages(trb->icp, xhci_page_count_for_size(sz_icp, nPages));
+        
+        req->status = (itrb->resp[2] >> 24) == 1 ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
+        req->nBlkRead -= XHCI_GET_TRB_TRANSFER_LENGTH(itrb->resp);
+
         Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
         Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
         return OBOS_STATUS_SUCCESS;
