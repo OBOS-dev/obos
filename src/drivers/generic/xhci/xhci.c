@@ -96,6 +96,8 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
 #define xhci_allocate_pages(nPages, alignment, dev) (dev->has_64bit_support ? Mm_AllocatePhysicalPages(nPages, alignment, nullptr) : Mm_AllocatePhysicalPages32(nPages, alignment, nullptr))
 #define xhci_page_count_for_size(size, nPages) ((size) / (nPages) + !!((size) / (nPages)))
 
+extern driver_id* this_driver;
+
 obos_status xhci_initialize_device(xhci_device* dev)
 {
     OBOS_ENSURE(dev);
@@ -220,6 +222,8 @@ obos_status xhci_initialize_device(xhci_device* dev)
 
     dev->op_regs->usbcmd |= (USBCMD_RUN|USBCMD_INTE);
 
+    status = Drv_USBControllerRegister(dev, &this_driver->header, &dev->ctlr);
+
     return status;
 }
 
@@ -264,10 +268,33 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     if (obos_is_error(status))
         OBOS_Debug("xhci: could not initialize slot %d: %d\n", slot, status);
     else
-        OBOS_Debug("xhci: initialized slot %d\n", slot);
+        OBOS_Debug("xhci: port attached\n");
 
     Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
     Free(OBOS_KernelAllocator, itrb, sizeof(itrb->resp));
+
+    while (!dev->ctlr)
+        Sys_SleepMS(10, nullptr);
+
+    uint8_t pspeed = (dev->op_regs->ports[port_number-1].port_sc >> 10) & 0xf;
+    uint8_t speed = 0;
+    switch (pspeed) {
+        case 1: speed = USB_DEVICE_FULL_SPEED; break;
+        case 2: speed = USB_DEVICE_LOW_SPEED; break;
+        case 3: speed = USB_DEVICE_HIGH_SPEED; break;
+        case 4: speed = USB_DEVICE_SUPER_SPEED_GEN1_X1; break;
+        case 5: speed = USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X1; break;
+        case 6: speed = USB_DEVICE_SUPER_SPEED_PLUS_GEN1_X2; break;
+        case 7: speed = USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X2; break;
+        default: OBOS_ENSURE(!"unimplemented port speed value");
+    }
+
+    usb_device_info info = {};
+    info.address = dev->slots[slot].address;
+    info.slot = slot;
+    info.speed = speed;
+
+    status = Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot].desc);
 
     Core_ExitCurrentThread();
 }
@@ -289,7 +316,7 @@ static void continue_port_attach(xhci_device* dev, uint8_t port_id)
 
 static void process_port_attach(xhci_device* dev, uint8_t port_id)
 {
-    volatile xhci_port_registers* port = &dev->op_regs->ports[port_id];
+    volatile xhci_port_registers* port = &dev->op_regs->ports[port_id-1];
     // TODO: Is this valid?
     bool usb3 = (port->port_sc & PORTSC_PLS) != 0;
 
