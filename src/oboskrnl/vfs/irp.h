@@ -32,10 +32,6 @@ enum irp_op {
 // If you do, then good luck,
 // and godspeed.
 typedef struct irp {
-    // // Only valid for NIC drivers
-    // // Must be allocated with OBOS_KernelAllocator, the 
-    // // IRP submitter is responsible for freeing the object.
-    // nic_irp_data* nic_data;
     // Set when the operation is complete.
     // The lifetime of the pointed object is completely controlled
     // by the driver, but needs to be alive until the event is set.
@@ -43,6 +39,8 @@ typedef struct irp {
     // Always check if status != OBOS_STATUS_IRP_RETRY before calling finalize_irp.
     // EVENT_NOTIFICATION.
     event* volatile evnt;
+    // Ignored if nullptr
+    event* volatile detach_event;
     // If not nullptr, should be called by the IRP owner after waiting for the event.
     void(*on_event_set)(struct irp* irp);
     union {
