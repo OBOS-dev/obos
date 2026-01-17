@@ -15,6 +15,7 @@
 
 #include <driver_interface/usb.h>
 #include <driver_interface/header.h>
+#include <driver_interface/pnp.h>
 
 #include <allocators/base.h>
 
@@ -293,7 +294,7 @@ OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_de
     if (obos_is_success(status))
         OBOS_Debug("usb: successfully configured slot %d. slot hid=%02x:%02x:%02x\n", desc->info.slot, desc->info.hid.class, desc->info.hid.subclass, desc->info.hid.protocol);
 
-    return status;
+    return Drv_PnpUSBDeviceAttached(desc);
 }
 
 obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
@@ -308,10 +309,28 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
     Core_MutexAcquire(&ctlr->ports_lock);
     LIST_REMOVE(usb_devices, &ctlr->ports, desc);
     Core_MutexRelease(&ctlr->ports_lock);
+
+    if (desc->drv)
+    {
+        driver_id* drv = desc->drv;
+        if (drv->header.ftable.on_usb_detach)
+            drv->header.ftable.on_usb_detach(desc);
+        else
+            OBOS_Debug("usb: driver does not have on_usb_detach callback\n");
+    }
     
     desc->attached = false;
     OBOS_SharedPtrUnref(&desc->ptr);
 
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Drv_USBDriverAttachedToPort(usb_dev_desc* desc, void* drv_id)
+{
+    if (!desc) return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc->drv_ptr) return OBOS_STATUS_ALREADY_INITIALIZED;
+    if (!desc->attached) return OBOS_STATUS_NOT_FOUND;
+    desc->drv = drv_id;
     return OBOS_STATUS_SUCCESS;
 }
 

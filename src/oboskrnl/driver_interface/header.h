@@ -75,6 +75,10 @@ typedef enum driver_header_flags
     /// Set if the filesystem driver wants paths for mk_file, move_desc_to, and remove_file
     /// </summary>
     DRIVER_HEADER_DIRENT_CB_PATHS = 0x800,
+    /// <summary>
+    /// Should the driver be detected through USB?
+    /// </summary>
+    DRIVER_HEADER_FLAGS_DETECT_VIA_USB = 0x1000,
 } driver_header_flags;
 typedef enum iterate_decision
 {
@@ -219,6 +223,9 @@ typedef struct driver_ftable
     obos_status(*list_dir)(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
     obos_status(*stat_fs_info)(void *vn, drv_fs_info *info);
 
+    obos_status(*on_usb_attach)(usb_dev_desc* desc);
+    obos_status(*on_usb_detach)(usb_dev_desc* desc);
+
     // Can only be nullptr for the InitRD driver.
     // MUST be called before any operations on the filesystem for that vnode (e.g., list_dir, path_search).
     bool(*probe)(void* vn);
@@ -230,7 +237,7 @@ typedef struct driver_ftable
     // ---------------------------------------
 } driver_ftable;
 
-#define CURRENT_DRIVER_HEADER_VERSION (1)
+#define CURRENT_DRIVER_HEADER_VERSION (2)
 typedef struct driver_header
 {
     // Set to OBOS_DRIVER_MAGIC.
@@ -266,9 +273,15 @@ typedef struct driver_header
 
     thread_affinity mainThreadAffinity;
 
+    // The USB HID associated with this driver.
+    usb_hid usbHid;
+
     // Reserved for future use
-    char reserved[0x100-0x10];
+    char reserved[0x100-0x14];
 } driver_header;
+
+#define OBOS_DRIVER_HEADER_USB_HID_VALID(header) ((header)->version >= 2)
+
 typedef struct driver_header_node
 {
     struct driver_header_node *next, *prev;
