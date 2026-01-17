@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/header.h
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -11,6 +11,7 @@
 #include <struct_packing.h>
 
 #include <driver_interface/pci.h>
+#include <driver_interface/usb.h>
 
 #include <scheduler/thread.h>
 
