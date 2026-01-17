@@ -1,7 +1,7 @@
 /*
  * drivers/generic/ahci/main.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -18,6 +18,8 @@
 #include <mm/context.h>
 #include <mm/alloc.h>
 #include <mm/pmm.h>
+#include <mm/page.h>
+#include <mm/sglist.h>
 
 #include <locks/spinlock.h>
 #include <locks/semaphore.h>
@@ -32,7 +34,6 @@
 
 #include "command.h"
 #include "ahci_irq.h"
-#include "mm/page.h"
 #include "structs.h"
 
 #if OBOS_ARCHITECTURE_HAS_ACPI

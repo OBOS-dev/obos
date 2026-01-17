@@ -10,10 +10,9 @@
 #include <error.h>
 
 #include <vfs/limits.h>
+#include <vfs/fd.h>
 
 #include <mm/context.h>
-
-#include <vfs/fd.h>
 
 typedef enum vma_flags
 {
@@ -102,12 +101,3 @@ OBOS_EXPORT void* Mm_AllocateKernelStack(context* target_user, obos_status* stat
 
 // Optimized version of Mm_VirtualMemoryAlloc that allocates RW, ANON memory.
 OBOS_EXPORT void* Mm_QuickVMAllocate(size_t sz, bool non_pageable);
-
-struct physical_region
-{
-	uintptr_t phys;
-	size_t sz;	
-};
-
-OBOS_EXPORT obos_status DrvH_ScatterGather(context* ctx, void* base, size_t size, struct physical_region** regions, size_t* nRegions, size_t maxRegionCount, bool rw);
-OBOS_EXPORT obos_status DrvH_FreeScatterGatherList(context* ctx, void* base, size_t size, struct physical_region* regions, size_t nRegions);

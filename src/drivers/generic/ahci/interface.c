@@ -15,6 +15,7 @@
 #include <mm/context.h>
 #include <mm/handler.h>
 #include <mm/bare_map.h>
+#include <mm/sglist.h>
 
 #include <locks/event.h>
 #include <locks/wait.h>

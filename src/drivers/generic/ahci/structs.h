@@ -1,17 +1,19 @@
 /*
-	drivers/x86_64/sata/structs.h
-
-	Copyright (c) 2023-2024 Omar Berrow
+ * drivers/generic/ahci/structs.h
+ * 
+ * Copyright (c) 2023-2026 Omar Berrow
 */
 
 #pragma once
 
-#include "irq/dpc.h"
 #include <int.h>
 
 #include <locks/semaphore.h>
 #include <locks/mutex.h>
 
+#include <mm/sglist.h>
+
+#include <irq/dpc.h>
 #include <irq/irq.h>
 
 #define	SATA_SIG_ATA	0x00000101	// SATA drive
