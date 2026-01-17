@@ -7,6 +7,7 @@
 #include <int.h>
 #include <klog.h>
 #include <struct_packing.h>
+#include <memmanip.h>
 
 #include <mm/sglist.h>
 #include <mm/pmm.h>
@@ -100,7 +101,7 @@ OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_de
 
     if (!ctlr || !desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -123,7 +124,7 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req_p)
+obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req_p)
 {
     if (!desc || !desc->controller || !desc->controller->hdr)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -131,6 +132,21 @@ obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req_p)
     req->desc = (dev_desc)desc;
     return desc->controller->hdr->ftable.submit_irp(req_p);
 }
+
+OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** reqo, const usb_irp_payload* payload)
+{
+    if (!desc || !desc->controller || !desc->controller->hdr || !reqo || !payload)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    irp* req = VfsH_IRPAllocate();
+    req->blkCount = sizeof(*payload);
+    req->buff = Allocate(OBOS_KernelAllocator, sizeof(*payload), nullptr);
+    memcpy(req->buff, payload, sizeof(*payload));
+
+    *reqo = req;
+    return Drv_USBIRPSubmit(desc, req);
+}
+
 OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req)
 {
     OBOS_ENSURE(Core_GetIrql() <= IRQL_DISPATCH);

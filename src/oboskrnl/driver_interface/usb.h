@@ -188,6 +188,17 @@ typedef struct usb_device_descriptor {
     uint8_t bNumConfigurations;
 } OBOS_PACK usb_device_descriptor;
 
+typedef struct usb_configuration_descriptor {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    uint16_t wTotalLength;
+    uint8_t bNumInterfaces;
+    uint8_t bConfigurationValue;
+    uint8_t iConfiguration;
+    uint8_t bmAttributes;
+    uint8_t bMaxPower;
+} OBOS_PACK usb_configuration_descriptor;
+
 typedef struct usb_interface_descriptor {
     uint8_t bLength;
     uint8_t bDescriptorType;
@@ -219,5 +230,7 @@ OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_de
 OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
 
 // req is struct irp*
-OBOS_EXPORT obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req);
+OBOS_EXPORT obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req);
+// req is struct irp**
+OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** req, const usb_irp_payload* payload);
 OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req);
