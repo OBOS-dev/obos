@@ -15,6 +15,8 @@
 
 #include <allocators/base.h>
 
+#include <vfs/irp.h>
+
 #include <locks/mutex.h>
 #include <locks/event.h>
 
@@ -63,6 +65,8 @@ const char* Drv_USBDeviceSpeedAsString(usb_device_speed val)
 
 obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** odesc)
 {
+    OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
+
     if (!ctlr || !info)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
@@ -91,6 +95,8 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
 
 obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
 {
+    OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
+
     if (!ctlr || !desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
@@ -104,4 +110,13 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
     OBOS_SharedPtrUnref(&desc->ptr);
 
     return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req_p)
+{
+    if (!desc || !desc->controller || !desc->controller->hdr)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    irp* req = req_p;
+    req->desc = (dev_desc)desc;
+    return desc->controller->hdr->ftable.submit_irp(req_p);
 }

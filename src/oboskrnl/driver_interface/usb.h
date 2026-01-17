@@ -81,7 +81,7 @@ typedef enum usb_device_speed {
 OBOS_EXPORT const char* Drv_USBDeviceSpeedAsString(usb_device_speed val);
 
 typedef struct usb_device_info {
-    usb_hid hid;
+    usb_hid hid; // not initialized by the driver
 
     uint32_t address;
     uint8_t slot;
@@ -97,6 +97,9 @@ typedef struct usb_dev_desc {
     usb_device_info info;
 
     bool attached : 1;
+
+    // Reserved for use by drivers
+    void* drv_ptr;
 
     LIST_NODE(usb_devices, struct usb_dev_desc) node;
 } usb_dev_desc;
@@ -126,3 +129,6 @@ OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_he
 
 OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
 OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
+
+// req is struct irp*
+OBOS_EXPORT obos_status Drv_USBSubmitIRP(usb_dev_desc* desc, void* req);
