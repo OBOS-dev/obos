@@ -81,6 +81,7 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
     OBOS_SharedPtrRef(&desc->ptr);
 
     desc->attached = true;
+    desc->on_detach = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     desc->controller = ctlr;
     desc->info = *info;
 
@@ -318,6 +319,9 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
         else
             OBOS_Debug("usb: driver does not have on_usb_detach callback\n");
     }
+
+    Core_EventSet(&desc->on_detach, false);
+    Core_EventSet(&ctlr->port_events.on_attach, false);
     
     desc->attached = false;
     OBOS_SharedPtrUnref(&desc->ptr);
@@ -340,6 +344,7 @@ obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req_p)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irp* req = req_p;
     req->desc = (dev_desc)desc;
+    req->detach_event = &desc->on_detach;
     return desc->controller->hdr->ftable.submit_irp(req_p);
 }
 
@@ -367,9 +372,21 @@ OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req)
     irp* request = req;
     if (!request)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    struct waitable_header* signaled = nullptr;
+    struct waitable_header* objs[2] = {};
     while (request->evnt)
     {
-        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (!request->detach_event)
+            status = Core_WaitOnObject(WAITABLE_OBJECT(*request->evnt));
+        else
+        {
+            objs[0] = WAITABLE_OBJECT(*request->evnt);
+            objs[1] = WAITABLE_OBJECT(*request->detach_event);
+            status = Core_WaitOnObjects(2, objs, &signaled);
+            if (signaled == objs[1])
+                status = OBOS_STATUS_INTERNAL_ERROR; // io error
+        }
         if (obos_is_error(status))
             return status;
         if (request->on_event_set)
