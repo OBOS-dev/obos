@@ -34,7 +34,7 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     obos_status status = Drv_USBDriverAttachedToPort(desc, this_driver);
     if (obos_is_success(status))
     {
-        OBOS_Debug("usb-kbd: keyboard bound to driver\n");
+        OBOS_Debug("usb-hid: device bound to driver\n");
         return OBOS_STATUS_SUCCESS;
     }
     return status;
@@ -42,7 +42,7 @@ obos_status on_usb_attach(usb_dev_desc* desc)
 
 obos_status on_usb_detach(usb_dev_desc* desc)
 {
-    OBOS_Debug("usb-kbd: keyboard removed\n");
+    OBOS_Debug("usb-hid: device removed\n");
     OBOS_SharedPtrUnref(&desc->ptr);
     return OBOS_STATUS_SUCCESS;
 }
@@ -71,7 +71,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .on_usb_attach = on_usb_attach,
         .on_usb_detach = on_usb_detach,
     },
-    .driverName = "USB Keyboard Driver",
+    .driverName = "USB HID Driver",
     .version=2,
     .uacpi_init_level_required = PCI_IRQ_UACPI_INIT_LEVEL
 };
