@@ -603,15 +603,19 @@ obos_status Drv_PnpUSBDeviceAttached(usb_dev_desc* desc)
         if (~id->header.flags & DRIVER_HEADER_FLAGS_DETECT_VIA_USB)
             continue;
 
-        if (desc->info.hid.class == id->header.usbHid.class && desc->info.hid.subclass == id->header.usbHid.subclass)
+        if (desc->info.hid.class == id->header.usbHid.class)
         {
-            driver_ftable* ftable = &id->header.ftable;
-            OBOS_ASSERT(ftable->on_usb_attach);
-            if (ftable->on_usb_attach)
+            if (desc->info.hid.subclass == id->header.usbHid.subclass || 
+                id->header.flags & DRIVER_HEADER_FLAGS_USB_DO_NOT_CHECK_SUBCLASS)
             {
-                OBOS_SharedPtrRef(&desc->ptr);
-                ftable->on_usb_attach(desc);
-                nDriversCalled++;
+                driver_ftable* ftable = &id->header.ftable;
+                OBOS_ASSERT(ftable->on_usb_attach);
+                if (ftable->on_usb_attach)
+                {
+                    OBOS_SharedPtrRef(&desc->ptr);
+                    ftable->on_usb_attach(desc);
+                    nDriversCalled++;
+                }
             }
         }
     }

@@ -79,6 +79,10 @@ typedef enum driver_header_flags
     /// Should the driver be detected through USB?
     /// </summary>
     DRIVER_HEADER_FLAGS_DETECT_VIA_USB = 0x1000,
+    /// <summary>
+    /// Set so to make PnP not check subclasses (USB Only)
+    /// </summary>
+    DRIVER_HEADER_FLAGS_USB_DO_NOT_CHECK_SUBCLASS = 0x2000,
 } driver_header_flags;
 typedef enum iterate_decision
 {
