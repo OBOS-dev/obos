@@ -14,6 +14,7 @@
 #include <mm/bare_map.h>
 #include <mm/swap.h>
 #include <mm/pmm.h>
+#include <mm/sglist.h>
 
 #include <scheduler/process.h>
 

@@ -16,6 +16,8 @@
 
 #include <locks/wait.h>
 
+#include <mm/sglist.h>
+
 #include "structs.h"
 #include "command.h"
 
