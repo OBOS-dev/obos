@@ -647,8 +647,8 @@ enum {
 };
 typedef bool xhci_direction;
 
-obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_len /* in dwords */, xhci_inflight_trb** itrb);
-obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_len /* in dwords */, xhci_inflight_trb** itrb);
+obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb);
+obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb);
 
 // Rings the doorbell of the target slot, endpoint, and direction
 void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, xhci_direction direction /* true for OUT, false for IN */);

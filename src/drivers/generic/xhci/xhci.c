@@ -244,7 +244,7 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     
     XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_ENABLE_SLOT_COMMAND);
 
-    status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 4, &itrb));
+    status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
     if (obos_is_error(status))
         Core_ExitCurrentThread();
 
@@ -503,7 +503,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     // trb.dw3 |= BIT(9);
     
     xhci_inflight_trb* itrb = nullptr;
-    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 4, &itrb));
+    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
     if (obos_is_error(status))
         return status;
     status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
@@ -528,7 +528,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 
     if (obos_is_success(status))
         OBOS_Debug("%s: sucessfully initialized slot %d on port %d with address %d\n", __func__, slot, port, dev->slots[slot].address);
-   
+
     Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
     Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
 
@@ -584,10 +584,10 @@ static xhci_inflight_trb* add_inflight_trb(xhci_device* dev, uintptr_t ptr)
     return inflight;
 }
 
-obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_len, xhci_inflight_trb** itrb)
+obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb)
 {
     xhci_slot* slot = &dev->slots[slot_id];
-    if (trb_len < 4 || !trb || !dev || !itrb)
+    if (trb_count < 1 || !trb || !dev || !itrb)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
     if (!slot->allocated)
@@ -596,7 +596,7 @@ obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t end
     if (!slot->trb_ring[endpoint+direction*2].enqueue_ptr)
         return OBOS_STATUS_UNINITIALIZED;
     
-    if ((slot->trb_ring[endpoint+direction*2].enqueue_ptr + (trb_len*4)) == slot->trb_ring[endpoint+direction*2].dequeue_ptr)
+    if ((slot->trb_ring[endpoint+direction*2].enqueue_ptr + (trb_count*16)) == slot->trb_ring[endpoint+direction*2].dequeue_ptr)
         return OBOS_STATUS_WOULD_BLOCK;
 
     Core_MutexAcquire(&dev->trbs_inflight_lock);
@@ -604,11 +604,11 @@ obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t end
     const uint8_t target = endpoint == 0 ? 1 : ((endpoint+1)*2 + !direction);
 
     void* ptr = MmS_MapVirtFromPhys(slot->trb_ring[target].enqueue_ptr);
-    memcpy(ptr, trb, trb_len*4);
+    memcpy(ptr, trb, trb_count*16);
     *itrb = add_inflight_trb(dev, slot->trb_ring[target].enqueue_ptr);
     (*itrb)->dequeue_ptr = &slot->trb_ring[target].dequeue_ptr;
-    ((uint32_t*)ptr)[3] |= BIT(0);
-    slot->trb_ring[target].enqueue_ptr += trb_len*4;
+    ((uint32_t*)ptr)[(trb_count-1)*4+3] |= BIT(0);
+    slot->trb_ring[target].enqueue_ptr += trb_count*16;
     
     Core_MutexRelease(&dev->trbs_inflight_lock);
 
@@ -617,27 +617,27 @@ obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t end
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_len, xhci_inflight_trb** itrb)
+obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_count, xhci_inflight_trb** itrb)
 {
-    if (!dev || !trb || trb_len < 4 || !itrb)
+    if (!dev || !trb || trb_count < 1 || !itrb)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (!dev->command_ring.pg)
         return OBOS_STATUS_UNINITIALIZED;
     
-    if ((dev->command_ring.enqueue_ptr + (trb_len*4)) == dev->command_ring.dequeue_ptr)
+    if ((dev->command_ring.enqueue_ptr + (trb_count*16)) == dev->command_ring.dequeue_ptr)
         return OBOS_STATUS_WOULD_BLOCK;
 
     Core_MutexAcquire(&dev->trbs_inflight_lock);
 
     void* ptr = MmS_MapVirtFromPhys(dev->command_ring.enqueue_ptr);
-    memcpy(ptr, trb, trb_len*4);
+    memcpy(ptr, trb, trb_count*16);
     if (dev->op_regs->crcr & BIT(0))
-        ((uint32_t*)ptr)[3] |= BIT(0); // cycle bit
+        ((uint32_t*)ptr)[(trb_count-1)*4+3] |= BIT(0); // cycle bit
     else
-        ((uint32_t*)ptr)[3] &= ~BIT(0); // cycle bit
+        ((uint32_t*)ptr)[(trb_count-1)*4+3] &= ~BIT(0); // cycle bit
     *itrb = add_inflight_trb(dev, dev->command_ring.enqueue_ptr);
     (*itrb)->dequeue_ptr = &dev->command_ring.dequeue_ptr;
-    dev->command_ring.enqueue_ptr += trb_len*4;
+    dev->command_ring.enqueue_ptr += trb_count*16;
 
     Core_MutexRelease(&dev->trbs_inflight_lock);
     
