@@ -290,11 +290,11 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     }
 
     usb_device_info info = {};
-    info.address = dev->slots[slot].address;
+    info.address = dev->slots[slot-1].address;
     info.slot = slot;
     info.speed = speed;
 
-    status = Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot].desc);
+    status = Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc);
 
     Core_ExitCurrentThread();
 }
@@ -311,6 +311,8 @@ static void continue_port_attach(xhci_device* dev, uint8_t port_id)
     CoreS_SetupThreadContext(&ctx, (uintptr_t)continue_port_attach_impl, (uintptr_t)userdata, false, stack, 0x2000);
     CoreH_ThreadInitialize(thr, THREAD_PRIORITY_REAL_TIME, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id), &ctx);
     Core_ProcessAppendThread(OBOS_KernelProcess, thr);
+    thr->stackFree = CoreH_VMAStackFree;
+    thr->stackFreeUserdata = &Mm_KernelContext;
     CoreH_ThreadReady(thr);
 }
 
@@ -342,9 +344,48 @@ static void process_port_attach(xhci_device* dev, uint8_t port_id)
     continue_port_attach(dev, port_id);
 }
 
+static void process_port_detach_worker(uintptr_t *userdata)
+{
+    xhci_device* dev = (void*)userdata[0];
+    uint8_t port_id = userdata[1];
+    uint8_t slot = dev->port_to_slot_id[port_id-1];
+    
+    xhci_disable_slot_command_trb trb = {};
+    xhci_inflight_trb* itrb = nullptr;
+    
+    XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_DISABLE_SLOT_COMMAND);
+    trb.dw3 |= (slot<<24);
+    obos_status status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, 1, &itrb));
+    if (obos_is_error(status))
+        Core_ExitCurrentThread();
+
+    status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
+
+    Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+    Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+
+    Drv_USBPortDetached(dev->ctlr, dev->slots[slot-1].desc);
+
+    xhci_slot_free(dev, slot);
+
+    Core_ExitCurrentThread();
+}
+
 static void process_port_detach(xhci_device* dev, uint8_t port_id)
 {
-    OBOS_UNUSED(dev && port_id);
+    uintptr_t* userdata = ZeroAllocate(OBOS_KernelAllocator, 2, sizeof(uintptr_t), nullptr);
+    userdata[0] = (uintptr_t)dev;
+    userdata[1] = port_id;
+
+    thread* thr = CoreH_ThreadAllocate(nullptr);
+    thread_ctx ctx = {};
+    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, 0, 0x2000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)process_port_detach_worker, (uintptr_t)userdata, false, stack, 0x2000);
+    CoreH_ThreadInitialize(thr, THREAD_PRIORITY_REAL_TIME, CoreH_CPUIdToAffinity(CoreS_GetCPULocalPtr()->id), &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, thr);
+    thr->stackFree = CoreH_VMAStackFree;
+    thr->stackFreeUserdata = &Mm_KernelContext;
+    CoreH_ThreadReady(thr);
 }
 
 static void process_port_status_change(xhci_device* dev, uint8_t port_id)
@@ -479,19 +520,19 @@ static obos_status do_bios_handoff(xhci_device* dev)
 
 obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 {
-    if (dev->slots[slot].allocated)
+    if (dev->slots[slot-1].allocated)
     {
         OBOS_Warning("xhci: xhci_slot_initialize called on an allocated slot.\n");
         xhci_slot_free(dev, slot);
     }
 
-    dev->slots[slot].trb_ring[0].buffer.pg = MmH_PgAllocatePhysical(!dev->has_64bit_support, false);
-    OBOS_ENSURE(dev->slots[slot].trb_ring[0].buffer.pg);
-    dev->slots[slot].trb_ring[0].buffer.virt = MmS_MapVirtFromPhys(dev->slots[slot].trb_ring[0].buffer.pg->phys);
-    dev->slots[slot].trb_ring[0].buffer.len = OBOS_PAGE_SIZE;
-    memzero(dev->slots[slot].trb_ring[0].buffer.virt, dev->slots[slot].trb_ring[0].buffer.len);
-    dev->slots[slot].trb_ring[0].enqueue_ptr = dev->slots[slot].trb_ring[0].buffer.pg->phys;
-    dev->slots[slot].doorbell = (uint32_t*)(((uint8_t*)dev->base) + dev->cap_regs->dboff) + slot;
+    dev->slots[slot-1].trb_ring[0].buffer.pg = MmH_PgAllocatePhysical(!dev->has_64bit_support, false);
+    OBOS_ENSURE(dev->slots[slot-1].trb_ring[0].buffer.pg);
+    dev->slots[slot-1].trb_ring[0].buffer.virt = MmS_MapVirtFromPhys(dev->slots[slot-1].trb_ring[0].buffer.pg->phys);
+    dev->slots[slot-1].trb_ring[0].buffer.len = OBOS_PAGE_SIZE;
+    memzero(dev->slots[slot-1].trb_ring[0].buffer.virt, dev->slots[slot-1].trb_ring[0].buffer.len);
+    dev->slots[slot-1].trb_ring[0].enqueue_ptr = dev->slots[slot-1].trb_ring[0].buffer.pg->phys;
+    dev->slots[slot-1].doorbell = (uint32_t*)(((uint8_t*)dev->base) + dev->cap_regs->dboff) + slot;
 
     const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
 
@@ -521,7 +562,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     ctrl_ep->flags2 |= (0x4<<3);
     // DCS=1
     ctrl_ep->tr_dequeue_pointer |= BIT(0);
-    ctrl_ep->tr_dequeue_pointer |= dev->slots[slot].trb_ring[0].enqueue_ptr;
+    ctrl_ep->tr_dequeue_pointer |= dev->slots[slot-1].trb_ring[0].enqueue_ptr;
 
     xhci_address_device_command_trb trb = {};
     XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_ADDRESS_DEVICE_COMMAND);
@@ -550,11 +591,17 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     else
     {
         xhci_slot_context* real_slot_ctx = (xhci_slot_context*)get_xhci_endpoint_context(dev, device_context, 0);
-        dev->slots[slot].address = real_slot_ctx->dw3 & 0xff;
+        dev->slots[slot-1].address = real_slot_ctx->dw3 & 0xff;
     }
 
     if (obos_is_success(status))
-        OBOS_Debug("%s: sucessfully initialized slot %d on port %d with address %d\n", __func__, slot, port, dev->slots[slot].address);
+    {
+        dev->port_to_slot_id[port-1] = slot;
+        dev->slots[slot-1].port_id = port;
+        dev->slots[slot-1].allocated = true;
+
+        OBOS_Debug("%s: sucessfully initialized slot %d on port %d with address %d\n", __func__, slot, port, dev->slots[slot-1].address);
+    }
 
     Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
     Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
@@ -564,23 +611,27 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 
 obos_status xhci_slot_free(xhci_device* dev, uint8_t slot)
 {
-    if (!dev->slots[slot].allocated)
+    if (!dev->slots[slot-1].allocated)
         return OBOS_STATUS_SUCCESS;
 
     for (int i = 0; i < 31; i++)
-        if (dev->slots[slot].trb_ring[i].buffer.len)
-            MmH_DerefPage(dev->slots[slot].trb_ring[i].buffer.pg);
+        if (dev->slots[slot-1].trb_ring[i].buffer.len)
+            MmH_DerefPage(dev->slots[slot-1].trb_ring[i].buffer.pg);
 
     const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
     const size_t sz = dev->hccparams1_csz ? 0x800 : 0x400;
     
     // TODO: Do we need to do anything else?
 
-    Mm_FreePhysicalPages(dev->device_context_array.base[slot+1].device_context_base, xhci_page_count_for_size(sz, nPages));
-    dev->device_context_array.base[slot+1].device_context_base = 0;    
+    Mm_FreePhysicalPages(dev->device_context_array.base[slot].device_context_base, xhci_page_count_for_size(sz, nPages));
+    dev->device_context_array.base[slot].device_context_base = 0;    
 
-    dev->slots[slot].allocated = false;
-    memzero(&dev->slots[slot], sizeof(dev->slots[slot]));
+    dev->slots[slot-1].allocated = false;
+
+    OBOS_ENSURE(dev->slots[slot-1].port_id > 0);
+    dev->port_to_slot_id[dev->slots[slot-1].port_id-1] = 0;
+
+    memzero(&dev->slots[slot-1], sizeof(dev->slots[slot-1]));
 
     return OBOS_STATUS_SUCCESS;
 }
