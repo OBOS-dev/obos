@@ -1,5 +1,5 @@
 /*
- * drivers/x86_64/xhci/structs.h
+ * drivers/generic/xhci/xhci.h
  *
  * Copyright (c) 2026 Omar Berrow
 */
