@@ -114,8 +114,13 @@ typedef struct usb_dev_desc {
 
     bool attached : 1;
 
-    // Reserved for use by drivers
+    // Reserved for use by controller drivers
     void* drv_ptr;
+
+    // Reserved for use by device drivers
+    void* dev_ptr;
+
+    void* drv;
 
     LIST_NODE(usb_devices, struct usb_dev_desc) node;
 } usb_dev_desc;
@@ -236,6 +241,11 @@ OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_he
 OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
 OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_desc* desc);
 OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
+
+// USB Device Drivers should call this when
+// they attach themselves to a port.
+// drv_id is struct driver_id*
+OBOS_EXPORT OBOS_NODISCARD obos_status Drv_USBDriverAttachedToPort(usb_dev_desc* desc, void* drv_id);
 
 // req is struct irp*
 OBOS_EXPORT obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req);

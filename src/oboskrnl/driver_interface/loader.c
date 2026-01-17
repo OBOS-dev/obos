@@ -76,6 +76,12 @@ static size_t get_header_size(driver_header* header)
             case CURRENT_DRIVER_HEADER_VERSION:
                 sizeof_header = sizeof(*header);
                 break;
+#if CURRENT_DRIVER_HEADER_VERSION != 2
+            case 2:
+#endif
+            case 1:
+                sizeof_header = 928;
+                break;
             default:
                 return SIZE_MAX;
         }

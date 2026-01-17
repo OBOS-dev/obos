@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/pnp.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -10,7 +10,9 @@
 #include <error.h>
 
 #include <driver_interface/header.h>
+#include <driver_interface/driverId.h>
 #include <driver_interface/pci.h>
+#include <driver_interface/usb.h>
 
 #include <vfs/dirent.h>
 
@@ -19,3 +21,4 @@
 obos_status Drv_PnpDetectDrivers(driver_header_list what, driver_header_list *toLoad);
 obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait);
 obos_status Drv_PnpLoad_uHDA();
+obos_status Drv_PnpUSBDeviceAttached(usb_dev_desc* desc);

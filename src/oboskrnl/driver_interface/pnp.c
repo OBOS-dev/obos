@@ -1,7 +1,7 @@
 /*
  * oboskrnl/driver_interface/pnp.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -40,9 +40,11 @@
 typedef struct pnp_device
 {
     pci_hid pci_key; // the class code, subclass, etc.
+    usb_hid usb_key;
     bool ignore_progif;
     bool pci : 1;
     bool acpi : 1;
+    bool usb : 1;
     char acpi_key[8]; // acpi pnp id
     driver_header_list headers;
     RB_ENTRY(pnp_device) acpi_node;
@@ -582,6 +584,42 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
         RB_REMOVE(driver_file_tree, &drivers, iter);
     }
     return status;
+}
+
+// TODO(oberrow): Automatic driver loading.
+obos_status Drv_PnpUSBDeviceAttached(usb_dev_desc* desc)
+{
+    if (!desc) return OBOS_STATUS_INVALID_ARGUMENT;
+
+    size_t nDriversCalled = 0;
+
+    for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
+    {
+        driver_id* const id = curr->data;
+        curr = curr->next;
+
+        if (!OBOS_DRIVER_HEADER_USB_HID_VALID(&id->header))
+            continue;
+        if (~id->header.flags & DRIVER_HEADER_FLAGS_DETECT_VIA_USB)
+            continue;
+
+        if (desc->info.hid.class == id->header.usbHid.class && desc->info.hid.subclass == id->header.usbHid.subclass)
+        {
+            driver_ftable* ftable = &id->header.ftable;
+            OBOS_ASSERT(ftable->on_usb_attach);
+            if (ftable->on_usb_attach)
+            {
+                OBOS_SharedPtrRef(&desc->ptr);
+                ftable->on_usb_attach(desc);
+                nDriversCalled++;
+            }
+        }
+    }
+    OBOS_Debug("%s: called %d drivers\n", __func__, nDriversCalled);
+    if (!nDriversCalled)
+        OBOS_Debug("%s: TODO(oberrow): autoload USB drivers\n", __func__);
+
+    return OBOS_STATUS_SUCCESS;
 }
 
 #if OBOS_ENABLE_UHDA
