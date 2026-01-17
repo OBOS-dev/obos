@@ -49,11 +49,14 @@ obos_status on_usb_detach(usb_dev_desc* desc)
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
-    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_FLAGS_DETECT_VIA_USB|DRIVER_HEADER_HAS_VERSION_FIELD,
+    .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|
+             DRIVER_HEADER_FLAGS_DETECT_VIA_USB|
+             DRIVER_HEADER_HAS_VERSION_FIELD|
+             DRIVER_HEADER_FLAGS_USB_DO_NOT_CHECK_SUBCLASS,
     .usbHid = {
         .class = 0x03,
-        .subclass = 0x01,
-        .protocol = 0x01,
+        .subclass = 0x00,
+        .protocol = 0x00,
     },
     .ftable = {
         .driver_cleanup_callback = driver_cleanup_callback,
