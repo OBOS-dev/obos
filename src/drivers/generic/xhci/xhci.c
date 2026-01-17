@@ -1,5 +1,5 @@
 /*
- * drivers/x86_64/xhci/xhci.c
+ * drivers/generic/xhci/xhci.c
  *
  * Copyright (c) 2026 Omar Berrow
 */
@@ -38,7 +38,7 @@
 #include <utils/list.h>
 
 #define INIT_C
-#include "structs.h"
+#include "xhci.h"
 
 void Sys_SleepMS(uint64_t ms, uint64_t*);
 

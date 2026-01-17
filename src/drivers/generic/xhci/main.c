@@ -13,7 +13,7 @@
 #include <driver_interface/pci.h>
 #include <driver_interface/driverId.h>
 
-#include "structs.h"
+#include "xhci.h"
 
 OBOS_WEAK obos_status submit_irp(void*);
 OBOS_WEAK obos_status finalize_irp(void*);
