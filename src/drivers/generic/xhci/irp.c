@@ -122,15 +122,18 @@ obos_status submit_irp(void* reqp)
 
     bool in_endpoint = req->op == IRP_READ;
     const uint8_t target = payload->endpoint == 0 ? 0 : ((payload->endpoint+1)*2 + (req->op == IRP_WRITE));
-    if (!slot->trb_ring[target].buffer.pg && payload->trb_type != USB_TRB_CONFIGURE_ENDPOINT)
+    if (!slot->trb_ring[target].buffer.pg && (payload->trb_type != USB_TRB_CONFIGURE_ENDPOINT || payload->payload.configure_endpoint.deconfigure))
     {
         req->status = OBOS_STATUS_UNINITIALIZED;
         return OBOS_STATUS_SUCCESS;
     }
-    if (slot->trb_ring[target].buffer.pg && payload->trb_type == USB_TRB_CONFIGURE_ENDPOINT)
+    if (slot->trb_ring[target].buffer.pg)
     {
-        req->status = OBOS_STATUS_ALREADY_INITIALIZED;
-        return OBOS_STATUS_SUCCESS;
+        if (payload->trb_type == USB_TRB_CONFIGURE_ENDPOINT && !payload->payload.configure_endpoint.deconfigure)
+        {
+            req->status = OBOS_STATUS_ALREADY_INITIALIZED;
+            return OBOS_STATUS_SUCCESS;
+        }
     }
 
     xhci_endpoint_context* ep_ctx = get_xhci_endpoint_context(dev, xhci_get_device_context(dev, desc->info.slot), target+1);
@@ -349,47 +352,79 @@ obos_status submit_irp(void* reqp)
             const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
             uint8_t slot = desc->info.slot;
             
-            dev->slots[slot-1].trb_ring[target].buffer.pg = MmH_PgAllocatePhysical(!dev->has_64bit_support, false);
-            OBOS_ENSURE(dev->slots[slot-1].trb_ring[target].buffer.pg);
-            dev->slots[slot-1].trb_ring[target].buffer.virt = MmS_MapVirtFromPhys(dev->slots[slot-1].trb_ring[target].buffer.pg->phys);
-            dev->slots[slot-1].trb_ring[target].buffer.len = OBOS_PAGE_SIZE;
-            memzero(dev->slots[slot-1].trb_ring[target].buffer.virt, dev->slots[slot-1].trb_ring[target].buffer.len);
-            dev->slots[slot-1].trb_ring[target].enqueue_ptr = dev->slots[slot-1].trb_ring[target].buffer.pg->phys;
+            if (payload->payload.configure_endpoint.deconfigure)
+            {
+                dev->slots[slot-1].trb_ring[target].enqueue_ptr = 0;
+                dev->slots[slot-1].trb_ring[target].dequeue_ptr = 0;
+                dev->slots[slot-1].trb_ring[target].buffer.len = 0;
+                MmH_DerefPage(dev->slots[slot-1].trb_ring[target].buffer.pg);
+                dev->slots[slot-1].trb_ring[target].buffer.pg = nullptr;
+                dev->slots[slot-1].trb_ring[target].buffer.virt = nullptr;
+            }
+            else
+            {
+                dev->slots[slot-1].trb_ring[target].buffer.pg = MmH_PgAllocatePhysical(!dev->has_64bit_support, false);
+                OBOS_ENSURE(dev->slots[slot-1].trb_ring[target].buffer.pg);
+                dev->slots[slot-1].trb_ring[target].buffer.virt = MmS_MapVirtFromPhys(dev->slots[slot-1].trb_ring[target].buffer.pg->phys);
+                dev->slots[slot-1].trb_ring[target].buffer.len = OBOS_PAGE_SIZE;
+                memzero(dev->slots[slot-1].trb_ring[target].buffer.virt, dev->slots[slot-1].trb_ring[target].buffer.len);
+                dev->slots[slot-1].trb_ring[target].enqueue_ptr = dev->slots[slot-1].trb_ring[target].buffer.pg->phys;
+            }
 
             const uint8_t target_dci = (payload->endpoint-1)*2+dir + 2;
             
             uintptr_t icp = xhci_allocate_pages(xhci_page_count_for_size(sz_icp, nPages), nPages, dev);
             xhci_input_context* input_context = MmS_MapVirtFromPhys(icp);
             memzero(input_context, xhci_page_count_for_size(sz_icp, nPages)*OBOS_PAGE_SIZE);
-            input_context->icc.add_context |= BIT(target_dci);
+            if (payload->payload.configure_endpoint.deconfigure)
+                input_context->icc.drop_context |= BIT(target_dci);
+            else
+                input_context->icc.add_context |= BIT(target_dci);
+            input_context->icc.add_context |= 1;
+
+            xhci_slot_context* slot_ctx = get_xhci_endpoint_context(dev, input_context, 1);
+            const xhci_slot_context* src_slot_ctx = get_xhci_endpoint_context(dev, xhci_get_device_context(dev, slot), 0);
+            memcpy(slot_ctx, src_slot_ctx, sizeof(*slot_ctx));
+            if ((slot_ctx->dw0 >> 27) < payload->endpoint)
+            {
+                slot_ctx->dw0 &= ~0xF8000000;
+                slot_ctx->dw0 |= (payload->endpoint+1) << 27;
+            }
 
             xhci_endpoint_context* ep_ctx = get_xhci_endpoint_context(dev, input_context, target_dci+1);
-            ep_ctx->flags2 |= 3<<1;
-            ep_ctx->max_burst_size = payload->payload.configure_endpoint.max_burst_size;
-            ep_ctx->max_packet_size = payload->payload.configure_endpoint.max_packet_size;
-            ep_ctx->tr_dequeue_pointer = dev->slots[slot-1].trb_ring[target].enqueue_ptr;
-            ep_ctx->tr_dequeue_pointer |= BIT(0);
-            switch (payload->payload.configure_endpoint.endpoint_type) {
-                case USB_ENDPOINT_CONTROL:
-                    OBOS_UNREACHABLE;
-                case USB_ENDPOINT_ISOCH:
-                    ep_ctx->flags2 |= ((dir ? 0x5 : 0x1) << 3);
-                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
-                    break;
-                case USB_ENDPOINT_BULK:
-                    ep_ctx->flags2 |= ((dir ? 0x6 : 0x2) << 3);
-                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
-                    break;
-                case USB_ENDPOINT_INTERRUPT:
-                    ep_ctx->flags2 |= ((dir ? 0x7 : 0x3) << 3);
-                    ep_ctx->average_trb_length = ep_ctx->max_packet_size * 2;
-                    break;
-                default: OBOS_ENSURE(!"invalid endpoint type");
+            if (payload->payload.configure_endpoint.deconfigure)
+                memzero(ep_ctx, sizeof(*ep_ctx));
+            else
+            {
+                ep_ctx->flags2 |= 3<<1;
+                ep_ctx->max_burst_size = payload->payload.configure_endpoint.max_burst_size;
+                ep_ctx->max_packet_size = payload->payload.configure_endpoint.max_packet_size;
+                ep_ctx->tr_dequeue_pointer = dev->slots[slot-1].trb_ring[target].enqueue_ptr;
+                ep_ctx->tr_dequeue_pointer |= BIT(0);
+                switch (payload->payload.configure_endpoint.endpoint_type) {
+                    case USB_ENDPOINT_CONTROL:
+                        OBOS_UNREACHABLE;
+                    case USB_ENDPOINT_ISOCH:
+                        ep_ctx->flags2 |= ((dir ? 0x5 : 0x1) << 3);
+                        ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
+                        break;
+                    case USB_ENDPOINT_BULK:
+                        ep_ctx->flags2 |= ((dir ? 0x6 : 0x2) << 3);
+                        ep_ctx->average_trb_length = ep_ctx->max_packet_size * 6;
+                        break;
+                    case USB_ENDPOINT_INTERRUPT:
+                        ep_ctx->flags2 |= ((dir ? 0x7 : 0x3) << 3);
+                        ep_ctx->average_trb_length = ep_ctx->max_packet_size * 2;
+                        break;
+                    default: OBOS_ENSURE(!"invalid endpoint type");
+                }
             }
 
             xhci_configure_endpoint_command_trb trb = {};
             XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_CONFIGURE_ENDPOINT_COMMAND);
             trb.dw3 |= ((uint32_t)slot << 24);
+            if (payload->payload.configure_endpoint.deconfigure)
+                trb.dw3 |= BIT(9);
             trb.icp = icp;
             
             xhci_inflight_trb* itrb = nullptr;
