@@ -78,6 +78,7 @@ typedef struct usb_irp_payload {
             usb_endpoint_type endpoint_type;
             uint16_t max_packet_size;
             uint16_t max_burst_size;
+            bool deconfigure : 1;
         } configure_endpoint;
     } payload;
 } usb_irp_payload;
@@ -199,6 +200,13 @@ typedef struct usb_configuration_descriptor {
     uint8_t bMaxPower;
 } OBOS_PACK usb_configuration_descriptor;
 
+typedef struct usb_descriptor_header {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+} OBOS_PACK usb_descriptor_header;
+
+#define usb_next_descriptor(x) ((usb_descriptor_header*)(((uint8_t*)(x))[0] + (uintptr_t)(x)))
+
 typedef struct usb_interface_descriptor {
     uint8_t bLength;
     uint8_t bDescriptorType;
@@ -206,7 +214,7 @@ typedef struct usb_interface_descriptor {
     uint8_t bAlternateSetting;
     uint8_t bNumEndpoints;
     uint8_t bInterfaceClass;
-    uint8_t bInterfaceSublass;
+    uint8_t bInterfaceSubclass;
     uint8_t bInterfaceProtocol;
     uint8_t iInterface;
 } OBOS_PACK usb_interface_descriptor;
@@ -232,5 +240,6 @@ OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* 
 // req is struct irp*
 OBOS_EXPORT obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req);
 // req is struct irp**
-OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** req, const usb_irp_payload* payload);
+// dir is false for OUT (IRP_WRITE), and true for IN (IRP_READ)
+OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** req, const usb_irp_payload* payload, bool dir);
 OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req);
