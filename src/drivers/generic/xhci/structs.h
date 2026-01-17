@@ -12,11 +12,16 @@
 
 #include <driver_interface/pci.h>
 
+#include <locks/event.h>
+#include <locks/mutex.h>
+
 #include <mm/page.h>
 
 #include <irq/irq.h>
 #include <irq/irql.h>
 #include <irq/dpc.h>
+
+#include <utils/tree.h>
 
 typedef struct xhci_registers {
     uint8_t caplength;
@@ -261,7 +266,7 @@ typedef struct xhci_transfer_event_trb {
     uint32_t dw3;
 } OBOS_PACK xhci_transfer_event_trb;
 
-typedef struct xhci_comamnd_completion_event_trb {
+typedef struct xhci_commmand_completion_event_trb {
     uint64_t ctrbp; // aligned to 16 bytes
 
     // Bits 0-23: Command Completion Parameter
@@ -274,7 +279,7 @@ typedef struct xhci_comamnd_completion_event_trb {
     // Bits 16-23: VF ID
     // Bits 24-31: Slot ID
     uint32_t dw3;
-} OBOS_PACK xhci_comamnd_completion_event_trb;
+} OBOS_PACK xhci_commmand_completion_event_trb;
 
 typedef struct xhci_port_status_change_event_trb {
     // Bits 0-23: Reserved
@@ -436,7 +441,12 @@ typedef struct xhci_get_port_bandwith_command_trb {
     uint32_t dw3;
 } xhci_get_port_bandwith_command_trb;
 
-#define XHCI_TRB_TYPE(trb) ((((uint32_t*)trb)[3] >> 10) & 0x3f)
+#define XHCI_GET_TRB_TYPE(trb) ((((uint32_t*)(trb))[3] >> 10) & 0x3f)
+#define XHCI_SET_TRB_TYPE(trb, type) ({ (((uint32_t*)(trb))[3]) |= ((type & 0x3f) << 10); type; })
+#define XHCI_GET_COMPLETION_CODE(trb) (((((uint32_t*)(trb))[2]) >> 24) & 0xff)
+#define XHCI_GET_COMPLETION_PARAMETER(trb) ((((uint32_t*)(trb))[2]) & 0xffffff)
+// NOTE: is transfer length - transferred bytes count
+#define XHCI_GET_TRB_TRANSFER_LENGTH(trb) ((((uint32_t*)(trb))[2]) & 0xffffff)
 
 enum {
     XHCI_TRB_NORMAL = 1,
@@ -445,6 +455,7 @@ enum {
     XHCI_TRB_STATUS_STAGE,
     XHCI_TRB_ISOCH,
     XHCI_TRB_LINK,
+    XHCI_TRB_EVENT_DATA,
     XHCI_TRB_NOP,
     XHCI_TRB_ENABLE_SLOT_COMMAND,
     XHCI_TRB_DISABLE_SLOT_COMMAND,
@@ -483,12 +494,13 @@ typedef struct xhci_endpoint_context {
     uint8_t max_esit_payload_high;
     uint8_t flags2;
     uint8_t max_burst_size;
-    uint8_t max_packet_size;
-    uint32_t tr_dequeue_pointer; // bit zero: dcs, aligned to 16 bytes
+    uint16_t max_packet_size;
+    uint64_t tr_dequeue_pointer; // bit zero: dcs, aligned to 16 bytes
     uint16_t average_trb_length;
     uint16_t max_esit_payload_low;
     uint32_t resv[3];
 } OBOS_PACK xhci_endpoint_context;
+
 typedef struct xhci_slot_context {
     uint32_t dw0;
     uint32_t dw1;
@@ -496,6 +508,19 @@ typedef struct xhci_slot_context {
     uint32_t dw3;
     uint32_t resv[4];
 } OBOS_PACK xhci_slot_context;
+
+typedef struct xhci_input_context {
+    struct {
+        uint32_t drop_context;
+        uint32_t add_context;
+        uint32_t resv1[5];
+        uint8_t conf_value;
+        uint8_t iface_num;
+        uint8_t alt_setting;
+        uint8_t resv2;
+    } OBOS_PACK icc;
+    char device_context[];
+} OBOS_PACK xhci_input_context;
 
 typedef struct xhci_event_ring_segment_table_entry {
     uint64_t rsba; // ring segment base address
@@ -511,15 +536,29 @@ typedef struct xhci_slot {
             page* pg;
         } buffer;
         uint64_t enqueue_ptr;
-    } trb_ring[16]; // indexed by endpoint
+        uint64_t dequeue_ptr;
+    } trb_ring[31];
     uint32_t* doorbell;
-    // to be part of the dev_desc for a slot
-    // should change on each allocation
-    // TODO: if a value is eventually reused and a reference still exists,
-    // could a driver try to send bogus IRPs on this slot?
-    uint16_t uuid;
+    uint32_t address;
     bool allocated;
 } xhci_slot;
+
+typedef struct xhci_inflight_trb {
+    uintptr_t ptr;
+    uint64_t* dequeue_ptr;
+    uint32_t* resp;
+    uint8_t resp_length; // in dwords
+    event evnt;
+    RB_ENTRY(xhci_inflight_trb) node;
+} xhci_inflight_trb;
+
+static inline int cmp_inflight_trb(xhci_inflight_trb *lhs, xhci_inflight_trb *rhs)
+{
+    return (lhs->ptr < rhs->ptr) ? -1 : ((lhs->ptr == rhs->ptr) ? 0 : 1);
+}
+
+typedef RB_HEAD(xhci_trbs_inflight, xhci_inflight_trb) xhci_trbs_inflight;
+RB_PROTOTYPE(xhci_trbs_inflight, xhci_inflight_trb, node, cmp_inflight_trb);
 
 typedef struct xhci_device {
     pci_device* dev;
@@ -536,7 +575,7 @@ typedef struct xhci_device {
     pci_resource* pci_irq;
 
     irq irq;
-    dpc dpc;
+    dpc irq_dpc;
     bool handling_irq : 1;
 
     // Same bitfield as usbsts, but only the interrupt status bits
@@ -553,6 +592,8 @@ typedef struct xhci_device {
         void* virt;
         size_t len;
         page* pg;
+        uintptr_t enqueue_ptr;
+        uintptr_t dequeue_ptr;
     } command_ring;
     struct {
         void* virt;
@@ -572,6 +613,9 @@ typedef struct xhci_device {
     } device_context_array;
 
     xhci_slot *slots;
+
+    xhci_trbs_inflight trbs_inflight;
+    mutex trbs_inflight_lock;
     
     struct xhci_device *next, *prev;
 } xhci_device;
@@ -594,11 +638,20 @@ void xhci_probe_bus(pci_bus* bus);
 obos_status xhci_initialize_device(xhci_device* dev);
 obos_status xhci_reset_device(xhci_device* dev);
 
-obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot);
+obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port);
 obos_status xhci_slot_free(xhci_device* dev, uint8_t slot);
 
+enum {
+    XHCI_DIRECTION_OUT,
+    XHCI_DIRECTION_IN,
+};
+typedef bool xhci_direction;
+
+obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoint, xhci_direction direction, uint32_t* trb, size_t trb_len /* in dwords */, xhci_inflight_trb** itrb);
+obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, size_t trb_len /* in dwords */, xhci_inflight_trb** itrb);
+
 // Rings the doorbell of the target slot, endpoint, and direction
-void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, bool direction /* true for OUT, false for IN */);
+void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, xhci_direction direction /* true for OUT, false for IN */);
 // Rings the control doorbell of the host controller.
 void xhci_doorbell_control(xhci_device* dev);
 

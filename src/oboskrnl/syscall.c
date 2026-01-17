@@ -143,7 +143,7 @@ void slp_handler(void* userdata)
     Core_EventSet((event*)userdata, true);
 }
 
-obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
+OBOS_EXPORT obos_status Sys_SleepMS(uint64_t ms, uint64_t* uleft)
 {
     OBOS_UNUSED(uleft);
     event evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
