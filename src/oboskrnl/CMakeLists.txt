@@ -23,7 +23,7 @@ list (APPEND oboskrnl_sources
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
 	"net/icmp.c" "net/tcp.c" "vfs/socket.c" "net/lo.c"
 	"kinit.c" "vfs/local_socket.c" "perm.c" "contrib/tjec.c"
-	"contrib/csprng.c" "vfs/pty.c" "vfs/tmpfs.c"
+	"contrib/csprng.c" "vfs/pty.c" "vfs/tmpfs.c" "driver_interface/usb.c"
 )
 
 add_executable(oboskrnl)

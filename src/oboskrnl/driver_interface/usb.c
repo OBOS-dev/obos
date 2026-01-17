@@ -47,6 +47,20 @@ obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header
     return OBOS_STATUS_SUCCESS;
 }
 
+const char* Drv_USBDeviceSpeedAsString(usb_device_speed val)
+{
+    switch (val) {
+        case USB_DEVICE_LOW_SPEED: return "low-speed";
+        case USB_DEVICE_FULL_SPEED: return "full-speed";
+        case USB_DEVICE_HIGH_SPEED: return "high-speed";
+        case USB_DEVICE_SUPER_SPEED_GEN1_X1: return "superspeed gen1 x1";
+        case USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X1: return "superspeed+ gen2 x1";
+        case USB_DEVICE_SUPER_SPEED_PLUS_GEN1_X2: return "superspeed+ gen1 x1";
+        case USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X2: return "superspeed+ gen2 x2";
+        default: return "unknown speed";
+    }
+}
+
 obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** odesc)
 {
     if (!ctlr || !info)
@@ -67,6 +81,8 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
     Core_MutexRelease(&ctlr->ports_lock);
 
     Core_EventSet(&ctlr->port_events.on_attach, false);
+
+    OBOS_Debug("usb: %s port attached on address 0x%x\n", Drv_USBDeviceSpeedAsString(info->speed), info->address);
 
     if (odesc) *odesc = desc;
     
