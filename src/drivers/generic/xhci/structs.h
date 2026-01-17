@@ -11,6 +11,7 @@
 #include <struct_packing.h>
 
 #include <driver_interface/pci.h>
+#include <driver_interface/usb.h>
 
 #include <locks/event.h>
 #include <locks/mutex.h>
@@ -540,6 +541,7 @@ typedef struct xhci_slot {
     } trb_ring[31];
     uint32_t* doorbell;
     uint32_t address;
+    usb_dev_desc* desc;
     bool allocated;
 } xhci_slot;
 
@@ -616,6 +618,8 @@ typedef struct xhci_device {
 
     xhci_trbs_inflight trbs_inflight;
     mutex trbs_inflight_lock;
+
+    usb_controller* ctlr;
     
     struct xhci_device *next, *prev;
 } xhci_device;
