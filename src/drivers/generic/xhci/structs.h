@@ -539,10 +539,13 @@ typedef struct xhci_slot {
         uint64_t enqueue_ptr;
         uint64_t dequeue_ptr;
     } trb_ring[31];
+    
     uint32_t* doorbell;
     uint32_t address;
     usb_dev_desc* desc;
-    bool allocated;
+
+    uint8_t port_id;
+    bool allocated : 1;
 } xhci_slot;
 
 typedef struct xhci_inflight_trb {
@@ -615,6 +618,7 @@ typedef struct xhci_device {
     } device_context_array;
 
     xhci_slot *slots;
+    uint8_t port_to_slot_id[255];
 
     xhci_trbs_inflight trbs_inflight;
     mutex trbs_inflight_lock;
