@@ -553,6 +553,7 @@ typedef struct xhci_inflight_trb {
     uint64_t* dequeue_ptr;
     uint32_t* resp;
     uint8_t resp_length; // in dwords
+    uint32_t trb_cpy[4];
     event evnt;
     RB_ENTRY(xhci_inflight_trb) node;
 } xhci_inflight_trb;
@@ -638,6 +639,9 @@ static inline void* get_xhci_endpoint_context(xhci_device* dev, void* device_con
 {
     return (void*)(((uintptr_t)device_context) + dci * (dev->hccparams1_csz ? 64 : 32));
 }
+
+#define xhci_allocate_pages(nPages, alignment, dev) (dev->has_64bit_support ? Mm_AllocatePhysicalPages(nPages, alignment, nullptr) : Mm_AllocatePhysicalPages32(nPages, alignment, nullptr))
+#define xhci_page_count_for_size(size, nPages) ((size) / (nPages) + !!((size) / (nPages)))
 
 #ifndef INIT_C
 extern struct {
