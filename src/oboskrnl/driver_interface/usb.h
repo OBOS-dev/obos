@@ -75,9 +75,10 @@ typedef enum usb_device_speed {
     USB_DEVICE_HIGH_SPEED, // 480 Mb/s
     USB_DEVICE_SUPER_SPEED_GEN1_X1, // 5 Gb/s
     USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X1, // 10 Gb/s
-    USB_DEVICE_SUPER_SPEED_PLUS_GEN1_X1, // 5 Gb/s
+    USB_DEVICE_SUPER_SPEED_PLUS_GEN1_X2, // 5 Gb/s
     USB_DEVICE_SUPER_SPEED_PLUS_GEN2_X2, // 10 Gb/s
 } usb_device_speed;
+OBOS_EXPORT const char* Drv_USBDeviceSpeedAsString(usb_device_speed val);
 
 typedef struct usb_device_info {
     usb_hid hid;
@@ -121,7 +122,7 @@ LIST_PROTOTYPE(usb_controller_list, struct usb_controller, node);
 extern usb_controller_list Drv_USBControllers;
 extern mutex Drv_USBControllersLock;
 
-obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header, usb_controller** out);
+OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header, usb_controller** out);
 
-obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
-obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
+OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
+OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);

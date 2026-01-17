@@ -1,6 +1,6 @@
 # oboskrnl/CMakeLists.txt
 
-# Copyright (c) 2024-2025 Omar Berrow
+# Copyright (c) 2024-2026 Omar Berrow
 
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
@@ -22,7 +22,8 @@ list (APPEND oboskrnl_sources
 	"init_proc.c" "vfs/create.c" "net/route.c" "net/eth.c"
 	"net/ip.c" "net/arp.c" "power/event.c" "net/udp.c"
 	"net/icmp.c" "net/tcp.c" "vfs/socket.c" "net/lo.c"
-	"kinit.c" "vfs/local_socket.c" "perm.c" "contrib/tjec.c" "contrib/csprng.c"
+	"kinit.c" "vfs/local_socket.c" "perm.c" "contrib/tjec.c"
+	"contrib/csprng.c" "driver_interface/usb.c"
 )
 
 add_executable(oboskrnl)
