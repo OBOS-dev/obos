@@ -114,6 +114,8 @@ typedef struct usb_dev_desc {
 
     bool attached : 1;
 
+    event on_detach;
+
     // Reserved for use by controller drivers
     void* drv_ptr;
 
