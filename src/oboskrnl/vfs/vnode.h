@@ -58,6 +58,9 @@ enum
     VFLAGS_TMPFS_FILE_DEAD = BIT(10),
     VFLAGS_TMPFS = BIT(11),
     VFLAGS_REFERS_CTTY = BIT(12),
+    // Whether the kernel should call unreference_device on this CHR/BLK device
+    // before freeing the vnode
+    VFLAGS_UNREFERENCE_ON_DELETE = BIT(13),
 };
 
 // basically a struct specinfo, but renamed.
