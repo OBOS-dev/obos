@@ -230,17 +230,13 @@ find:
 			continue;
 		if ((vector_->irqObjects.nNodes < vector_->irqObjectsCapacity || shouldIgnoreObjectCapacity) && (!vector_->nIRQsWithChosenID || (vector_->allowWorkSharing && allowWorkSharing)))
 		{
-			if (vector_->irqObjects.nNodes == 0)
-				goto l1;
-			if (vector_->allowWorkSharing && allowWorkSharing)
-				goto l1;
-			if (force)
-				goto l1;
-		l1:
-			found = vec;
-			if (shouldIgnoreObjectCapacity)
-				vector_->irqObjectsCapacity += vector_->irqObjectsCapacity / 4; // Same as multiplying by 1.25
-			break;
+			if (vector_->irqObjects.nNodes == 0 || (vector_->allowWorkSharing && allowWorkSharing) || force)
+			{
+				found = vec;
+				if (!shouldIgnoreObjectCapacity)
+					vector_->irqObjectsCapacity += vector_->irqObjectsCapacity / 4; // Same as multiplying by 1.25
+				break;
+			}
 		}
 	}
 	if (found == OBOS_IRQ_VECTOR_ID_MAX)
