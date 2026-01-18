@@ -13,6 +13,7 @@ target_compile_options(xhci
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-builtin-memset>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fvisibility=hidden>
 	PRIVATE $<$<COMPILE_LANGUAGE:C>:-fPIC>
+	PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-error=address-of-packed-member>
 )
 
 set_property(TARGET xhci PROPERTY link_depends ${DRIVER_LINKER_SCRIPT})

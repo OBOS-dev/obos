@@ -95,6 +95,8 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
 
 extern driver_id* this_driver;
 
+static void process_port_attach(xhci_device* dev, uint8_t port_id);
+
 obos_status xhci_initialize_device(xhci_device* dev)
 {
     OBOS_ENSURE(dev);
@@ -122,7 +124,7 @@ obos_status xhci_initialize_device(xhci_device* dev)
     if (dev->pci_bar->bar->type == PCI_BARIO)
         return OBOS_STATUS_INTERNAL_ERROR; // this shouldn't happen
 
-    OBOS_Log("XHCI: Initializing XHCI controller at %02x:%02x:%02x\n", dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function);
+    OBOS_Log("xhci: Initializing XHCI controller at %02x:%02x:%02x\n", dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function);
 
     dev->trbs_inflight_lock = MUTEX_INITIALIZE();
 
@@ -136,7 +138,7 @@ obos_status xhci_initialize_device(xhci_device* dev)
     uint32_t hccparams1 = dev->cap_regs->hccparams1;
     dev->has_64bit_support = hccparams1 & BIT(0);
     dev->port_power_control_supported = hccparams1 & BIT(3);
-    dev->xecp = (hccparams1 >> 16)*4;
+    dev->xecp = hccparams1 >> 16;
     dev->hccparams1_csz = hccparams1 & BIT(2);
     dev->max_slots = dev->cap_regs->hcsparams1 & 0xff;
 
@@ -209,17 +211,23 @@ obos_status xhci_initialize_device(xhci_device* dev)
     dev->irq.handlerUserdata = dev;
     dev->irq.irqCheckerUserdata = dev;
 
-    dev->rt_regs->interrupters[0].erstba = dev->event_ring.pg->phys + (OBOS_PAGE_SIZE-0x40);
     dev->rt_regs->interrupters[0].erstsz = 1;
+
     dev->rt_regs->interrupters[0].erdp = dev->event_ring.pg->phys;
+
+    dev->rt_regs->interrupters[0].erstba = dev->event_ring.pg->phys + (OBOS_PAGE_SIZE-0x40);
     dev->event_ring.ccs = true;
 
     dev->rt_regs->interrupters[0].iman |= BIT(1);
     dev->rt_regs->interrupters[0].imod = 4000;
 
+    status = Drv_USBControllerRegister(dev, &this_driver->header, &dev->ctlr);
+    
     dev->op_regs->usbcmd |= (USBCMD_RUN|USBCMD_INTE);
 
-    status = Drv_USBControllerRegister(dev, &this_driver->header, &dev->ctlr);
+    for (uint8_t p = 0; p < (dev->cap_regs->hcsparams1 >> 24); p++)
+        if (dev->op_regs->ports[p].port_sc & PORTSC_CCS)
+            process_port_attach(dev, p+1);
 
     return status;
 }
@@ -492,7 +500,7 @@ static obos_status do_bios_handoff(xhci_device* dev)
         return OBOS_STATUS_SUCCESS;
     }
 
-    uint32_t* current_cap = (uint32_t*)dev->base + dev->xecp/4;
+    uint32_t* current_cap = ((uint32_t*)dev->base) + dev->xecp;
     while (1)
     {
         if ((*current_cap & 0xff) == 0x1)
@@ -505,7 +513,7 @@ static obos_status do_bios_handoff(xhci_device* dev)
 
     if (!poll_bit_timeout(current_cap, BIT(16), 0, 1*1000*1000 /* 1 second */))
     {
-        OBOS_Error("XHCI: %02x:%02x:%02x: BIOS handoff timed out after 1 second.",
+        OBOS_Error("xhci: %02x:%02x:%02x: BIOS handoff timed out after 1 second.",
             dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function
         );
         return OBOS_STATUS_TIMED_OUT;
@@ -845,7 +853,21 @@ obos_status xhci_reset_device(xhci_device* dev)
     if (!dev->did_bios_handoff)
         if (obos_is_error(status = do_bios_handoff(dev)))
             return status;
-    OBOS_Log("XHCI: Reset XHCI controller at %02x:%02x:%02x\n", dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function);
+    dev->op_regs->usbcmd &= ~USBCMD_RUN;
+    while (~dev->op_regs->usbsts & USBSTS_HCH)
+        OBOSS_SpinlockHint();
+    dev->op_regs->usbcmd |= USBCMD_RESET;
+    if (!poll_bit_timeout(&dev->op_regs->usbcmd, USBCMD_RESET, 0, 1000000))
+    {
+        OBOS_Error("xhci: could reset controller: timed out\n");
+        return OBOS_STATUS_TIMED_OUT;
+    }
+    if (!poll_bit_timeout(&dev->op_regs->usbsts, USBSTS_CNR, 0, 1000000))
+    {
+        OBOS_Error("xhci: could reset controller: timed out\n");
+        return OBOS_STATUS_TIMED_OUT;
+    }
+    OBOS_Log("xhci: Reset XHCI controller at %02x:%02x:%02x\n", dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function);
     return OBOS_STATUS_SUCCESS;
 }
 
