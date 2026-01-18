@@ -132,19 +132,9 @@ static obos_status get_descriptor(usb_dev_desc* desc, uint8_t type, uint8_t idx,
     payload.payload.setup.wValue = ((uint16_t)type << 8) | idx;
     payload.payload.setup.wLength = length;
 
-    irp* req = nullptr;
-    status = Drv_USBIRPSubmit2(desc, (void**)&req, &payload, true);
-    if (obos_is_error(status))
-    {
-        DrvH_FreeScatterGatherList(&Mm_KernelContext, buff, length, payload.payload.setup.regions, payload.payload.setup.nRegions);
-        VfsH_IRPUnref(req);
-        return status;
-    }
-
-    status = Drv_USBIRPWait(desc, req);
+    status = Drv_USBSynchronousOperation(desc, &payload, true);
     
     DrvH_FreeScatterGatherList(&Mm_KernelContext, buff, length, payload.payload.setup.regions, payload.payload.setup.nRegions);
-    VfsH_IRPUnref(req);
     
     return status;
 }
@@ -170,14 +160,7 @@ static obos_status configure_endpoint(usb_dev_desc* desc, usb_endpoint_descripto
     conf_ep.endpoint = endpoint->bEndpointAddress & 0xf;
     bool dir = (endpoint->bEndpointAddress & BIT(7));
 
-    irp* req = nullptr;
-    obos_status status = Drv_USBIRPSubmit2(desc, (void**)&req, &conf_ep, dir);
-    if (obos_is_error(status))
-        return status;
-
-    status = Drv_USBIRPWait(desc, req);
-    VfsH_IRPUnref(req);
-    return status;
+    return Drv_USBSynchronousOperation(desc, &conf_ep, dir);
 }
 
 static obos_status configure_interface_eps(usb_dev_desc* desc, struct interface* iface)
@@ -264,10 +247,7 @@ static obos_status try_configuration(usb_dev_desc* ddesc, usb_configuration_desc
 
     ddesc->configuration.configuration_id = conf_desc->bConfigurationValue;
 
-    irp* req = nullptr;
-    status = Drv_USBIRPSubmit2(ddesc, (void**)&req, &set_configuration, false);
-    status = Drv_USBIRPWait(ddesc, req);
-    VfsH_IRPUnref(req);
+    status = Drv_USBSynchronousOperation(ddesc, &set_configuration, false);
     if (obos_is_error(status))
         return status;
     
@@ -432,4 +412,21 @@ OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req)
     if (driver->ftable.finalize_irp)
         driver->ftable.finalize_irp(request);
     return request->status;
+}
+
+OBOS_EXPORT obos_status Drv_USBSynchronousOperation(usb_dev_desc* desc, const usb_irp_payload* payload, bool dir)
+{
+    irp* req = nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    
+    status = Drv_USBIRPSubmit2(desc, (void*)&req, payload, dir);
+    if (obos_is_error(status))
+    {
+        if (req)
+            VfsH_IRPUnref(req);
+        return status;
+    }
+    status = Drv_USBIRPWait(desc, req);
+    VfsH_IRPUnref(req);
+    return status;
 }

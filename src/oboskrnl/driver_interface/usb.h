@@ -277,3 +277,4 @@ OBOS_EXPORT obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req);
 // dir is false for OUT (IRP_WRITE), and true for IN (IRP_READ)
 OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** req, const usb_irp_payload* payload, bool dir);
 OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req);
+OBOS_EXPORT obos_status Drv_USBSynchronousOperation(usb_dev_desc* desc, const usb_irp_payload* payload, bool dir);
