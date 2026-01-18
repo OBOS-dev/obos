@@ -16,6 +16,8 @@
 #include <locks/wait.h>
 
 #include <vfs/irp.h>
+#include <vfs/vnode.h>
+#include <vfs/dirent.h>
 #include <vfs/keycode.h>
 
 #include <allocators/base.h>
@@ -33,6 +35,8 @@ OBOS_WEAK obos_status submit_irp(void*);
 OBOS_WEAK obos_status finalize_irp(void*);
 OBOS_WEAK obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 OBOS_WEAK obos_status ioctl_argp_size(uint32_t request, size_t* res);
+OBOS_WEAK obos_status reference_device(dev_desc* desc);
+OBOS_WEAK obos_status unreference_device(dev_desc desc);
 void driver_cleanup_callback() {}
 
 driver_id* this_driver;
@@ -52,6 +56,8 @@ typedef struct hid_dev {
         size_t ptr;
     } ringbuffer;
     size_t blkSize;
+    vnode* vn;
+    dirent* ent;
     LIST_NODE(device_list, struct hid_dev) node;
 } hid_dev;
 typedef struct hid_handle {
@@ -61,7 +67,9 @@ typedef struct hid_handle {
 typedef LIST_HEAD(device_list, hid_dev) device_list;
 LIST_GENERATE_STATIC(device_list, hid_dev, node);
 
-device_list g_devices;
+device_list g_hid_devices;
+
+static uint8_t dev_idx = 0;
 
 obos_status on_usb_attach(usb_dev_desc* desc)
 {
@@ -87,10 +95,25 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     dev->desc = desc;
     dev->data_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     
-    LIST_APPEND(device_list, &g_devices, dev);
+    LIST_APPEND(device_list, &g_hid_devices, dev);
     
     OBOS_SharedPtrRef(&dev->ptr);
     desc->dev_ptr = dev;
+
+    dev_desc ddesc = (dev_desc)dev;
+    reference_device(&ddesc);
+
+    char* name = nullptr;
+    size_t name_len = snprintf(name, 0, "usb-hid-%d", dev_idx++);
+
+    name = Allocate(OBOS_KernelAllocator, name_len+1, nullptr);
+    snprintf(name, name_len, "usb-hid-%d", dev_idx - 1);
+
+    dev->vn = Drv_AllocateVNode(this_driver, ddesc, 0, nullptr, VNODE_TYPE_CHR);
+    dev->vn->flags |= VFLAGS_UNREFERENCE_ON_DELETE;
+    dev->ent = Drv_RegisterVNode(dev->vn, name);
+
+    Free(OBOS_KernelAllocator, name, name_len);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -104,7 +127,7 @@ obos_status on_usb_detach(usb_dev_desc* desc)
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(dev->data_event));
     Core_EventSet(&dev->worker_die_event, false);
     
-    LIST_REMOVE(device_list, &g_devices, dev);
+    LIST_REMOVE(device_list, &g_hid_devices, dev);
     OBOS_SharedPtrUnref(&dev->ptr);
     
     OBOS_SharedPtrUnref(&desc->ptr);
@@ -117,14 +140,15 @@ obos_status on_usb_detach(usb_dev_desc* desc)
 
 obos_status reference_device(dev_desc* desc)
 {
-    hid_dev* dev = (void*)*desc;
-    if (!dev)
+    hid_handle* hnd = (void*)*desc;
+    if (!hnd)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    hid_dev* dev = hnd->dev;
     OBOS_SharedPtrRef(&dev->ptr);
-    hid_handle* hnd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*hnd), nullptr);
-    hnd->dev = dev;
-    hnd->in_ptr = dev->ringbuffer.ptr;
-    *desc = (dev_desc)hnd;
+    hid_handle* new_hnd = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*hnd), nullptr);
+    new_hnd->dev = dev;
+    new_hnd->in_ptr = dev->ringbuffer.ptr;
+    *desc = (dev_desc)new_hnd;
     return OBOS_STATUS_SUCCESS;
 }
 
