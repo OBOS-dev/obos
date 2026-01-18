@@ -18,7 +18,7 @@
 
 #include "xhci.h"
 
-static void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size_t nRegions, struct physical_region *regions, xhci_endpoint_context* ep_ctx, bool in_endpoint)
+void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size_t nRegions, struct physical_region *regions, xhci_endpoint_context* ep_ctx, bool in_endpoint)
 {
     for (size_t i = 0; i < nRegions; i++)
     {
@@ -26,15 +26,17 @@ static void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size
 
         if (regions[i].sz > UINT16_MAX)
         {
-            req->status = OBOS_STATUS_INVALID_ARGUMENT;
+            if (req)
+                req->status = OBOS_STATUS_INVALID_ARGUMENT;
             return;
         }
 
         trbs[i].length_td_size |= (((nRegions - i) - 1) & 0x3f) << 17;
         trbs[i].dbp = regions[i].phys;
         trbs[i].length_td_size |= regions[i].sz;
-        req->usb_packet_length += regions[i].sz;
-        if (regions[i].sz <= 8 && !in_endpoint && ep_ctx->max_packet_size >= 8)
+        if (req)
+            req->usb_packet_length += regions[i].sz;
+        if (regions[i].sz <= 8 && !in_endpoint && (!ep_ctx ? false : ep_ctx->max_packet_size >= 8))
         {
             // Immediate data
             trbs[i].dbp = *(uint64_t*)MmS_MapVirtFromPhys(regions[i].phys);
