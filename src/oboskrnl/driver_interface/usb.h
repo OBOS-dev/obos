@@ -105,6 +105,19 @@ typedef struct usb_device_info {
     bool usb3 : 1;
 } usb_device_info;
 
+typedef struct usb_endpoint {
+    struct usb_dev_desc* dev;
+
+    uint8_t endpoint_number;
+    // direction is false for OUT (IRP_WRITE), and true for IN (IRP_READ)
+    bool direction : 1;
+    usb_endpoint_type type;
+
+    LIST_NODE(usb_endpoint_list, struct usb_endpoint) node;
+} usb_endpoint;
+typedef LIST_HEAD(usb_endpoint_list, struct usb_endpoint) usb_endpoint_list;
+LIST_PROTOTYPE(usb_endpoint_list, struct usb_endpoint, node);
+
 typedef struct usb_dev_desc {
     shared_ptr ptr;
     
@@ -118,11 +131,18 @@ typedef struct usb_dev_desc {
 
     // Reserved for use by controller drivers
     void* drv_ptr;
-
     // Reserved for use by device drivers
     void* dev_ptr;
-
+    // driver_id*
     void* drv;
+
+    // NOT IN ORDER!
+    usb_endpoint_list endpoints;
+
+    struct {
+        uint8_t configuration_id;
+        uint8_t configuration_idx;
+    } configuration;
 
     LIST_NODE(usb_devices, struct usb_dev_desc) node;
 } usb_dev_desc;
