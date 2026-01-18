@@ -18,7 +18,8 @@ typedef struct shared_ptr
     void(*free)(void* udata, struct shared_ptr*);
     void* freeUdata;
     // Can be nullptr
-    // Called before the ref count is decreased.
+    // Called after the ref count is decreased, but before
+    // the object is freed.
     void(*onDeref)(struct shared_ptr*);
     // Can be nullptr
     // Called after the ref count is increased.
