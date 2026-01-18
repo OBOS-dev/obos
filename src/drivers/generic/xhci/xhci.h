@@ -538,6 +538,7 @@ typedef struct xhci_slot {
         } buffer;
         uint64_t enqueue_ptr;
         uint64_t dequeue_ptr;
+        bool ccs : 1;
     } trb_ring[31];
     
     uint32_t* doorbell;
@@ -669,7 +670,7 @@ obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot, uint8_t endpoi
 obos_status xhci_trb_enqueue_command(xhci_device* dev, uint32_t* trb, xhci_inflight_trb** itrb, bool doorbell);
 
 // Rings the doorbell of the target slot, endpoint, and direction
-void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, xhci_direction direction /* true for OUT, false for IN */);
+void xhci_doorbell_slot(xhci_slot* slot, uint8_t endpoint, xhci_direction direction);
 // Rings the control doorbell of the host controller.
 void xhci_doorbell_control(xhci_device* dev);
 
