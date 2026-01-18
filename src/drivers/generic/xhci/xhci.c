@@ -530,6 +530,7 @@ static obos_status do_bios_handoff(xhci_device* dev)
     return OBOS_STATUS_SUCCESS;
 }
 
+void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size_t nRegions, struct physical_region *regions, xhci_endpoint_context* ep_ctx, bool in_endpoint);
 obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 {
     if (dev->slots[slot-1].allocated)
@@ -650,49 +651,69 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
 
         if (fs_device)
         {
-            xhci_inflight_trb* itrb2 = nullptr;
-            xhci_inflight_trb* itrb3 = nullptr;
+            OBOS_ALIGNAS(32) uint8_t buf[8] = {};
+            usb_irp_payload payload = {};
+            payload.trb_type = USB_TRB_CONTROL;
+            payload.payload.setup.bmRequestType = 0x80;
+            payload.payload.setup.bRequest = USB_GET_DESCRIPTOR;
+            payload.payload.setup.wValue = ((uint16_t)USB_DESCRIPTOR_TYPE_DEVICE << 8);
+            payload.payload.setup.wLength = 8;
+            DrvH_ScatterGather(&Mm_KernelContext, buf, 8, &payload.payload.setup.regions, &payload.payload.setup.nRegions, 1, false);
 
-            xhci_setup_stage_trb setup_stage_trb = {};
-            XHCI_SET_TRB_TYPE(&setup_stage_trb, XHCI_TRB_SETUP_STAGE);
-            setup_stage_trb.trt = 3;
-            setup_stage_trb.flags_type |= BIT(6);
-            setup_stage_trb.bmRequestType = 0x80;
-            setup_stage_trb.bRequest = USB_GET_DESCRIPTOR;
-            setup_stage_trb.wValue = 0x0100;
-            setup_stage_trb.wIndex = 0;
-            setup_stage_trb.wLength = 0;
-            setup_stage_trb.td_size_target |= 8;
-            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&setup_stage_trb, &itrb, false);
+            size_t nDwords = 4*(2+payload.payload.setup.nRegions);
+            uint32_t* trbs = ZeroAllocate(OBOS_KernelAllocator, nDwords, sizeof(uint32_t), nullptr);
 
-            xhci_data_stage_trb data_stage_trb = {};
-            XHCI_SET_TRB_TYPE(&setup_stage_trb, XHCI_TRB_DATA_STAGE);
-            data_stage_trb.dir_resv = BIT(0);
-            data_stage_trb.length_td_size |= (8<<17);
-            data_stage_trb.dbp = xhci_allocate_pages(1, 1, dev);
-            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&data_stage_trb, &itrb2, false);
+            xhci_setup_stage_trb* setup_stage = (void*)trbs;
+            XHCI_SET_TRB_TYPE(setup_stage, XHCI_TRB_SETUP_STAGE);
+            setup_stage->bmRequestType = payload.payload.setup.bmRequestType;
+            setup_stage->bRequest = payload.payload.setup.bRequest;
+            setup_stage->wValue = payload.payload.setup.wValue;
+            setup_stage->wIndex = payload.payload.setup.wIndex;
+            setup_stage->wLength = payload.payload.setup.wLength;
+            setup_stage->length = 8;
+            setup_stage->trt = 0x3;
+            setup_stage->flags_type |= BIT(6);
 
-            xhci_status_stage_trb status_stage_trb = {};
-            XHCI_SET_TRB_TYPE(&status_stage_trb, XHCI_TRB_STATUS_STAGE);
-            status_stage_trb.flags_type |= BIT(5);
-            xhci_trb_enqueue_slot(dev, slot, 0, 0, (void*)&status_stage_trb, &itrb3, true);
+            xhci_status_stage_trb* status_stage_trb = (void*)&trbs[2*4];
+            if (payload.payload.setup.nRegions != 0)
+                populate_trbs(nullptr, true, (xhci_data_stage_trb*)(trbs+4), payload.payload.setup.nRegions, payload.payload.setup.regions, nullptr, true);
+            XHCI_SET_TRB_TYPE(status_stage_trb, XHCI_TRB_STATUS_STAGE);
 
-            if (itrb)
+            status_stage_trb->flags_type |= BIT(5);
+            status_stage_trb->dir_resv |= BIT(0);
+            
+            xhci_direction dir = XHCI_DIRECTION_IN;
+
+            struct xhci_inflight_trb_array* arr = 
+                ZeroAllocate(OBOS_KernelAllocator,
+                             1,
+                             sizeof(*arr)+(nDwords/4)*sizeof(struct xhci_inflight_trb*),
+                             nullptr);
+            arr->count = (nDwords/4);
+
+            for (size_t i = 0; i < (nDwords/4); i++)
             {
-                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
-                Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
-                Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+                bool last_trb = (i == (nDwords/4)-1);
+                xhci_trb_enqueue_slot(dev, 
+                                      slot-1,
+                                      payload.endpoint,
+                                      dir,
+                                      &trbs[i*4],
+                                      &arr->itrbs[i],
+                                      last_trb);
+                if (arr->itrbs[i])
+                    status = Core_WaitOnObject(WAITABLE_OBJECT(arr->itrbs[i]->evnt));
             }
-            if (itrb2)
-            {
-                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb2->evnt));
-                Free(OBOS_KernelAllocator, itrb2->resp, itrb2->resp_length*4);
-                Free(OBOS_KernelAllocator, itrb2, sizeof(*itrb2));
-            }
-            if (itrb3)
-                status = Core_WaitOnObject(WAITABLE_OBJECT(itrb3->evnt));
 
-            uint8_t* buf = MmS_MapVirtFromPhys(data_stage_trb.dbp);
+            for (size_t j = 0; j < arr->count; j++)
+            {
+                if (!arr->itrbs[j]) continue;
+                if (arr->itrbs[j]->resp)
+                    Free(OBOS_KernelAllocator, arr->itrbs[j]->resp, 4*arr->itrbs[j]->resp_length);
+                Free(OBOS_KernelAllocator, arr->itrbs[j], sizeof(*arr->itrbs[j]));
+            }
+            Free(OBOS_KernelAllocator, arr, arr->count * sizeof(struct xhci_inflight_trb*) + sizeof(*arr));
+
             if (buf[7] != ctrl_ep->max_packet_size)
             {
                 ctrl_ep->max_packet_size = buf[7];
@@ -707,13 +728,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
                 Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
                 Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
             }
-
-            Mm_FreePhysicalPages(data_stage_trb.dbp, 1);
-            if (itrb3)
-            {
-                Free(OBOS_KernelAllocator, itrb3->resp, itrb3->resp_length*4);
-                Free(OBOS_KernelAllocator, itrb3, sizeof(*itrb3));
-            }
+            DrvH_FreeScatterGatherList(&Mm_KernelContext, buf, 8, payload.payload.setup.regions, payload.payload.setup.nRegions);
         }
 
         OBOS_Debug("%s: sucessfully initialized slot %d on port %d with address %d\n", __func__, slot, port, dev->slots[slot-1].address);
@@ -819,6 +834,8 @@ obos_status xhci_trb_enqueue_slot(xhci_device* dev, uint8_t slot_id, uint8_t end
         *itrb = add_inflight_trb(dev, slot->trb_ring[target].enqueue_ptr);
         (*itrb)->dequeue_ptr = &slot->trb_ring[target].dequeue_ptr;
     }
+    else 
+        *itrb = nullptr;
     if (slot->trb_ring[target].ccs)
         ((uint32_t*)ptr)[3] |= BIT(0);
     slot->trb_ring[target].enqueue_ptr += 16;
