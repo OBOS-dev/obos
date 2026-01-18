@@ -198,6 +198,7 @@ static obos_status configure_interface_eps(usb_dev_desc* desc, struct interface*
         ep->dev = desc;
         ep->type = iface->endpoints[i]->bmAttributes & 0b11;
         ep->direction = (iface->endpoints[i]->bEndpointAddress & BIT(7));
+        ep->descriptor = *iface->endpoints[i];
         LIST_APPEND(usb_endpoint_list, &desc->endpoints, ep);
 
         continue;
