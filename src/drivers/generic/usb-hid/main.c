@@ -12,13 +12,24 @@
 #include <driver_interface/usb.h>
 #include <driver_interface/driverId.h>
 
+#include <scheduler/thread.h>
+#include <scheduler/process.h>
+#include <scheduler/thread_context_info.h>
+#include <scheduler/schedule.h>
+
 #include <locks/event.h>
 #include <locks/wait.h>
+
+#include <irq/timer.h>
 
 #include <vfs/irp.h>
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
 #include <vfs/keycode.h>
+#include <vfs/mouse.h>
+
+#include <mm/alloc.h>
+#include <mm/context.h>
 
 #include <allocators/base.h>
 
@@ -58,6 +69,7 @@ typedef struct hid_dev {
     size_t blkSize;
     vnode* vn;
     dirent* ent;
+    usb_endpoint* in_endpoint;
     LIST_NODE(device_list, struct hid_dev) node;
 } hid_dev;
 typedef struct hid_handle {
@@ -71,9 +83,95 @@ device_list g_hid_devices;
 
 static uint8_t dev_idx = 0;
 
+static obos_status initialize_device(hid_dev* dev)
+{
+    for (usb_endpoint* curr = dev->desc->endpoints.head; curr; curr = curr->node.next)
+    {
+        if (curr->direction == true)
+        {
+            dev->in_endpoint = curr;
+            break;
+        }
+    }
+    if (!dev->in_endpoint)
+        return OBOS_STATUS_NOT_FOUND;
+
+    usb_irp_payload set_protocol = {};
+    set_protocol.endpoint = 0;
+    set_protocol.trb_type = USB_TRB_CONTROL;
+    set_protocol.payload.setup.nRegions = 0;
+    set_protocol.payload.setup.regions = nullptr;
+    set_protocol.payload.setup.bmRequestType = 0x21;
+    set_protocol.payload.setup.bRequest = 0xb;
+    set_protocol.payload.setup.wLength = 0;
+    set_protocol.payload.setup.wIndex = 0;
+    set_protocol.payload.setup.wValue = 0 /* boot protocol */;
+
+    return Drv_USBSynchronousOperation(dev->desc, &set_protocol, false);
+}
+
+static void hid_worker_thread(hid_dev* dev)
+{
+    timer* tm = nullptr;
+    uint8_t interval = dev->in_endpoint->descriptor.bInterval;
+    event evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    CoreH_MakeTimerEvent(&tm, (uint32_t)interval*1000, &evnt, true);
+
+    uint8_t report_len = 0;
+    uint8_t* report = nullptr;
+
+    if (dev->blkSize == sizeof(keycode)) report_len = 8;
+    else if (dev->blkSize == sizeof(mouse_packet)) report_len = 3;
+
+    report = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, report_len, nullptr);
+
+    usb_irp_payload payload = {};
+    payload.trb_type = USB_TRB_NORMAL;
+    payload.endpoint = dev->in_endpoint->endpoint_number;
+    obos_status status = DrvH_ScatterGather(&Mm_KernelContext, report, report_len, &payload.payload.normal.regions, &payload.payload.normal.nRegions, 63, false);
+    if (obos_is_error(status))
+        goto exit;
+
+    int errc = 0;
+    while (1)
+    {
+        struct waitable_header* signaled = nullptr;
+        struct waitable_header* wobjs[2] = {
+            WAITABLE_OBJECT(dev->worker_die_event),
+            WAITABLE_OBJECT(evnt)
+        };
+
+        status = Core_WaitOnObjects(2, wobjs, &signaled);
+        if (obos_is_error(status))
+            break;
+        if (signaled == wobjs[0])
+            break;
+        Core_EventClear(&evnt);
+
+        status = Drv_USBSynchronousOperation(dev->desc, &payload, true);
+        if (obos_is_error(status))
+        {
+            if (errc++ < 10)
+                continue;
+            else
+                break;
+        }
+        errc = 0;
+    }
+
+    exit:
+    if (payload.payload.normal.regions)
+        DrvH_FreeScatterGatherList(&Mm_KernelContext, report, report_len, payload.payload.normal.regions, payload.payload.normal.nRegions);
+    Free(OBOS_NonPagedPoolAllocator, report, report_len);
+    OBOS_SharedPtrUnref(&dev->ptr);
+    Core_ExitCurrentThread();
+}
+
 obos_status on_usb_attach(usb_dev_desc* desc)
 {
-    if (desc->info.hid.protocol != 1)
+    if (desc->info.hid.subclass == 0 /* report protocol only device */)
+        return OBOS_STATUS_UNIMPLEMENTED;
+    if (desc->info.hid.protocol == 0 || desc->info.hid.protocol > 2)
         return OBOS_STATUS_UNIMPLEMENTED;
 
     obos_status status = Drv_USBDriverAttachedToPort(desc, this_driver);
@@ -87,15 +185,21 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     OBOS_SharedPtrRef(&dev->ptr);
     dev->ptr.free = OBOS_SharedPtrDefaultFree;
     dev->ptr.freeUdata = OBOS_KernelAllocator;
+    dev->worker_die_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 
-    dev->blkSize = sizeof(keycode);
-    if (desc->info.hid.protocol != 1)
-        OBOS_ENSURE(dev->blkSize != sizeof(keycode));
-
+    dev->blkSize = desc->info.hid.protocol == 2 ? sizeof(mouse_packet) : sizeof(keycode);
+    
     dev->desc = desc;
     dev->data_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     
     LIST_APPEND(device_list, &g_hid_devices, dev);
+    
+    status = initialize_device(dev);
+    if (obos_is_error(status))
+    {
+        OBOS_SharedPtrUnref(&dev->ptr);
+        return status;
+    }
     
     OBOS_SharedPtrRef(&dev->ptr);
     desc->dev_ptr = dev;
@@ -113,7 +217,16 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     dev->vn->flags |= VFLAGS_UNREFERENCE_ON_DELETE;
     dev->ent = Drv_RegisterVNode(dev->vn, name);
 
-    Free(OBOS_KernelAllocator, name, name_len);
+    Free(OBOS_KernelAllocator, name, name_len+1);
+
+    dev->worker = CoreH_ThreadAllocate(nullptr);
+    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+    thread_ctx ctx = {};
+    CoreS_SetupThreadContext(&ctx, (uintptr_t)hid_worker_thread, (uintptr_t)dev, false, stack, 0x4000);
+    CoreH_ThreadInitialize(dev->worker, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
+    Core_ProcessAppendThread(OBOS_KernelProcess, dev->worker);
+    OBOS_SharedPtrRef(&dev->ptr);
+    CoreH_ThreadReady(dev->worker);
 
     return OBOS_STATUS_SUCCESS;
 }
