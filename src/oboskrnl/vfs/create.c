@@ -208,6 +208,13 @@ OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node)
             Vfs_Free(desc);
         }
 
+        if ((node->vnode->vtype == VNODE_TYPE_BLK || node->vnode->vtype == VNODE_TYPE_CHR) && node->vnode->flags & VFLAGS_UNREFERENCE_ON_DELETE)
+        {
+            driver_header* header2 = Vfs_GetVnodeDriver(node->vnode);
+            if (header2 && header2->ftable.unreference_device)
+                header2->ftable.unreference_device(node->vnode->desc);
+        }
+
         Vfs_Free(node->vnode);
     }
     Vfs_Free(node);

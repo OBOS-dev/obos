@@ -51,6 +51,9 @@ enum
     // The driver implementing this vnode is DEAD and should NOT be used.
     VFLAGS_DRIVER_DEAD = 32,
     VFLAGS_NIC_NO_FCS = 64,
+    // Whether the kernel should call unreference_device on this CHR/BLK device
+    // before freeing the vnode
+    VFLAGS_UNREFERENCE_ON_DELETE = 128,
 };
 
 // basically a struct specinfo, but renamed.
