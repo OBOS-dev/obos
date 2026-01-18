@@ -30,7 +30,7 @@ static void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size
             return;
         }
 
-        trbs[i].length_td_size |= ((nRegions - i) & 0x3f) << 17;
+        trbs[i].length_td_size |= (((nRegions - i) - 1) & 0x3f) << 17;
         trbs[i].dbp = regions[i].phys;
         trbs[i].length_td_size |= regions[i].sz;
         req->usb_packet_length += regions[i].sz;
@@ -56,9 +56,12 @@ static void irp_on_event_set(irp* req)
     struct xhci_inflight_trb* old_itrb = arr->itrbs[arr->index];
     obos_status status = OBOS_STATUS_IRP_RETRY;
     loop:
-    if (arr->index == (arr->count-1))
+    (void)0;
+    struct xhci_inflight_trb* itrb = nullptr; 
+    if ((arr->index+1) == arr->count)
         status = OBOS_STATUS_SUCCESS;
-    struct xhci_inflight_trb* itrb = arr->itrbs[++arr->index];
+    else
+        itrb = arr->itrbs[++arr->index];
     if (!itrb)
     {
         if (status == OBOS_STATUS_SUCCESS)
@@ -81,7 +84,7 @@ static void irp_on_event_set(irp* req)
         req->status = (old_itrb->resp[2] >> 24) == 1 ? status : OBOS_STATUS_INTERNAL_ERROR;
         req->nBlkRead -= XHCI_GET_TRB_TRANSFER_LENGTH(old_itrb->resp);
     }
-    if (arr->index < (arr->count-1))
+    if (arr->index < arr->count)
         req->evnt = &itrb->evnt;
     else
         req->evnt = nullptr;
@@ -188,7 +191,7 @@ obos_status submit_irp(void* reqp)
             xhci_inflight_trb* first_itrb = nullptr;
             for (size_t i = 0; i < payload->payload.normal.nRegions; i++)
             {
-                bool last_trb = ((i+1) < payload->payload.normal.nRegions);
+                bool last_trb = ((i+1) >= payload->payload.normal.nRegions);
                 req->status = xhci_trb_enqueue_slot(dev, 
                                                     desc->info.slot-1,
                                                     payload->endpoint,
@@ -206,6 +209,7 @@ obos_status submit_irp(void* reqp)
                         Free(OBOS_KernelAllocator, arr->itrbs[j], sizeof(*arr->itrbs[j]));
                     }
                     Free(OBOS_KernelAllocator, arr, arr->count * sizeof(struct xhci_inflight_trb*) + sizeof(*arr));
+                    req->drvData = nullptr;
                     break;
                 }
                 if (arr->itrbs[i] && !first_itrb)
@@ -214,6 +218,8 @@ obos_status submit_irp(void* reqp)
                     arr->index = i;
                 }
             }
+            if (obos_is_error(req->status))
+                break;
             if (first_itrb)
                 req->evnt = &first_itrb->evnt;
             req->drvData = arr;
@@ -304,6 +310,8 @@ obos_status submit_irp(void* reqp)
                     arr->index = i;
                 }
             }
+            if (obos_is_error(req->status))
+                break;
             if (first_itrb)
                 req->evnt = &first_itrb->evnt;
             req->drvData = arr;
@@ -369,6 +377,14 @@ obos_status submit_irp(void* reqp)
                 dev->slots[slot-1].trb_ring[target].buffer.len = OBOS_PAGE_SIZE;
                 memzero(dev->slots[slot-1].trb_ring[target].buffer.virt, dev->slots[slot-1].trb_ring[target].buffer.len);
                 dev->slots[slot-1].trb_ring[target].enqueue_ptr = dev->slots[slot-1].trb_ring[target].buffer.pg->phys;
+                dev->slots[slot-1].trb_ring[target].dequeue_ptr = dev->slots[slot-1].trb_ring[target].buffer.pg->phys;
+                dev->slots[slot-1].trb_ring[target].ccs = true;
+                uint32_t* link_trb = (dev->slots[slot-1].trb_ring[target].buffer.virt);
+                link_trb += ((dev->slots[slot-1].trb_ring[target].buffer.len-0x10) / 4);
+                XHCI_SET_TRB_TYPE(link_trb, XHCI_TRB_LINK);
+                link_trb[3] |= BIT(1);
+                link_trb[0] = dev->slots[slot-1].trb_ring[target].buffer.pg->phys & 0xffffffff;
+                link_trb[1] = dev->slots[slot-1].trb_ring[target].buffer.pg->phys >> 32;
             }
 
             const uint8_t target_dci = (payload->endpoint-1)*2+dir + 2;
@@ -477,5 +493,7 @@ obos_status finalize_irp(void* reqp)
         Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
         return OBOS_STATUS_SUCCESS;
     }
-    return Free(OBOS_KernelAllocator, arr, arr->count * sizeof(struct xhci_inflight_trb*) + sizeof(*arr));
+    Free(OBOS_KernelAllocator, arr, arr->count * sizeof(struct xhci_inflight_trb*) + sizeof(*arr));
+    req->drvData = nullptr;
+    return OBOS_STATUS_SUCCESS;
 }
