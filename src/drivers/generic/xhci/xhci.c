@@ -516,10 +516,10 @@ static obos_status do_bios_handoff(xhci_device* dev)
 
     if (!poll_bit_timeout(current_cap, BIT(16), 0, 1*1000*1000 /* 1 second */))
     {
-        OBOS_Error("xhci: %02x:%02x:%02x: BIOS handoff timed out after 1 second.",
+        OBOS_Warning("xhci: %02x:%02x:%02x: BIOS handoff timed out after 1 second.\n",
             dev->dev->location.bus, dev->dev->location.slot, dev->dev->location.function
         );
-        return OBOS_STATUS_TIMED_OUT;
+        return OBOS_STATUS_SUCCESS;
     }
 
     *(current_cap+1) = 0xE0000000;
