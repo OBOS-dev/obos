@@ -1609,8 +1609,15 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
     }
     timeout:
     for (size_t i = 0; i < nPossibleEvents; i++)
+    {
         if (unsignaledIRPs[i])
+        {
+            driver_header* driver = Vfs_GetVnodeDriver(unsignaledIRPs[i]->vn);
+            if (driver->ftable.finalize_irp)
+                driver->ftable.finalize_irp(unsignaledIRPs[i]);
             VfsH_IRPUnref(unsignaledIRPs[i]);
+        }
+    }
     Free(OBOS_NonPagedPoolAllocator, unsignaledIRPs, nPossibleEvents*sizeof(irp*));
     if (extra.sigmask)
         OBOS_SigProcMask(SIG_SETMASK, &oldmask, nullptr);
@@ -1839,7 +1846,12 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
 
         n_waitable_objects = 0;
         for (size_t i = 0; i < irp_count; i++)
+        {
+            driver_header* driver = Vfs_GetVnodeDriver(irp_list[i]->vn);
+            if (driver->ftable.finalize_irp)
+                driver->ftable.finalize_irp(irp_list[i]);
             VfsH_IRPUnref(irp_list[i]);
+        }
         Free(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*));
         irp_list = nullptr;
         irp_count = 0;
@@ -1851,7 +1863,12 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
     if (irp_list)
     {
         for (size_t i = 0; i < irp_count; i++)
+        {
+            driver_header* driver = Vfs_GetVnodeDriver(irp_list[i]->vn);
+            if (driver->ftable.finalize_irp)
+                driver->ftable.finalize_irp(irp_list[i]);
             VfsH_IRPUnref(irp_list[i]);
+        }
         Free(OBOS_NonPagedPoolAllocator, irp_list, irp_count*sizeof(irp*));
     }
 
