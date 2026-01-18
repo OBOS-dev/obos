@@ -122,6 +122,8 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
     switch (request)
     {
         case 1:
+            // "A temporary solution"
+            //     - me, probably
             st = port->get_readable_count(handle, argp);
             break;
         default:
