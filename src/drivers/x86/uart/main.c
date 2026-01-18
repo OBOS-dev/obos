@@ -316,7 +316,7 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         port->irq_obj->handlerUserdata = port;
         port->irq_obj->irqCheckerUserdata = port;
         port->irq_obj->irqMoveCallbackUserdata = port;
-        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, true);
+        status = Core_IrqObjectInitializeIRQL(port->irq_obj, IRQL_COM_IRQ, true, false);
         if (obos_is_error(status))
         {
             OBOS_Warning("Could not initialize irq object for COM%d. Status: %d.\n", port->com_port, status);
