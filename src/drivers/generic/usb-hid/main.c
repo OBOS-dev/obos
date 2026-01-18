@@ -36,6 +36,8 @@
 #include <utils/list.h>
 #include <utils/shared_ptr.h>
 
+#include "scancodes.h"
+
 OBOS_WEAK obos_status get_blk_size(dev_desc desc, size_t* blkSize);
 OBOS_WEAK obos_status get_max_blk_count(dev_desc desc, size_t* count);
 OBOS_WEAK obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkRead);
@@ -55,6 +57,13 @@ driver_id* this_driver;
 OBOS_WEAK void on_wake();
 OBOS_WEAK void on_suspend();
 
+#define KEY_PRESSED(bitfield, key) (bitfield[key/8] |= BIT(key%8))
+#define BITFIELD_DIFF(bitfield1, bitfield2, bitfield_out) \
+do {\
+    for (int i = 0; i < (104/8); i++)\
+        bitfield_out[i] = ~bitfield1[i] & bitfield2[i];\
+} while(0);
+
 typedef struct hid_dev {
     shared_ptr ptr;
     usb_dev_desc* desc;
@@ -69,6 +78,11 @@ typedef struct hid_dev {
     size_t blkSize;
     vnode* vn;
     dirent* ent;
+
+    uint8_t pressed_keys[104/8];
+    uint8_t active_modifiers[8/8];
+    bool superkey : 1;
+
     usb_endpoint* in_endpoint;
     LIST_NODE(device_list, struct hid_dev) node;
 } hid_dev;
@@ -110,12 +124,27 @@ static obos_status initialize_device(hid_dev* dev)
     return Drv_USBSynchronousOperation(dev->desc, &set_protocol, false);
 }
 
+struct boot_mouse_packet {
+    uint8_t flags;
+    int8_t x;
+    int8_t y;
+} OBOS_PACK;
+
+static void push_bytes(hid_dev* dev, const void* buff, size_t count)
+{
+    char* into = dev->ringbuffer.buff;
+    into += (dev->ringbuffer.ptr % dev->ringbuffer.len);
+    memcpy(into, buff, count);
+    dev->ringbuffer.ptr += count;
+    Core_EventSet(&dev->data_event, false);
+}
+
 static void hid_worker_thread(hid_dev* dev)
 {
-    timer* tm = nullptr;
     uint8_t interval = dev->in_endpoint->descriptor.bInterval;
-    event evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    CoreH_MakeTimerEvent(&tm, (uint32_t)interval*1000, &evnt, true);
+    // timer* tm = nullptr;
+    // event evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    // CoreH_MakeTimerEvent(&tm, (uint32_t)interval*1000, &evnt, true);
 
     uint8_t report_len = 0;
     uint8_t* report = nullptr;
@@ -132,21 +161,29 @@ static void hid_worker_thread(hid_dev* dev)
     if (obos_is_error(status))
         goto exit;
 
+    timer_tick ival = CoreH_TimeFrameToTick(interval*1000);
     int errc = 0;
     while (1)
     {
-        struct waitable_header* signaled = nullptr;
-        struct waitable_header* wobjs[2] = {
-            WAITABLE_OBJECT(dev->worker_die_event),
-            WAITABLE_OBJECT(evnt)
-        };
+        // struct waitable_header* signaled = nullptr;
+        // struct waitable_header* wobjs[2] = {
+        //     WAITABLE_OBJECT(dev->worker_die_event),
+        //     WAITABLE_OBJECT(evnt)
+        // };
 
-        status = Core_WaitOnObjects(2, wobjs, &signaled);
-        if (obos_is_error(status))
+        // status = Core_WaitOnObjects(2, wobjs, &signaled);
+        // if (obos_is_error(status))
+        //     break;
+        // if (signaled == wobjs[0])
+        //     break;
+        // Core_EventClear(&evnt);
+
+        if (Core_EventGetState(&dev->worker_die_event))
             break;
-        if (signaled == wobjs[0])
-            break;
-        Core_EventClear(&evnt);
+
+        timer_tick deadline = CoreS_GetTimerTick() + ival;
+        while (CoreS_GetTimerTick() < deadline)
+            OBOSS_SpinlockHint();
 
         status = Drv_USBSynchronousOperation(dev->desc, &payload, true);
         if (obos_is_error(status))
@@ -157,6 +194,114 @@ static void hid_worker_thread(hid_dev* dev)
                 break;
         }
         errc = 0;
+
+        switch (report_len) {
+            case 8:
+            {
+                // TODO(oberrow): Key repeating?
+
+                enum modifiers obos_mods = 0;
+                if ((report[0] & LEFT_CTRL) || (report[0] & RIGHT_CTRL))
+                    obos_mods |= CTRL;
+                if ((report[0] & LEFT_SHIFT) || (report[0] & RIGHT_SHIFT))
+                    obos_mods |= SHIFT;
+                if ((report[0] & LEFT_ALT) || (report[0] & RIGHT_ALT))
+                    obos_mods |= ALT;
+
+                uint8_t currently_pressed_keys_bmp[104/8];
+                uint8_t released_keys_bmp[104/8];
+                for (int i = 2; i < 8; i++)
+                {
+                    uint8_t code = report[i];
+                    if (code > 104 || code < 4)
+                        continue;
+                    KEY_PRESSED(currently_pressed_keys_bmp, code);
+                }
+                BITFIELD_DIFF(currently_pressed_keys_bmp, dev->pressed_keys, released_keys_bmp);
+                keycode *output = nullptr;
+                size_t nOutputs = 0;
+                for (int i = 0, bit = 0; i < 104/8; i++, bit++)
+                {
+                    for (int j = 0; j < 8; j++)
+                    {
+                        if (released_keys_bmp[i] & BIT(j))
+                        {
+                            scancode sc = s_scancode_keycode_table_boot[bit];
+                            enum modifiers extra_mods = IS_NUMPAD(bit)|KEY_RELEASED;
+                            size_t old_size = nOutputs * sizeof(output[0]);
+                            size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                            output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                            output[nOutputs++] = KEYCODE(sc, obos_mods|extra_mods);
+                        }
+                    }
+                }
+                for (int i = 2; i < 8; i++)
+                {
+                    uint8_t code = report[i];
+                    if (code > 104 || code < 4)
+                        continue;
+                    scancode sc = s_scancode_keycode_table_boot[code];
+                    enum modifiers extra_mods = IS_NUMPAD(code);
+                    size_t old_size = nOutputs * sizeof(output[0]);
+                    size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                    output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                    output[nOutputs++] = KEYCODE(sc, obos_mods|extra_mods);
+                }
+                if (obos_mods & CTRL)
+                {
+                    scancode sc = SCANCODE_CTRL;
+                    size_t old_size = nOutputs * sizeof(output[0]);
+                    size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                    output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                    output[nOutputs++] = KEYCODE(sc, obos_mods);
+                }
+                if (obos_mods & ALT)
+                {
+                    scancode sc = SCANCODE_ALT;
+                    size_t old_size = nOutputs * sizeof(output[0]);
+                    size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                    output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                    output[nOutputs++] = KEYCODE(sc, obos_mods);
+                }
+                if (obos_mods & SHIFT)
+                {
+                    scancode sc = SCANCODE_SHIFT;
+                    size_t old_size = nOutputs * sizeof(output[0]);
+                    size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                    output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                    output[nOutputs++] = KEYCODE(sc, obos_mods);
+                }
+                bool superkey = (report[0] & LEFT_GUI) || (report[0] & RIGHT_GUI);
+                if (superkey != dev->superkey)
+                {
+                    scancode sc = SCANCODE_SUPER_KEY;
+                    size_t old_size = nOutputs * sizeof(output[0]);
+                    size_t new_size = (1+nOutputs) * sizeof(output[0]);
+                    output = Reallocate(OBOS_KernelAllocator, output, new_size, old_size, nullptr);
+                    output[nOutputs++] = KEYCODE(sc, obos_mods|(superkey ? 0 : KEY_RELEASED));
+                }
+                push_bytes(dev, output, nOutputs*sizeof(output[0]));
+                Free(OBOS_KernelAllocator, output, nOutputs*sizeof(output[0]));
+                break;
+            }
+            case 3:
+            {
+                // Mouse packet.
+                struct boot_mouse_packet* pckt = (void*)report;
+                mouse_packet output = {};
+                output.lb = pckt->flags & BIT(0);
+                output.rb = pckt->flags & BIT(1);
+                output.mb = pckt->flags & BIT(2);
+                output.b4 = 0;
+                output.b5 = 0;
+                output.x = pckt->x;
+                output.y = -pckt->y;
+                output.z = 0;
+                push_bytes(dev, &output, sizeof(output));
+                break;
+            }
+        }
+        Core_Yield();
     }
 
     exit:
@@ -191,8 +336,6 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     obos_status status = Drv_USBDriverAttachedToPort(desc, this_driver);
     if (obos_is_error(status))
         return status;
-
-    OBOS_Debug("usb-hid: device bound to driver\n");
 
     hid_dev* dev = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*dev), nullptr);
     OBOS_SharedPtrConstruct(&dev->ptr, dev);
@@ -246,14 +389,20 @@ obos_status on_usb_attach(usb_dev_desc* desc)
 
     Free(OBOS_KernelAllocator, name, name_len+1);
 
+    dev->ringbuffer.len = OBOS_PAGE_SIZE*2;
+    dev->ringbuffer.ptr = 0;
+    dev->ringbuffer.buff = Allocate(OBOS_KernelAllocator, dev->ringbuffer.len, nullptr);
+
     dev->worker = CoreH_ThreadAllocate(nullptr);
     void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
     thread_ctx ctx = {};
     CoreS_SetupThreadContext(&ctx, (uintptr_t)hid_worker_thread, (uintptr_t)dev, false, stack, 0x4000);
-    CoreH_ThreadInitialize(dev->worker, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
+    CoreH_ThreadInitialize(dev->worker, THREAD_PRIORITY_NORMAL, Core_DefaultThreadAffinity, &ctx);
     Core_ProcessAppendThread(OBOS_KernelProcess, dev->worker);
     OBOS_SharedPtrRef(&dev->ptr);
     CoreH_ThreadReady(dev->worker);
+    
+    OBOS_Log("usb-hid: device bound to driver\n");
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -367,9 +516,8 @@ obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t b
 static void irp_on_event_set(irp* req)
 {
     hid_handle* hnd = (void*)req->desc;
-    Core_EventClear(req->evnt);
     size_t available = hnd->dev->ringbuffer.ptr - hnd->in_ptr;
-    if (!available)
+    if (available < (req->blkCount - req->nBlkRead))
     {
         if (hnd->dev->desc->attached)
             req->status = OBOS_STATUS_IRP_RETRY;
@@ -377,17 +525,25 @@ static void irp_on_event_set(irp* req)
             req->status = OBOS_STATUS_INTERNAL_ERROR;
         return;
     }
-    req->nBlkRead += available / hnd->dev->blkSize;
+    if (req->dryOp)
+    {
+        req->status = OBOS_STATUS_SUCCESS;
+        return;    
+    }
     char* into = (char*)req->buff + req->nBlkRead * hnd->dev->blkSize;
     char* from = (char*)hnd->dev->ringbuffer.buff + (hnd->in_ptr % hnd->dev->ringbuffer.len);
 
-    // TODO: Is this sufficient to avoid buffer overflows?
-    if (available > (hnd->dev->ringbuffer.len - hnd->in_ptr))
-        available = (hnd->dev->ringbuffer.len - hnd->in_ptr);
+    size_t nToRead = OBOS_MIN(available, req->blkCount * hnd->dev->blkSize);
+    memcpy(into, from, nToRead);
+    req->nBlkRead += nToRead / hnd->dev->blkSize;
 
-    memcpy(into, from, available);
+    hnd->in_ptr += nToRead;
 
-    hnd->in_ptr += available;
+    req->status = OBOS_STATUS_SUCCESS;
+    
+    available = hnd->dev->ringbuffer.ptr - hnd->in_ptr;
+    if (!available)
+        Core_EventClear(req->evnt);
 }
 
 obos_status submit_irp(void* reqp)
@@ -445,7 +601,7 @@ obos_status ioctl(dev_desc what, uint32_t request, void* argp)
         case 1:
             // "A temporary solution"
             //     - me, probably, when i wrote the ps2 code
-            (*(size_t*)argp) = handle->in_ptr - dev->ringbuffer.ptr;
+            (*(size_t*)argp) = (dev->ringbuffer.ptr - handle->in_ptr) / dev->blkSize;
             break;
         default:
             st = OBOS_STATUS_INVALID_IOCTL;
