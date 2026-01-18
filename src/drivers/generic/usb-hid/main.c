@@ -1,5 +1,5 @@
 /*
- * drivers/generic/usb-keyboard/main.c
+ * drivers/generic/usb-hid/main.c
  *
  * Copyright (c) 2026 Omar Berrow
 */
@@ -161,7 +161,7 @@ static void hid_worker_thread(hid_dev* dev)
     if (obos_is_error(status))
         goto exit;
 
-    timer_tick ival = CoreH_TimeFrameToTick(interval*1000);
+    timer_tick ival = CoreH_TimeFrameToTick((interval+2)*1000);
     int errc = 0;
     while (1)
     {
@@ -182,8 +182,14 @@ static void hid_worker_thread(hid_dev* dev)
             break;
 
         timer_tick deadline = CoreS_GetTimerTick() + ival;
+#if __x86_64__
         while (CoreS_GetTimerTick() < deadline)
-            OBOSS_SpinlockHint();
+            asm volatile("hlt");
+#else
+#pragma GCC warning "Implement this for the target architecture"
+        while (CoreS_GetTimerTick() < deadline)
+            OBOSS_SpinlockHint()
+#endif
 
         status = Drv_USBSynchronousOperation(dev->desc, &payload, true);
         if (obos_is_error(status))
