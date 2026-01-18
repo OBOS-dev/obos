@@ -29,6 +29,7 @@
 
 LIST_GENERATE(usb_devices, struct usb_dev_desc, node);
 LIST_GENERATE(usb_controller_list, struct usb_controller, node);
+LIST_GENERATE(usb_endpoint_list, struct usb_endpoint, node);
 
 usb_controller_list Drv_USBControllers;
 mutex Drv_USBControllersLock = MUTEX_INITIALIZE();
@@ -67,6 +68,24 @@ const char* Drv_USBDeviceSpeedAsString(usb_device_speed val)
     }
 }
 
+static void free_endpoint_list(usb_dev_desc* desc)
+{
+    for (usb_endpoint* ep = LIST_GET_HEAD(usb_endpoint_list, &desc->endpoints); ep; )
+    {
+        usb_endpoint* const next = LIST_GET_NEXT(usb_endpoint_list, &desc->endpoints, ep);
+        LIST_REMOVE(usb_endpoint_list, &desc->endpoints, ep);
+        Free(OBOS_KernelAllocator, ep, sizeof(*ep));
+        ep = next;
+    }
+}
+
+static void free_usb_port(void* udata, shared_ptr* obj)
+{
+    usb_dev_desc* desc = obj->obj;
+    free_endpoint_list(desc);
+    Free(udata, desc, obj->szObj);
+}
+
 obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** odesc)
 {
     OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
@@ -76,7 +95,7 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
 
     usb_dev_desc* desc = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*desc), nullptr);
     OBOS_SharedPtrConstruct(&desc->ptr, desc);
-    desc->ptr.free = OBOS_SharedPtrDefaultFree;
+    desc->ptr.free = free_usb_port;
     desc->ptr.freeUdata = OBOS_KernelAllocator;
     OBOS_SharedPtrRef(&desc->ptr);
 
@@ -170,8 +189,17 @@ static obos_status configure_interface_eps(usb_dev_desc* desc, struct interface*
         {
             for (size_t j = 0; j < i; j++)
                 configure_endpoint(desc, iface->endpoints[j], true);
+            free_endpoint_list(desc);
             return status;
         }
+        
+        usb_endpoint* ep = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*ep), nullptr);
+        ep->endpoint_number = iface->endpoints[i]->bEndpointAddress & 0xf;
+        ep->dev = desc;
+        ep->type = iface->endpoints[i]->bmAttributes & 0b11;
+        ep->direction = (iface->endpoints[i]->bEndpointAddress & BIT(7));
+        LIST_APPEND(usb_endpoint_list, &desc->endpoints, ep);
+
         continue;
     }
     if (!desc->info.hid.class)
@@ -233,6 +261,8 @@ static obos_status try_configuration(usb_dev_desc* ddesc, usb_configuration_desc
     set_configuration.payload.setup.wIndex = 0;
     set_configuration.payload.setup.wLength = 0;
 
+    ddesc->configuration.configuration_id = conf_desc->bConfigurationValue;
+
     irp* req = nullptr;
     status = Drv_USBIRPSubmit2(ddesc, (void**)&req, &set_configuration, false);
     status = Drv_USBIRPWait(ddesc, req);
@@ -289,7 +319,10 @@ OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_de
         status = try_configuration(desc, conf_desc, top);
         Free(OBOS_KernelAllocator, conf_desc, pre_conf_desc.wTotalLength);
         if (obos_is_success(status))
+        {
+            desc->configuration.configuration_idx = conf;
             break;
+        }
     }
 
     if (obos_is_success(status))
