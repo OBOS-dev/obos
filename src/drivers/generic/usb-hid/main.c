@@ -167,6 +167,20 @@ static void hid_worker_thread(hid_dev* dev)
     Core_ExitCurrentThread();
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wframe-address"
+static void hid_dev_onref(struct shared_ptr* ptr)
+{
+    hid_dev* dev = ptr->obj;
+    OBOS_SharedPtrRef(&dev->desc->ptr);
+}
+static void hid_dev_ondeRef(struct shared_ptr* ptr)
+{
+    hid_dev* dev = ptr->obj;
+    OBOS_SharedPtrUnref(&dev->desc->ptr);
+}
+#pragma GCC diagnostic ignored "-Wframe-address"
+
 obos_status on_usb_attach(usb_dev_desc* desc)
 {
     if (desc->info.hid.subclass == 0 /* report protocol only device */)
@@ -182,16 +196,21 @@ obos_status on_usb_attach(usb_dev_desc* desc)
 
     hid_dev* dev = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*dev), nullptr);
     OBOS_SharedPtrConstruct(&dev->ptr, dev);
-    OBOS_SharedPtrRef(&dev->ptr);
+    dev->ptr.onDeref = hid_dev_ondeRef;
+    dev->ptr.onRef = hid_dev_onref;
     dev->ptr.free = OBOS_SharedPtrDefaultFree;
     dev->ptr.freeUdata = OBOS_KernelAllocator;
+    // OBOS_SharedPtrRef(&desc->ptr);
+    // already referenced for us by Drv_PnpUSBDeviceAttached
+    dev->desc = desc;
+
     dev->worker_die_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
 
     dev->blkSize = desc->info.hid.protocol == 2 ? sizeof(mouse_packet) : sizeof(keycode);
     
-    dev->desc = desc;
     dev->data_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     
+    OBOS_SharedPtrRef(&dev->ptr);
     LIST_APPEND(device_list, &g_hid_devices, dev);
     
     status = initialize_device(dev);
@@ -207,14 +226,22 @@ obos_status on_usb_attach(usb_dev_desc* desc)
     dev_desc ddesc = (dev_desc)dev;
     reference_device(&ddesc);
 
+    char id = 'u';
+    switch (dev->blkSize) {
+        case sizeof(keycode): id = 'k'; break;
+        case sizeof(mouse_packet): id = 'm'; break;
+        default: OBOS_UNREACHABLE;
+    }
+
     char* name = nullptr;
-    size_t name_len = snprintf(name, 0, "usb-hid-%d", dev_idx++);
+    size_t name_len = snprintf(name, 0, "hid%c%d", id, dev_idx++);
 
     name = Allocate(OBOS_KernelAllocator, name_len+1, nullptr);
-    snprintf(name, name_len, "usb-hid-%d", dev_idx - 1);
+    snprintf(name, name_len+1, "hid%c%d", id, dev_idx - 1);
 
     dev->vn = Drv_AllocateVNode(this_driver, ddesc, 0, nullptr, VNODE_TYPE_CHR);
     dev->vn->flags |= VFLAGS_UNREFERENCE_ON_DELETE;
+    dev->vn->blkSize = dev->blkSize;
     dev->ent = Drv_RegisterVNode(dev->vn, name);
 
     Free(OBOS_KernelAllocator, name, name_len+1);
@@ -237,7 +264,7 @@ obos_status on_usb_detach(usb_dev_desc* desc)
     
     hid_dev* dev = desc->dev_ptr;
     
-    CoreH_AbortWaitingThreads(WAITABLE_OBJECT(dev->data_event));
+    //CoreH_AbortWaitingThreads(WAITABLE_OBJECT(dev->data_event));
     Core_EventSet(&dev->worker_die_event, false);
     
     LIST_REMOVE(device_list, &g_hid_devices, dev);
@@ -344,7 +371,10 @@ static void irp_on_event_set(irp* req)
     size_t available = hnd->dev->ringbuffer.ptr - hnd->in_ptr;
     if (!available)
     {
-        req->status = OBOS_STATUS_IRP_RETRY;
+        if (hnd->dev->desc->attached)
+            req->status = OBOS_STATUS_IRP_RETRY;
+        else
+            req->status = OBOS_STATUS_INTERNAL_ERROR;
         return;
     }
     req->nBlkRead += available / hnd->dev->blkSize;
@@ -378,10 +408,17 @@ obos_status submit_irp(void* reqp)
         return OBOS_STATUS_SUCCESS;
     }
     hid_dev* dev = hnd->dev;
-
     OBOS_SharedPtrRef(&dev->ptr);
+    if (!dev->desc->attached)
+    {
+        // Not a memory leak! see finalize_irp
+        req->status = OBOS_STATUS_INTERNAL_ERROR;
+        return OBOS_STATUS_SUCCESS;
+    }
+
     req->status = OBOS_STATUS_SUCCESS;
     req->evnt = &dev->data_event;
+    req->detach_event = &dev->desc->on_detach;
     req->on_event_set = irp_on_event_set;
 
     return 0;
@@ -389,7 +426,9 @@ obos_status submit_irp(void* reqp)
 obos_status finalize_irp(void* reqp)
 {
     irp* req = reqp;
+    OBOS_ENSURE(req->drvData == 0);
     hid_handle* hnd = (void*)req->desc;
+    req->drvData = (void*)1;
     OBOS_SharedPtrUnref(&hnd->dev->ptr);
     return OBOS_STATUS_SUCCESS;
 }

@@ -623,7 +623,12 @@ obos_status VfsH_IRPWait(irp* request)
                 status = OBOS_STATUS_INTERNAL_ERROR;
         }
         if (obos_is_error(status))
+        {
+            driver_header* driver = Vfs_GetVnodeDriver(vn);
+            if (driver->ftable.finalize_irp)
+                driver->ftable.finalize_irp(request);
             return status;
+        }
         if (request->on_event_set)
             request->on_event_set(request);
         if (request->status != OBOS_STATUS_IRP_RETRY)

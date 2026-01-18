@@ -402,7 +402,12 @@ OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req)
                 status = OBOS_STATUS_INTERNAL_ERROR; // io error
         }
         if (obos_is_error(status))
+        {
+            driver_header* driver = desc->controller->hdr;
+            if (driver->ftable.finalize_irp)
+                driver->ftable.finalize_irp(request);
             return status;
+        }
         if (request->on_event_set)
             request->on_event_set(request);
         if (request->status != OBOS_STATUS_IRP_RETRY)
