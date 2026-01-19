@@ -127,7 +127,7 @@ obos_status submit_irp(void* reqp)
 
     bool in_endpoint = req->op == IRP_READ;
     const uint8_t target = payload->endpoint == 0 ? 0 : ((payload->endpoint+1)*2 + (req->op == IRP_WRITE));
-    if (!slot->trb_ring[target].buffer.pg && (payload->trb_type != USB_TRB_CONFIGURE_ENDPOINT || payload->payload.configure_endpoint.deconfigure))
+    if (!slot->trb_ring[target].buffer.pg && payload->trb_type != USB_TRB_CONFIGURE_HUB && (payload->trb_type != USB_TRB_CONFIGURE_ENDPOINT || payload->payload.configure_endpoint.deconfigure))
     {
         req->status = OBOS_STATUS_UNINITIALIZED;
         return OBOS_STATUS_SUCCESS;
@@ -150,12 +150,12 @@ obos_status submit_irp(void* reqp)
         req->status = OBOS_STATUS_INVALID_OPERATION;
         return OBOS_STATUS_SUCCESS;
     }
-    if ((payload->trb_type != USB_TRB_CONTROL) && ep_type == 4 /* control */)
+    if (payload->trb_type != USB_TRB_CONTROL && payload->trb_type != USB_TRB_CONFIGURE_HUB && ep_type == 4 /* control */)
     {
         req->status = OBOS_STATUS_INVALID_OPERATION;
         return OBOS_STATUS_SUCCESS;
     }
-    if ((payload->trb_type == USB_TRB_CONTROL) && ep_type != 4 /* control */)
+    if ((payload->trb_type == USB_TRB_CONTROL || payload->trb_type == USB_TRB_CONFIGURE_HUB) && ep_type != 4 /* control */)
     {
         req->status = OBOS_STATUS_INVALID_OPERATION;
         return OBOS_STATUS_SUCCESS;
@@ -436,6 +436,22 @@ obos_status submit_irp(void* reqp)
                         break;
                     default: OBOS_ENSURE(!"invalid endpoint type");
                 }
+                if (payload->payload.configure_endpoint.is_hub)
+                {
+                    slot_ctx->dw0 |= BIT(26);
+                    if (payload->payload.configure_endpoint.hub_info.mtt)
+                        slot_ctx->dw0 |= BIT(25);
+                    slot_ctx->dw0 |= payload->payload.configure_endpoint.hub_info.route_string & 0xFFFFF;
+                    
+                    slot_ctx->dw1 |= ((uint32_t)payload->payload.configure_endpoint.hub_info.port_count & 3) << 24;
+
+                    slot_ctx->dw2 |= payload->payload.configure_endpoint.hub_info.parent_slot_id;
+                    if (payload->payload.configure_endpoint.hub_info.parent_slot_id)
+                        slot_ctx->dw2 |= (uint32_t)dev->slots[payload->payload.configure_endpoint.hub_info.parent_slot_id-1].port_id<<8;
+                    else
+                        slot_ctx->dw2 &= ~(0xffU<<8);
+                    slot_ctx->dw2 |= ((uint16_t)payload->payload.configure_endpoint.hub_info.tt_think_time & 3) << 16;
+                }
             }
 
             xhci_configure_endpoint_command_trb trb = {};
@@ -443,6 +459,48 @@ obos_status submit_irp(void* reqp)
             trb.dw3 |= ((uint32_t)slot << 24);
             if (payload->payload.configure_endpoint.deconfigure)
                 trb.dw3 |= BIT(9);
+            trb.icp = icp;
+            
+            xhci_inflight_trb* itrb = nullptr;
+            req->status = xhci_trb_enqueue_command(dev, (uint32_t*)&trb, &itrb, true);
+            req->evnt = &itrb->evnt;
+            req->drvData = itrb;
+
+            break;
+        }
+        case USB_TRB_CONFIGURE_HUB:
+        {
+            const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
+            const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
+            uint8_t slot = desc->info.slot;
+
+            uintptr_t icp = xhci_allocate_pages(xhci_page_count_for_size(sz_icp, nPages), nPages, dev);
+            xhci_input_context* input_context = MmS_MapVirtFromPhys(icp);
+            memzero(input_context, xhci_page_count_for_size(sz_icp, nPages)*OBOS_PAGE_SIZE);
+            input_context->icc.add_context |= 1;
+
+            xhci_slot_context* slot_ctx = get_xhci_endpoint_context(dev, input_context, 1);
+            xhci_slot_context* src_slot_ctx = get_xhci_endpoint_context(dev, xhci_get_device_context(dev, slot), 0);
+            memcpy(slot_ctx, src_slot_ctx, sizeof(*slot_ctx));
+            slot_ctx->dw0 |= BIT(26);
+            if (payload->payload.configure_hub.mtt)
+                slot_ctx->dw0 |= BIT(25);
+            slot_ctx->dw0 |= payload->payload.configure_hub.route_string & 0xFFFFF;
+            
+            slot_ctx->dw1 |= ((uint32_t)payload->payload.configure_hub.port_count & 0xff) << 24;
+
+            slot_ctx->dw2 |= payload->payload.configure_hub.parent_slot_id;
+            if (payload->payload.configure_hub.parent_slot_id)
+                slot_ctx->dw2 |= (uint32_t)dev->slots[payload->payload.configure_hub.parent_slot_id-1].port_id<<8;
+            else
+                slot_ctx->dw2 &= ~(0xffU<<8);
+            slot_ctx->dw2 |= ((uint16_t)payload->payload.configure_hub.tt_think_time & 3) << 16;
+
+            memcpy(src_slot_ctx, slot_ctx, sizeof(*slot_ctx));
+
+            xhci_evaluate_context_command_trb trb = {};
+            XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_EVALUATE_CONTEXT_COMMAND);
+            trb.dw3 |= ((uint32_t)slot << 24);
             trb.icp = icp;
             
             xhci_inflight_trb* itrb = nullptr;
@@ -485,6 +543,27 @@ obos_status finalize_irp(void* reqp)
         const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
 
         xhci_configure_endpoint_command_trb* trb = (void*)itrb->trb_cpy;
+
+        Mm_FreePhysicalPages(trb->icp, xhci_page_count_for_size(sz_icp, nPages));
+        
+        req->status = (itrb->resp[2] >> 24) == 1 ? OBOS_STATUS_SUCCESS : OBOS_STATUS_INTERNAL_ERROR;
+        req->nBlkRead -= XHCI_GET_TRB_TRANSFER_LENGTH(itrb->resp);
+
+        Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+        Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+        return OBOS_STATUS_SUCCESS;
+    }
+    else if (payload->trb_type == USB_TRB_CONFIGURE_HUB)
+    {
+        xhci_inflight_trb* itrb = req->drvData;
+
+        usb_dev_desc* desc = (void*)req->desc;
+        xhci_device* dev = desc->controller->handle;
+
+        const uint32_t nPages = (1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) > OBOS_PAGE_SIZE ? (((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) / OBOS_PAGE_SIZE) + !!((1 << (__builtin_ctz(dev->op_regs->pagesize)+12)) % OBOS_PAGE_SIZE)) : 1;
+        const size_t sz_icp = dev->hccparams1_csz ? 0x840 : 0x420;
+
+        xhci_evaluate_context_command_trb* trb = (void*)itrb->trb_cpy;
 
         Mm_FreePhysicalPages(trb->icp, xhci_page_count_for_size(sz_icp, nPages));
         

@@ -17,13 +17,7 @@
 
 OBOS_WEAK obos_status submit_irp(void*);
 OBOS_WEAK obos_status finalize_irp(void*);
-OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* argp)
-{
-    OBOS_UNUSED(what);
-    OBOS_UNUSED(request);
-    OBOS_UNUSED(argp);
-    return OBOS_STATUS_INVALID_IOCTL;
-}
+OBOS_WEAK obos_status ioctl(dev_desc what, uint32_t request, void* argp);
 void driver_cleanup_callback()
 {}
 
