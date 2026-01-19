@@ -657,7 +657,7 @@ void xhci_probe_bus(pci_bus* bus);
 obos_status xhci_initialize_device(xhci_device* dev);
 obos_status xhci_reset_device(xhci_device* dev);
 
-obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port);
+obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port, uint32_t route_string, const usb_hub_info* hub_info);
 obos_status xhci_slot_free(xhci_device* dev, uint8_t slot);
 
 enum {

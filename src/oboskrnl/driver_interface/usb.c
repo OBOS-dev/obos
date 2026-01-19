@@ -13,6 +13,8 @@
 #include <mm/context.h>
 #include <mm/pmm.h>
 
+#include <irq/timer.h>
+
 #include <driver_interface/usb.h>
 #include <driver_interface/header.h>
 #include <driver_interface/pnp.h>
@@ -26,6 +28,7 @@
 
 #include <utils/list.h>
 #include <utils/shared_ptr.h>
+#include <utils/string.h>
 
 LIST_GENERATE(usb_devices, struct usb_dev_desc, node);
 LIST_GENERATE(usb_controller_list, struct usb_controller, node);
@@ -43,8 +46,6 @@ obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header
     ctlr->handle = handle;
     ctlr->hdr = header;
     ctlr->ports_lock = MUTEX_INITIALIZE();
-    ctlr->port_events.on_attach = EVENT_INITIALIZE(EVENT_NOTIFICATION);
-    ctlr->port_events.on_detach = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     
     Core_MutexAcquire(&Drv_USBControllersLock);
     LIST_APPEND(usb_controller_list, &Drv_USBControllers, ctlr);
@@ -86,7 +87,7 @@ static void free_usb_port(void* udata, shared_ptr* obj)
     Free(udata, desc, obj->szObj);
 }
 
-obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** odesc)
+obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** odesc, usb_dev_desc* parent)
 {
     OBOS_ENSURE(Core_GetIrql() < IRQL_DISPATCH);
 
@@ -102,15 +103,22 @@ obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* inf
     desc->attached = true;
     desc->on_detach = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     desc->controller = ctlr;
+    desc->children_lock = MUTEX_INITIALIZE();
     desc->info = *info;
 
-    Core_MutexAcquire(&ctlr->ports_lock);
-    LIST_APPEND(usb_devices, &ctlr->ports, desc);
-    Core_MutexRelease(&ctlr->ports_lock);
-
-    Core_EventSet(&ctlr->port_events.on_attach, false);
-
-    OBOS_Debug("usb: %s port attached on address 0x%x\n", Drv_USBDeviceSpeedAsString(info->speed), info->address);
+    if (!parent)
+    {
+        Core_MutexAcquire(&ctlr->ports_lock);
+        LIST_APPEND(usb_devices, &ctlr->ports, desc);
+        Core_MutexRelease(&ctlr->ports_lock);
+    }
+    else
+    {
+        Core_MutexAcquire(&parent->children_lock);
+        LIST_APPEND(usb_devices, &parent->children, desc);
+        Core_MutexRelease(&parent->children_lock);
+    }
+    desc->parent = parent;
 
     if (odesc) *odesc = desc;
     
@@ -138,6 +146,27 @@ static obos_status get_descriptor(usb_dev_desc* desc, uint8_t type, uint8_t idx,
     
     return status;
 }
+static obos_status get_class_descriptor(usb_dev_desc* desc, uint8_t type, uint8_t idx, uint8_t length, void* buff)
+{
+    usb_irp_payload payload = {};
+
+    obos_status status = DrvH_ScatterGather(&Mm_KernelContext, buff, length, &payload.payload.setup.regions, &payload.payload.setup.nRegions, 61, true);
+    if (obos_is_error(status))
+        return status;
+
+    payload.trb_type = USB_TRB_CONTROL;
+    payload.endpoint = 0;
+    payload.payload.setup.bmRequestType = 0xa0;
+    payload.payload.setup.bRequest = USB_GET_DESCRIPTOR;
+    payload.payload.setup.wValue = ((uint16_t)type << 8) | idx;
+    payload.payload.setup.wLength = length;
+
+    status = Drv_USBSynchronousOperation(desc, &payload, true);
+    
+    DrvH_FreeScatterGatherList(&Mm_KernelContext, buff, length, payload.payload.setup.regions, payload.payload.setup.nRegions);
+    
+    return status;
+}
 
 struct interface {
     usb_interface_descriptor* descriptor;
@@ -145,11 +174,16 @@ struct interface {
     size_t endpoint_count;
 };
 
-static obos_status configure_endpoint(usb_dev_desc* desc, usb_endpoint_descriptor* endpoint, bool dc)
+static obos_status configure_endpoint(usb_dev_desc* desc, usb_endpoint_descriptor* endpoint, usb_hub_info* hub_info, bool dc)
 {
     usb_irp_payload conf_ep = {};
     conf_ep.trb_type = USB_TRB_CONFIGURE_ENDPOINT;
     conf_ep.payload.configure_endpoint.deconfigure = dc;
+    if (hub_info)
+    {
+        conf_ep.payload.configure_endpoint.hub_info = *hub_info;
+        conf_ep.payload.configure_endpoint.is_hub = true;
+    }
     if (!dc)
     {
         conf_ep.payload.configure_endpoint.endpoint_type = endpoint->bmAttributes & 0b11;
@@ -167,11 +201,13 @@ static obos_status configure_interface_eps(usb_dev_desc* desc, struct interface*
 {
     for (size_t i = 0; i < iface->endpoint_count; i++)
     {
-        obos_status status = configure_endpoint(desc, iface->endpoints[i], false);
+        obos_status status = OBOS_STATUS_SUCCESS;
+        if (desc->info.hid.class != 9)
+            configure_endpoint(desc, iface->endpoints[i], nullptr, false);
         if (obos_is_error(status))
         {
             for (size_t j = 0; j < i; j++)
-                configure_endpoint(desc, iface->endpoints[j], true);
+                configure_endpoint(desc, iface->endpoints[j], nullptr, true);
             free_endpoint_list(desc);
             return status;
         }
@@ -307,8 +343,15 @@ OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_de
     }
 
     if (obos_is_success(status))
-        OBOS_Debug("usb: successfully configured slot %d. slot hid=%02x:%02x:%02x\n", desc->info.slot, desc->info.hid.class, desc->info.hid.subclass, desc->info.hid.protocol);
+    {
+        char* address_str = Drv_USBMakePhysicalLocationString(desc);
+        OBOS_Debug("usb: device connected on port %s\n", address_str);
+        OBOS_Debug("usb: note: hid is %02x:%02x:%02x\n", desc->info.hid.class, desc->info.hid.subclass, desc->info.hid.protocol);
+        Free(OBOS_KernelAllocator, address_str, strlen(address_str)+1);
+    }
 
+    if (desc->info.hid.class == 0x9)
+        return Drv_USBHubAttached(desc);
     return Drv_PnpUSBDeviceAttached(desc);
 }
 
@@ -321,9 +364,18 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
 
     OBOS_ENSURE(ctlr == desc->controller);
 
-    Core_MutexAcquire(&ctlr->ports_lock);
-    LIST_REMOVE(usb_devices, &ctlr->ports, desc);
-    Core_MutexRelease(&ctlr->ports_lock);
+    if (!desc->parent)
+    {
+        Core_MutexAcquire(&ctlr->ports_lock);
+        LIST_REMOVE(usb_devices, &ctlr->ports, desc);
+        Core_MutexRelease(&ctlr->ports_lock);
+    }
+    else
+    {
+        Core_MutexAcquire(&desc->parent->children_lock);
+        LIST_REMOVE(usb_devices, &desc->parent->children, desc);
+        Core_MutexRelease(&desc->parent->children_lock);
+    }
 
     if (desc->drv)
     {
@@ -335,7 +387,6 @@ obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc)
     }
 
     Core_EventSet(&desc->on_detach, false);
-    Core_EventSet(&ctlr->port_events.on_attach, false);
     
     desc->attached = false;
     OBOS_SharedPtrUnref(&desc->ptr);
@@ -434,4 +485,256 @@ OBOS_EXPORT obos_status Drv_USBSynchronousOperation(usb_dev_desc* desc, const us
     status = Drv_USBIRPWait(desc, req);
     VfsH_IRPUnref(req);
     return status;
+}
+
+uint32_t Drv_USBMakeRouteString(usb_dev_desc* desc)
+{
+    uint32_t res = 0;
+    for (usb_dev_desc* cur = desc; ; cur = cur->parent)
+    {
+        if (!cur->parent)
+            break;
+        res <<= 4;
+        res |= cur->info.port;
+        res &= ~(0xff << 24);
+        res |= cur->parent->info.port << 24;
+    }
+    return res;
+}
+
+char* Drv_USBMakePhysicalLocationString(usb_dev_desc* desc)
+{
+    usb_dev_desc* reverse_hierarchy[6] = {};
+    int i = 0;
+    int depth = 0;
+    for (usb_dev_desc* cur = desc; cur; cur = cur->parent, depth++);
+    depth--;
+    for (usb_dev_desc* cur = desc; cur && i < 6; cur = cur->parent)
+        reverse_hierarchy[depth - i++] = cur;
+
+    char curr[12] = {};
+    string inter = {};
+
+    for (int i = 0; i < 6; i++)
+    {
+        if (!reverse_hierarchy[i])
+            break;
+
+        char end = (i == 5 || !reverse_hierarchy[i+1]) ? '\0' : '.';
+        snprintf(curr, sizeof(curr), "%d%c", reverse_hierarchy[i]->info.port, end);
+
+        OBOS_AppendStringC(&inter, curr);
+
+        memzero(curr, sizeof(curr));
+    }
+
+    char* out = Allocate(OBOS_KernelAllocator, OBOS_GetStringSize(&inter)+1, nullptr);
+    memcpy(out, OBOS_GetStringCPtr(&inter), OBOS_GetStringSize(&inter));
+    out[OBOS_GetStringSize(&inter)] = 0;
+
+    return out;
+}
+
+enum {
+    PORT_CONNECTION = 0,
+    PORT_ENABLE = 1,
+    PORT_SUSPEND = 2,
+    PORT_OVER_CURRENT = 3,
+    PORT_RESET = 4,
+    PORT_POWER = 8,
+    PORT_LOW_SPEED = 9,
+    C_PORT_CONNECTION = 16,
+    C_PORT_ENABLE = 17,
+    C_PORT_SUSPEND = 18,
+    C_PORT_OVER_CURRENT = 19,
+    C_PORT_RESET = 20,
+    PORT_TEST = 21,
+    PORT_INDICATOR = 22,
+};
+
+static obos_status hub_port_set_feature(usb_dev_desc* desc, uint8_t request, uint8_t port, uint8_t feature_selector)
+{
+    usb_irp_payload payload = {};
+    payload.endpoint = 0;
+    payload.trb_type = USB_TRB_CONTROL;
+    payload.payload.setup.nRegions = 0;
+    payload.payload.setup.regions = nullptr;
+    payload.payload.setup.wLength = 0;
+    payload.payload.setup.bmRequestType = 0x23;
+    payload.payload.setup.bRequest = request;
+    payload.payload.setup.wValue = feature_selector;
+    payload.payload.setup.wIndex = port;
+    
+    return Drv_USBSynchronousOperation(desc, &payload, false);
+}
+
+static obos_status hub_get_port_status(usb_dev_desc* desc, uint8_t port, uint16_t *out)
+{
+    OBOS_ALIGNAS(32) uint16_t buf[2];
+
+    usb_irp_payload payload = {};
+    payload.endpoint = 0;
+    payload.trb_type = USB_TRB_CONTROL;
+    obos_status status = DrvH_ScatterGather(&Mm_KernelContext, buf, 4, &payload.payload.setup.regions, &payload.payload.setup.nRegions, 61, true);
+    if (obos_is_error(status))
+        return status;
+    payload.payload.setup.wLength = 4;
+    payload.payload.setup.bmRequestType = 0xa3;
+    payload.payload.setup.bRequest = USB_GET_STATUS;
+    payload.payload.setup.wValue = 0;
+    payload.payload.setup.wIndex = port;
+
+    status = Drv_USBSynchronousOperation(desc, &payload, true);
+   
+    memcpy(out, buf, 4);
+    
+    DrvH_FreeScatterGatherList(&Mm_KernelContext, buf, 4, payload.payload.setup.regions, payload.payload.setup.nRegions);
+    
+    return status;
+}
+
+static void busy_sleep(uint32_t ms)
+{
+    timer_tick deadline = CoreS_GetTimerTick() + CoreH_TimeFrameToTick(ms*1000);
+    while (CoreS_GetTimerTick() < deadline)
+        OBOSS_SpinlockHint();
+}
+
+obos_status Drv_USBHubAttached(usb_dev_desc* desc)
+{
+    OBOS_ASSERT(desc);
+
+    desc->is_hub = true;
+
+    OBOS_ALIGNAS(32) usb_hub_descriptor pre_hub_desc = {};
+    obos_status status = get_class_descriptor(desc, USB_DESCRIPTOR_TYPE_HUB, 0, sizeof(usb_hub_descriptor), &pre_hub_desc);
+    if (obos_is_error(status))
+        return status;
+    // size_t nBytes = (pre_hub_desc.bNbrPorts / 8) + !!(pre_hub_desc.bNbrPorts % 8) + sizeof(pre_hub_desc);
+    size_t nBytes = pre_hub_desc.bLength;
+
+    usb_hub_descriptor* hub_descriptor = Allocate(OBOS_KernelAllocator, nBytes, nullptr);
+    status = get_class_descriptor(desc, USB_DESCRIPTOR_TYPE_HUB, 0, nBytes, hub_descriptor);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, hub_descriptor, nBytes);
+        return status;
+    }
+
+    usb_hub_info hub_info = {};
+    hub_info.port_count = hub_descriptor->bNbrPorts;
+    hub_info.mtt = desc->info.hid.protocol == 2;
+    hub_info.route_string = Drv_USBMakeRouteString(desc);
+    hub_info.tt_think_time = (hub_descriptor->wHubCharacteristics >> 5) & 0b11;
+    hub_info.parent_slot_id = desc->parent ? desc->parent->info.slot : 0;
+
+    // TODO(oberrow): Enable the MTT interface of the hub (something to do with set interface?)
+    if (hub_info.mtt)
+        hub_info.mtt = false;
+
+    usb_irp_payload configure_hubp = {};
+    configure_hubp.trb_type = USB_TRB_CONFIGURE_HUB;
+    configure_hubp.payload.configure_hub = hub_info;
+    configure_hubp.endpoint = 0;
+    status = Drv_USBSynchronousOperation(desc, &configure_hubp, false);
+    if (obos_is_error(status))
+    {
+        Free(OBOS_KernelAllocator, hub_descriptor, nBytes);
+        return status;
+    }
+
+    for (usb_endpoint* ep = desc->endpoints.head; ep; ep = ep->node.next)
+        configure_endpoint(desc, &ep->descriptor, &hub_info, false);
+
+    desc->hub.descriptor = hub_descriptor;
+    desc->hub.info = hub_info;
+
+    // Power on all ports.
+    for (int port = 1; port <= hub_info.port_count; port++)
+    {
+        status = OBOS_STATUS_SUCCESS;
+
+        status = hub_port_set_feature(desc, USB_SET_FEATURE, port, PORT_POWER);
+        if (obos_is_error(status))
+            continue;
+        busy_sleep(hub_descriptor->bPowerOnGood * 2);
+
+        status = hub_port_set_feature(desc, USB_CLEAR_FEATURE, port, C_PORT_CONNECTION);
+        if (obos_is_error(status))
+            continue;
+
+        uint16_t port_status[2] = {};
+        status = hub_get_port_status(desc, port, port_status);
+        if (obos_is_error(status))
+            continue;
+
+        if (port_status[0] & BIT(0))
+        {
+            status = hub_port_set_feature(desc, USB_SET_FEATURE, port, PORT_RESET);
+            if (obos_is_error(status))
+                continue;
+
+            for (size_t iters = 0; iters < 10; iters++)
+            {
+                status = hub_get_port_status(desc, port, port_status);
+                if (obos_is_error(status))
+                    break;
+
+                if (port_status[0] & BIT(1))
+                    break;
+
+                busy_sleep(1);
+            }
+            if (obos_is_error(status))
+                continue;
+
+            if (~port_status[0] & BIT(1))
+            {
+                OBOS_Debug("usb: could not reset port on hub: timed out\n");
+                continue;
+            }
+
+            usb_device_speed speed = 0;
+            if (port_status[0] & BIT(9))
+                speed = USB_DEVICE_LOW_SPEED;
+            else if (port_status[0] & BIT(10))
+                speed = USB_DEVICE_HIGH_SPEED;
+            else
+                speed = USB_DEVICE_FULL_SPEED;
+
+            usb_device_info dev_info = {};
+            dev_info.address = 0;
+            dev_info.port = port;
+            dev_info.speed = speed;
+            dev_info.slot = 0;
+            dev_info.usb3 = false;
+            
+            usb_dev_desc* new_desc = nullptr;
+            status = Drv_USBPortAttached(desc->controller, &dev_info, &new_desc, desc);
+            OBOS_ENSURE(obos_is_success(status));
+
+            usb_ctlr_ioctl_slot_allocate ioctl_arg = {};
+            ioctl_arg.is_hub = false;
+            ioctl_arg.port_number = dev_info.port;
+            ioctl_arg.route_string = Drv_USBMakeRouteString(new_desc);
+
+            driver_header* header = desc->controller->hdr;
+            status = header->ftable.ioctl((dev_desc)desc->controller->handle, IOCTL_USB_CTLR_ALLOCATE_SLOT, &ioctl_arg);
+            if (obos_is_error(status))
+            {
+                Core_MutexAcquire(&desc->parent->children_lock);
+                LIST_REMOVE(usb_devices, &desc->parent->children, desc);
+                Core_MutexRelease(&desc->parent->children_lock);
+                OBOS_SharedPtrUnref(&new_desc->ptr);
+                continue;
+            }
+
+            new_desc->info.address = ioctl_arg.address;
+            new_desc->info.slot = ioctl_arg.slot;
+
+            Drv_USBPortPostAttached(desc->controller, new_desc);
+        }
+    }
+
+    return OBOS_STATUS_SUCCESS;
 }

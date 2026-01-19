@@ -45,6 +45,7 @@ enum {
     USB_DESCRIPTOR_TYPE_INTERFACE_ASSOCIATION = 11,
     USB_DESCRIPTOR_TYPE_BOS = 15,
     USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY = 16,
+    USB_DESCRIPTOR_TYPE_HUB = 41,
     USB_DESCRIPTOR_TYPE_SUPERSPEED_USB_ENDPOINT_COMPANION = 48,
 };
 
@@ -81,6 +82,16 @@ typedef struct usb_descriptor_header {
     uint8_t bDescriptorType;
 } OBOS_PACK usb_descriptor_header;
 
+typedef struct usb_hub_descriptor {
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    uint8_t bNbrPorts;
+    uint16_t wHubCharacteristics;
+    uint8_t bPowerOnGood;
+    uint8_t bHubContrCurrent;
+    uint8_t removeable_device_bmp[]; // size=bNbrPorts bits
+} OBOS_PACK usb_hub_descriptor;
+
 #define usb_next_descriptor(x) ((usb_descriptor_header*)(((uint8_t*)(x))[0] + (uintptr_t)(x)))
 
 typedef struct usb_interface_descriptor {
@@ -116,6 +127,28 @@ typedef union {
     uint32_t hid;
 } usb_hid;
 
+typedef struct usb_hub_info
+{
+    uint8_t port_count;
+    uint8_t tt_think_time;
+    uint8_t parent_slot_id;
+    uint32_t route_string;
+    bool mtt : 1;
+} usb_hub_info;
+
+typedef struct usb_ctlr_ioctl_slot_allocate {
+    // Output parameters
+    uint8_t slot;
+    uint32_t address;
+    
+    uint8_t port_number;
+    uint32_t route_string;
+
+    bool is_hub : 1;
+
+    usb_hub_info hub_info;
+} usb_ctlr_ioctl_slot_allocate;
+
 // TODO: Will this translate easily to EHCI+UHCI?
 // (does this *need* to translate easily to EHCI+UHCI)
 
@@ -128,7 +161,13 @@ typedef enum usb_trb_type {
     // NOTE: Should be done in both directions
     // NOTE: Is always invalid for the control endpoint.
     USB_TRB_CONFIGURE_ENDPOINT,
+    // Configures a hub
+    USB_TRB_CONFIGURE_HUB,
 } usb_trb_type;
+
+// argp is a usb_ctlr_ioctl_slot_allocate*
+// desc is the handle in usb_controller
+#define IOCTL_USB_CTLR_ALLOCATE_SLOT 0x8501
 
 typedef enum usb_endpoint_type {
     USB_ENDPOINT_CONTROL = 0,
@@ -168,8 +207,11 @@ typedef struct usb_irp_payload {
             usb_endpoint_type endpoint_type;
             uint16_t max_packet_size;
             uint16_t max_burst_size;
+            usb_hub_info hub_info;
+            bool is_hub : 1;
             bool deconfigure : 1;
         } configure_endpoint;
+        usb_hub_info configure_hub;
     } payload;
 } usb_irp_payload;
 
@@ -189,6 +231,7 @@ typedef struct usb_device_info {
 
     uint32_t address;
     uint8_t slot;
+    uint8_t port;
 
     uint8_t speed;
 
@@ -210,14 +253,18 @@ typedef struct usb_endpoint {
 typedef LIST_HEAD(usb_endpoint_list, struct usb_endpoint) usb_endpoint_list;
 LIST_PROTOTYPE(usb_endpoint_list, struct usb_endpoint, node);
 
+typedef LIST_HEAD(usb_devices, struct usb_dev_desc) usb_devices;
+LIST_PROTOTYPE(usb_devices, struct usb_dev_desc, node);
 typedef struct usb_dev_desc {
     shared_ptr ptr;
     
+    struct usb_dev_desc* parent;
     struct usb_controller* controller;
     
     usb_device_info info;
 
     bool attached : 1;
+    bool is_hub : 1;
 
     event on_detach;
 
@@ -228,6 +275,12 @@ typedef struct usb_dev_desc {
     // driver_id*
     void* drv;
 
+    struct {
+        usb_hub_info info;
+        thread* worker;
+        usb_hub_descriptor *descriptor;
+    } hub;
+
     // NOT IN ORDER!
     usb_endpoint_list endpoints;
 
@@ -236,10 +289,11 @@ typedef struct usb_dev_desc {
         uint8_t configuration_idx;
     } configuration;
 
+    usb_devices children;
+    mutex children_lock;
+
     LIST_NODE(usb_devices, struct usb_dev_desc) node;
 } usb_dev_desc;
-typedef LIST_HEAD(usb_devices, struct usb_dev_desc) usb_devices;
-LIST_PROTOTYPE(usb_devices, struct usb_dev_desc, node);
 
 typedef struct usb_controller {
     void* handle;
@@ -247,10 +301,6 @@ typedef struct usb_controller {
 
     usb_devices ports;
     mutex ports_lock;
-    struct {
-        event on_attach;
-        event on_detach;
-    } port_events;
     
     LIST_NODE(usb_controller_list, struct usb_controller) node;
 } usb_controller;
@@ -262,7 +312,8 @@ extern mutex Drv_USBControllersLock;
 
 OBOS_EXPORT obos_status Drv_USBControllerRegister(void* handle, struct driver_header* header, usb_controller** out);
 
-OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc);
+// parent is nullable
+OBOS_EXPORT obos_status Drv_USBPortAttached(usb_controller* ctlr, const usb_device_info* info, usb_dev_desc** desc, usb_dev_desc* parent);
 OBOS_EXPORT obos_status Drv_USBPortPostAttached(usb_controller* ctlr, usb_dev_desc* desc);
 OBOS_EXPORT obos_status Drv_USBPortDetached(usb_controller* ctlr, usb_dev_desc* desc);
 
@@ -278,3 +329,9 @@ OBOS_EXPORT obos_status Drv_USBIRPSubmit(usb_dev_desc* desc, void* req);
 OBOS_EXPORT obos_status Drv_USBIRPSubmit2(usb_dev_desc* desc, void** req, const usb_irp_payload* payload, bool dir);
 OBOS_EXPORT obos_status Drv_USBIRPWait(usb_dev_desc* desc, void* req);
 OBOS_EXPORT obos_status Drv_USBSynchronousOperation(usb_dev_desc* desc, const usb_irp_payload* payload, bool dir);
+
+// Bits 24-31: The topmost hub number
+uint32_t Drv_USBMakeRouteString(usb_dev_desc* desc);
+char* Drv_USBMakePhysicalLocationString(usb_dev_desc* desc);
+
+obos_status Drv_USBHubAttached(usb_dev_desc* desc);

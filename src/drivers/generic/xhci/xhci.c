@@ -270,7 +270,7 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     xhci_commmand_completion_event_trb* resp = (void*)itrb->resp;
 
     uint8_t slot = (resp->dw3 >> 24) & 0xff;
-    status = xhci_slot_initialize(dev, slot, port_number);
+    status = xhci_slot_initialize(dev, slot, port_number, (port_number<<24), nullptr);
     if (obos_is_error(status))
         OBOS_Debug("xhci: could not initialize slot %d: %d\n", slot, status);
     else
@@ -298,10 +298,11 @@ static void continue_port_attach_impl(uintptr_t *userdata)
     usb_device_info info = {};
     info.address = dev->slots[slot-1].address;
     info.slot = slot;
+    info.port = slot;
     info.speed = speed;
     info.usb3 = usb3;
 
-    if (obos_is_success(Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc)))
+    if (obos_is_success(Drv_USBPortAttached(dev->ctlr, &info, &dev->slots[slot-1].desc, nullptr /* root hub */)))
         Drv_USBPortPostAttached(dev->ctlr, dev->slots[slot-1].desc);
 
     Core_ExitCurrentThread();
@@ -531,7 +532,7 @@ static obos_status do_bios_handoff(xhci_device* dev)
 }
 
 void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size_t nRegions, struct physical_region *regions, xhci_endpoint_context* ep_ctx, bool in_endpoint);
-obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
+obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port, uint32_t route_string, const usb_hub_info* hub_info)
 {
     if (dev->slots[slot-1].allocated)
     {
@@ -570,13 +571,26 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     xhci_input_context* input_context = MmS_MapVirtFromPhys(input_context_base);
     memzero(input_context, xhci_page_count_for_size(sz2, nPages)*OBOS_PAGE_SIZE);
     input_context->icc.add_context |= 3;
-    
+
+    uint8_t rh_port = route_string >> 24;
+
     xhci_slot_context* slot_ctx = get_xhci_endpoint_context(dev, input_context, 1);
     // TODO: correct value
-    slot_ctx->dw0 = 0;
+    slot_ctx->dw0 = (route_string & 0xfffff) << 0;
     // Context entries = 1
     slot_ctx->dw0 |= 1<<27;
-    slot_ctx->dw1 |= (port<<16);
+    slot_ctx->dw1 |= (rh_port<<16);
+    if (hub_info)
+    {
+        slot_ctx->dw0 |= BIT(26);
+        if (hub_info->mtt)
+        {
+            slot_ctx->dw0 |= BIT(25);
+            slot_ctx->dw2 |= (hub_info->tt_think_time&3) << 16;
+        }
+    }
+    slot_ctx->dw2 |= ((uint32_t)port) << 8;
+    slot_ctx->dw2 |= ((uint32_t)dev->port_to_slot_id[rh_port-1]) << 0;
 
     xhci_endpoint_context* ctrl_ep = get_xhci_endpoint_context(dev, input_context, 2);
     // CErr=3
@@ -584,28 +598,35 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
     // EPType = Control (4)
     ctrl_ep->flags2 |= (0x4<<3);
     ctrl_ep->average_trb_length = 8;
-    uint8_t pspeed = (dev->op_regs->ports[port-1].port_sc >> 10) & 0xf;
-    bool fs_device = false;
-    switch (pspeed) {
-        case 1:
-            fs_device = true;
-            ctrl_ep->max_packet_size = 8;
-            break;
-        case 2:
-            ctrl_ep->max_packet_size = 8;
-            break;
-        case 3:
-            ctrl_ep->max_packet_size = 64;
-            break;
-        case 4:
-        case 5:
-        case 6:
-        case 7:
-            ctrl_ep->max_packet_size = 512;
-            break;
-        default: OBOS_ENSURE(!"unimplemented port speed value");
+    bool probe_max_packet_size = false;
+    if (route_string == 0)
+    {
+        uint8_t pspeed = (dev->op_regs->ports[port-1].port_sc >> 10) & 0xf;
+        switch (pspeed) {
+            case 1:
+                probe_max_packet_size = true;
+                ctrl_ep->max_packet_size = 8;
+                break;
+            case 2:
+                ctrl_ep->max_packet_size = 8;
+                break;
+            case 3:
+                ctrl_ep->max_packet_size = 64;
+                break;
+            case 4:
+            case 5:
+            case 6:
+            case 7:
+                ctrl_ep->max_packet_size = 512;
+                break;
+            default: OBOS_ENSURE(!"unimplemented port speed value");
+        }
     }
-    ctrl_ep->max_packet_size = 8;
+    else
+    {
+        probe_max_packet_size = true;
+        ctrl_ep->max_packet_size = 8;
+    }
     // DCS=1
     ctrl_ep->tr_dequeue_pointer |= BIT(0);
     ctrl_ep->tr_dequeue_pointer |= dev->slots[slot-1].trb_ring[0].enqueue_ptr;
@@ -649,7 +670,7 @@ obos_status xhci_slot_initialize(xhci_device* dev, uint8_t slot, uint8_t port)
         dev->slots[slot-1].port_id = port;
         dev->slots[slot-1].allocated = true;
 
-        if (fs_device)
+        if (probe_max_packet_size)
         {
             OBOS_ALIGNAS(32) uint8_t buf[8] = {};
             usb_irp_payload payload = {};
@@ -925,4 +946,50 @@ bool poll_bit_timeout(volatile uint32_t *field, uint32_t mask, uint32_t expected
         OBOSS_SpinlockHint();
     }
     return true;
+}
+
+obos_status ioctl(dev_desc what, uint32_t request, void* argp)
+{
+    xhci_device* dev = (void*)what;
+    switch (request) {
+        case IOCTL_USB_CTLR_ALLOCATE_SLOT:
+        {
+            usb_ctlr_ioctl_slot_allocate *arg = argp;
+            
+            xhci_enable_slot_command_trb trb = {};
+            xhci_inflight_trb* itrb = nullptr;
+            obos_status status = OBOS_STATUS_SUCCESS;
+            
+            XHCI_SET_TRB_TYPE(&trb, XHCI_TRB_ENABLE_SLOT_COMMAND);
+
+            status = AUTO_RETRY(xhci_trb_enqueue_command(dev, (void*)&trb, &itrb, true));
+            if (obos_is_error(status))
+                Core_ExitCurrentThread();
+
+            status = Core_WaitOnObject(WAITABLE_OBJECT(itrb->evnt));
+            if (obos_is_error(status))
+            {
+                if (itrb->resp)
+                    Free(OBOS_KernelAllocator, itrb->resp, itrb->resp_length*4);
+                Free(OBOS_KernelAllocator, itrb, sizeof(*itrb));
+                Core_ExitCurrentThread();
+            }
+
+            xhci_commmand_completion_event_trb* resp = (void*)itrb->resp;
+
+            uint8_t slot = (resp->dw3 >> 24) & 0xff;
+            status = xhci_slot_initialize(dev, slot, arg->port_number, arg->route_string, arg->is_hub ? &arg->hub_info : nullptr);
+            if (obos_is_error(status))
+                OBOS_Debug("xhci: could not initialize slot %d: %d\n", slot, status);
+            else
+                OBOS_Debug("xhci: port attached\n");
+
+            arg->slot = slot;
+            arg->address = dev->slots[slot-1].address;
+
+            break;
+        }
+        default: return OBOS_STATUS_INVALID_IOCTL;
+    }
+    return OBOS_STATUS_SUCCESS;
 }
