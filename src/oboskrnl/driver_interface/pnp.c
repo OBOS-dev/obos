@@ -8,6 +8,7 @@
 #include <klog.h>
 #include <error.h>
 #include <memmanip.h>
+#include <cmdline.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/loader.h>
@@ -586,10 +587,102 @@ obos_status Drv_PnpLoadDriversAt(dirent* directory, bool wait)
     return status;
 }
 
+static dirent* s_usb_driver_directory = nullptr;
+static bool s_usb_driver_directory_valid = false;
+
+extern obos_status Sys_SleepMS(uint64_t, uint64_t*);
+
 // TODO(oberrow): Automatic driver loading.
 obos_status Drv_PnpUSBDeviceAttached(usb_dev_desc* desc)
 {
     if (!desc) return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!s_usb_driver_directory_valid)
+    {
+        bool free_path = false;
+        const char* path = OBOS_GetOPTS("usb-driver-directory");
+        if (!path) path = "/";
+        else free_path = true;
+        
+        s_usb_driver_directory = VfsH_DirentLookup(path);
+        if (free_path)
+            Free(OBOS_KernelAllocator, (char*)path, strlen(path)+1);
+        
+        s_usb_driver_directory_valid = true;
+        if (!s_usb_driver_directory)
+            goto try_load;
+        if (!s_usb_driver_directory->vnode)
+            goto try_load;
+        s_usb_driver_directory = VfsH_FollowLink(s_usb_driver_directory);
+        if (s_usb_driver_directory->vnode->vtype != VNODE_TYPE_DIR)
+            goto try_load;
+    }
+
+    try_load:
+    if (s_usb_driver_directory)
+    {
+        for (dirent* curr = s_usb_driver_directory->d_children.head; curr; curr = curr->d_next_child)
+        {
+            if (!curr->vnode) continue;
+            if (curr->vnode->vtype != VNODE_TYPE_REG && curr->vnode->vtype != VNODE_TYPE_LNK) continue;
+
+            fd file = {};
+            obos_status status = Vfs_FdOpenDirent(&file, curr, FD_OFLAGS_READ);
+            if (obos_is_error(status))
+                continue;
+
+            size_t size = file.vn->filesize;
+            void* mem = Mm_VirtualMemoryAlloc(
+                &Mm_KernelContext,
+                nullptr, size,
+                0, VMA_FLAGS_PRIVATE,
+                &file,
+                &status);
+            if (obos_is_error(status))
+            {
+                Vfs_FdClose(&file);
+                continue;
+            }
+
+            driver_header header = {};
+            status = Drv_LoadDriverHeader(mem, size, &header);
+            if (obos_is_error(status))
+                goto invalid;
+
+            if (!OBOS_DRIVER_HEADER_USB_HID_VALID(&header))
+                goto invalid;
+
+            if (desc->info.hid.class == header.usbHid.class)
+            {
+                if (desc->info.hid.subclass == header.usbHid.subclass || 
+                    header.flags & DRIVER_HEADER_FLAGS_USB_DO_NOT_CHECK_SUBCLASS)
+                {
+                    OBOS_Debug("USB/PnP: Loading driver %.*s.\n", strnlen(header.driverName, sizeof(header.driverName)), header.driverName);
+                    driver_id *drv = Drv_LoadDriver(mem, size, &status);
+                    if (obos_is_error(status))
+                        goto invalid;
+
+                    status = Drv_StartDriver(drv, nullptr);
+                    if (obos_is_error(status) && status != OBOS_STATUS_NO_ENTRY_POINT)
+                    {
+                        Drv_UnrefDriver(drv);
+                        goto invalid;
+                    }
+
+                    if (status != OBOS_STATUS_NO_ENTRY_POINT)
+                    {
+                        while (drv->main_thread)
+                            Sys_SleepMS(1, nullptr);
+                    }
+
+                    Drv_UnrefDriver(drv);
+                }
+            }
+
+            invalid:
+            Mm_VirtualMemoryFree(&Mm_KernelContext, mem, size);
+            Vfs_FdClose(&file);
+        }
+    }
 
     size_t nDriversCalled = 0;
 
@@ -619,9 +712,8 @@ obos_status Drv_PnpUSBDeviceAttached(usb_dev_desc* desc)
             }
         }
     }
+
     OBOS_Debug("%s: called %d drivers\n", __func__, nDriversCalled);
-    if (!nDriversCalled)
-        OBOS_Debug("%s: TODO(oberrow): autoload USB drivers\n", __func__);
 
     return OBOS_STATUS_SUCCESS;
 }
