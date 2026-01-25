@@ -321,6 +321,8 @@ static void init_e1000(pci_bus* bus, pci_device* dev, size_t dev_index)
     // for (volatile bool b = true; b;)
     //     OBOSS_SpinlockHint();
 
+    dev->disable_msix = true;
+    
     dev->resource_cmd_register->cmd_register |= 0x7;
     Drv_PCISetResource(dev->resource_cmd_register);
     

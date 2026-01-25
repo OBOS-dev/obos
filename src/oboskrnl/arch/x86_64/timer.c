@@ -154,7 +154,7 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 
         uint32_t oeax = 0;
         __cpuid__(0, 0, &oeax, nullptr, nullptr, nullptr);
-        if (oeax < 0x15)
+        if (oeax >= 0x15)
         {
             uint32_t ebx = 0, eax = 0, ecx = 0;
             __cpuid__(0x15, 0, &eax, &ebx, &ecx, nullptr);
@@ -164,12 +164,12 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 
                 goto calibrate;
             }
-            s_invariant_tsc_frequency = ecx * (ebx / eax);
+            s_invariant_tsc_frequency = ((uint64_t)ecx) * (ebx / eax);
             goto down;
         }
         calibrate:
         do {
-            const int n = 1;
+            const int n = 5;
             uint64_t change_rate = 0;
     
             fixedptd tp = fixedpt_fromint(1); // us.0
@@ -182,7 +182,6 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
                 change_rate += Arch_FindTSCChangeRate(Arch_HPETAddress->mainCounterValue + (fixedpt_toint(tp)+1));
        
             s_invariant_tsc_frequency = (change_rate / n) * 100000;
-            // s_invariant_tsc_frequency = 2380800000UL;
         } while(0);
 
         down:

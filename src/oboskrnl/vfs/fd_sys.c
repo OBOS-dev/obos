@@ -1613,6 +1613,7 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         if (unsignaledIRPs[i])
         {
             driver_header* driver = Vfs_GetVnodeDriver(unsignaledIRPs[i]->vn);
+            if (!driver) continue;
             if (driver->ftable.finalize_irp)
                 driver->ftable.finalize_irp(unsignaledIRPs[i]);
             VfsH_IRPUnref(unsignaledIRPs[i]);
