@@ -105,7 +105,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     pipe_desc* pipe = (void*)desc;
     if (blkCount > pipe->size)
         blkCount = pipe->size;
-    OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+    // OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
     bool has_write_fd = false;
     for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
     {
@@ -117,7 +117,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     }
     if (!has_write_fd && pipe->empty_evnt.hdr.signaled)
     {
-        OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+        // OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
         if (nBlkRead)
             *nBlkRead = 0;
         return OBOS_STATUS_EOF;
@@ -132,7 +132,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     }
     pipe_read(pipe, buf, blkCount, nBlkRead, false);
     
-    OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+    // OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
     
     if (nBlkRead)
         *nBlkRead = blkCount;
@@ -144,7 +144,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     if (!desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
     pipe_desc* pipe = (void*)desc;
-    OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+    // OBOS_Log("thread %d: enter %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
     bool has_read_fd = false;
     for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
     {
@@ -156,7 +156,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     }
     if (!has_read_fd)
     {
-        OBOS_Log("thread %d: ret from %s (pipe closed). blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+        // OBOS_Log("thread %d: ret from %s (pipe closed). blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
         OBOS_Kill(Core_GetCurrentThread(), Core_GetCurrentThread(), SIGPIPE);
         return OBOS_STATUS_PIPE_CLOSED;
     }
@@ -194,7 +194,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
     }
     pipe_write(pipe, buf, blkCount, nBlkWritten);
 
-    OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
+    // OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
     if (nBlkWritten)
         *nBlkWritten = blkCount;
     return OBOS_STATUS_SUCCESS;
