@@ -384,7 +384,7 @@ static obos_status finalize_irp(void* irp_)
     if (req->dryOp)
         return OBOS_STATUS_SUCCESS;
     req->status = req->op == IRP_READ ? 
-            pipe_read((void*)req->desc, req->buff, req->blkCount, &req->nBlkRead, false) :
+            read_sync(req->desc, req->buff, req->blkCount, req->blkOffset, &req->nBlkRead) :
             write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
     return OBOS_STATUS_SUCCESS;
 }

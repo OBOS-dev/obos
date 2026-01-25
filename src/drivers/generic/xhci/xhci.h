@@ -91,6 +91,7 @@ enum {
     PORTSC_PRC = BIT(21),
     PORTSC_PLC = BIT(22),
     PORTSC_CEC = BIT(23),
+    PORTSC_CHANGE_BITS = 0xfe0000,
     PORTSC_CAS = BIT(24),
     PORTSC_WCE = BIT(25),
     PORTSC_WDE = BIT(26),
@@ -444,7 +445,7 @@ typedef struct xhci_get_port_bandwith_command_trb {
 
 #define XHCI_GET_TRB_TYPE(trb) ((((uint32_t*)(trb))[3] >> 10) & 0x3f)
 #define XHCI_SET_TRB_TYPE(trb, type) ({ (((uint32_t*)(trb))[3]) |= (((type) & 0x3f) << 10); (type); })
-#define XHCI_GET_COMPLETION_CODE(trb) (((((uint32_t*)(trb))[2]) >> 24) & 0xff)
+#define XHCI_GET_COMPLETION_CODE(trb) (trb ? (((((uint32_t*)(trb))[2]) >> 24) & 0xff) : 1)
 #define XHCI_GET_COMPLETION_PARAMETER(trb) ((((uint32_t*)(trb))[2]) & 0xffffff)
 // NOTE: is transfer length - transferred bytes count
 #define XHCI_GET_TRB_TRANSFER_LENGTH(trb) ((((uint32_t*)(trb))[2]) & 0xffffff)
@@ -551,6 +552,7 @@ typedef struct xhci_slot {
 
 typedef struct xhci_inflight_trb {
     uintptr_t ptr;
+    uintptr_t ptr_end;
     uint64_t* dequeue_ptr;
     uint32_t* resp;
     uint8_t resp_length; // in dwords
@@ -565,13 +567,27 @@ struct xhci_inflight_trb_array {
     xhci_inflight_trb* itrbs[];
 };
 
+#define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
 static inline int cmp_inflight_trb(xhci_inflight_trb *lhs, xhci_inflight_trb *rhs)
 {
+    if (in_range(rhs->ptr, rhs->ptr_end, lhs->ptr))
+        return 0;
     return (lhs->ptr < rhs->ptr) ? -1 : ((lhs->ptr == rhs->ptr) ? 0 : 1);
 }
+#undef in_range
 
 typedef RB_HEAD(xhci_trbs_inflight, xhci_inflight_trb) xhci_trbs_inflight;
 RB_PROTOTYPE(xhci_trbs_inflight, xhci_inflight_trb, node, cmp_inflight_trb);
+
+typedef struct xhci_port_info {
+    uint8_t companion_port;
+    uint8_t slot;
+    bool usb3 : 1;
+    bool high_speed_only : 1;
+    bool has_pair : 1;
+    bool active : 1;
+    bool valid : 1;
+} xhci_port_info;
 
 typedef struct xhci_device {
     pci_device* dev;
@@ -598,6 +614,7 @@ typedef struct xhci_device {
     bool has_64bit_support : 1;
     bool port_power_control_supported : 1;
     bool hccparams1_csz : 1;
+    bool allow_port_status_change_process : 1;
     uint16_t xecp;
     uint16_t max_slots;
 
@@ -607,13 +624,14 @@ typedef struct xhci_device {
         page* pg;
         uintptr_t enqueue_ptr;
         uintptr_t dequeue_ptr;
+        bool rcs : 1;
     } command_ring;
     struct {
         void* virt;
         size_t len;
         size_t nEntries;
         page* pg;
-        bool ccs : 1;
+        bool rcs : 1;
     } event_ring;
 
     struct {
@@ -626,10 +644,16 @@ typedef struct xhci_device {
     } device_context_array;
 
     xhci_slot *slots;
-    uint8_t port_to_slot_id[255];
+    xhci_port_info port_info[255];
+    uint8_t usb2_port_start;
+    uint8_t usb2_port_count;
+    uint8_t usb3_port_start;
+    uint8_t usb3_port_count;
 
     xhci_trbs_inflight trbs_inflight;
     mutex trbs_inflight_lock;
+
+    size_t initialized_ports_count;
 
     usb_controller* ctlr;
     
@@ -642,7 +666,7 @@ static inline void* get_xhci_endpoint_context(xhci_device* dev, void* device_con
 }
 
 #define xhci_allocate_pages(nPages, alignment, dev) (dev->has_64bit_support ? Mm_AllocatePhysicalPages(nPages, alignment, nullptr) : Mm_AllocatePhysicalPages32(nPages, alignment, nullptr))
-#define xhci_page_count_for_size(size, nPages) ((size) / (nPages) + !!((size) / (nPages)))
+#define xhci_page_count_for_size(size, nPages) ((size) / (OBOS_PAGE_SIZE*nPages) + !!((size) % (OBOS_PAGE_SIZE*nPages)))
 
 #ifndef INIT_C
 extern struct {
@@ -678,6 +702,8 @@ void* xhci_get_device_context(xhci_device* dev, uint8_t slot);
 
 OBOS_WEAK bool xhci_irq_checker(irq*, void*);
 OBOS_WEAK void xhci_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql oldIrql);
+
+obos_status xhci_reset_port(xhci_device* dev, uint8_t port_id);
 
 // true indicates a successful wait, false indicates timeout
 bool poll_bit_timeout(volatile uint32_t *field, uint32_t mask, uint32_t expected, uint32_t us_timeout);

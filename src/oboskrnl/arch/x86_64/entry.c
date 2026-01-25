@@ -733,7 +733,7 @@ void OBOSS_GetKernelModule(struct boot_module *module)
 void OBOSS_MakeTTY()
 {
     Core_SetProcessGroup(Core_GetCurrentThread()->proc, 0);
-    dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
+    dirent* ps2k1 = VfsH_DirentLookup("/dev/hidk0");
     tty_interface i = {};
     VfsH_MakeScreenTTY(&i, ps2k1 ? ps2k1->vnode : nullptr, nullptr, OBOS_FlantermContext);
     dirent* tty = nullptr;

@@ -123,7 +123,7 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
     const size_t packet_size = 4096;
     size_t responseLen = 0;
     char* response = nullptr;
-    for (size_t i = 0; arguments[i]; )
+    for (size_t i = 0; i < argumentsLen; )
     {
         size_t feature_len = strnchr(arguments + i, ';', argumentsLen-i)-1;
         if (arguments[i+feature_len-1] == '+')
@@ -147,7 +147,8 @@ obos_status Kdbg_GDB_qSupported(gdb_connection* con, const char* arguments, size
             feature_len++;
         i += (feature_len + 1);
     }
-    const char* format = "PacketSize=%lu;qXfer:exec-file:read+;binary-upload?;error-message+";
+    // const char* format = "PacketSize=%lu;qXfer:exec-file:read+;binary-upload?;error-message+";
+    const char* format = "PacketSize=%lu;error-message+";
     size_t featureLen = snprintf(nullptr, 0, format, packet_size);
     response = Kdbg_Realloc(response, responseLen+featureLen+1);
     snprintf(response + responseLen, featureLen+1, format, packet_size);

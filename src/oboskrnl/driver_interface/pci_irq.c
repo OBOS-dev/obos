@@ -152,7 +152,7 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
     
     uint64_t msi_data = 0;
     uint64_t msi_address = DrvS_MSIAddressAndData(&msi_data, irq->vector->id, target_cpu->id, true, false);
-    if (has_msix)
+    if (has_msix && !dev->disable_msix)
     {
         // Prefer MSI-X over MSI.
         if (!handle->un.msix_entry)
@@ -204,15 +204,11 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle)
 
         return OBOS_STATUS_SUCCESS;
     }
-    if (has_msi)
+    if (has_msi && !dev->disable_msi)
     {
-        // printf("choosing MSI for device %02x:%02x:%02x\n",
-        //     dev->location.bus,dev->location.slot,dev->location.function
-        // );
         // Fallback to MSI.
         uint64_t header = 0; // 32-bit
         DrvS_ReadPCIRegister(dev->location, msi_offset+0, 4, &header);
-        OBOS_Debug("header=0x%x\n", header);
         handle->un.msix_entry = 0;
         handle->msix_pending_entry = 0;
         header |= BIT(16) /* Enable */;

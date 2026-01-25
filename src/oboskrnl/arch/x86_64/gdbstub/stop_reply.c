@@ -289,13 +289,17 @@ OBOS_NO_KASAN obos_status Kdbg_GDB_m(gdb_connection* con, const char* arguments,
     static __attribute__((nonstring)) const char hexmask[16] = "0123456789abcdef";
     uintptr_t curr_phys = 0;
     uintptr_t last_virt = 0;
+    page_info info = {};
+    uintptr_t mask = 0xfff;
     for (uintptr_t addr = address; addr < top && nRead < memoryLen; addr++, i += 2, nRead++)
     {
-        if ((addr & ~0xfff) != last_virt)
-            MmS_QueryPageInfo(dbg_ctx->interrupt_ctx.cr3, addr & ~0xfff, nullptr, &curr_phys);
+        if ((addr & ~mask) != last_virt)
+            MmS_QueryPageInfo(dbg_ctx->interrupt_ctx.cr3, addr & ~mask, &info, &curr_phys);
         if (!curr_phys)
             break;
-        uint8_t byte = *(uint8_t*)Arch_MapToHHDM(curr_phys + (addr & 0xfff));
+        if (info.prot.huge_page) mask = 0x1fffff;
+        else mask = 0xfff;
+        uint8_t byte = *(uint8_t*)Arch_MapToHHDM(curr_phys + (addr & mask));
         response[i+1] = hexmask[byte&0xf];
         response[i] = hexmask[byte>>4];
         // printf("%d\n", i);
@@ -350,6 +354,8 @@ obos_status Kdbg_GDB_c(gdb_connection* con, const char* arguments, size_t argume
     NO_USERDATA;
     if ((!current_c_thread || !current_c_thread->masterCPU) && !c_all_threads)
         current_c_thread = Core_GetCurrentThread();
+    if (!current_c_thread)
+        c_all_threads = true;
     if (!c_all_threads)
     {
         current_c_thread->flags &= ~THREAD_FLAGS_DEBUGGER_BLOCKED;

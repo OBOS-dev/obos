@@ -111,6 +111,9 @@ typedef struct pci_device {
     pci_capability* first_capability;
     pci_resource* resource_cmd_register; // command register
 
+    bool disable_msix : 1;
+    bool disable_msi : 1;
+
     LIST_NODE(pci_device_list, struct pci_device) node;
 } pci_device;
 
