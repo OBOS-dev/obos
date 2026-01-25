@@ -9,7 +9,7 @@ qemu-system-x86_64 \
 -m 2G \
 -gdb tcp:0.0.0.0:1234 -S \
 -M q35 \
--cpu host \
+-cpu host,+invtsc \
 -accel kvm \
 -debugcon file:/dev/stdout \
 -monitor stdio \
