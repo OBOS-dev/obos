@@ -44,10 +44,10 @@ void populate_trbs(irp* req, bool data_stage, xhci_normal_trb* trbs, size_t nReg
         }
         if (i != (nRegions - 1))
             trbs[i].flags_type |= BIT(4) /* chain bit */;
-        else if (!data_stage)
-            trbs[i].flags_type |= BIT(5) /* interrupt on completion bit */;
-        else
+        else if (data_stage)
             trbs[i].dir_resv = in_endpoint;
+        else
+            trbs[i].flags_type |= BIT(5) /* interrupt on completion bit */;
     }
     return;
 }

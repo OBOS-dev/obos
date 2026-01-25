@@ -58,6 +58,7 @@ OBOS_WEAK void on_wake();
 OBOS_WEAK void on_suspend();
 
 #define KEY_PRESSED(bitfield, key) (bitfield[key/8] |= BIT(key%8))
+#define KEY_IS_PRESSED(bitfield, key) (bitfield[key/8] & BIT(key%8))
 #define BITFIELD_DIFF(bitfield1, bitfield2, bitfield_out) \
 do {\
     for (int i = 0; i < (104/8); i++)\
@@ -161,7 +162,7 @@ static void hid_worker_thread(hid_dev* dev)
     if (obos_is_error(status))
         goto exit;
 
-    timer_tick ival = CoreH_TimeFrameToTick((interval+2)*1000);
+    timer_tick ival = CoreH_TimeFrameToTick(interval*1000);
     int errc = 0;
     while (1)
     {
@@ -213,6 +214,8 @@ static void hid_worker_thread(hid_dev* dev)
                     obos_mods |= SHIFT;
                 if ((report[0] & LEFT_ALT) || (report[0] & RIGHT_ALT))
                     obos_mods |= ALT;
+                if ((report[0] & LEFT_GUI) || (report[0] & RIGHT_GUI))
+                    obos_mods |= SUPER_KEY;
 
                 uint8_t currently_pressed_keys_bmp[104/8];
                 uint8_t released_keys_bmp[104/8];

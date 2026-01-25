@@ -29,6 +29,14 @@
 
 #include <utils/list.h>
 
+#define PCIDEBUG_ENABLED 0
+
+#if PCIDEBUG_ENABLED
+#define PCIDebug(...) OBOS_Debug(__VA_ARGS__)
+#else
+#define PCIDebug(...)
+#endif
+
 #if OBOS_ARCHITECTURE_HAS_PCI
 
 LIST_GENERATE_INTERNAL(pci_device_list, pci_device, node, OBOS_EXPORT);
@@ -55,7 +63,7 @@ static void update_bar(pci_device* dev, pci_resource* resource)
     uint8_t bar_flags = tmp & 0b111;
     if (bar_flags & 0b1)
         bar_flags &= ~BIT(2); // Only bits 0-1 of an IO space bar are reserved, so to prevent this from breaking, clear bit 2
-    // OBOS_Debug("updating bar %d address\n", bar);
+    // PCIDebug("updating bar %d address\n", bar);
     switch (bar_flags) {
         case PCI_BAR_MASK_IOSPACE:
             resource->bar->type = PCI_BARIO;
@@ -150,7 +158,7 @@ static void initialize_bar_resources(pci_device* dev)
 
         update_bar(dev, resource);
 
-        const char* bar_type_str = nullptr;
+        OBOS_MAYBE_UNUSED const char* bar_type_str = nullptr;
         switch (resource->bar->type) {
             case PCI_BAR32:
                 if (resource->bar->prefetchable)
@@ -170,7 +178,7 @@ static void initialize_bar_resources(pci_device* dev)
             default: break;
         }
 
-        OBOS_Debug("PCI: %02x:%02x:%02x: Initialized %s BAR (BAR %d). BAR ranges from 0x%p-0x%p\n",
+        PCIDebug("PCI: %02x:%02x:%02x: Initialized %s BAR (BAR %d). BAR ranges from 0x%p-0x%p\n",
             dev->location.bus,dev->location.slot,dev->location.function,
             bar_type_str,
             resource->bar->idx,
@@ -251,7 +259,7 @@ static void initialize_capability_resources(pci_device* dev)
         resource->owner = dev;
         LIST_APPEND(pci_resource_list, &dev->resources, resource);
 
-        static const char* const cap_ids[0x16] = {
+        OBOS_MAYBE_UNUSED static const char* const cap_ids[0x16] = {
             "Null",
             "PCI Power Management Interface",
             "AGP",
@@ -276,7 +284,7 @@ static void initialize_capability_resources(pci_device* dev)
             "Flattening Portal Bridge",
         };
 
-        OBOS_Debug("PCI: %02x:%02x:%02x: Found %s Capability.\n",
+        PCIDebug("PCI: %02x:%02x:%02x: Found %s Capability.\n",
             dev->location.bus,dev->location.slot,dev->location.function,
             cap_id > 0x15 ? "Unknown" : cap_ids[cap_id]
         );
@@ -328,7 +336,7 @@ static void initialize_irq_resources(pci_device* dev)
     resource->owner = dev;
     LIST_APPEND(pci_resource_list, &dev->resources, resource);
 
-    OBOS_Debug("PCI: %02x:%02x:%02x: Device has IRQ capabilities.\n",
+    PCIDebug("PCI: %02x:%02x:%02x: Device has IRQ capabilities.\n",
         dev->location.bus,dev->location.slot,dev->location.function
     );
 }
@@ -380,7 +388,7 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
     dev->hid.indiv.subClass = subclass;
     dev->hid.indiv.progIf = progIF;
 
-    OBOS_Debug("PCI: %02x:%02x:%02x: Device HID: %02x:%02x:%02x, Vendor ID: 0x%04x, Device ID: 0x%04x\n",
+    PCIDebug("PCI: %02x:%02x:%02x: Device HID: %02x:%02x:%02x, Vendor ID: 0x%04x, Device ID: 0x%04x\n",
         dev->location.bus,dev->location.slot,dev->location.function,
         classCode, subclass, progIF,
         vendorId, deviceId
@@ -404,7 +412,7 @@ static pci_iteration_decision init_bus_cb(void* udata, pci_device_location loc)
 
     LIST_APPEND(pci_device_list, &bus->devices, dev);
 
-    if (OBOS_GetLogLevel() <= LOG_LEVEL_DEBUG)
+    if (OBOS_GetLogLevel() <= LOG_LEVEL_DEBUG && PCIDEBUG_ENABLED)
         printf("\n");
 
     return PCI_ITERATION_DECISION_CONTINUE;
@@ -440,7 +448,7 @@ static uacpi_iteration_decision acpi_bus_cb(void* udata, uacpi_namespace_node* n
         return UACPI_ITERATION_DECISION_CONTINUE;
     }
 
-    OBOS_Debug("%s: Initializing bus %d (from ACPI)\n\n", (const char*)udata, bus_number & 0xff);
+    PCIDebug("%s: Initializing bus %d (from ACPI)\n\n", (const char*)udata, bus_number & 0xff);
 
     pci_bus* bus = &Drv_PCIBuses[Drv_PCIBusCount++];
     bus->busNumber = bus_number & 0xff;
@@ -454,7 +462,7 @@ static pci_iteration_decision bridge_cb(void* udata, pci_device_location loc)
 {
     uint64_t tmp = 0;
     DrvS_ReadPCIRegister(loc, 0xc, 4, &tmp);
-    // OBOS_Debug("PCI: %02x:%02x:%02x: hdr type: 0x%x. register data: 0x%08x\n",
+    // PCIDebug("PCI: %02x:%02x:%02x: hdr type: 0x%x. register data: 0x%08x\n",
     //     loc.bus,loc.slot,loc.function,
     //     ((tmp >> 16) & 0x7f), tmp
     // );
@@ -468,7 +476,7 @@ static pci_iteration_decision bridge_cb(void* udata, pci_device_location loc)
 
     uint8_t secondary_bus = (tmp >> 8) & 0xff;
 
-    OBOS_Debug("%s: Initializing bus %d (from PCI->PCI Bridge)\n\n", (const char*)udata, secondary_bus);
+    PCIDebug("%s: Initializing bus %d (from PCI->PCI Bridge)\n\n", (const char*)udata, secondary_bus);
     pci_bus* bus = &Drv_PCIBuses[Drv_PCIBusCount++];
     bus->busNumber = secondary_bus & 0xff;
     bus->acpiNode = nullptr;
@@ -496,7 +504,7 @@ obos_status Drv_PCIInitialize()
             DrvS_ReadPCIRegister(loc, 0x0, 4, &tmp);
             if ((tmp & 0xffff) != 0xffff)
             {
-                OBOS_Debug("%s: Initializing bus %d (from multi-function host bridge)\n\n", __func__, loc.function);
+                PCIDebug("%s: Initializing bus %d (from multi-function host bridge)\n\n", __func__, loc.function);
                 pci_bus* bus = &Drv_PCIBuses[Drv_PCIBusCount++];
                 bus->busNumber = loc.function;
                 bus->acpiNode = nullptr;

@@ -78,16 +78,17 @@ obos_status Kdbg_GDB_Z0(gdb_connection* con, const char* arguments, size_t argum
     bp->addr = args.address;
  
     uintptr_t phys = 0;
+    page_info info = {};
     MmS_QueryPageInfo(dbg_ctx->interrupted_thread && dbg_ctx->interrupted_thread->proc ? 
         dbg_ctx->interrupted_thread->proc->ctx->pt : 
-        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, nullptr, &phys);
+        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, &info, &phys);
     if (!phys)
     {
         response = "E.Page fault";
         goto respond;
     }
 
-    phys += (bp->addr & 0xfff);
+    phys += (bp->addr & (info.prot.huge_page ? 0x1fffff : 0xfff));
 
     bp->at = *(uint8_t*)Arch_MapToHHDM(phys);
     *(uint8_t*)Arch_MapToHHDM(phys) = X86_INT3;
@@ -122,16 +123,18 @@ obos_status Kdbg_GDB_z0(gdb_connection* con, const char* arguments, size_t argum
     }
 
     uintptr_t phys = 0;
+    page_info info = {};
+
     MmS_QueryPageInfo(dbg_ctx->interrupted_thread && dbg_ctx->interrupted_thread->proc ? 
         dbg_ctx->interrupted_thread->proc->ctx->pt : 
-        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, nullptr, &phys);
+        dbg_ctx->interrupt_ctx.frame.cr3, bp->addr, &info, &phys);
     if (!phys)
     {
         response = "E.Page fault";
         goto respond;
     }
 
-    phys += (bp->addr & 0xfff);
+    phys += (bp->addr & (info.prot.huge_page ? 0x1fffff : 0xfff));
 
     *(uint8_t*)Arch_MapToHHDM(phys) = bp->at;
     LIST_APPEND(sw_breakpoint_list, &con->sw_breakpoints, bp);
