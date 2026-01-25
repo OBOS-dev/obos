@@ -87,4 +87,5 @@ typedef struct signal_header {
     size_t    stack_size; // Unused in the actual signal implemtation, only exists for Sys_SigAltStack.
     mutex     lock; // take when modifying this structure.
     event     event; // set when a signal runs, clear when it exits (sigreturn)
+    bool is_siginfo;
 } signal_header;

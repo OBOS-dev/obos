@@ -39,6 +39,8 @@
 #define ALLOWED_FLAGS (0b1000011000110111111111)
 void OBOSS_SigReturn(ucontext_t* uctx)
 {
+    if (Core_GetCurrentThread()->signal_info->is_siginfo)
+        uctx = (void*)((uintptr_t)uctx + sizeof(siginfo_t));
     ucontext_t* ctx = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, uctx, nullptr, sizeof(ucontext_t), OBOS_PROTECTION_READ_ONLY, true, nullptr);
     if (!ctx)
         return;
@@ -89,8 +91,6 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         Core_ExitCurrentThread();
     memcpy(rsp, &ctx, sizeof(ctx));
     Mm_VirtualMemoryFree(&Mm_KernelContext, rsp, sizeof(ucontext_t));
-    frame->rsp -= sizeof(sig->trampoline_base);
-    memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
     
     uintptr_t ucontext_loc = frame->rsp;
     if (!sig->un.handler || sigval == SIGKILL || sigval == SIGSTOP)
@@ -143,6 +143,9 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
         siginfo.signum = sigval;
         frame->rsp -= sizeof(siginfo);
         memcpy_k_to_usr((void*)frame->rsp, &siginfo, sizeof(siginfo));
+        frame->rsp -= sizeof(sig->trampoline_base);
+        Core_GetCurrentThread()->signal_info->is_siginfo = true;
+        memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
         frame->rdi = sigval;
         frame->rsi = frame->rsp;
         frame->rdx = ucontext_loc;
@@ -152,6 +155,8 @@ void OBOSS_RunSignalImpl(int sigval, interrupt_frame* frame)
     {
         frame->rdi = sigval;
         frame->rip = (uintptr_t)sig->un.handler;
+        frame->rsp -= sizeof(sig->trampoline_base);
+        memcpy_k_to_usr((void*)frame->rsp, &sig->trampoline_base, sizeof(sig->trampoline_base));
     }
     // When the irq handler returns it will be in the user signal handler.
     // NOTTODO: Test.
