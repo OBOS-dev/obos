@@ -27,6 +27,8 @@ typedef struct tty_interface {
     obos_status(*write)(void* tty, const char* buf, size_t szBuf);
     // Drain output buffers, optional to implement.
     obos_status(*tcdrain)(void* tty);
+    void(*ref)(void* tty);
+    void(*deref)(void* tty);
     struct {
         uint16_t row, col; // characters
         uint16_t width, height; // pixels
@@ -118,10 +120,12 @@ typedef struct tty {
         size_t size;
     } input_buffer;
     struct process_group* fg_job;
+    struct session* session;
     atomic_bool paused;
     bool quoted : 1;
     bool pty : 1;
     bool input_enabled : 1;
+    bool hang : 1;
 } tty;
 
 #define TTY_IOCTL_SETATTR 0x01
@@ -132,6 +136,7 @@ typedef struct tty {
 
 // Makes a copy of 'i' before creating the TTY.
 obos_status Vfs_RegisterTTY(const tty_interface* i, dirent** node, bool pty);
+obos_status Vfs_FreeTTY(tty* tty);
 
 obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout);
 

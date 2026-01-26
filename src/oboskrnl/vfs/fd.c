@@ -135,8 +135,11 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         if (!Core_GetCurrentThread())
             goto down;
         process* proc = Core_GetCurrentThread()->proc;
-        if (proc && proc->session && !proc->session->controlling_tty)
+        if (proc && proc->session && !proc->session->controlling_tty && !desc->vn->tty->session)
+        {
             proc->session->controlling_tty = desc->vn->tty;
+            desc->vn->tty->session = proc->session;
+        }
     }
 
     down:

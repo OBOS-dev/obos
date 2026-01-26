@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <klog.h>
 #include <memmanip.h>
+#include <signal.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/driverId.h>
@@ -28,6 +29,8 @@
 
 typedef struct pty {
     shared_ptr ptr;
+
+    size_t master_refs;
 
     void(*data_ready)(void* tty, const void* buf, size_t nBytesReady);
     void* tty;
@@ -190,9 +193,14 @@ obos_status pty_write(void* tty_, const char* buf, size_t szBuf)
 
 obos_status tcdrain(void* tty);
 
+void pty_ref(void* tty) { OBOS_SharedPtrRef(&(((struct pty*)(((struct tty*)tty)->interface.userdata))->ptr)); }
+void pty_deref(void* tty) { OBOS_SharedPtrUnref(&(((struct pty*)(((struct tty*)tty)->interface.userdata))->ptr)); }
+
 tty_interface Vfs_PTSInterface = {
     .set_data_ready_cb = pty_set_data_ready_cb,
     .write = pty_write,
+    .ref = pty_ref,
+    .deref = pty_deref,
 };
 
 obos_status Vfs_CreatePTMX()
@@ -208,6 +216,15 @@ obos_status Vfs_CreatePTMX()
     return OBOS_STATUS_SUCCESS;
 }
 
+static void free_pty(void* udata, struct shared_ptr* ptr)
+{
+    OBOS_UNUSED(udata);
+    struct pty* pty = ptr->obj;
+    if (pty->slave)
+        Vfs_FreeTTY(pty->slave->vnode->tty);
+    Vfs_Free(pty);
+}
+
 obos_status VfsH_MakePTM(dev_desc* ptm_out)
 {
     if (!ptm_out)
@@ -215,8 +232,8 @@ obos_status VfsH_MakePTM(dev_desc* ptm_out)
 
     struct pty* master = Vfs_Calloc(1, sizeof(*master));
     OBOS_SharedPtrConstruct(&master->ptr, master);
-    master->ptr.free = OBOS_SharedPtrDefaultFree;
-    master->ptr.freeUdata = OBOS_KernelAllocator;
+    master->ptr.free = free_pty;
+    master->ptr.freeUdata = nullptr;
     OBOS_SharedPtrRef(&master->ptr);
     
     master->output_buffer.lock = MUTEX_INITIALIZE();
@@ -361,13 +378,17 @@ static obos_status ptmx_reference_device(dev_desc* desc)
         if (obos_is_error(status))
             return status;
         pty* master = (void*)(*desc);
+        master->master_refs++;
+        printf("referencing PTS %p master, now at %d master refs, %d refs\n", master, master->master_refs, master->ptr.refs);
         tty_interface iface = Vfs_PTSInterface;
         iface.userdata = master;
-        status = Vfs_RegisterTTY(&iface, &master->slave, true);
+        return Vfs_RegisterTTY(&iface, &master->slave, true);
     }
 
     pty* master = (void*)(*desc);
     OBOS_SharedPtrRef(&master->ptr);
+    master->master_refs++;
+    printf("referencing PTS %p master, now at %d master refs, %d refs\n", master, master->master_refs, master->ptr.refs);
 
     return OBOS_STATUS_SUCCESS;
 }
@@ -379,6 +400,21 @@ static obos_status ptmx_unreference_device(dev_desc desc)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     pty* master = (void*)desc;
+    
+    master->master_refs--;
+    printf("dereferencing PTS %p master, now at %d master refs, %d refs\n", master, master->master_refs, master->ptr.refs-1);
+    if (!master->master_refs && master->ptr.refs > 1)
+    {
+        process* session_leader = master->slave->vnode->tty->session ? master->slave->vnode->tty->session->leader : nullptr;
+
+        if (!session_leader)
+            OBOS_KillProcessGroup(master->slave->vnode->tty->fg_job, SIGHUP);
+        else
+            OBOS_KillProcess(session_leader, SIGHUP);
+        master->slave->vnode->tty->hang = true;
+        Core_EventSet(&master->slave->vnode->tty->data_ready_evnt, false);
+    }
+
     OBOS_SharedPtrUnref(&master->ptr);
 
     return OBOS_STATUS_SUCCESS;

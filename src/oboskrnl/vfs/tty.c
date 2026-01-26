@@ -95,6 +95,11 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
         size_t nBytesRead = 0;
         do {
             nBytesRead = find_eol(tty, tty->input_buffer.buf + (tty->input_buffer.in_ptr % tty->input_buffer.size));
+            if (!nBytesRead && tty->hang)
+            {
+                OBOS_Debug("tty: hangup, returning EOF\n");
+                break;
+            }
             if (nBytesRead == SIZE_MAX)
                 Core_Yield();
         } while(nBytesRead == SIZE_MAX);
@@ -112,6 +117,11 @@ static obos_status tty_read_sync(dev_desc desc, void *buf, size_t blkCount,
         size_t i = 0;
         for (; i < blkCount && i < tty->termios.cc[VMIN]; i++)
         {
+            if ((tty->input_buffer.in_ptr == tty->input_buffer.out_ptr) && tty->hang)
+            {
+                OBOS_Debug("tty: hangup, returning EOF\n");
+                break;
+            }
             while (CoreS_GetTimerTick() > deadline && (tty->input_buffer.in_ptr == tty->input_buffer.out_ptr))
                 OBOSS_SpinlockHint();
             if (CoreS_GetTimerTick() > deadline)
@@ -144,6 +154,11 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
     tty *tty = (struct tty *)desc;
     if (!tty || tty->magic != TTY_MAGIC)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (tty->hang)
+    {
+        OBOS_Debug("tty: hangup, returning IO error\n");
+        return OBOS_STATUS_INTERNAL_ERROR;
+    }
     obos_status status = OBOS_STATUS_SUCCESS;
     if (!tty->termios.oflag)
         status = tty->interface.write(tty, buf, blkCount);
@@ -344,10 +359,17 @@ void irp_on_event_set(irp* req)
 
     size_t nToRead = OBOS_MIN(tty->input_buffer.out_ptr - tty->input_buffer.in_ptr, req->blkCount);
 
+    if (tty->hang && !nToRead)
+    {
+        OBOS_Debug("tty: hangup, returning EOF\n");
+        req->status = req->nBlkRead ? OBOS_STATUS_SUCCESS : OBOS_STATUS_EOF;
+        return;
+    }
+
     if (!req->dryOp)
     {
         memcpy(req->drvData, tty->input_buffer.buf + (tty->input_buffer.in_ptr % tty->input_buffer.size), nToRead);
-        req->drvData = (void*)(uintptr_t)req->drvData + nToRead;
+        req->drvData = (void*)((uintptr_t)req->drvData + nToRead);
         tty->input_buffer.in_ptr += nToRead;
     }
     size_t const vmin = tty->termios.cc[VMIN];
@@ -357,7 +379,7 @@ void irp_on_event_set(irp* req)
         req->status = OBOS_STATUS_SUCCESS;
     req->nBlkRead += nToRead;
     // Only if we have satisfied all bytes.
-    if (tty->input_buffer.out_ptr <= tty->input_buffer.in_ptr && !req->dryOp)
+    if (!tty->hang && tty->input_buffer.out_ptr <= tty->input_buffer.in_ptr && !req->dryOp)
         Core_EventClear(req->evnt);
 }
 
@@ -413,6 +435,25 @@ static obos_status tty_submit_irp(void* request)
     return OBOS_STATUS_SUCCESS;
 }
 
+static obos_status tty_reference_device(dev_desc* desc)
+{
+    tty *tty = (struct tty *)(*desc);
+    if (!tty)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (tty->interface.ref)
+        tty->interface.ref(tty);
+    return OBOS_STATUS_SUCCESS;
+}
+static obos_status tty_unreference_device(dev_desc desc)
+{
+    tty *tty = (struct tty *)desc;
+    if (!tty)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (tty->interface.deref)
+        tty->interface.deref(tty);
+    return OBOS_STATUS_SUCCESS;
+}
+
 static size_t last_tty_index = 0;
 static size_t last_pty_index = 0;
 
@@ -432,6 +473,8 @@ driver_id OBOS_TTYDriver = {
                        .ioctl_argp_size = tty_ioctl_argp_size,
                        .submit_irp = tty_submit_irp,
                        .finalize_irp = nullptr,
+                       .reference_device = tty_reference_device,
+                       .unreference_device = tty_unreference_device,
                        .driver_cleanup_callback = nullptr,
                    },
                .driverName = "TTY Driver"}};
@@ -633,6 +676,20 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
 
     Vfs_Free(name);
 
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Vfs_FreeTTY(tty* tty)
+{
+    if (!tty)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (tty->ent)
+        VfsH_DirentRemoveChild(tty->ent->d_parent, tty->ent);
+    if (tty->vn)
+        tty->vn->tty = nullptr;
+    CoreH_AbortWaitingThreads(WAITABLE_OBJECT(tty->data_ready_evnt));
+    Vfs_Free(tty->input_buffer.buf);
+    Vfs_Free(tty);   
     return OBOS_STATUS_SUCCESS;
 }
 
