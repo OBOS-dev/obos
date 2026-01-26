@@ -83,11 +83,6 @@ typedef struct page
     // Should always be <= refcount.
     _Atomic(size_t) pagedCount;
 
-    struct {
-        page_node *head, *tail;
-        size_t nNodes;
-    } virt_pages /* virtual pages with a reference to us */;
-
     struct swap_allocation* swap_alloc;
     phys_page_flags flags;
 
