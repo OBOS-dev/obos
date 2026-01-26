@@ -483,9 +483,19 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
 }
 dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
 {
+    return Drv_RegisterVNodeEx(vn, dev_name, 0);
+}
+
+dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int flags)
+{
     if (!vn || !dev_name)
         return nullptr;
     dirent* parent = Vfs_DevRoot;
+    if (flags & REGISTER_VNODE_IS_PTY)
+        parent = VfsH_DirentLookupFrom("pts", parent);
+    if (!parent)
+        return nullptr;
+    
     dirent* ent = VfsH_DirentLookupFrom(dev_name, parent);
     if (ent && ent->vnode == vn)
         return ent;
@@ -507,6 +517,7 @@ dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name)
     OBOS_InitString(&ent->name, dev_name);
     VfsH_DirentAppendChild(parent, ent);
     VfsH_UnlockMountpoint(point);
+
     return ent;
 }
 
@@ -840,6 +851,9 @@ obos_status Vfs_Access(vnode* vn, bool read, bool write, bool exec)
 
 obos_status Vfs_AccessAs(uid asUid, gid asGid, vnode* vn, bool read, bool write, bool exec)
 {
+    if (vn->flags & VFLAGS_PTS_LOCKED)
+        return OBOS_STATUS_ACCESS_DENIED;
+
     if (write)
     {
         drv_fs_info info = {};

@@ -194,6 +194,7 @@ static obos_status tty_write_sync(dev_desc desc, const void *buf,
 #define TIOCGPGRP 0x540F
 #define TIOCSPGRP 0x5410
 #define TIOCGWINSZ 0x5413
+#define TIOCSWINSZ 0x5414
 struct winsize
 {
     unsigned short row;
@@ -216,6 +217,7 @@ static obos_status tty_ioctl_argp_size(uint32_t request, size_t *ret)
             *ret = 0;
             break;
         case TIOCGWINSZ:
+        case TIOCSWINSZ:
             *ret = sizeof(struct winsize);
             break;
         case TTY_IOCTL_FLOW:
@@ -286,6 +288,18 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
             sz->row = tty->interface.size.row;
             sz->xpixel = tty->interface.size.width;
             sz->ypixel = tty->interface.size.height;
+            break;
+        }
+        case TIOCSWINSZ:
+        {
+            if (!tty->pty)
+                status = OBOS_STATUS_UNIMPLEMENTED;
+
+            const struct winsize* sz = argp;
+            tty->interface.size.col = sz->col;
+            tty->interface.size.row = sz->row;
+            tty->interface.size.width = sz->xpixel;
+            tty->interface.size.height = sz->ypixel;
             break;
         }
         case TTY_IOCTL_FLOW:
@@ -592,17 +606,22 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     vnode *vn = Drv_AllocateVNode(&OBOS_TTYDriver, (dev_desc)tty, 0, nullptr,
                                     VNODE_TYPE_CHR);
     vn->flags |= VFLAGS_IS_TTY;
+    if (pty)
+        vn->flags |= VFLAGS_PTS_LOCKED;
     vn->data = tty;
     vn->gid = 5; // tty
     size_t index = pty ? last_pty_index++ : last_tty_index++;
-    size_t szName = snprintf(nullptr, 0, "tty%ld", index);
+    size_t szName = snprintf(nullptr, 0, "%s%ld", pty ? "" : "tty", index);
     char *name = nullptr;
-    snprintf((name = Vfs_Malloc(szName + 1)), szName + 1, "tty%ld", index);
-    OBOS_Log("%s: Registering TTY %s\n", __func__, name);
-    dirent *node = Drv_RegisterVNode(vn, name);
+    snprintf((name = Vfs_Malloc(szName + 1)), szName + 1, "%s%ld", pty ? "" : "tty", index);
+    OBOS_Log("%s: Registering %s %s\n", __func__, pty ? "PTS" : "TTY", name);
+    dirent *node = Drv_RegisterVNodeEx(vn, name, pty ? REGISTER_VNODE_IS_PTY : 0);
+    if (pty)
+        OBOS_ENSURE(obos_is_success(VfsH_SetPTS((dev_desc)i->userdata, node, (int)index)));
 
     tty->ent = node;
     tty->vn = vn;
+    tty->pty = pty;
     if (onode)
         *onode = node;
     

@@ -527,18 +527,29 @@ obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_ar
             return OBOS_STATUS_INTERNAL_ERROR;
         if (header->ftable.ioctl_argp_size)
             status = header->ftable.ioctl_argp_size(request, &sz_argp);
-        else
+
+        if (obos_is_error(status))
         {
             if (request == 0x5451)
             {
                 fd->un.fd->flags |= FD_FLAGS_NOEXEC;
                 return OBOS_STATUS_SUCCESS;
             }
+            else if (request == 0x5421)
+            {
+                int arg = 0;
+                memcpy_usr_to_k(&arg, argp, sizeof(int));
+                if (arg)
+                    fd->un.fd->flags |= FD_FLAGS_NOBLOCK;
+                else
+                    fd->un.fd->flags &= ~FD_FLAGS_NOBLOCK;
+                return OBOS_STATUS_SUCCESS;
+            }
             else
                 status = OBOS_STATUS_INVALID_IOCTL;
+            if (obos_is_error(status))
+                return status;
         }
-        if (obos_is_error(status))
-            return status;
     }
 
     void* kargp = (sz_argp != 0) ? Mm_MapViewOfUserMemory(CoreS_GetCPULocalPtr()->currentContext, argp, nullptr, sz_argp, 0, true, &status) : 0;

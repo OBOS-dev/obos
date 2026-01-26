@@ -51,6 +51,8 @@ enum
     // The driver implementing this vnode is DEAD and should NOT be used.
     VFLAGS_DRIVER_DEAD = 32,
     VFLAGS_NIC_NO_FCS = 64,
+    VFLAGS_PTMX = 128,
+    VFLAGS_PTS_LOCKED = 256,
 };
 
 // basically a struct specinfo, but renamed.

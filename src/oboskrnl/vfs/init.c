@@ -21,6 +21,7 @@
 #include <vfs/pipe.h>
 #include <vfs/create.h>
 #include <vfs/socket.h>
+#include <vfs/tty.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -200,6 +201,8 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
 #endif
 
     VfsH_InitializeSocketInterface();
+
+    Vfs_CreatePTMX();
 
     do {
         vnode* dev_tty_vn = Drv_AllocateVNode(nullptr, 0, 0, nullptr, VNODE_TYPE_CHR);

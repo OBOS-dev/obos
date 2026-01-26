@@ -61,6 +61,10 @@ obos_status VfsH_Chdir(void* /* struct process */ target, const char *path);
 obos_status VfsH_ChdirEnt(void* /* struct process */ target, dirent* ent);
 
 OBOS_EXPORT dirent* Drv_RegisterVNode(struct vnode* vn, const char* const dev_name);
+enum {
+    REGISTER_VNODE_IS_PTY = BIT(0),
+};
+OBOS_EXPORT dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int flags);
 
 // solely for mlibc support
 obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** last, size_t* nRead);

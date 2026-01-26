@@ -120,6 +120,7 @@ typedef struct tty {
     struct process_group* fg_job;
     atomic_bool paused;
     bool quoted : 1;
+    bool pty : 1;
     bool input_enabled : 1;
 } tty;
 
@@ -133,3 +134,12 @@ typedef struct tty {
 obos_status Vfs_RegisterTTY(const tty_interface* i, dirent** node, bool pty);
 
 obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout);
+
+obos_status VfsH_MakePTM(dev_desc* ptm);
+obos_status VfsH_GetPTS(dev_desc ptm, dirent** pts);
+obos_status VfsH_SetPTS(dev_desc ptm, dirent* node, int idx);
+
+extern tty_interface Vfs_PTSInterface;
+
+// Creates /dev/ptmx
+obos_status Vfs_CreatePTMX();
