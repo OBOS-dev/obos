@@ -171,6 +171,18 @@ void fd_clone(handle_desc* hnd, handle_desc* new)
         oflags |= FD_OFLAGS_UNCACHED;
     if (hnd->un.fd->flags & FD_FLAGS_NOEXEC)
         oflags |= FD_OFLAGS_NOEXEC;
+    if (hnd->un.fd->vn->flags & VFLAGS_PTMX)
+    {
+        memcpy(new->un.fd, hnd->un.fd->vn, sizeof(fd));
+        memzero(&new->un.fd->node, sizeof(new->un.fd->node));
+        LIST_APPEND(fd_list, &hnd->un.fd->vn->opened, new->un.fd);
+        driver_ftable* ftable = &Vfs_GetVnodeDriver(hnd->un.fd->vn)->ftable;
+        OBOS_ENSURE(ftable);
+        OBOS_ENSURE(ftable->reference_device);
+        ftable->reference_device(&new->un.fd->desc);
+        new->un.fd->offset = hnd->un.fd->offset;
+        return;
+    }
     Vfs_FdOpenVnode(new->un.fd, hnd->un.fd->vn, oflags);
     new->un.fd->offset = hnd->un.fd->offset;
 }

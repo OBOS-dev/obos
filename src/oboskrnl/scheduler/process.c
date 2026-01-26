@@ -93,6 +93,8 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->egid = proc->parent->egid;
 	proc->sgid = proc->parent->sgid;
 	proc->groups.nEntries = proc->parent->groups.nEntries;
+	proc->parent->session->refs++;
+	proc->session = proc->parent->session;
 	proc->groups.list = memcpy(
 		Allocate(OBOS_KernelAllocator, proc->parent->groups.nEntries * sizeof(gid), nullptr), 
 		proc->parent->groups.list, 
@@ -306,6 +308,15 @@ OBOS_NORETURN void Core_ExitCurrentProcess(uint32_t code)
 
 	Core_ExitProcessGroup();
 
+	
+	if (proc->session)
+	{
+		if (proc->session->leader == proc)
+			proc->session->leader = nullptr;
+		if (!(--proc->session->refs))
+			Free(OBOS_KernelAllocator, proc->session, sizeof(*proc->session));
+	}
+
 	// Kill all threads.
 	for (thread_node* node = proc->threads.head; node; )
 	{
@@ -383,10 +394,6 @@ obos_status Core_SetProcessGroup(process* proc, uint32_t pgid)
 	pgrp->leader = proc;
 	pgrp->lock = MUTEX_INITIALIZE();
 	pgrp->pgid = pgid;
-	// TODO(oberrow): When sessions are implemented, take the controlling tty
-	// from there.
-	if (Core_GetCurrentThread()->proc && Core_GetCurrentThread()->proc->pgrp)
-		pgrp->controlling_tty = Core_GetCurrentThread()->proc->pgrp->controlling_tty;
 	RB_INSERT(process_group_tree, &Core_ProcessGroups, pgrp);
 	
 	found:
@@ -409,4 +416,29 @@ obos_status Core_GetProcessGroup(process* proc, uint32_t* pgid)
 		return OBOS_STATUS_INVALID_OPERATION;
 	*pgid = proc->pgrp->pgid;
 	return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Core_MakeSession(process* proc, session** out)
+{
+	if (!proc)
+		return OBOS_STATUS_INVALID_ARGUMENT;
+	if (proc->session && proc->session->leader == proc)
+		return OBOS_STATUS_ACCESS_DENIED;
+	
+	// Is this check needed? A session leader is already a process group leader.
+	if (proc->pgrp && proc->pgrp->leader == proc)
+		return OBOS_STATUS_ACCESS_DENIED;
+	
+	session* session = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*session), nullptr);
+	session->leader = proc;
+	session->controlling_tty = nullptr;
+	session->sid = proc->pid;
+
+	session->refs++;
+	if (proc->session && !(--proc->session->refs))
+		Free(OBOS_KernelAllocator, proc->session, sizeof(*proc->session));
+	proc->session = session;
+	
+	if (out) *out = session;
+	return Core_SetProcessGroup(proc, 0);
 }

@@ -292,9 +292,6 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
         }
         case TIOCSWINSZ:
         {
-            if (!tty->pty)
-                status = OBOS_STATUS_UNIMPLEMENTED;
-
             const struct winsize* sz = argp;
             tty->interface.size.col = sz->col;
             tty->interface.size.row = sz->row;

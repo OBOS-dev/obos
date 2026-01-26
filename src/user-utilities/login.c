@@ -53,7 +53,7 @@ static void prompt(char** ousername, char** opassword)
         free(*ousername);
         goto retry_uname_prompt;
     }
-    fprintf(stderr, "%s password: ", *ousername);
+    fprintf(stderr, "Password: ");
     struct termios old_tc = tc;
     tc.c_lflag &= ~ECHO;
     tc.c_lflag |= ECHONL;
@@ -196,7 +196,6 @@ int main()
         int child = fork();
         if (child == 0)
         {
-            // TODO: Session IDs?
             // TODO: Parse /etc/environment
 
             if (setresgid(user->pw_gid, user->pw_gid, user->pw_gid) != 0)
@@ -261,7 +260,8 @@ int main()
         {
             if (do_waitpid(child) == 0)
                 // god forgive me
-                system("reset");
+                // system("reset");
+                continue;
             else
                 continue;
         }

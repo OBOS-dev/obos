@@ -80,3 +80,6 @@ obos_status Sys_GetGroups(handle proc, size_t *size, gid* list);
 
 obos_status Sys_SetProcessGroup(handle proc, uint32_t pgid);
 obos_status Sys_GetProcessGroup(handle proc, uint32_t* pgid);
+
+obos_status Sys_SetSid(handle proc, uint32_t *out);
+obos_status Sys_GetSid(handle proc, uint32_t *out);

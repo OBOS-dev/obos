@@ -36,6 +36,7 @@ typedef struct process
 	_Atomic(size_t) refcount;
 
 	struct process_group* pgrp;
+	struct session* session;
 
 	uid euid, ruid, suid;
 	gid egid, rgid, sgid;
@@ -76,13 +77,19 @@ typedef struct process_group {
 	process* leader;
 	process_list processes;
 	mutex lock;
-	tty* controlling_tty;
 	RB_ENTRY(process_group) rb_node;
 } process_group;
 typedef RB_HEAD(process_group_tree, process_group) process_group_tree;
 RB_PROTOTYPE(process_group_tree, process_group, node, pgrp_cmp);
 extern process_group_tree Core_ProcessGroups;
 extern mutex Core_ProcessGroupTreeLock;
+
+typedef struct session {
+	uint32_t sid;
+	process* leader;
+	tty* controlling_tty;
+	size_t refs;
+} session;
 
 extern uint32_t Core_NextPID;
 
@@ -122,3 +129,5 @@ process* Core_LookupProc(uint64_t pid);
 void Core_ExitProcessGroup();
 obos_status Core_SetProcessGroup(process* proc, uint32_t pgid);
 obos_status Core_GetProcessGroup(process* proc, uint32_t* pgid);
+
+obos_status Core_MakeSession(process* proc, session** out);

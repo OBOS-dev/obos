@@ -106,8 +106,12 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
                 currentPathLen--;
         }
         thread* cur_thr = Core_GetCurrentThread();
-        if (curr->flags & DIRENT_REFERS_CTTY && cur_thr && cur_thr->proc && cur_thr->proc->pgrp && cur_thr->proc->pgrp->controlling_tty)
-            return cur_thr->proc->pgrp->controlling_tty->ent;
+        if (curr->flags & DIRENT_REFERS_CTTY)
+        {
+            if (!(cur_thr && cur_thr->proc && cur_thr->proc->session && cur_thr->proc->session->controlling_tty))
+                return nullptr;
+            return cur_thr->proc->session->controlling_tty->ent;
+        }
         return curr;
     }
     if (!curr->d_children.nChildren)

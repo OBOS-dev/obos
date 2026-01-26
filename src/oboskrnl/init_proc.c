@@ -1,7 +1,7 @@
 /*
  * oboskrnl/init_proc.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -41,7 +41,7 @@ static char* strcpy(const char* str)
 
 void OBOS_LoadInit()
 {
-    if (!Core_GetCurrentThread()->proc->pgrp || !Core_GetCurrentThread()->proc->pgrp->controlling_tty)
+    if (!Core_GetCurrentThread()->proc->session || !Core_GetCurrentThread()->proc->session->controlling_tty)
     {
         OBOS_Error("%s: Cannot load init due to non-existent controlling tty.\n", __func__);
         return;
@@ -147,8 +147,8 @@ void OBOS_LoadInit()
 
     // init takes the process group of the kernel.
     Core_SetProcessGroup(new, 1);
-    if (new->pgrp->controlling_tty)
-        new->pgrp->controlling_tty->fg_job = new->pgrp;
+    if (new->session->controlling_tty)
+        new->session->controlling_tty->fg_job = new->pgrp;
 
     // CoreS_SetThreadPageTable(&thr_ctx, new_ctx->pt);
 

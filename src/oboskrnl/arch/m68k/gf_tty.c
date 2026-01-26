@@ -176,8 +176,8 @@ void OBOSS_MakeTTY()
     Vfs_RegisterTTY(&tty_iface, &ent, false);
     tty_iface_obj.tty = ent->vnode->data;
 
-    Core_SetProcessGroup(OBOS_KernelProcess, 0);
-    OBOS_KernelProcess->pgrp->controlling_tty = ent->vnode->data;
+    Core_MakeSession(OBOS_KernelProcess, nullptr);
+    OBOS_KernelProcess->session->controlling_tty = ent->vnode->data;
     ((struct tty*)ent->vnode->data)->fg_job = OBOS_KernelProcess->pgrp;
 
     Arch_PICMaskIRQ(gf_tty_info.irq, false);

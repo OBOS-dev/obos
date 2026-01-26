@@ -38,6 +38,7 @@ enum
     // NOTE: Only handled in syscalls, and is ignored in Vfs_FdOpen*.
     FD_OFLAGS_CREATE = 16,
     FD_OFLAGS_EXECUTE = 32,
+    FD_OFLAGS_NOCTTY = 64,
 };
 typedef struct fd
 {

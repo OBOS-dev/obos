@@ -186,8 +186,8 @@ obos_status Sys_SetControllingTTY(handle desc, bool fg)
 
     process* proc = Core_GetCurrentThread()->proc;
     
-    if (proc->pgrp)
-        proc->pgrp->controlling_tty = tty;
+    if (proc->session && proc->session->controlling_tty)
+        proc->session->controlling_tty = tty;
     else
         return OBOS_STATUS_INVALID_ARGUMENT;
 
@@ -209,10 +209,10 @@ obos_status Sys_GetControllingTTY(handle desc, uint32_t oflags)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     process* proc = Core_GetCurrentThread()->proc;
-    if (!proc->pgrp || !proc->pgrp->controlling_tty)
+    if (!proc->session || !proc->session->controlling_tty)
         return OBOS_STATUS_NOT_FOUND; // No controlling TTY.
 
-    return Vfs_FdOpenVnode(fd->un.fd, proc->pgrp->controlling_tty->vn, oflags);
+    return Vfs_FdOpenVnode(fd->un.fd, proc->session->controlling_tty->vn, oflags);
 }
 
 obos_status Sys_TTYName(handle desc, char* ubuf, size_t size)
@@ -500,6 +500,8 @@ uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
     (uintptr_t)Sys_GetGroups,
     (uintptr_t)Sys_GetCachedByteCount,
     (uintptr_t)Sys_GetHDADevices,
+    (uintptr_t)Sys_SetSid,
+    (uintptr_t)Sys_GetSid,
 };
 
 // Arch syscall table is defined per-arch

@@ -732,7 +732,9 @@ void OBOSS_GetKernelModule(struct boot_module *module)
 
 void OBOSS_MakeTTY()
 {
-    Core_SetProcessGroup(Core_GetCurrentThread()->proc, 0);
+    session* session = nullptr;
+    OBOS_ENSURE(obos_is_success(Core_MakeSession(Core_GetCurrentThread()->proc, &session)));
+    
     dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
     tty_interface i = {};
     VfsH_MakeScreenTTY(&i, ps2k1 ? ps2k1->vnode : nullptr, nullptr, OBOS_FlantermContext);
@@ -740,15 +742,14 @@ void OBOSS_MakeTTY()
     Vfs_RegisterTTY(&i, &tty, false);
     process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
     ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
-    pgrp->controlling_tty = (void*)tty->vnode->desc;
+    
+    session->controlling_tty = (void*)tty->vnode->desc;
 }
 
 static bool isnum(char ch)
 {
     return (ch - '0') >= 0 && (ch - '0') < 10;
 }
-
-#include <net/tables.h>
 
 void Arch_KernelMainBootstrap()
 {

@@ -997,7 +997,7 @@ obos_status Sys_SetProcessGroup(handle process, uint32_t pgid)
         if (!desc)
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return UINT32_MAX;
+            return status;
         }
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1019,7 +1019,7 @@ obos_status Sys_GetProcessGroup(handle process, uint32_t* opgid)
         if (!desc)
         {
             OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
-            return UINT32_MAX;
+            return status;
         }
         proc = desc->un.process;
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
@@ -1031,4 +1031,60 @@ obos_status Sys_GetProcessGroup(handle process, uint32_t* opgid)
         status = memcpy_k_to_usr(opgid, &pgid, sizeof(pgid));
     
     return status;
+}
+
+obos_status Sys_SetSid(handle process, uint32_t *out)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (!proc)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    session* s = nullptr;
+    status = Core_MakeSession(proc, &s);
+    if (obos_is_error(status))
+        return status;
+
+    return memcpy_k_to_usr(out, &s->sid, sizeof(uint32_t));
+}
+obos_status Sys_GetSid(handle process, uint32_t *out)
+{
+    struct process* proc =
+        HANDLE_TYPE(process) == HANDLE_TYPE_CURRENT ?
+            Core_GetCurrentThread()->proc :
+            nullptr;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    if (!proc)
+    {
+        OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+        handle_desc* desc = OBOS_HandleLookup(OBOS_CurrentHandleTable(), process, HANDLE_TYPE_PROCESS, false, &status);
+        if (!desc)
+        {
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+            return status;
+        }
+        proc = desc->un.process;
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    }
+
+    session* s = Core_GetCurrentThread()->proc->session;
+    const uint32_t zero = 0;
+
+    if (!s)
+        return memcpy_k_to_usr(out, &zero, sizeof(uint32_t));
+    
+    return memcpy_k_to_usr(out, &s->sid, sizeof(uint32_t));
 }

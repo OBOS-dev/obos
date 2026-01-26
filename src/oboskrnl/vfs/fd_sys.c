@@ -527,6 +527,8 @@ obos_status Sys_FdIoctl(handle desc, uintptr_t request, void* argp, size_t sz_ar
             return OBOS_STATUS_INTERNAL_ERROR;
         if (header->ftable.ioctl_argp_size)
             status = header->ftable.ioctl_argp_size(request, &sz_argp);
+        else
+            status = OBOS_STATUS_INVALID_IOCTL;
 
         if (obos_is_error(status))
         {
@@ -1069,7 +1071,7 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
         OBOS_Warning("%s: No PGRP for current process\n", __func__);
         return;
     }
-    if (!Core_GetCurrentThread()->proc->pgrp->controlling_tty)
+    if (!Core_GetCurrentThread()->proc->session->controlling_tty)
     {
         OBOS_Warning("%s: No controlling tty\n", __func__);
         return;
@@ -1077,15 +1079,18 @@ void OBOS_OpenStandardFDs(handle_table* tbl)
     handle hnd_stdin = alloc_fd(tbl);
     handle hnd_stdout = alloc_fd(tbl);
     handle hnd_stderr = alloc_fd(tbl);
+    OBOS_ENSURE(hnd_stdin == 0);
+    OBOS_ENSURE(hnd_stdout == 1);
+    OBOS_ENSURE(hnd_stderr == 2);
     OBOS_LockHandleTable(tbl);
     obos_status status = OBOS_STATUS_SUCCESS;
     handle_desc* stdin = OBOS_HandleLookup(tbl, hnd_stdin, HANDLE_TYPE_FD, false, &status);
     handle_desc* stdout = OBOS_HandleLookup(tbl, hnd_stdout, HANDLE_TYPE_FD, false, &status);
     handle_desc* stderr = OBOS_HandleLookup(tbl, hnd_stderr, HANDLE_TYPE_FD, false, &status);
     OBOS_UnlockHandleTable(tbl);
-    Vfs_FdOpenVnode(stdin->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_READ);
-    Vfs_FdOpenVnode(stdout->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_WRITE);
-    Vfs_FdOpenVnode(stderr->un.fd, Core_GetCurrentThread()->proc->pgrp->controlling_tty->vn, FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stdin->un.fd, Core_GetCurrentThread()->proc->session->controlling_tty->vn, FD_OFLAGS_READ);
+    Vfs_FdOpenVnode(stdout->un.fd, Core_GetCurrentThread()->proc->session->controlling_tty->vn, FD_OFLAGS_WRITE);
+    Vfs_FdOpenVnode(stderr->un.fd, Core_GetCurrentThread()->proc->session->controlling_tty->vn, FD_OFLAGS_WRITE);
 }
 
 // Writebacks all dirty pages in the page cache back to disk.

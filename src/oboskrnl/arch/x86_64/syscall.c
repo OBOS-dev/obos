@@ -266,6 +266,8 @@ const char* syscall_to_string[] = {
     "Sys_GetGroups",
     "Sys_GetCachedByteCount",
     "Sys_GetHDADevices",
+    "Sys_SetSid",
+    "Sys_GetSid",
 };
 
 const char* status_to_string[] = {

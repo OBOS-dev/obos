@@ -130,6 +130,16 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     desc->vn->times.access = get_current_time();
     Vfs_UpdateFileTime(desc->vn);
 
+    if (~oflags & FD_OFLAGS_NOCTTY && desc->vn->flags & VFLAGS_IS_TTY)
+    {
+        if (!Core_GetCurrentThread())
+            goto down;
+        process* proc = Core_GetCurrentThread()->proc;
+        if (proc && proc->session && !proc->session->controlling_tty)
+            proc->session->controlling_tty = desc->vn->tty;
+    }
+
+    down:
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
 }

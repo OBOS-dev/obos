@@ -77,6 +77,7 @@ typedef struct vnode
 {
     union {
         void* data;
+        struct tty* tty;
         struct net_tables* net_tables;
     };
     uint32_t vtype;

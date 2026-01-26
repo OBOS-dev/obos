@@ -1,6 +1,6 @@
 # oboskrnl/CMakeLists.txt
 
-# Copyright (c) 2024-2025 Omar Berrow
+# Copyright (c) 2024-2026 Omar Berrow
 
 list (APPEND oboskrnl_sources 
 	"klog.c" "locks/spinlock.c" "irq/irql.c" "scheduler/schedule.c"
