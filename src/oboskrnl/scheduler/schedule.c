@@ -149,14 +149,19 @@ switch_thread:
 }
 struct irq* Core_SchedulerIRQ;
 uint64_t Core_SchedulerTimerFrequency = 1000;
+
 void Core_Yield()
+{
+	Core_YieldForce(false);
+}
+
+void Core_YieldForce(bool force)
 {
 	if (getCurrentThread && getCurrentThread->kill && (getCurrentThread->yield_count_since_kill++ != 1 /* give the code a chance to remove itself from existance */))
 		Core_ExitCurrentThread();
 	irql oldIrql = IRQL_INVALID;
-	if (obos_expect(CoreS_GetCPULocalPtr()->ever_yielded, true))
-		OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
-	else
+	// 	OBOS_ASSERT(Core_GetIrql() <= IRQL_DISPATCH);
+	if (obos_expect(!CoreS_GetCPULocalPtr()->ever_yielded, false))
 	 	CoreS_GetCPULocalPtr()->ever_yielded = true;
 	if (Core_GetIrql() <= IRQL_DISPATCH)
 	{
@@ -165,9 +170,12 @@ void Core_Yield()
 	}
 	if (getCurrentThread)
 	{
+		force = false;
 		bool canRunCurrentThread = threadCanRunThread(getCurrentThread);
 		++getCurrentThread->total_quantums;
-		if (++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] && canRunCurrentThread && !getCurrentThread->force_yield)
+		if (!force && 
+			++getCurrentThread->quantum < Core_ThreadPriorityToQuantum[getCurrentThread->priority] &&
+			canRunCurrentThread && !getCurrentThread->force_yield)
 		{
 			if (oldIrql != IRQL_INVALID)
 			{

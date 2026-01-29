@@ -75,7 +75,8 @@ obos_status Mm_SwapOut(uintptr_t virt, context* ctx)
     
     uintptr_t swap_id = 0;
     irql oldIrql = IRQL_INVALID;
-    if (ctx == &Mm_KernelContext && Core_SpinlockAcquired(&Mm_KernelContext.lock))
+    // if (ctx == &Mm_KernelContext && Core_SpinlockAcquired(&Mm_KernelContext.lock))
+    if (ctx == &Mm_KernelContext)
     {
         oldIrql = Core_GetIrql();
         Core_SpinlockRelease(&Mm_KernelContext.lock, IRQL_DISPATCH);
@@ -248,8 +249,8 @@ static __attribute__((no_instrument_function)) void page_writer()
     // const char* const This = "Page Writer";
     while (1)
     {
-        obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
-        OBOS_ENSURE(obos_is_success(status));
+        OBOS_MAYBE_UNUSED obos_status status = Core_WaitOnObject(WAITABLE_OBJECT(page_writer_wake));
+        OBOS_ASSERT(obos_is_success(status));
         Core_EventClear(&page_writer_done);
         if (!Mm_PageWriterOperation)
             Mm_PageWriterOperation = PAGE_WRITER_SYNC_ALL;
@@ -262,7 +263,7 @@ static __attribute__((no_instrument_function)) void page_writer()
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
             if (next == pg)
                 next = nullptr;
-            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
+            // OBOS_ASSERT(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
                 // Funny business
@@ -298,7 +299,7 @@ static __attribute__((no_instrument_function)) void page_writer()
             page* next = LIST_GET_NEXT(phys_page_list, &Mm_DirtyPageList, pg);
             if (next == pg)
                 next = nullptr;
-            // OBOS_ENSURE(pg->flags & PHYS_PAGE_DIRTY);
+            // OBOS_ASSERT(pg->flags & PHYS_PAGE_DIRTY);
             if (~pg->flags & PHYS_PAGE_DIRTY)
             {
                 // Funny business
@@ -311,7 +312,7 @@ static __attribute__((no_instrument_function)) void page_writer()
                 // This is a file page, so writing it back is different than writing back an
                 // anonymous page.
                 size_t nBytes = pg->end_offset - pg->file_offset;
-                OBOS_ENSURE(nBytes <= OBOS_PAGE_SIZE);
+                OBOS_ASSERT(nBytes <= OBOS_PAGE_SIZE);
                 driver_header* driver = Vfs_GetVnodeDriver(pg->backing_vn);
                 if (!driver)
                     continue;
@@ -436,7 +437,7 @@ void Mm_MarkAsStandbyPhys(page* node)
 obos_status Mm_LockPage(context* ctx, page_info* pg)
 {
     OBOS_ASSERT(pg->phys);
-    OBOS_ENSURE (!pg->prot.is_swap_phys);
+    OBOS_ASSERT (!pg->prot.is_swap_phys);
     
     page what = {.phys=pg->phys};
     Core_MutexAcquire(&Mm_PhysicalPagesLock);
@@ -454,7 +455,7 @@ obos_status Mm_LockPage(context* ctx, page_info* pg)
 obos_status Mm_UnlockPage(context* ctx, page_info* pg)
 {
     OBOS_ASSERT(pg->phys);
-    OBOS_ENSURE (!pg->prot.is_swap_phys);
+    OBOS_ASSERT (!pg->prot.is_swap_phys);
 
     page what = {.phys=pg->phys};
     Core_MutexAcquire(&Mm_PhysicalPagesLock);
@@ -474,8 +475,8 @@ obos_status Mm_UnlockPage(context* ctx, page_info* pg)
 
 obos_status Mm_LockPagePhys(page* pg)
 {
-    OBOS_ENSURE(pg != Mm_AnonPage);
-    OBOS_ENSURE(pg != Mm_UserAnonPage);
+    OBOS_ASSERT(pg != Mm_AnonPage);
+    OBOS_ASSERT(pg != Mm_UserAnonPage);
 
     if (pg->backing_vn)
         return OBOS_STATUS_INVALID_OPERATION;
@@ -499,8 +500,8 @@ obos_status Mm_LockPagePhys(page* pg)
 
 obos_status Mm_UnlockPagePhys(page* pg)
 {
-    OBOS_ENSURE(pg != Mm_AnonPage);
-    OBOS_ENSURE(pg != Mm_UserAnonPage);
+    OBOS_ASSERT(pg != Mm_AnonPage);
+    OBOS_ASSERT(pg != Mm_UserAnonPage);
     
     pg->flags &= ~PHYS_PAGE_LOCKED;
     return OBOS_STATUS_SUCCESS;

@@ -123,6 +123,8 @@ static void irp_on_rx_event_set(irp* req)
         hnd->rx_curr = next;
         hnd->rx_off = 0;
     }
+    else
+        OBOS_ASSERT(!"what");
     req->nBlkRead = szRead;
 }
 
@@ -497,6 +499,7 @@ driver_init_status OBOS_DriverEntry(driver_id* this)
         Devices[i].interface_name = DrvH_MakePCIDeviceName(Devices[i].osdep.pci->location, ETHERNET_DEVICE_PREFIX);
         Devices[i].vn = Drv_AllocateVNode(this, (dev_desc)&Devices[i], 0, nullptr, VNODE_TYPE_CHR);
         Devices[i].vn->flags |= VFLAGS_NIC_NO_FCS;
+        Devices[i].vn->flags |= VFLAGS_NIC_PACKET_INJECT;
         Drv_RegisterVNode(Devices[i].vn, Devices[i].interface_name);
     }
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false};

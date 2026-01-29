@@ -19,8 +19,8 @@
 
 #include <utils/list.h>
 
-#define RX_QUEUE_SIZE (32)
-#define TX_QUEUE_SIZE (32)
+#define RX_QUEUE_SIZE (OBOS_PAGE_SIZE / sizeof(union e1000_rx_desc_extended))
+#define TX_QUEUE_SIZE (OBOS_PAGE_SIZE / sizeof(struct e1000_tx_desc))
 #define TX_BUFFER_PAGES (16)
 
 typedef struct e1000_frame {
@@ -48,6 +48,7 @@ typedef struct e1000_device {
     uintptr_t rx_ring_buffers[RX_QUEUE_SIZE];
     page* rx_ring_phys_pg;
     event rx_evnt;
+    uint32_t rx_idx;
     
     uintptr_t tx_ring;
     page* tx_ring_phys_pg;
@@ -70,7 +71,7 @@ typedef struct e1000_handle {
 } e1000_handle;
 
 #if OBOS_IRQL_COUNT == 16
-#	define IRQL_E1000 (7)
+#	define IRQL_E1000 (9)
 #elif OBOS_IRQL_COUNT == 8
 #	define IRQL_E1000 (3)
 #elif OBOS_IRQL_COUNT == 4

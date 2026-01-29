@@ -91,13 +91,7 @@ static void common_log(log_level minimumLevel, const char* log_prefix, const cha
 	}
 	if (s_logLevel > minimumLevel)
 		return;
-	irql oldIrql = 0xfe;
-	if (Core_GetIrql() > IRQL_DISPATCH)
-		oldIrql = Core_SpinlockAcquired(&s_loggerLock) ? IRQL_INVALID : Core_SpinlockAcquireExplicit(&s_loggerLock, IRQL_DISPATCH, true);
-	else
- 		oldIrql = Core_SpinlockAcquireExplicit(&s_loggerLock, IRQL_DISPATCH, true);
-	if (oldIrql == 0xfe)
-		return;
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_loggerLock, IRQL_DISPATCH, true);
 	OBOS_SetColor(OBOS_LogLevelToColor[minimumLevel]);
 	printf("[ %s ] ", log_prefix);
 	vprintf(format, list);
@@ -353,13 +347,7 @@ OBOS_EXPORT size_t vprintf(const char* format, va_list list)
 		s_printfLockInitialized = true;
 		s_printfLock = Core_SpinlockCreate();
 	}
-	irql oldIrql = 0xfe;
-	if (Core_GetIrql() > IRQL_DISPATCH)
-		oldIrql = Core_SpinlockAcquired(&s_printfLock) ? IRQL_INVALID : Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
-	else
-	 	oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
-	if (oldIrql == 0xfe)
-		return 0;
+	irql oldIrql = Core_SpinlockAcquireExplicit(&s_printfLock, IRQL_DISPATCH, true);
 	size_t ret = npf_vpprintf(outputCallback, nullptr, format, list);
 	Core_SpinlockRelease(&s_printfLock, oldIrql);
 	return ret;

@@ -126,7 +126,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
     while ((pipe->ptr - pipe->in_ptr) < (intptr_t)blkCount)
     {
         Core_MutexAcquire(&pipe->ptr_lock);
-        OBOS_ENSURE(pipe->in_ptr <= pipe->ptr);
+        OBOS_ASSERT(pipe->in_ptr <= pipe->ptr);
         blkCount = (pipe->ptr - pipe->in_ptr);
         Core_MutexRelease(&pipe->ptr_lock);
     }

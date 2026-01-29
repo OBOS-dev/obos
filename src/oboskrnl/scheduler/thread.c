@@ -143,6 +143,7 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 		return OBOS_STATUS_INVALID_ARGUMENT;
 	if (thr->flags & THREAD_FLAGS_PRIORITY_RAISED || thr->priority == THREAD_PRIORITY_URGENT)
 		return OBOS_STATUS_SUCCESS;
+	return OBOS_STATUS_SUCCESS;
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql = thr->masterCPU ? Core_SpinlockAcquire(&thr->masterCPU->schedulerLock) : IRQL_INVALID;
 	if (thr->masterCPU)
@@ -160,11 +161,6 @@ obos_status CoreH_ThreadBoostPriority(thread* thr)
 
 __attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(thread_list* list, thread_node* node)
 {
-	if (!list || !node)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!node->data)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	irql oldIrql = Core_SpinlockAcquire(&list->lock);
 	if (list->tail)
 		list->tail->next = node;
 	if(!list->head)
@@ -173,17 +169,11 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListAppend(threa
 	node->data->references++;
 	list->tail = node;
 	list->nNodes++;
-	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
 
 __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(thread_list* list, thread_node* node)
 {
-	if (!list || !node)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	if (!node->data)
-		return OBOS_STATUS_INVALID_ARGUMENT;
-	irql oldIrql = Core_SpinlockAcquire(&list->lock);
 #ifdef OBOS_DEBUG
 	thread_node* cur = list->head;
 	for (; cur;)
@@ -193,10 +183,7 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 		cur = cur->next;
 	}
 	if (!cur)
-	{
-		Core_SpinlockRelease(&list->lock, oldIrql);
 		return OBOS_STATUS_INVALID_ARGUMENT;
-	}
 #endif
 	if (node->next)
 		node->next->prev = node->prev;
@@ -210,9 +197,9 @@ __attribute__((no_instrument_function)) obos_status CoreH_ThreadListRemove(threa
 	node->data->references--;
 	node->next = nullptr;
 	node->prev = nullptr;
-	Core_SpinlockRelease(&list->lock, oldIrql);
 	return OBOS_STATUS_SUCCESS;
 }
+
 thread_affinity CoreH_CPUIdToAffinity(uint32_t cpuId)
 {
 	return ((thread_affinity)1 << cpuId);

@@ -265,7 +265,7 @@ bool Arch_InvlpgIPI(interrupt_frame* frame)
 	{
 		for (uintptr_t addr = curr->base; addr <= (curr->base+curr->size); addr += OBOS_PAGE_SIZE)
 		{
-			OBOS_ENSURE(addr >= curr->base);
+			OBOS_ASSERT(addr >= curr->base);
 			invlpg(addr);
 		}
 

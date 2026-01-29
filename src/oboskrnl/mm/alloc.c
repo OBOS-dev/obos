@@ -517,13 +517,17 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
             memcpy(after, rng, sizeof(*before));
             before->size = base-before->virt;
             after->virt = before->virt+before->size+size;
-            after->size = (after->virt-before->virt);
+            after->size = rng->size - (after->virt-before->virt);
             after->hasGuardPage = false;
             RB_REMOVE(page_tree, &ctx->pages, rng);
             RB_INSERT(page_tree, &ctx->pages, before);
-            RB_INSERT(page_tree, &ctx->pages, after);
+            OBOS_ASSERT((rng->size - before->size - after->size) == size);
+            remove_pages_from_memstat(ctx, rng->size - before->size - after->size, rng, sizeHasGuardPage);
+            if (after->size)
+                RB_INSERT(page_tree, &ctx->pages, after);
+            else
+                Free(Mm_Allocator, after, sizeof(*after));
             rng->ctx = nullptr;
-            remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
             Free(Mm_Allocator, rng, sizeof(*rng));
             rng = nullptr;
         }
@@ -531,8 +535,8 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
         {
             rng->size = (rng->size-size);
             rng->virt += size;
-            // printf("split %p-%p into %p-%p\n", base, size+base, rng->virt, rng->virt+rng->size);
             remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
+            // printf("split %p-%p into %p-%p\n", base, size+base, rng->virt, rng->virt+rng->size);
             rng = nullptr;
         }
     }
@@ -565,10 +569,9 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
     }
     MmS_TLBShootdown(ctx->pt, base, size);
 
-    remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
-
     if (full)
     {
+        remove_pages_from_memstat(ctx, size, rng, sizeHasGuardPage);
         RB_REMOVE(page_tree, &ctx->pages, rng);
         Free(Mm_Allocator, rng, sizeof(*rng));
     }
@@ -838,7 +841,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
                 Mm_MarkAsDirtyPhys(phys);
         }
         if (!info.prot.is_swap_phys)
-            OBOS_ENSURE(phys);
+            OBOS_ASSERT(phys);
 
         if ((phys && phys->cow_type && ~prot & OBOS_PROTECTION_READ_ONLY) || info.prot.is_swap_phys)
         {
@@ -854,7 +857,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
             Core_MutexAcquire(&Mm_PhysicalPagesLock);
             phys = (info.phys && !info.prot.is_swap_phys) ? RB_FIND(phys_page_tree, &Mm_PhysicalPages, &what) : nullptr;
             Core_MutexRelease(&Mm_PhysicalPagesLock);
-            OBOS_ENSURE(phys != Mm_AnonPage);
+            OBOS_ASSERT(phys != Mm_AnonPage);
         }
 
         if (phys)
@@ -870,7 +873,7 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
         info.prot = rng->prot;
         info.prot.present = info.phys != 0;
         info.prot.rw = rng->prot.rw;
-        OBOS_ENSURE(info.phys);
+        OBOS_ASSERT(info.phys);
         MmS_SetPageMapping(Mm_KernelContext.pt, &info, info.phys, false);
     }
 
@@ -1037,8 +1040,8 @@ obos_status DrvH_ScatterGather(context* ctx, void* base_, size_t size, struct ph
         Core_MutexAcquire(&Mm_PhysicalPagesLock);
         page* pg = RB_FIND(phys_page_tree, &Mm_PhysicalPages, &key);
         Core_MutexRelease(&Mm_PhysicalPagesLock);
-        OBOS_ENSURE(pg != Mm_AnonPage);
-        OBOS_ENSURE(pg != Mm_UserAnonPage);
+        OBOS_ASSERT(pg != Mm_AnonPage);
+        OBOS_ASSERT(pg != Mm_UserAnonPage);
         
         MmH_RefPage(pg);
         

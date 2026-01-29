@@ -16,16 +16,18 @@
 #include <locks/wait.h>
 
 typedef struct mutex {
-    struct waitable_header hdr;
+    OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) struct waitable_header hdr;
     // Whether the mutex is locked or not.
-    atomic_flag lock;
-    bool locked;
+    OBOS_ALIGNAS(OBOS_ARCHITECTURE_BITS/8) atomic_flag lock;
+    bool locked : 1;
     // set this when freeing an object.
-    bool ignoreAllAndBlowUp;
+    bool ignoreAllAndBlowUp : 1;
     // The thread that took the mutex.
     thread* who;
+#if OBOS_ENABLE_LOCK_PROFILING
     // The last lock time, in nanoseconds.
     uint64_t lastLockTimeNS;
+#endif
 } mutex;
 
 #define MUTEX_INITIALIZE() (mutex){ .hdr=WAITABLE_HEADER_INITIALIZE(true, true), .locked=false, .who=nullptr }

@@ -35,13 +35,15 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
     irql oldIrql = IRQL_INVALID;
     if (obos_expect(Core_GetIrql() < minIrql, false))
         oldIrql = Core_RaiseIrqlNoThread(minIrql);
-    if (!atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
-       goto done_wait;
-    while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
-        OBOSS_SpinlockHint();
-    done_wait:
+
+    if (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+        while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
+            OBOSS_SpinlockHint();
+
+#if OBOS_DEBUG
     lock->caller = __builtin_return_address(0);
-    lock->locked = true;
+#endif
+
     return oldIrql;
 }
 
@@ -55,10 +57,8 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(
     while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
         OBOSS_SpinlockHint();
     locked:
-    lock->locked = true;
+#if OBOS_DEBUG
     lock->caller = __builtin_return_address(0);
-#if OBOS_ENABLE_LOCK_PROFILING
-    lock->lastLockTimeNS = nanoseconds_since_boot();
 #endif
     return oldIrql;
 }
@@ -72,13 +72,15 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
         return OBOS_STATUS_INVALID_IRQL;
     }
 #endif
+
     atomic_flag_clear_explicit(&lock->val, memory_order_relaxed);
-    lock->locked = false;
+
+    #if OBOS_DEBUG
     lock->caller = 0;
-    Core_LowerIrqlNoThread(oldIrql);
-#if OBOS_ENABLE_LOCK_PROFILING
-    lock->lastLockTimeNS = nanoseconds_since_boot() - lock->lastLockTimeNS;
 #endif
+
+    Core_LowerIrqlNoThread(oldIrql);
+
     return OBOS_STATUS_SUCCESS;
 }
 
@@ -94,7 +96,3 @@ OBOS_NO_UBSAN void Core_SpinlockForcedRelease(spinlock* const lock)
     lock->locked = false;
 }*/
 
-__attribute__((no_instrument_function)) bool Core_SpinlockAcquired(spinlock* const lock)
-{
-    return lock ? lock->locked : false;
-}

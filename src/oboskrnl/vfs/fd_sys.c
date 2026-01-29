@@ -885,12 +885,13 @@ obos_status Sys_StatFSInfo(handle desc, drv_fs_info* info)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     drv_fs_info out = {};
-    status = memcpy_k_to_usr(info, &out, sizeof(out));
-    if (obos_is_error(status))
-        return status;
 
     vnode* vn = dent->un.dirent->parent->vnode;
     status = Vfs_StatFSInfo(vn, &out);
+    if (obos_is_error(status))
+        return status;
+    
+    status = memcpy_k_to_usr(info, &out, sizeof(out));
     if (obos_is_error(status))
         return status;
 

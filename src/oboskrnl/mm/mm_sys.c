@@ -93,7 +93,14 @@ void* Sys_VirtualMemoryAlloc(handle ctx, void* base, size_t size, struct vma_all
         }
     }
 
-    OBOS_Debug("%s: flags=0x%x, fd=0x%x, offset=0x%x, prot=%d\n", __func__, flags, args.file, args.offset, prot);
+    static bool cached_opt = false, opt = false;
+    if (!cached_opt)
+    {
+        opt = OBOS_GetOPTF("disable-syscall-logs");
+        cached_opt = true;
+    }
+    if (!opt)
+        OBOS_Debug("%s: flags=0x%x, fd=0x%x, offset=0x%x, prot=%d\n", __func__, flags, args.file, args.offset, prot);
 
     void* ret = Mm_VirtualMemoryAllocEx(vmm_ctx, base, size, prot, flags, file, args.offset, &status);
     if (pstatus)

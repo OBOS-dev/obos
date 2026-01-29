@@ -234,7 +234,7 @@ uintptr_t ExitCurrentProcess(uintptr_t unused)
 		if (rng->hasGuardPage)
 			virt += (rng->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		uintptr_t limit = rng->virt+rng->size;
-		OBOS_ASSERT(obos_is_success(Mm_VirtualMemoryFree(proc->ctx, (void*)virt, limit-virt)));
+		OBOS_ENSURE(obos_is_success(Mm_VirtualMemoryFree(proc->ctx, (void*)virt, limit-virt)));
 		rng = next;
 	}
 

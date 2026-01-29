@@ -45,6 +45,7 @@ static void dispatcher(vnode* nic)
     OBOS_Log("Entered network packet dispatcher in thread %d.%d\n", Core_GetCurrentThread()->proc->pid, Core_GetCurrentThread()->tid);
     net_tables* tables = nic->net_tables;
     obos_status status = OBOS_STATUS_SUCCESS;
+
     while (!tables->kill_dispatch)
     {
         irp* req = VfsH_IRPAllocate();
@@ -65,7 +66,7 @@ static void dispatcher(vnode* nic)
             VfsH_IRPUnref(req);
             break;
         }
-        // nic_irp_data* data = req->nic_data;
+        
         req->evnt = nullptr;
         req->drvData = nullptr;
         req->on_event_set = nullptr;
@@ -113,15 +114,18 @@ obos_status Net_Initialize(vnode* nic)
 
     driver->ftable.ioctl(nic->net_tables->desc, IOCTL_IFACE_MAC_REQUEST, &nic->net_tables->mac);
 
-    nic->net_tables->dispatch_thread = CoreH_ThreadAllocate(nullptr);
-    thread_ctx ctx = {};
-    void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
-    CoreS_SetupThreadContext(&ctx, (uintptr_t)dispatcher, (uintptr_t)nic, false, stack, 0x4000);
-    nic->net_tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
-    nic->net_tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
-    CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
-    Core_ProcessAppendThread(OBOS_KernelProcess, nic->net_tables->dispatch_thread);
-    CoreH_ThreadReady(nic->net_tables->dispatch_thread);
+    if (~nic->flags & VFLAGS_NIC_PACKET_INJECT)
+    {
+        nic->net_tables->dispatch_thread = CoreH_ThreadAllocate(nullptr);
+        thread_ctx ctx = {};
+        void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
+        CoreS_SetupThreadContext(&ctx, (uintptr_t)dispatcher, (uintptr_t)nic, false, stack, 0x4000);
+        nic->net_tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
+        nic->net_tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
+        CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
+        Core_ProcessAppendThread(OBOS_KernelProcess, nic->net_tables->dispatch_thread);
+        CoreH_ThreadReady(nic->net_tables->dispatch_thread);
+    }
 
     nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
@@ -174,7 +178,7 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
             {
                 *interface = curr_iface;
                 *routing_entry = ent;
-                *ttl = 2;
+                *ttl = 64;
                 Core_PushlockRelease(&curr_iface->table_lock, true);
                 return OBOS_STATUS_SUCCESS;
             }

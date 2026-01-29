@@ -237,8 +237,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     // CoW regions are not file mappings (directly, at least; private file mappings are CoW).
     if (rng->un.mapped_vn)
     {
-        if (ctx != &Mm_KernelContext)
-            OBOS_Debug("Trying file mapping...\n", addr);
+        // if (ctx != &Mm_KernelContext)
+        //     OBOS_Debug("Trying file mapping...\n", addr);
         // page_info info = {};
         // MmS_QueryPageInfo(ctx->pt, addr, &info, nullptr);
         handled = true;
@@ -277,8 +277,8 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
     }
     if (!handled && curr.prot.is_swap_phys)
     {
-        if (ctx != &Mm_KernelContext)
-            OBOS_Debug("Trying a swap in of 0x%p...\n", addr);
+        // if (ctx != &Mm_KernelContext)
+        //     OBOS_Debug("Trying a swap in of 0x%p...\n", addr);
         // Try a swap in?
         fault_type curr_type = SOFT_FAULT;
         // for (volatile bool b = !rng->pageable; b; )

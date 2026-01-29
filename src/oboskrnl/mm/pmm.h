@@ -11,8 +11,8 @@
 
 #include <scheduler/thread.h>
 
-extern size_t Mm_TotalPhysicalPages;
-extern size_t Mm_TotalPhysicalPagesUsed;
+extern OBOS_EXPORT size_t Mm_TotalPhysicalPages;
+extern OBOS_EXPORT size_t Mm_TotalPhysicalPagesUsed;
 extern size_t Mm_UsablePhysicalPages;
 extern uintptr_t Mm_PhysicalMemoryBoundaries;
 

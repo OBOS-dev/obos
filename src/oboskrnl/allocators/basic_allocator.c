@@ -244,6 +244,8 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes));
 
+	OBOS_ASSERT(nBytes >= unrounded_nBytes);
+
 #if __SIZE_MAX__ > __UINT32_MAX__
 	if (obos_expect(nBytes > (4UL*1024*1024*1024), false))
 	{

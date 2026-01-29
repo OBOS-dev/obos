@@ -66,6 +66,26 @@ attrib void name##_LIST_PREPEND(name* list, type* what)\
 	(list)->head = what;\
 	(list)->nNodes++;\
 }\
+attrib void name##_LIST_INSERT1(name* list, type* at, type* what)\
+{\
+	what->field.next = at->field.next;\
+	what->field.prev = at;\
+	if (at->field.next)\
+		at->field.next->field.prev = what;\
+	at->field.next = what;\
+	if (at == list->tail)\
+		list->tail = what;\
+}\
+attrib void name##_LIST_INSERT2(name* list, type* at, type* what)\
+{\
+	what->field.next = at;\
+	what->field.prev = at->field.prev;\
+	if (at->field.prev)\
+		at->field.prev->field.next = what;\
+	at->field.prev = what;\
+	if (at == list->head)\
+		list->head = what;\
+}\
 attrib void name##_LIST_REMOVE(name* list, type* what)\
 {\
     if ((list)->tail == what)\
@@ -93,8 +113,12 @@ attrib type* name##_LIST_GET_PREV(name* list, type* what)\
 
 #define LIST_APPEND(name, list, x)\
 name##_LIST_APPEND(list, x)
+#define LIST_APPEND_AT(name, list, at, x)\
+name##_LIST_INSERT1(list, at, x)
 #define LIST_PREPEND(name, list, x)\
 name##_LIST_PREPEND(list, x)
+#define LIST_PREPEND_AT(name, list, at, x)\
+name##_LIST_INSERT2(list, at, x)
 #define LIST_REMOVE(name, list, x)\
 name##_LIST_REMOVE(list, x)
 #define LIST_GET_NODE_COUNT(name, list)\

@@ -335,6 +335,14 @@ void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, 
         OBOS_Warning("(thread %ld, process %ld) invalid syscall %d(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, eax, rdi,rsi,rdx,r8,r9);
         return;
     }
+    static bool cached_opt = false, opt = false;
+    if (!cached_opt)
+    {
+        opt = OBOS_GetOPTF("disable-syscall-logs");
+        cached_opt = true;
+    }
+    if (opt)
+        return;
     OBOS_Debug("(thread %ld, process %ld) syscall %s(0x%p, 0x%p, 0x%p, 0x%p, 0x%p)\n", Core_GetCurrentThread()->tid, Core_GetCurrentThread()->proc->pid, syscall_to_string[eax], rdi,rsi,rdx,r8,r9);
 }
 void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
@@ -349,6 +357,14 @@ void Arch_LogSyscallRet(uint64_t ret, uint32_t eax)
         opt = OBOS_GetOPTF("disable-syscall-error-log");
         cached_opt = true;
     }
+    static bool cached_opt2 = false, opt2 = false;
+    if (!cached_opt2)
+    {
+        opt2 = OBOS_GetOPTF("disable-syscall-logs");
+        cached_opt2 = true;
+    }
+    if (opt2)
+        return;
     if (opt || 
         (ret == 0 || eax == 22 || eax == 42 || eax == 58 || eax == 34 || eax == 0
          || eax == 20 || eax == 59 || eax == 61 || eax == 9 || eax == 1 || eax == 19

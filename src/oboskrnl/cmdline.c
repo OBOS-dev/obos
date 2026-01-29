@@ -47,6 +47,7 @@ static const char* const help_message =
 "--pnp-module-path=pathspec: Where to find kernel modules for PnP during kernel init.\n"
 "--disable-libc-log: Disables the logs from the C library (see Sys_LibcLog) .\n"
 "--disable-syscall-error-log: Makes all syscall logs happen at DEBUG level.\n"
+"--disable-syscall-logs: Disables all syscall logs.\n"
 "--tjec-random-access: Makes the underlying TJEC memory accessing randomized.\n"
 "--tjec-max-memory-size=bytes: Specifies the maximum amount of memory TJEC is allowed to allocate.\n"
 "--tjec-no-fips: Tells TJEC to not over sample per block of bits generated.\n"

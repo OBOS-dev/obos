@@ -151,11 +151,13 @@ typedef struct thread_list
 {
 	thread_node *head, *tail;
 	size_t nNodes;
-	spinlock lock;
 } thread_list;
+
 typedef struct thread_priority_list
 {
 	thread_list list;
+	spinlock lock;
+	bool unlocked : 1;
 	size_t noStarvationQuantum;
 	size_t quantum;
 	thread_priority priority;

@@ -595,7 +595,7 @@ obos_status VfsH_IRPSubmit(irp* request, const dev_desc* desc)
         return OBOS_STATUS_SUCCESS;
     }
     driver_header* driver = Vfs_GetVnodeDriver(vn);
-    OBOS_ENSURE(driver);
+    OBOS_ASSERT(driver);
     if (!vn->blkSize)
         driver->ftable.get_blk_size(vn->desc, &vn->blkSize);
 

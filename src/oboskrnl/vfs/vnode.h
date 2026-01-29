@@ -53,6 +53,8 @@ enum
     VFLAGS_NIC_NO_FCS = 64,
     VFLAGS_PTMX = 128,
     VFLAGS_PTS_LOCKED = 256,
+    // The NIC will inject packets into the network stack
+    VFLAGS_NIC_PACKET_INJECT = 512,    
 };
 
 // basically a struct specinfo, but renamed.

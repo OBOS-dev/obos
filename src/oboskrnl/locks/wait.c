@@ -39,8 +39,8 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     irql spinlockIrql = Core_SpinlockAcquire(&obj->lock);
     if (obj->signaled && obj->use_signaled)
     {
-        Core_LowerIrql(oldIrql);
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
+        Core_LowerIrql(oldIrql);
         return OBOS_STATUS_SUCCESS;
     }
     thread* curr = Core_GetCurrentThread();
@@ -51,8 +51,8 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
     if (obos_is_error(status))
     {
-        Core_LowerIrql(oldIrql);
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
+        Core_LowerIrql(oldIrql);
         return status;
     }
     curr->waiting_objects.waitingObject = obj;
@@ -63,7 +63,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
     CoreH_ThreadBlock(curr, true);
     memzero(&curr->waiting_objects, sizeof(curr->waiting_objects));
-    if (curr->interrupted)
+    if (obos_expect(curr->interrupted, false))
     {
         if (curr->signalInterrupted)
         {
@@ -85,8 +85,10 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     curr->hdrSignaled = nullptr;
     curr->nWaiting = 0;
     Core_LowerIrql(oldIrql);
-    Core_Yield();
-    if (obj->interrupted)
+
+    // Core_Yield();
+    
+    if (obos_expect(obj->interrupted, false))
         return OBOS_STATUS_ABORTED;
     return OBOS_STATUS_SUCCESS;
 }
@@ -217,6 +219,7 @@ obos_status CoreH_SignalWaitingThreads(struct waitable_header* obj, bool all, bo
     }
 
     Core_SpinlockRelease(&obj->lock, oldIrql);
+
     return OBOS_STATUS_SUCCESS;   
 }
 

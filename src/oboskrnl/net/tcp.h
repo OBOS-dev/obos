@@ -59,6 +59,14 @@ typedef struct tcp_header
     char data[];
 } OBOS_PACK tcp_header;
 
+enum {
+    TCP_OPTION_EOL = 0,
+    TCP_OPTION_NOP = 1,
+    TCP_OPTION_MSS = 2,
+    TCP_OPTION_SACK_PERM = 4,
+    TCP_OPTION_SACK = 5,
+};
+
 struct tcp_option {
     uint8_t kind;
     uint8_t len;
@@ -127,14 +135,14 @@ typedef struct tcp_unacked_segment {
 typedef LIST_HEAD(tcp_unacked_segment_list, tcp_unacked_segment) tcp_unacked_segment_list;
 LIST_PROTOTYPE(tcp_unacked_segment_list, tcp_unacked_segment, node);
 
-// typedef struct tcp_incoming_packet {
-//     void* buffer;
-//     size_t size;
-//     struct tcp_connection* con; 
-//     LIST_NODE(tcp_incoming_list, struct tcp_incoming_packet) node;
-// } tcp_incoming_packet;
-// typedef LIST_HEAD(tcp_incoming_list, tcp_incoming_packet) tcp_incoming_list;
-// LIST_PROTOTYPE(tcp_incoming_list, tcp_incoming_packet, node);
+typedef struct tcp_unacked_rsegment {
+    uint32_t seq;
+    uint32_t seq_edge;
+    LIST_NODE(tcp_unacked_rsegment_list, struct tcp_unacked_rsegment) node;
+} tcp_unacked_rsegment;
+typedef LIST_HEAD(tcp_unacked_rsegment_list, tcp_unacked_rsegment) tcp_unacked_rsegment_list;
+LIST_PROTOTYPE(tcp_unacked_rsegment_list, tcp_unacked_rsegment, node);
+
 typedef struct tcp_connection {
     struct {
         ip_addr addr;
@@ -152,11 +160,18 @@ typedef struct tcp_connection {
     struct {
         void* buf;
         size_t size;
-        size_t ptr;
-        size_t in_ptr;
-        mutex lock;
+        // Segments inserted into the buffer that have not
+        // yet been ACKed, as we have not advanced rcv.nxt
+        tcp_unacked_rsegment_list rsegments;
         bool closed : 1;
     } recv_buffer;
+    struct {
+        void* buf;
+        size_t size;
+        size_t in_ptr;
+        size_t capacity;
+        mutex lock;
+    } user_recv_buffer;
 
     event inbound_sig;
     event inbound_urg_sig;
@@ -195,10 +210,14 @@ typedef struct tcp_connection {
             uint32_t up;
             // receive initial receive sequence number
             uint32_t irs;
+
+            uint32_t fin_seq;
         } rcv;
 
         int state;
         event state_change_event;
+        bool sack_perm : 1;
+        bool sack_failure : 1;
     } state;
     struct {
         tcp_unacked_segment_list list;
@@ -208,6 +227,8 @@ typedef struct tcp_connection {
     tcp_unacked_segment* fin_segment;
 
     uint8_t ttl;
+
+    timer time_wait;
 
     bool is_client : 1;
     bool accepted : 1;
@@ -220,13 +241,16 @@ typedef struct tcp_connection {
 // Returns false if for some reason, the connection was reset by
 // the function. This does *not* always mean that a RST was sent,
 // but it does always mean that *something* was sent.
-bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack);
+bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t ack);
 void Net_TCPRetransmitSegment(tcp_unacked_segment* seg);
 void Net_TCPCancelAllOutstandingSegments(tcp_connection* con);
 void Net_TCPChangeConnectionState(tcp_connection* con, int state);
-void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t size, size_t *nPushed);
+void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t size, uint32_t sequence, size_t *nPushed);
 void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t size, bool oob);
 void Net_TCPReset(tcp_connection* con);
+// cb is to return true to continue iteration,
+// or false to stop iteration.
+void Net_TCPProcessOptionList(void* userdata, tcp_header* hdr, bool(*cb)(void* userdata, struct tcp_option* opt, tcp_header* hdr));
 
 static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
 {
@@ -234,7 +258,7 @@ static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
     if (lhs->src.addr.addr > rhs->src.addr.addr) return 1;
     if (lhs->dest.port < rhs->dest.port) return -1;
     if (lhs->dest.port > rhs->dest.port) return 1;
-    OBOS_ENSURE (lhs->is_client == rhs->is_client);
+    OBOS_ASSERT(lhs->is_client == rhs->is_client);
     if (lhs->is_client)
     {
         if (lhs->src.port < rhs->src.port) return -1;

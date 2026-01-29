@@ -359,11 +359,6 @@ static obos_status ptmx_finalize_irp(void* /* irp* */ request)
         return ptmx_write_sync(req->desc, req->cbuff, req->blkCount, req->blkOffset, &req->nBlkWritten);
     }
 
-    struct pty* ptm = (void*)req->desc;
-    if (req->desc == 0x1)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    OBOS_ASSERT(ptm);
-
     if (req->dryOp) return OBOS_STATUS_SUCCESS;
 
     return ptmx_read_sync(req->desc, req->buff, req->blkCount, req->blkOffset, &req->nBlkRead);

@@ -412,6 +412,7 @@ static uint16_t device_ids[] = {
     0x8168,
     0x8169,
     0x8136,
+    0x8125,
 };
 
 static void search_bus(pci_bus* bus)

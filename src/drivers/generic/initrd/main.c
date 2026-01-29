@@ -1,7 +1,7 @@
 /*
  * drivers/generic/initrd/main.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -15,6 +15,8 @@
 #include <vfs/irp.h>
 #include <vfs/alloc.h>
 #include <vfs/vnode.h>
+
+#include <mm/pmm.h>
 
 #include <driver_interface/header.h>
 #include <driver_interface/pci.h>
@@ -707,10 +709,10 @@ obos_status stat_fs_info(void *vn, drv_fs_info *info)
     // }
     info->partBlockSize = 1;
     info->fsBlockSize = 1;
-    info->availableFiles = 0;
-    info->freeBlocks = 0;
+    info->availableFiles = SIZE_MAX;
     info->fileCount = fileCount;
-    info->szFs = OBOS_InitrdSize;
+    info->szFs = (Mm_TotalPhysicalPages - Mm_TotalPhysicalPagesUsed) * OBOS_PAGE_SIZE;
+    info->freeBlocks = info->szFs;
     info->flags = 0;
     // TODO: Is there a proper value for this?
     info->nameMax = 100;

@@ -26,6 +26,10 @@ void Core_Schedule();
 /// <summary>
 /// Yields the current thread. This will save the current thread context, then call Core_Schedule after raising the IRQL (if needed).
 /// </summary>
+OBOS_EXPORT void Core_YieldForce(bool force);
+/// <summary>
+/// Yields the current thread. This will save the current thread context, then call Core_Schedule after raising the IRQL (if needed).
+/// </summary>
 OBOS_EXPORT void Core_Yield();
 
 /// <summary>

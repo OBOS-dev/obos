@@ -57,6 +57,6 @@ enum {
 
 OBOS_EXPORT uint32_t NetH_CRC32Bytes(const void* data, size_t sz);
 
-PacketProcessSignature(Ethernet, void*);
+OBOS_EXPORT PacketProcessSignature(Ethernet, void*);
 
 shared_ptr* NetH_FormatEthernetPacket(vnode* nic, const mac_address dest, const void* data, size_t size, uint16_t type);

@@ -142,7 +142,7 @@ void MmH_DerefPage(page* buf)
 		return;
 	if (!(--buf->refcount))
 	{
-		OBOS_ENSURE(Mm_AnonPage != buf);
+		OBOS_ASSERT(Mm_AnonPage != buf);
 		if (~buf->flags & PHYS_PAGE_MMIO)
 			Mm_FreePhysicalPages(buf->phys, ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE) / OBOS_PAGE_SIZE);
 

@@ -55,7 +55,8 @@ static obos_status read_freelist_node(struct metadata* data, uint64_t curr_lba, 
     char buff[data->vn->blkSize];
     memzero(buff, sizeof(buff));
     const driver_header* hdr = Vfs_GetVnodeDriver(data->vn);
-    OBOS_ENSURE(hdr && "disk swap: driver pulled out from under our feet! (Vfs_GetVnodeDriver() returned nullptr)");
+    if (!hdr)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "disk swap: driver pulled out from under our feet! (Vfs_GetVnodeDriver() returned nullptr)");
     obos_status status = hdr->ftable.read_sync(data->vn->desc, buff, 1, curr_lba, nullptr);
     if (obos_is_success(status))
         memcpy(out, buff, sizeof(*out));

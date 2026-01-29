@@ -26,10 +26,14 @@
 
 #include <utils/list.h>
 
+#include <net/tables.h>
+#include <net/eth.h>
+
 #include <scheduler/schedule.h>
 
 #include "dev.h"
 
+DefineNetFreeSharedPtr
 
 LIST_GENERATE(e1000_frame_list, e1000_frame, node);
 
@@ -49,6 +53,7 @@ LIST_GENERATE(e1000_frame_list, e1000_frame, node);
 
 static void e1000_init_rx_desc(e1000_device* dev)
 {
+    OBOS_STATIC_ASSERT((RX_QUEUE_SIZE * sizeof(union e1000_rx_desc_extended)) <= OBOS_PAGE_SIZE, "RX_QUEUE_SIZE is too large!");
     dev->rx_ring_phys_pg = MmH_PgAllocatePhysical(false, false);
     dev->rx_ring = dev->rx_ring_phys_pg->phys;
     union e1000_rx_desc_extended* desc = MmS_MapVirtFromPhys(dev->rx_ring);
@@ -109,10 +114,10 @@ void e1000_init_rx(e1000_device* dev)
     }
 
     E1000_WRITE_REG(&dev->hw, E1000_RFCTL, rfctl);
-    u32 rxcsum = E1000_READ_REG(&dev->hw, E1000_RXCSUM);
-    rxcsum &= ~E1000_RXCSUM_TUOFL;
-    rxcsum &= ~E1000_RXCSUM_IPOFL;
-    E1000_WRITE_REG(&dev->hw, E1000_RXCSUM, rxcsum);
+    // u32 rxcsum = E1000_READ_REG(&dev->hw, E1000_RXCSUM);
+    // rxcsum &= ~E1000_RXCSUM_TUOFL;
+    // rxcsum &= ~E1000_RXCSUM_IPOFL;
+    E1000_WRITE_REG(&dev->hw, E1000_RXCSUM, 0);
 
     /*
      * XXX TEMPORARY WORKAROUND: on some systems with 82573
@@ -351,27 +356,34 @@ static void rx_dpc(dpc* d, void* udata)
 {
     OBOS_UNUSED(d);
     e1000_device* dev = udata;
+    
+    vnode* const nic = dev->vn;
+
     e1000_frame* current_frame = nullptr;
     size_t offset = 0;
-    for (size_t i = 0; i < RX_QUEUE_SIZE; i++)
+    
+    if (dev->rx_idx >= RX_QUEUE_SIZE)
+        dev->rx_idx = 0;
+    
+    for (; dev->rx_idx < RX_QUEUE_SIZE; dev->rx_idx++)
     {
         uint32_t length = 0;
         bool eop = false;
         if(dev->hw.mac.type >= e1000_82547)
         {
-            union e1000_rx_desc_extended* desc = &((union e1000_rx_desc_extended*)MmS_MapVirtFromPhys(dev->rx_ring))[i];
+            union e1000_rx_desc_extended* desc = &((union e1000_rx_desc_extended*)MmS_MapVirtFromPhys(dev->rx_ring))[dev->rx_idx];
             if (~desc->wb.upper.status_error & E1000_RXD_STAT_DD)
-                continue;
+                break;
             length = desc->wb.upper.length;
             eop = desc->wb.upper.status_error & E1000_RXD_STAT_EOP;
             desc->wb.upper.status_error = 0;
-            desc->read.buffer_addr = dev->rx_ring_buffers[i];
+            desc->read.buffer_addr = dev->rx_ring_buffers[dev->rx_idx];
         }
         else
         {
-            struct e1000_rx_desc* desc = &((struct e1000_rx_desc*)MmS_MapVirtFromPhys(dev->rx_ring))[i];
+            struct e1000_rx_desc* desc = &((struct e1000_rx_desc*)MmS_MapVirtFromPhys(dev->rx_ring))[dev->rx_idx];
             if (~desc->status & E1000_RXD_STAT_DD)
-                continue;
+                break;
             eop = desc->status & E1000_RXD_STAT_EOP;
             length = desc->length;
             desc->status = 0;
@@ -381,17 +393,40 @@ static void rx_dpc(dpc* d, void* udata)
         current_frame->size += length;
         current_frame->buff = Reallocate(OBOS_NonPagedPoolAllocator, current_frame->buff, current_frame->size, current_frame->size - length, nullptr);
         current_frame->refs = dev->refs;
-        memcpy((char*)current_frame->buff + offset, MmS_MapVirtFromPhys(dev->rx_ring_buffers[i]), length);
+        memcpy((char*)current_frame->buff + offset, MmS_MapVirtFromPhys(dev->rx_ring_buffers[dev->rx_idx]), length);
         if (eop)
         {
+            if (current_frame->size < 14)
+            {
+                Free(OBOS_NonPagedPoolAllocator, current_frame->buff, current_frame->size);
+                Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
+                current_frame = nullptr;
+                offset = 0;
+                continue;
+            }
+
+            if (nic->net_tables)
+            {
+                shared_ptr* buf = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
+                OBOS_SharedPtrConstructSz(buf, current_frame->buff, current_frame->size);
+                buf->free = OBOS_SharedPtrDefaultFree;
+                buf->onDeref = NetFreeSharedPtr;
+                buf->freeUdata = OBOS_NonPagedPoolAllocator;
+                current_frame->refs--;
+                if (current_frame->refs)
+                    Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
+    
+                Net_EthernetProcess(nic, 0, OBOS_SharedPtrCopy(buf), buf->obj, buf->szObj, nullptr);
+            }
+
             LIST_APPEND(e1000_frame_list, &dev->rx_frames, current_frame);
             current_frame = nullptr;
             offset = 0;
         }
         else
             offset += length;
-        E1000_WRITE_REG(&dev->hw, E1000_RDT(0), i);
     }
+    E1000_WRITE_REG(&dev->hw, E1000_RDT(0), dev->rx_idx-1);
     Core_EventSet(&dev->rx_evnt, false);
 }
 void e1000_rx(e1000_device* dev)
@@ -426,7 +461,8 @@ void e1000_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, ir
 {
     OBOS_UNUSED(i && frame && oldIrql);
     e1000_device* dev = userdata;
-    e1000_rx(dev);
+    if (dev->icr & E1000_ICR_RXT0)
+        e1000_rx(dev);
     dev->icr = 0;
 }
 
