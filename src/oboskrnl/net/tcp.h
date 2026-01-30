@@ -210,6 +210,8 @@ typedef struct tcp_connection {
             uint32_t up;
             // receive initial receive sequence number
             uint32_t irs;
+            // last ack sequence
+            uint32_t las;
 
             uint32_t fin_seq;
         } rcv;
@@ -234,8 +236,10 @@ typedef struct tcp_connection {
     bool accepted : 1;
     bool reset : 1;
     bool close_ack : 1;
+    bool ack_pending : 1;
     
     RB_ENTRY(tcp_connection) node;
+    LIST_NODE(tcp_connection_list, struct tcp_connection) lnode;
 } tcp_connection;
 
 // Returns false if for some reason, the connection was reset by
@@ -248,6 +252,8 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state);
 void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t size, uint32_t sequence, size_t *nPushed);
 void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t size, bool oob);
 void Net_TCPReset(tcp_connection* con);
+void Net_TCPQueueACK(tcp_connection* con);
+OBOS_EXPORT void Net_TCPFlushACKs(struct net_tables* nic);
 // cb is to return true to continue iteration,
 // or false to stop iteration.
 void Net_TCPProcessOptionList(void* userdata, tcp_header* hdr, bool(*cb)(void* userdata, struct tcp_option* opt, tcp_header* hdr));
@@ -268,6 +274,8 @@ static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
 }
 typedef RB_HEAD(tcp_connection_tree, tcp_connection) tcp_connection_tree;
 RB_PROTOTYPE(tcp_connection_tree, tcp_connection, node, tcp_connection_cmp);
+typedef LIST_HEAD(tcp_connection_list, tcp_connection) tcp_connection_list;
+LIST_PROTOTYPE(tcp_connection_list, tcp_connection, lnode);
 
 typedef struct tcp_port {
     uint16_t port;

@@ -128,6 +128,11 @@ typedef struct net_tables {
     tcp_port_tree tcp_ports;
     pushlock tcp_ports_lock;
 
+    struct {
+        tcp_connection_list list;
+        mutex lock;
+    } tcp_pending_acks;
+
     route_tree cached_routes;
     pushlock cached_routes_lock;
     

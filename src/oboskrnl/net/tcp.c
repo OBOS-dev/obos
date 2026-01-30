@@ -825,6 +825,47 @@ void Net_TCPCancelAllOutstandingSegments(tcp_connection* con)
     }
 }
 
+void Net_TCPQueueACK(tcp_connection* con)
+{
+    if (con->ack_pending) return;
+    Core_MutexAcquire(&con->nic->net_tables->tcp_pending_acks.lock);
+    LIST_APPEND(tcp_connection_list, &con->nic->net_tables->tcp_pending_acks.list, con);
+    Core_MutexRelease(&con->nic->net_tables->tcp_pending_acks.lock);
+    con->ack_pending = true;
+}
+
+static void do_ack(tcp_connection* con)
+{
+    if (!con->ack_pending)
+        return;
+    struct tcp_pseudo_hdr resp = {};
+    resp.src_port = con->src.port;
+    resp.dest_port = con->dest.port;
+    resp.ttl = con->ttl;
+    resp.seq = con->state.snd.nxt;
+    con->state.rcv.las = con->state.rcv.nxt;
+    resp.ack = con->state.rcv.nxt;
+    resp.window = con->state.rcv.wnd;
+    resp.flags = TCP_ACK;
+    NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &resp);
+    con->ack_pending = false;
+
+}
+
+void Net_TCPFlushACKs(struct net_tables* nic)
+{
+    while (Core_MutexTryAcquire(&nic->tcp_pending_acks.lock) == OBOS_STATUS_WOULD_BLOCK)
+        OBOSS_SpinlockHint();
+    for (tcp_connection* con = nic->tcp_pending_acks.list.head; con; )
+    {
+        tcp_connection* const next = con->lnode.next;
+        do_ack(con);
+        LIST_REMOVE(tcp_connection_list, &nic->tcp_pending_acks.list, con);
+        con = next;
+    }
+    Core_MutexRelease(&nic->tcp_pending_acks.lock);
+}
+
 void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz, uint32_t sequence, size_t *nPushed)
 {
     if (!con)
@@ -930,23 +971,12 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
         if (obos_expect(con->state.rcv.fin_seq == con->state.rcv.nxt, false))
             finish_con(con);
         else
-        {
-            struct tcp_pseudo_hdr resp = {};
-            resp.src_port = con->src.port;
-            resp.dest_port = con->dest.port;
-            resp.ttl = con->ttl;
-            resp.seq = con->state.snd.nxt;
-            resp.ack = con->state.rcv.nxt;
-            resp.window = con->state.rcv.wnd;
-            resp.flags = TCP_ACK;
-            NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &resp);
-        }
+            Net_TCPQueueACK(con);
 
         if (obos_expect(!con->recv_buffer.closed, false))
         {
             Core_MutexAcquire(&con->user_recv_buffer.lock);
-            size_t size = (new_rx_nxt - old_rx_nxt
-            );
+            size_t size = (new_rx_nxt - old_rx_nxt);
             con->user_recv_buffer.size += size;
             if (con->user_recv_buffer.capacity < con->user_recv_buffer.size)
             {
@@ -954,17 +984,20 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
                 con->user_recv_buffer.capacity = con->user_recv_buffer.size;
                 if ((con->user_recv_buffer.capacity % 0x200000))
                     con->user_recv_buffer.capacity += 0x200000 - (con->user_recv_buffer.capacity % 0x200000);
-                con->user_recv_buffer.buf = Reallocate(OBOS_KernelAllocator, con->user_recv_buffer.buf, con->user_recv_buffer.capacity, old_cap, nullptr);
+                con->user_recv_buffer.buf = Reallocate(OBOS_NonPagedPoolAllocator, con->user_recv_buffer.buf, con->user_recv_buffer.capacity, old_cap, nullptr);
+                OBOS_ENSURE(con->user_recv_buffer.buf);
             }
             memcpy(con->user_recv_buffer.buf + (con->user_recv_buffer.size - size), con->recv_buffer.buf, size);
             Core_MutexRelease(&con->user_recv_buffer.lock);
             con->state.rcv.wnd = con->recv_buffer.size;
         }
+        // if ((con->state.rcv.nxt - con->state.rcv.las) > con->recv_buffer.size/2)
+        //     do_ack(con); // early ack
 
         for (tcp_unacked_rsegment* seg = LIST_GET_HEAD(tcp_unacked_rsegment_list, &con->recv_buffer.rsegments); seg; )
         {
             tcp_unacked_rsegment* const next = LIST_GET_NEXT(tcp_unacked_rsegment_list, &con->recv_buffer.rsegments, seg);
-            Free(OBOS_KernelAllocator, seg, sizeof(*seg));
+            Free(OBOS_NonPagedPoolAllocator, seg, sizeof(*seg));
             seg = next;
         }
         con->recv_buffer.rsegments.head = con->recv_buffer.rsegments.tail = nullptr;
@@ -1289,6 +1322,7 @@ void Net_TCPProcessOptionList(void* userdata, tcp_header* hdr, bool(*cb)(void* u
 // LIST_GENERATE(tcp_incoming_list, tcp_incoming_packet, node);
 RB_GENERATE(tcp_connection_tree, tcp_connection, node, tcp_connection_cmp);
 RB_GENERATE(tcp_port_tree, tcp_port, node, tcp_port_cmp);
+LIST_GENERATE(tcp_connection_list, tcp_connection, lnode);
 
 typedef struct tcp_socket {
     union {
@@ -1813,6 +1847,7 @@ static void irp_on_event_set(irp* req)
     Core_MutexAcquire(&s->connection->user_recv_buffer.lock);
 
     const char* ptr = s->connection->user_recv_buffer.buf;
+    OBOS_ENSURE(ptr);
     ptr += s->connection->user_recv_buffer.in_ptr;
     memcpy(req->buff, ptr, read_size);
     
@@ -1857,7 +1892,7 @@ obos_status tcp_submit_irp(irp* req)
         s->connection->recv_buffer.rsegments.head = s->connection->recv_buffer.rsegments.tail = nullptr;
         s->connection->recv_buffer.rsegments.nNodes = 0;
         Core_MutexAcquire(&s->connection->user_recv_buffer.lock);
-        Free(OBOS_KernelAllocator, s->connection->user_recv_buffer.buf, s->connection->user_recv_buffer.capacity);
+        Free(OBOS_NonPagedPoolAllocator, s->connection->user_recv_buffer.buf, s->connection->user_recv_buffer.capacity);
         s->connection->user_recv_buffer.buf = nullptr;
         s->connection->user_recv_buffer.in_ptr = 0;
         s->connection->user_recv_buffer.size = 0;

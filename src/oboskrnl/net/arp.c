@@ -71,7 +71,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
     }
 
     down:
-    ent = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(address_table_entry), nullptr);
+    ent = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(address_table_entry), nullptr);
     ent->addr = addr;
     ent->sync = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, false);
@@ -118,7 +118,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
             Core_PushlockAcquire(&nic->net_tables->table_lock, false);
             RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);    
             Core_PushlockRelease(&nic->net_tables->table_lock, false);
-            Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            Free(OBOS_NonPagedPoolAllocator, ent, sizeof(*ent));
             return status; // hdr_ptr isn't leaked, as we never reference it
         }
 
@@ -130,7 +130,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
             Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
             RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
             Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
-            Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+            Free(OBOS_NonPagedPoolAllocator, ent, sizeof(*ent));
             return status;
         }
         if (signaled == WAITABLE_OBJECT(ent->sync))
@@ -149,7 +149,7 @@ obos_status NetH_ARPRequest(vnode* nic, ip_addr addr, mac_address* out, address_
         Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, true);
         RB_REMOVE(address_table, &nic->net_tables->arp_cache, ent);
         Core_PushlockRelease(&nic->net_tables->arp_cache_lock, true);
-        Free(OBOS_KernelAllocator, ent, sizeof(*ent));
+        Free(OBOS_NonPagedPoolAllocator, ent, sizeof(*ent));
         return status;
     }
 
@@ -195,7 +195,7 @@ PacketProcessSignature(ARPRequest, arp_header*)
     if (~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY)
         ExitPacketHandler();
     size_t real_size = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
-    arp_header* hdr = Allocate(OBOS_KernelAllocator, real_size, nullptr);
+    arp_header* hdr = Allocate(OBOS_NonPagedPoolAllocator, real_size, nullptr);
     struct arp_header_payload* payload = (void*)(hdr+1);
     payload->sender_ip = *target;
     memcpy(payload->sender_mac, nic->net_tables->mac, sizeof(mac_address));
@@ -207,7 +207,7 @@ PacketProcessSignature(ARPRequest, arp_header*)
     hdr->len_protocol_address = sizeof(ip_addr);
     hdr->opcode = host_to_be16(ARP_REPLY);
     shared_ptr* packet = NetH_FormatEthernetPacket(nic, payload->target_mac, hdr, real_size, ETHERNET2_TYPE_ARP);
-    Free(OBOS_KernelAllocator, hdr, real_size);
+    Free(OBOS_NonPagedPoolAllocator, hdr, real_size);
     NetH_SendEthernetPacket(nic, OBOS_SharedPtrCopy(packet));
     // We don't have ownership of 'packet'
     // OBOS_SharedPtrUnref(packet);

@@ -200,6 +200,20 @@ PacketProcessSignature(IPv4, ethernet2_header*)
     // }
     // Core_PushlockRelease(&nic->net_tables->cached_routes_lock, false);
 
+    // Core_PushlockAcquire(&nic->net_tables->arp_cache_lock, false);
+    // struct address_table_entry key = {.addr.addr=hdr->src_address.addr};
+    // struct address_table_entry* arp_ent = RB_FIND(address_table, &nic->net_tables->arp_cache, &key);
+    // if (!arp_ent)
+    // {
+    //     arp_ent = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(address_table_entry), nullptr);
+    //     arp_ent->addr.addr = hdr->src_address.addr;
+    //     memcpy(arp_ent->phys, eth->src, sizeof(mac_address));
+    //     arp_ent->sync = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    //     Core_EventSet(&arp_ent->sync, false);
+    //     RB_INSERT(address_table, &nic->net_tables->arp_cache, arp_ent);
+    // }
+    // Core_PushlockRelease(&nic->net_tables->arp_cache_lock, false);
+
     if (be32_to_host((hdr)->id_flags_fragment) & IPv4_MORE_FRAGMENTS || 
         IPv4_GET_FRAGMENT(hdr)
         )

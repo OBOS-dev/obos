@@ -55,6 +55,8 @@ static void dispatcher(vnode* nic)
         req->dryOp = true;
         req->op = IRP_READ;
         VfsH_IRPSubmit(req, &tables->desc);
+        if (req->evnt && !Core_EventGetState(req->evnt))
+            Net_TCPFlushACKs(tables);
         if (obos_is_error(status = VfsH_IRPWait(req)))
         {
             OBOS_Error("%s@%02x:%02x:%02x:%02x:%02x:%02x: VfsH_IRPWait: Status %d\n", 
@@ -129,6 +131,7 @@ obos_status Net_Initialize(vnode* nic)
 
     nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
+    nic->net_tables->tcp_pending_acks.lock = MUTEX_INITIALIZE();
     nic->net_tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
     nic->net_tables->tcp_connections_lock = PUSHLOCK_INITIALIZE();
