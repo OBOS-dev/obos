@@ -43,9 +43,9 @@ void Arch_SchedulerIRQHandlerEntry(irq* obj, interrupt_frame* frame, void* userd
 {
     if (!CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer)
     {
-        Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
-        Arch_LAPICAddress->initialCount = Arch_FindCounter(Core_SchedulerTimerFrequency);
-        Arch_LAPICAddress->divideConfig = 0xB;
+        Arch_LAPICSetTimerConfiguration(0x20000 | (Core_SchedulerIRQ->vector->id + 0x20),
+                                        Arch_FindCounter(Core_SchedulerTimerFrequency),
+                                        0xb);
         OBOS_Debug("Initialized timer for CPU %d.\n", CoreS_GetCPULocalPtr()->id);
         CoreS_GetCPULocalPtr()->arch_specific.initializedSchedulerTimer = true;
         nCPUsWithInitializedTimer++;

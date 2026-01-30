@@ -215,7 +215,7 @@ void Arch_SMPStartup()
 	// irql oldIrql = Core_RaiseIrql(0xf);
 	for (size_t i = 0; i < s_nLAPICIDs; i++)
 	{
-		if (s_lapicIDs[i] == Arch_LAPICAddress->lapicID)
+		if (s_lapicIDs[i] == Arch_LAPICReadID())
 		{
 			cpu_info[i].curr = cpu_info + i;
 			Arch_CPUInitializeGDT(&cpu_info[i], (uintptr_t)(cpu_info[i].arch_specific.ist_stack = OBOS_BasicMMAllocatePages(0x20000, nullptr)), 0x20000);

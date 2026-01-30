@@ -152,7 +152,10 @@ static bool has_xd()
 {
 	static bool ret = false, init = false;
 	if (!init)
+	{
 		ret = (rdmsr(0xC0000080) & (1 << 11));
+		init = true;
+	}
 	return ret;
 }
 

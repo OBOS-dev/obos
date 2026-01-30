@@ -9,6 +9,8 @@ global Arch_FindCounter:function hidden
 extern Arch_LAPICAddress
 extern Arch_HPETAddress
 extern Arch_CalibrateHPET
+extern Arch_ReadLAPICOffset
+extern Arch_WriteLAPICOffset
 
 ; uint64_t Arch_FindCounter(uint64_t hz);
 ; (input)  rdi: The expected frequency of the LAPIC count.
@@ -17,16 +19,18 @@ Arch_FindCounter:
 	push rbp
 	mov rbp, rsp
 	push r15
-	push r13
 	
 	call Arch_CalibrateHPET
 	mov r15, rax
-	mov r13, [Arch_LAPICAddress]
-	mov r11, [Arch_HPETAddress]
 
-	mov r13, [Arch_LAPICAddress]
-	mov dword [r13+0x3E0], 0xB ; DIVISOR_ONE
-	mov dword [r13+0x380], 0xffffffff
+	mov edi, 0x3e0
+	mov esi, 0xb
+	call Arch_WriteLAPICOffset
+	mov edi, 0x380
+	mov esi, 0xffffffff
+	call Arch_WriteLAPICOffset
+	
+	mov r11, [Arch_HPETAddress]
 
 	; Start the HPET timer.
 	mov rax, [r11+0x10]
@@ -39,15 +43,22 @@ Arch_FindCounter:
 	mov r9, [r11]
 	cmp r9, r15
 	jnge .loop
+
+	mov edi, 0x390
+	call Arch_ReadLAPICOffset
 	
-	xor r9,r9
-	mov r9d, [r13+0x390]
-	mov dword [r13+0x380], 0
+	push rax
+	
+	mov edi, 0x380
+	xor esi, esi
+	call Arch_WriteLAPICOffset
+	
+	pop r9
+
 	mov rax, 0xffffffff
 	sub rax, r9
 
 .end:
-	pop r13
 	pop r15
 	leave
 	ret

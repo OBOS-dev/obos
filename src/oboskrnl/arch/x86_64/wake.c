@@ -337,9 +337,11 @@ static void __attribute__((no_stack_protector)) on_wake(cpu_local* info)
         atomic_store(&ap_initialized, true);
     while (!cached_counter)
         OBOSS_SpinlockHint();
-    Arch_LAPICAddress->lvtTimer = 0x20000 | (Core_SchedulerIRQ->vector->id + 0x20);
-    Arch_LAPICAddress->initialCount = cached_counter;
-    Arch_LAPICAddress->divideConfig = 0xB;
+
+    Arch_LAPICSetTimerConfiguration(0x20000 | (Core_SchedulerIRQ->vector->id + 0x20),
+                                    cached_counter,
+                                    0xb);
+
     if (info->isBSP)
     {
         OBOS_WokeFromSuspend = true;

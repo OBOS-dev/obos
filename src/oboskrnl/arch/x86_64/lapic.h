@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/lapic.h
  * 
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -68,6 +68,11 @@ typedef struct lapic
 extern lapic* Arch_LAPICAddress;
 void Arch_LAPICInitialize(bool isBSP);
 void Arch_LAPICSendEOI();
+uint8_t Arch_LAPICReadID();
+
+void Arch_WriteLAPICOffset(uint32_t offset, uint32_t value);
+uint32_t Arch_ReadLAPICOffset(uint32_t offset);
+
 typedef enum
 {
 	LAPIC_DESTINATION_SHORTHAND_NONE,
@@ -106,3 +111,5 @@ typedef struct ipi_vector_info
 	} info;
 } ipi_vector_info;
 obos_status Arch_LAPICSendIPI(ipi_lapic_info lapic, ipi_vector_info vector);
+
+void Arch_LAPICSetTimerConfiguration(uint32_t lvtTimer, uint32_t counter, uint32_t divideConfig);
