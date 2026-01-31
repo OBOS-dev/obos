@@ -45,6 +45,23 @@ DefineNetFreeSharedPtr
 static uint16_t tcp_get_mss(tcp_connection* con)
 { OBOS_UNUSED(con); return 1460; }
 
+static uint32_t generate_iss(tcp_connection* con)
+{
+    // TODO(oberrow): use connection parameters to aid in generation?
+    OBOS_UNUSED(con);
+
+    // 4us monotonic timer
+    static uint64_t freq = 0, divisor = 0;
+    if (!freq) 
+    {
+        freq = CoreS_GetNativeTimerFrequency();
+        divisor = freq / 250000;
+    }
+    uint64_t tick = CoreS_GetNativeTimerTick();
+
+    return (tick / divisor) & UINT32_MAX;
+}
+
 static uint16_t tcp_chksum(const void *seg1, size_t sz_seg1, const void* seg2, size_t sz_seg2)
 {
     const uint16_t *p = seg1;
@@ -454,9 +471,6 @@ PacketProcessSignature(TCP, ip_header*)
             con = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(tcp_connection), nullptr);
             con->state.rcv.nxt = be32_to_host(hdr->seq)+1;
             con->state.rcv.irs = be32_to_host(hdr->seq);
-            con->state.snd.iss = random32();
-            con->state.snd.nxt = con->state.snd.iss + 1;
-            con->state.snd.una = con->state.snd.iss;
             con->state.rcv.wnd = 0x10000-1;
             con->state.state_change_event = EVENT_INITIALIZE(EVENT_NOTIFICATION);
             con->state.state = TCP_STATE_SYN_RECEIVED;
@@ -468,6 +482,9 @@ PacketProcessSignature(TCP, ip_header*)
             con->is_client = false;
             con->ip_ent = ent;
             con->nic = nic;
+            con->state.snd.iss = generate_iss(con);
+            con->state.snd.nxt = con->state.snd.iss + 1;
+            con->state.snd.una = con->state.snd.iss;
             con->inbound_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
             con->inbound_urg_sig = EVENT_INITIALIZE(EVENT_NOTIFICATION);
             con->user_recv_buffer.lock = MUTEX_INITIALIZE();
@@ -868,8 +885,6 @@ void Net_TCPFlushACKs(struct net_tables* nic)
 
 void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz, uint32_t sequence, size_t *nPushed)
 {
-    if (!con)
-        return;
     OBOS_ASSERT(sequence >= con->state.rcv.nxt);
     size_t offset = sequence - con->state.rcv.nxt;
     if (offset > con->recv_buffer.size)
@@ -1684,7 +1699,7 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
     s->connection->state.state = TCP_STATE_SYN_SENT;
     s->connection->state.rcv.wnd = s->connection->recv_buffer.size;
     s->connection->state.rcv.up = 0;
-    s->connection->state.snd.iss = random32();
+    s->connection->state.snd.iss = generate_iss(s->connection);
     s->connection->state.snd.nxt = s->connection->state.snd.iss+1;
     s->connection->state.snd.una = s->connection->state.snd.iss;
     s->connection->state.snd.up = 0;
