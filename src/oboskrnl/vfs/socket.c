@@ -407,7 +407,7 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
     socket_desc* desc = (void*)socket->vn->desc;
     if (desc->ops->domain != AF_INET)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    return OBOS_STATUS_SUCCESS;
+    return OBOS_STATUS_UNIMPLEMENTED;
     switch (optname) {
         case IP_TTL:
             if (optlen < sizeof(uint8_t))
