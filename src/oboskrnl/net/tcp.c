@@ -1,12 +1,11 @@
 /*
  * oboskrnl/net/tcp.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
 */
 
-#include "error.h"
-#include "irq/irql.h"
 #include <int.h>
+#include <error.h>
 #include <struct_packing.h>
 #include <memmanip.h>
 
@@ -25,6 +24,7 @@
 #include <locks/event.h>
 
 #include <irq/timer.h>
+#include <irq/irql.h>
 
 #include <utils/tree.h>
 #include <utils/list.h>
