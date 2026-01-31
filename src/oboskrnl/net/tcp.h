@@ -176,10 +176,6 @@ typedef struct tcp_connection {
     event inbound_sig;
     event inbound_urg_sig;
 
-    bool write_closed : 1;
-
-    bool got_icmp_msg : 1;
-
     shared_ptr *icmp_header_ptr;
     struct icmp_header* icmp_header;
     
@@ -237,6 +233,9 @@ typedef struct tcp_connection {
     bool reset : 1;
     bool close_ack : 1;
     bool ack_pending : 1;
+    bool write_closed : 1;
+    bool got_icmp_msg : 1;
+    bool socket_lost : 1; // set to true if the socket dereferenced the connection
     
     RB_ENTRY(tcp_connection) node;
     LIST_NODE(tcp_connection_list, struct tcp_connection) lnode;

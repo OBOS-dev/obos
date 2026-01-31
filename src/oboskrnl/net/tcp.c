@@ -162,7 +162,10 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
         uint32_t window_edge = con->state.snd.una + con->state.snd.wnd;
         defer_send = dat->seq > window_edge;
         if (!defer_send)
+        {
             con->state.snd.nxt = dat->seq + dat->payload_size;
+            con->ack_pending = false;
+        }
     }
     
     if (!defer_send)
@@ -291,7 +294,6 @@ static void finish_con(tcp_connection* con)
         case TCP_STATE_CLOSING:
         case TCP_STATE_CLOSE_WAIT:
         case TCP_STATE_LAST_ACK:
-        // TODO: Time-wait timeout?
         case TCP_STATE_TIME_WAIT:
             break; // no-op
     }
@@ -762,14 +764,17 @@ PacketProcessSignature(TCP, ip_header*)
                     }
                     else if (con->state.state == TCP_STATE_CLOSING)
                     {
+                        // Is this redundant?
                         OBOS_ASSERT(con->fin_segment);
+                        if (!!con->fin_segment)
+                            ExitPacketHandler();
                         if (!con->fin_segment->nBytesUnACKed)
                         {
-                            // Our FIN was ACKed, move into FIN-WAIT-2
+                            // Our FIN was ACKed, move into time wait
                             Net_TCPChangeConnectionState(con, TCP_STATE_TIME_WAIT);
                         }
                         else
-                            DropPacket();
+                            ExitPacketHandler();
                     }
                     break;
                 }
@@ -1042,7 +1047,8 @@ OBOS_MAYBE_UNUSED static const char* state_strs[] = {
     "CLOSED",
 };
 
-static void time_wait_expire(void* userdata);
+static void free_tcp_socket(void* userdata);
+static void free_trb(tcp_connection* con);
 
 void Net_TCPChangeConnectionState(tcp_connection* con, int state)
 {
@@ -1076,9 +1082,11 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
     else if (state == TCP_STATE_TIME_WAIT)
     {
         // userdata should be initialized in tcp_shutdown
-        con->time_wait.handler = time_wait_expire;
-        Core_TimerObjectInitialize(&con->time_wait, TIMER_MODE_DEADLINE, 60*1000*1000);
+        con->time_wait.handler = free_tcp_socket;
+        OBOS_ENSURE(obos_is_success(Core_TimerObjectInitialize(&con->time_wait, TIMER_MODE_DEADLINE, 60*1000*1000)));
     }
+    else if (state == TCP_STATE_CLOSED)
+        free_trb(con);
 }
 
 bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t ack)
@@ -1372,9 +1380,15 @@ void tcp_free(socket_desc* socket)
 
     if (!s->is_server)
     {
-        // Reset the connection.
-        if (s->connection->state.state < TCP_STATE_TIME_WAIT)
-            Net_TCPSocketBackend.shutdown(socket, SHUT_RDWR);
+        // Close the connection
+        Net_TCPSocketBackend.shutdown(socket, SHUT_RDWR);
+        if (s->connection)
+        {
+            if (s->connection->state.state == TCP_STATE_CLOSED)
+                free_tcp_socket(s);
+            else
+                s->connection->socket_lost = true;
+        }
     }
     else
     {
@@ -1973,32 +1987,34 @@ obos_status tcp_finalize_irp(irp* req)
     return OBOS_STATUS_SUCCESS;
 }
 
-static void time_wait_expire(void* userdata)
+static void free_trb(tcp_connection* con)
 {
-    tcp_socket* s = userdata;
-
-    OBOS_Debug("tcp: moving connection from TIME_WAIT to freed\n");
-
-    net_tables* iface = s->connection->nic->net_tables;
+    net_tables* iface = con->nic->net_tables;
     Core_PushlockAcquire(&iface->tcp_connections_lock, false);
-    if (s->connection->is_client)
-        RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, s->connection);
-    else if (s->connection)
+    if (con->is_client)
+        RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, con);
+    else if (con)
     {
-        tcp_port key = {.port=s->connection->src.port};
+        tcp_port key = {.port=con->src.port};
         Core_PushlockAcquire(&iface->tcp_ports_lock, true);
         tcp_port* port = RB_FIND(tcp_port_tree, &iface->tcp_ports, &key);
         Core_PushlockRelease(&iface->tcp_ports_lock, true);
         if (port)
         {
             Core_PushlockAcquire(&port->connection_tree_lock, false);
-            RB_REMOVE(tcp_connection_tree, &port->connections, s->connection);
+            RB_REMOVE(tcp_connection_tree, &port->connections, con);
             Core_PushlockRelease(&port->connection_tree_lock, false);
         }
     }
     Core_PushlockRelease(&iface->tcp_connections_lock, false);
 
-    Free(OBOS_KernelAllocator, s->connection, sizeof(*s->connection));
+    Free(OBOS_KernelAllocator, con, sizeof(*con));
+}
+static void free_tcp_socket(void* userdata)
+{
+    tcp_socket* s = userdata;
+
+    free_trb(s->connection);
 }
 
 obos_status tcp_shutdown(socket_desc* desc, int how)
@@ -2025,7 +2041,9 @@ obos_status tcp_shutdown(socket_desc* desc, int how)
 
     switch (s->connection->state.state) {
         case TCP_STATE_CLOSED:
-            return OBOS_STATUS_UNINITIALIZED;
+            free_tcp_socket(s);
+            s->connection = nullptr;
+            return OBOS_STATUS_SUCCESS;
         case TCP_STATE_LISTEN:
         case TCP_STATE_SYN_SENT:
         {
@@ -2050,7 +2068,10 @@ obos_status tcp_shutdown(socket_desc* desc, int how)
             fin.seq = s->connection->state.snd.nxt++;
             fin.ack = s->connection->state.rcv.nxt;
             fin.flags = TCP_FIN|TCP_ACK;
-            Net_TCPChangeConnectionState(s->connection, TCP_STATE_FIN_WAIT1);
+            if (s->connection->state.state == TCP_STATE_CLOSE_WAIT)
+                Net_TCPChangeConnectionState(s->connection, TCP_STATE_LAST_ACK);
+            else
+                Net_TCPChangeConnectionState(s->connection, TCP_STATE_FIN_WAIT1);
             NetH_SendTCPSegment(s->connection->nic, s->connection, s->connection->ip_ent, s->connection->dest.addr, &fin);
             s->connection->fin_segment = fin.unacked_seg;
             break;
