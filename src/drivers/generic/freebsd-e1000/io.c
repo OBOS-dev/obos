@@ -427,7 +427,8 @@ static void rx_dpc(dpc* d, void* udata)
             offset += length;
     }
     E1000_WRITE_REG(&dev->hw, E1000_RDT(0), dev->rx_idx-1);
-    Net_TCPFlushACKs(nic->net_tables);
+    if (nic->net_tables)
+        Net_TCPFlushACKs(nic->net_tables);
     Core_EventSet(&dev->rx_evnt, false);
 }
 void e1000_rx(e1000_device* dev)
