@@ -55,6 +55,7 @@ static const char* const help_message =
 "--tjec-max-acc-loop-bits=<1-8>: Specifies a maximum number of random additional memory accesses TJEC makes per block in 2^k, default k=7 or 128.\n"
 "--tjec-max-hash-loop-bits=<1-8>: Specifies a maximum number of random additional hash iterations TJEC makes per block in 2^k, default k=3 or 8.\n"
 "--tjec-osr=<1-255>: Specifies the over sampling ratio for TJEC, in other words, how many blocks to collect per block generated.\n"
+"--x86-disable-tsc: (x86 only) Disables use of the TSC.\n"
 "--help: Displays this help message.\n";
 
 struct cmd_allocation_header

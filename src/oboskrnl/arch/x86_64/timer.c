@@ -9,6 +9,7 @@
 #include <error.h>
 #include <signal.h>
 #include <memmanip.h>
+#include <cmdline.h>
 
 #include <irq/irq.h>
 #include <irq/irql.h>
@@ -142,6 +143,8 @@ OBOS_PAGEABLE_FUNCTION obos_status CoreS_InitializeTimer(irq_handler handler)
 
     uint32_t edx = 0;
     __cpuid__(0x80000007, 0, nullptr, nullptr, nullptr, &edx);
+    if (OBOS_GetOPTF("x86-disable-tsc"))
+        edx &= ~BIT(8);
     if (edx & BIT(8))
     {
         s_use_invariant_tsc = true;
