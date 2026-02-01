@@ -150,8 +150,8 @@ typedef struct page_range
     bool kernelStack : 1; // See Mm_AllocateKernelStack
     bool priv : 1; // True if this is a private file mapping
 #if OBOS_DEBUG
-    void* view_map_address;
     bool user_view : 1;
+    void* view_map_address;
 #endif
     union {
         struct context* userContext; // valid if kernelStack != nullptr

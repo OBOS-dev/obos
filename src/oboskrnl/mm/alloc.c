@@ -227,6 +227,17 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         }
         OBOS_ASSERT(!(base % pgSize));
     }
+    if (ctx->owner != OBOS_KernelProcess && (base > OBOS_USER_ADDRESS_SPACE_LIMIT || (base+size) > OBOS_USER_ADDRESS_SPACE_LIMIT))
+    {
+        if (flags & VMA_FLAGS_HINT)
+        {
+            base = 0;
+            goto top;
+        }
+        set_statusp(ustatus, OBOS_STATUS_ACCESS_DENIED);
+        Core_SpinlockRelease(&ctx->lock, oldIrql);
+        return nullptr;
+    }
     // We shouldn't reallocate the page(s).
     // Check if they exist so we don't do that by accident.
     // page what = {};
