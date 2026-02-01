@@ -8,7 +8,7 @@
 #endif
 #define InvokePacketHandler(name, ptr, size, data) !(Net_## name ## Process) ? (void)0 : (Net_## name ## Process)(nic, depth + 1, OBOS_SharedPtrCopy(buf), ptr, size, data)
 #define ExitPacketHandler() do { OBOS_SharedPtrUnref(buf); return; } while(0)
-bool NetH_NetworkErrorLogsEnabled();
+OBOS_EXPORT bool NetH_NetworkErrorLogsEnabled();
 #define NetError(...) do {\
 if (!NetH_NetworkErrorLogsEnabled())\
     OBOS_Error(__VA_ARGS__);\

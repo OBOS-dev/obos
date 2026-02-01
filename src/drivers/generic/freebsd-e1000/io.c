@@ -1,7 +1,7 @@
 /*
  * drivers/generic/freebsd-e1000/io.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  *
  * RX/TX function for the E1000 driver
 */
@@ -361,27 +361,24 @@ static void rx_dpc(dpc* d, void* udata)
 
     e1000_frame* current_frame = nullptr;
     size_t offset = 0;
-    
-    if (dev->rx_idx >= RX_QUEUE_SIZE)
-        dev->rx_idx = 0;
-    
-    for (; dev->rx_idx < RX_QUEUE_SIZE; dev->rx_idx++)
+        
+    while (true)
     {
         uint32_t length = 0;
         bool eop = false;
         if(dev->hw.mac.type >= e1000_82547)
         {
-            union e1000_rx_desc_extended* desc = &((union e1000_rx_desc_extended*)MmS_MapVirtFromPhys(dev->rx_ring))[dev->rx_idx];
+            union e1000_rx_desc_extended* desc = &((union e1000_rx_desc_extended*)MmS_MapVirtFromPhys(dev->rx_ring))[(dev->rx_idx % RX_QUEUE_SIZE)];
             if (~desc->wb.upper.status_error & E1000_RXD_STAT_DD)
                 break;
             length = desc->wb.upper.length;
             eop = desc->wb.upper.status_error & E1000_RXD_STAT_EOP;
             desc->wb.upper.status_error = 0;
-            desc->read.buffer_addr = dev->rx_ring_buffers[dev->rx_idx];
+            desc->read.buffer_addr = dev->rx_ring_buffers[(dev->rx_idx % RX_QUEUE_SIZE)];
         }
         else
         {
-            struct e1000_rx_desc* desc = &((struct e1000_rx_desc*)MmS_MapVirtFromPhys(dev->rx_ring))[dev->rx_idx];
+            struct e1000_rx_desc* desc = &((struct e1000_rx_desc*)MmS_MapVirtFromPhys(dev->rx_ring))[(dev->rx_idx % RX_QUEUE_SIZE)];
             if (~desc->status & E1000_RXD_STAT_DD)
                 break;
             eop = desc->status & E1000_RXD_STAT_EOP;
@@ -393,15 +390,17 @@ static void rx_dpc(dpc* d, void* udata)
         current_frame->size += length;
         current_frame->buff = Reallocate(OBOS_NonPagedPoolAllocator, current_frame->buff, current_frame->size, current_frame->size - length, nullptr);
         current_frame->refs = dev->refs;
-        memcpy((char*)current_frame->buff + offset, MmS_MapVirtFromPhys(dev->rx_ring_buffers[dev->rx_idx]), length);
+        memcpy((char*)current_frame->buff + offset, MmS_MapVirtFromPhys(dev->rx_ring_buffers[(dev->rx_idx % RX_QUEUE_SIZE)]), length);
         if (eop)
         {
             if (current_frame->size < 14)
             {
+                NetError("e1000: dropping misplaced runt!\n");
                 Free(OBOS_NonPagedPoolAllocator, current_frame->buff, current_frame->size);
                 Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
                 current_frame = nullptr;
                 offset = 0;
+                ++dev->rx_idx;
                 continue;
             }
 
@@ -413,7 +412,7 @@ static void rx_dpc(dpc* d, void* udata)
                 buf->onDeref = NetFreeSharedPtr;
                 buf->freeUdata = OBOS_NonPagedPoolAllocator;
                 current_frame->refs--;
-                if (current_frame->refs)
+                if (!current_frame->refs)
                     Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
     
                 Net_EthernetProcess(nic, 0, OBOS_SharedPtrCopy(buf), buf->obj, buf->szObj, nullptr);
@@ -425,8 +424,10 @@ static void rx_dpc(dpc* d, void* udata)
         }
         else
             offset += length;
+
+        ++dev->rx_idx;
     }
-    E1000_WRITE_REG(&dev->hw, E1000_RDT(0), dev->rx_idx-1);
+    E1000_WRITE_REG(&dev->hw, E1000_RDT(0), ((dev->rx_idx-1) % RX_QUEUE_SIZE));
     if (nic->net_tables)
         Net_TCPFlushACKs(nic->net_tables);
     Core_EventSet(&dev->rx_evnt, false);
