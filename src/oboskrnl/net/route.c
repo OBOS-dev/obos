@@ -104,43 +104,44 @@ obos_status Net_Initialize(vnode* nic)
     if (nic->net_tables)
         return OBOS_STATUS_ALREADY_INITIALIZED;
 
-    nic->net_tables = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_tables), nullptr);
+    net_tables* tables = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(net_tables), nullptr);
 
     driver_header* driver = Vfs_GetVnodeDriver(nic);
     if (!driver)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
-    nic->net_tables->desc = nic->desc;
+    tables->desc = nic->desc;
     if (driver->ftable.reference_device)
-        driver->ftable.reference_device(&nic->net_tables->desc);
+        driver->ftable.reference_device(&tables->desc);
 
-    driver->ftable.ioctl(nic->net_tables->desc, IOCTL_IFACE_MAC_REQUEST, &nic->net_tables->mac);
+    driver->ftable.ioctl(tables->desc, IOCTL_IFACE_MAC_REQUEST, &tables->mac);
 
     if (~nic->flags & VFLAGS_NIC_PACKET_INJECT)
     {
-        nic->net_tables->dispatch_thread = CoreH_ThreadAllocate(nullptr);
+        tables->dispatch_thread = CoreH_ThreadAllocate(nullptr);
         thread_ctx ctx = {};
         void* stack = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, 0x4000, 0, VMA_FLAGS_KERNEL_STACK, nullptr, nullptr);
         CoreS_SetupThreadContext(&ctx, (uintptr_t)dispatcher, (uintptr_t)nic, false, stack, 0x4000);
-        nic->net_tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
-        nic->net_tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
-        CoreH_ThreadInitialize(nic->net_tables->dispatch_thread, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
-        Core_ProcessAppendThread(OBOS_KernelProcess, nic->net_tables->dispatch_thread);
-        CoreH_ThreadReady(nic->net_tables->dispatch_thread);
+        tables->dispatch_thread->stackFree = CoreH_VMAStackFree;
+        tables->dispatch_thread->stackFreeUserdata = &Mm_KernelContext;
+        CoreH_ThreadInitialize(tables->dispatch_thread, THREAD_PRIORITY_REAL_TIME, Core_DefaultThreadAffinity, &ctx);
+        Core_ProcessAppendThread(OBOS_KernelProcess, tables->dispatch_thread);
+        CoreH_ThreadReady(tables->dispatch_thread);
     }
 
-    nic->net_tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->table_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->tcp_pending_acks.lock = MUTEX_INITIALIZE();
-    nic->net_tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->tcp_connections_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->tcp_ports_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->cached_routes_lock = PUSHLOCK_INITIALIZE();
-    nic->net_tables->interface = nic;
-    nic->net_tables->magic = IP_TABLES_MAGIC;
+    tables->arp_cache_lock = PUSHLOCK_INITIALIZE();
+    tables->table_lock = PUSHLOCK_INITIALIZE();
+    tables->tcp_pending_acks.lock = MUTEX_INITIALIZE();
+    tables->fragmented_packets_lock = PUSHLOCK_INITIALIZE();
+    tables->udp_ports_lock = PUSHLOCK_INITIALIZE();
+    tables->tcp_connections_lock = PUSHLOCK_INITIALIZE();
+    tables->tcp_ports_lock = PUSHLOCK_INITIALIZE();
+    tables->cached_routes_lock = PUSHLOCK_INITIALIZE();
+    tables->interface = nic;
+    tables->magic = IP_TABLES_MAGIC;
 
-    LIST_APPEND(network_interface_list, &Net_Interfaces, nic->net_tables);
+    nic->net_tables = tables;
+    LIST_APPEND(network_interface_list, &Net_Interfaces, tables);
 
     return OBOS_STATUS_SUCCESS;
 }
