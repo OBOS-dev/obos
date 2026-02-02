@@ -1,7 +1,7 @@
 /*
  * oboskrnl/net/tcp.h
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
 */
 
 #pragma once
@@ -81,6 +81,7 @@ struct tcp_pseudo_hdr {
     uint16_t window;
 
     bool check_tx_window : 1;
+    bool queue : 1;
 
     // Terminated by an "end of option list" option
     // Is to be copied directly into the tcp header.
@@ -116,7 +117,6 @@ enum {
 typedef struct tcp_unacked_segment {
     shared_ptr ptr;
     
-    timer expiration_timer;
     bool expired;
     bool sent;
     
@@ -195,6 +195,8 @@ typedef struct tcp_connection {
             uint32_t wl2;
             // initial send sequence number
             uint32_t iss;
+
+            uint32_t smss;
         } snd;
 
         struct {
@@ -212,6 +214,14 @@ typedef struct tcp_connection {
             uint32_t fin_seq;
         } rcv;
 
+        // Congestion window
+        uint32_t cwnd;
+        // Initial congestion window
+        uint32_t ciw;
+        // Slow start theshold
+        uint32_t ssthresh;
+
+
         int state;
         event state_change_event;
         bool sack_perm : 1;
@@ -221,6 +231,7 @@ typedef struct tcp_connection {
         tcp_unacked_segment_list list;
         pushlock lock;
     } unacked_segments;
+    timer retransmission_timer;
 
     tcp_unacked_segment* fin_segment;
 

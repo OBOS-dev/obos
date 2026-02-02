@@ -81,6 +81,45 @@ static obos_status submit_irp(void* req_)
     req->status = OBOS_STATUS_SUCCESS;
     return OBOS_STATUS_SUCCESS;
 }
+
+#if 0
+#include <arch/x86_64/asm_helpers.h>
+static void write_to_serial(const void* buf, size_t size)
+{
+    static bool initialized_serial = false;
+    if (!initialized_serial)
+    {
+        fd file = {};
+        Vfs_FdOpen(&file, "/dev/COM1", FD_OFLAGS_READ|FD_OFLAGS_WRITE);
+        OBOS_ALIGNAS(sizeof(uintptr_t)) struct {
+            uint32_t baudRate;
+            uint32_t dataBits;
+            uint32_t stopBits;
+            uint32_t parityBit;
+        } args = {
+            .baudRate = 115200,
+            .dataBits = 3, // EIGHT_DATABITS
+            .parityBit = 0,
+            .stopBits = 0,
+        };
+        Vfs_FdIoctl(&file, 0x5e01, &args);
+        initialized_serial = true;
+    }
+    const char* cbuf = buf;
+    for (size_t i = 0; i < size; i++)
+        outb(0x3f8, cbuf[i]);
+}
+
+#include <arch/x86_64/cmos.h>
+
+static long get_current_time()
+{
+    long current_time = 0;
+    Arch_CMOSGetEpochTime(&current_time);
+    return current_time;
+}
+#endif
+
 static obos_status finalize_irp(void* req_)
 {
     irp* req = req_;
@@ -92,7 +131,7 @@ static obos_status finalize_irp(void* req_)
         if (!hnd->curr)
         {
             Core_MutexAcquire(&hnd->dev->lock);
-            hnd->curr = LIST_GET_TAIL(lo_packet_queue, &hnd->dev->recv);
+            hnd->curr = LIST_GET_HEAD(lo_packet_queue, &hnd->dev->recv);
             Core_MutexRelease(&hnd->dev->lock);
         }
         req->status = OBOS_STATUS_SUCCESS;
@@ -138,11 +177,51 @@ static obos_status finalize_irp(void* req_)
         memcpy(pckt->buffer, req->cbuff, req->blkCount);
         pckt->refs = hnd->dev->refs;
         pckt->size = req->blkCount;
+        Core_MutexAcquire(&hnd->dev->lock);
+        if (pckt)
+            LIST_APPEND(lo_packet_queue, &hnd->dev->recv, pckt);
+        Core_MutexRelease(&hnd->dev->lock);
         // printf("LO: TX Packet (size: %d)\n", pckt->size);
 
-        Core_MutexAcquire(&hnd->dev->lock);
-        LIST_APPEND(lo_packet_queue, &hnd->dev->recv, pckt);
-        Core_MutexRelease(&hnd->dev->lock);
+#if 0
+        static bool lo_sent_file_header = false;
+        if (!lo_sent_file_header)
+        {
+            struct {
+                uint32_t magic_number;
+                uint16_t minor;
+                uint16_t major;
+                uint32_t resv[2];
+                uint32_t snap_len;
+                uint16_t link_type;
+                uint16_t flags;
+            } OBOS_PACK hdr = {
+                .magic_number = 0xA1B2C3D4,
+                .major = 2,
+                .minor = 4,
+                .snap_len = 0x40000,
+                .link_type = 1,
+                .flags = 0x5000
+            };
+            write_to_serial(&hdr, sizeof(hdr));
+            lo_sent_file_header = true;
+        }
+
+        struct {
+            uint32_t tstamp_sec;
+            uint32_t tstamp_usec;
+            uint32_t captured_packet_length;
+            uint32_t network_packet_length;
+            char data[];
+        } record = {};
+        record.network_packet_length = pckt->size;
+        record.captured_packet_length = record.network_packet_length;
+        record.tstamp_sec = get_current_time();
+        record.tstamp_usec = record.tstamp_sec * 1000000;
+        
+        write_to_serial(&record, sizeof(record));
+        write_to_serial(pckt->buffer, pckt->size);
+#endif
 
         Core_EventSet(&hnd->dev->evnt, false);
     }

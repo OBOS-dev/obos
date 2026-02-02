@@ -213,4 +213,8 @@ typedef enum
 	/// The network cannot be reached.
 	/// </summary>
 	OBOS_STATUS_NETWORK_UNREACHABLE,
+	/// <summary>
+	/// The connection was reset.
+	/// </summary>
+	OBOS_STATUS_CONNECTION_RESET,
 } obos_status;
