@@ -90,18 +90,15 @@ static uint16_t tcp_chksum(const void *seg1, size_t sz_seg1, const void* seg2, s
     return ret;
 }
 
-static void tcp_seg_expired(void* userdata)
-{
-    struct tcp_unacked_segment* seg = userdata;
-    seg->expired = true;
-    OBOS_SharedPtrUnref(&seg->ptr);
-}
+static void retransmission_timer_expired(void* userdata);
 
 obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* ip_table_entry */, ip_addr dest, struct tcp_pseudo_hdr* dat)
 {
     ip_table_entry *ent = ent_;
     if (!nic || !ent || !dat)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (con && con->reset)
+        return OBOS_STATUS_CONNECTION_RESET;
     shared_ptr* payload = dat->payload;
     size_t payload_offset = dat->payload_offset;
     size_t payload_size = dat->payload_size;
@@ -110,7 +107,7 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
 
     shared_ptr* ptr = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
     size_t hdr_sz = sizeof(tcp_header) + dat->option_list_size;
-    size_t sz = hdr_sz + (payload ? payload->szObj : 0);
+    size_t sz = hdr_sz + OBOS_MIN(payload_size, payload ? payload->szObj : payload_size);
     OBOS_SharedPtrConstructSz(ptr, Allocate(OBOS_KernelAllocator, sz, nullptr), sz);
     ptr->free = OBOS_SharedPtrDefaultFree;
     ptr->freeUdata = OBOS_KernelAllocator;
@@ -153,11 +150,22 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     if (con)
-        Core_PushlockAcquire(&con->unacked_segments.lock, false);    
+    {
+        Core_PushlockAcquire(&con->unacked_segments.lock, false);
+        if (!con->retransmission_timer.handler)
+        {
+            con->retransmission_timer.handler = retransmission_timer_expired;
+            con->retransmission_timer.userdata = con;
+            // TODO: Better period for retransmission timer?
+            // Maybe faster retransmission, or maybe calculate
+            // the timeout per-peer
+            Core_TimerObjectInitialize(&con->retransmission_timer, TIMER_MODE_INTERVAL, 1000*1000);
+        }
+    }
 
     obos_status status = OBOS_STATUS_SUCCESS;
-    bool defer_send = false;
-    if (dat->check_tx_window && con)
+    bool defer_send = dat->queue;
+    if (!defer_send && dat->check_tx_window && con)
     {
         uint32_t window_edge = con->state.snd.una + con->state.snd.wnd;
         defer_send = dat->seq > window_edge;
@@ -201,14 +209,6 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     memcpy(seg->segment.options, dat->options, dat->option_list_size);
     if(!seg->segment.expiration_ms)
         seg->segment.expiration_ms = 5*1000 /* 5 second default */;
-    
-    if (seg->sent)
-    {
-        OBOS_SharedPtrRef(&seg->ptr);
-        seg->expiration_timer.userdata = seg;
-        seg->expiration_timer.handler = tcp_seg_expired;
-        Core_TimerObjectInitialize(&seg->expiration_timer, TIMER_MODE_DEADLINE, seg->segment.expiration_ms * 1000); 
-    }
 
     OBOS_SharedPtrRef(&seg->ptr);
     if (!LIST_GET_NODE_COUNT(tcp_unacked_segment_list, &con->unacked_segments.list))
@@ -226,12 +226,6 @@ obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent_ /* i
     Core_LowerIrql(oldIrql);
 
     return OBOS_STATUS_SUCCESS;
-}
-
-void tx_tm_hnd(void* udata)
-{
-    event* evnt = udata;
-    Core_EventSet(evnt, false);
 }
 
 LIST_GENERATE(tcp_unacked_segment_list, tcp_unacked_segment, node);
@@ -307,6 +301,30 @@ static bool check_sack_perm(void* userdata, struct tcp_option* opt, tcp_header* 
         return true;
     con->state.sack_perm = true;
     return false;   
+}
+
+static bool get_remote_mss(void* userdata, struct tcp_option* opt, tcp_header* unused)
+{
+    OBOS_UNUSED(unused);
+    tcp_connection* con = userdata;
+    if (opt->kind != TCP_OPTION_MSS)
+        return true;
+    if (opt->len != 4)
+        return false;
+    con->state.snd.smss = be16_to_host(*(uint16_t*)opt->data);
+    return false;   
+}
+
+static void congestion_control_init(tcp_connection* con)
+{
+    if (con->state.snd.smss <= 1095)
+        con->state.ciw = 4 * con->state.snd.smss;
+    else if (con->state.snd.smss <= 2190)
+        con->state.ciw = 3 * con->state.snd.smss;
+    else
+        con->state.ciw = 2 * con->state.snd.smss;
+    con->state.cwnd = con->state.ciw;
+    con->state.ssthresh = UINT32_MAX;
 }
 
 static bool process_sack(void* userdata, struct tcp_option* opt, tcp_header* unused)
@@ -492,7 +510,14 @@ PacketProcessSignature(TCP, ip_header*)
             con->user_recv_buffer.lock = MUTEX_INITIALIZE();
             con->unacked_segments.lock = PUSHLOCK_INITIALIZE();
 
+            // we should probably only iterate over the option list once
+            // but whatever
             Net_TCPProcessOptionList(con, hdr, check_sack_perm);
+            con->state.snd.smss = 536; // TODO: Change if we get IPv6 support
+            Net_TCPProcessOptionList(con, hdr, get_remote_mss);
+            if (!con->state.snd.smss)
+                con->state.snd.smss = 536;
+            congestion_control_init(con);
 
             Core_PushlockAcquire(&port->connection_tree_lock, false);
             RB_INSERT(tcp_connection_tree, &port->connections, con);
@@ -512,10 +537,11 @@ PacketProcessSignature(TCP, ip_header*)
                 uint16_t mss; 
                 uint8_t sack_perm_kind; 
                 uint8_t sack_perm_len;
-                uint8_t eol; 
-            } opt = {
+                uint8_t eol;
+                uint8_t pad;
+            } OBOS_PACK opt = {
                 .kind=TCP_OPTION_MSS, .len=4, .mss=host_to_be16(tcp_get_mss(con)),
-                .sack_perm_kind = con->state.sack_perm ? TCP_OPTION_EOL : TCP_OPTION_SACK_PERM, .sack_perm_len=con->state.sack_perm*2
+                .sack_perm_kind = con->state.sack_perm ? TCP_OPTION_SACK_PERM : TCP_OPTION_EOL, .sack_perm_len=con->state.sack_perm*2
             };
             resp.options = (void*)&opt;
             resp.option_list_size = sizeof(opt);
@@ -534,6 +560,8 @@ PacketProcessSignature(TCP, ip_header*)
         {
             if (be32_to_host(hdr->ack) <= con->state.snd.iss || be32_to_host(hdr->ack) > con->state.snd.nxt)
             {
+                con->reset = true;
+                Net_TCPChangeConnectionState(con, TCP_STATE_CLOSED);
                 struct tcp_pseudo_hdr resp = {};
                 resp.src_port = be16_to_host(hdr->dest_port);
                 resp.dest_port = be16_to_host(hdr->src_port);
@@ -564,6 +592,11 @@ PacketProcessSignature(TCP, ip_header*)
             con->state.rcv.nxt = be32_to_host(hdr->seq)+1;
 
             Net_TCPProcessOptionList(con, hdr, check_sack_perm);
+            con->state.snd.smss = 536; // TODO: Change if we get IPv6 support
+            Net_TCPProcessOptionList(con, hdr, get_remote_mss);
+            if (!con->state.snd.smss)
+                con->state.snd.smss = 536;
+            congestion_control_init(con);
 
             if (con->state.snd.una > con->state.snd.iss)
             {
@@ -596,9 +629,10 @@ PacketProcessSignature(TCP, ip_header*)
                     uint8_t sack_perm_kind; 
                     uint8_t sack_perm_len;
                     uint8_t eol; 
-                } opt = {
+                    uint8_t pad; 
+                } OBOS_PACK opt = {
                     .kind=TCP_OPTION_MSS, .len=4, .mss=host_to_be16(tcp_get_mss(con)),
-                    .sack_perm_kind = con->state.sack_perm ? TCP_OPTION_EOL : TCP_OPTION_SACK_PERM, .sack_perm_len=con->state.sack_perm*2
+                    .sack_perm_kind = con->state.sack_perm ? TCP_OPTION_SACK_PERM : TCP_OPTION_EOL, .sack_perm_len=con->state.sack_perm*2
                 };
                 resp.options = (void*)&opt;
                 resp.option_list_size = sizeof(opt);
@@ -632,7 +666,7 @@ PacketProcessSignature(TCP, ip_header*)
             acceptable = false;
         else if (segment_length > 0 && con->state.rcv.wnd > 0)
             acceptable = (con->state.rcv.nxt <= be32_to_host(hdr->seq) && 
-                         be32_to_host(hdr->seq) < (con->state.rcv.nxt+con->state.rcv.wnd)) ||
+                         be32_to_host(hdr->seq) < (con->state.rcv.nxt+con->state.rcv.wnd)) &&
                          (con->state.rcv.nxt <= (be32_to_host(hdr->seq)+segment_length-1) && 
                          (be32_to_host(hdr->seq)+segment_length-1) < (con->state.rcv.nxt+con->state.rcv.wnd));
         else 
@@ -648,7 +682,10 @@ PacketProcessSignature(TCP, ip_header*)
             //     con->state.rcv.nxt, con->state.rcv.wnd, segment_length
             // );
             if (hdr->flags & TCP_RST)
+            {
+                NetError("tcp: dropping unacceptable RST!");
                 DropPacket();
+            }
             if (con->recv_buffer.rsegments.nNodes)
                 DropPacket();
             struct tcp_pseudo_hdr resp = {};
@@ -665,6 +702,11 @@ PacketProcessSignature(TCP, ip_header*)
 
         if (hdr->flags & TCP_RST)
         {
+            if (!(con->state.rcv.nxt <= be32_to_host(hdr->seq) && be32_to_host(hdr->seq) <= (con->state.rcv.nxt+con->state.rcv.wnd)))
+            {
+                NetError("tcp: dropping unacceptable RST!");
+                DropPacket();
+            }
             switch (con->state.state) {
                 case TCP_STATE_SYN_RECEIVED:
                 {
@@ -677,9 +719,23 @@ PacketProcessSignature(TCP, ip_header*)
                 case TCP_STATE_FIN_WAIT2:
                 case TCP_STATE_CLOSE_WAIT:
                 {
+                    if (con->state.rcv.nxt != be32_to_host(hdr->seq))
+                    {
+                        // Challenge ACK.
+                        struct tcp_pseudo_hdr resp = {};
+                        resp.src_port = be16_to_host(hdr->dest_port);
+                        resp.dest_port = be16_to_host(hdr->src_port);
+                        resp.ttl = con->ttl;
+                        resp.seq = con->state.snd.nxt;
+                        resp.ack = con->state.rcv.nxt;
+                        resp.window = con->state.rcv.wnd;
+                        resp.flags = TCP_ACK;
+                        NetH_SendTCPSegment(nic, nullptr, ent, con->dest.addr, &resp);
+                        DropPacket();
+                    }
                     con->reset = true;
-                    Net_TCPChangeConnectionState(con, TCP_STATE_CLOSED);
                     Net_TCPCancelAllOutstandingSegments(con);
+                    Net_TCPChangeConnectionState(con, TCP_STATE_CLOSED);
                     ExitPacketHandler();
                 }
                 case TCP_STATE_CLOSING:
@@ -695,18 +751,23 @@ PacketProcessSignature(TCP, ip_header*)
         }
         if (hdr->flags & TCP_SYN)
         {
-            con->reset = true;
-            Net_TCPChangeConnectionState(con, TCP_STATE_CLOSED);
-            Net_TCPCancelAllOutstandingSegments(con);
+            /* 
+             * Send a challenge ACK.
+             *
+             * RFC793 says that we should RST here,
+             * but for security reasons as defined in
+             * RFC5961, send a challenge ACK.
+             */
+            
             struct tcp_pseudo_hdr resp = {};
             resp.src_port = be16_to_host(hdr->dest_port);
             resp.dest_port = be16_to_host(hdr->src_port);
             resp.ttl = con->ttl;
-            resp.seq = be32_to_host(hdr->ack);
-            resp.ack = 0;
-            resp.flags = TCP_RST;
-            NetH_SendTCPSegment(nic, con, ent, con->dest.addr, &resp);
-            OBOS_SharedPtrUnref(&resp.unacked_seg->ptr);
+            resp.seq = con->state.snd.nxt;
+            resp.ack = con->state.rcv.nxt;
+            resp.window = con->state.rcv.wnd;
+            resp.flags = TCP_ACK;
+            NetH_SendTCPSegment(nic, nullptr, ent, con->dest.addr, &resp);
             DropPacket();
         }
         if (hdr->flags & TCP_ACK)
@@ -799,6 +860,8 @@ PacketProcessSignature(TCP, ip_header*)
                 default: DropPacket();
             }
         }
+        else
+            DropPacket();
         if (hdr->flags & TCP_URG)
         {
             con->state.rcv.up = OBOS_MAX(con->state.rcv.up, be32_to_host(hdr->urg_ptr));
@@ -839,7 +902,6 @@ void Net_TCPCancelAllOutstandingSegments(tcp_connection* con)
     tcp_unacked_segment *seg = LIST_GET_HEAD(tcp_unacked_segment_list, &con->unacked_segments.list);
     while (seg)
     {
-        Core_CancelTimer(&seg->expiration_timer);
         Core_EventSet(&seg->evnt, false);
         seg->expired = true;
 
@@ -917,7 +979,7 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
             if (new_rx_nxt == seg->seq)
                 new_rx_nxt = seg->seq_edge;
             LIST_REMOVE(tcp_unacked_rsegment_list, &con->recv_buffer.rsegments, seg);
-            Free(OBOS_KernelAllocator, seg, sizeof(*seg));
+            Free(OBOS_NonPagedPoolAllocator, seg, sizeof(*seg));
             seg = next;
         }
     }
@@ -946,7 +1008,7 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
         }
         if (!added)
         {
-            seg = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(*seg), nullptr);
+            seg = ZeroAllocate(OBOS_NonPagedPoolAllocator, 1, sizeof(*seg), nullptr);
             seg->seq = sequence;
             seg->seq_edge = edge;
             LIST_APPEND(tcp_unacked_rsegment_list, &con->recv_buffer.rsegments, seg);
@@ -1085,24 +1147,77 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
         con->time_wait.handler = free_tcp_socket;
         OBOS_ENSURE(obos_is_success(Core_TimerObjectInitialize(&con->time_wait, TIMER_MODE_DEADLINE, 60*1000*1000)));
     }
-    else if (state == TCP_STATE_CLOSED)
+    else if (state == TCP_STATE_CLOSED && con->socket_lost)
         free_trb(con);
+}
+
+static void retransmission_timer_expired(void* userdata)
+{
+    tcp_connection* con = userdata;
+    OBOS_ASSERT(con);
+    tcp_unacked_segment* seg = LIST_GET_HEAD(tcp_unacked_segment_list, &con->unacked_segments.list);
+
+    if (con->reset || (con->fin_segment && !seg))
+    {
+        Core_CancelTimer(&con->retransmission_timer);
+        return;
+    }
+
+    if (seg)
+    {
+        // printf("reducing congestion window\n");
+        con->state.ssthresh = con->state.cwnd / 2;
+        con->state.cwnd = con->state.ciw;
+    }
+
+    while (seg)
+    {
+        tcp_unacked_segment* const next = LIST_GET_NEXT(tcp_unacked_segment_list, &con->unacked_segments.list, seg);
+        if (!seg->nBytesUnACKed)
+            goto cont;    
+        seg->expired = true;
+        Net_TCPRetransmitSegment(seg);
+        cont:
+        seg = next;
+    }
 }
 
 bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t ack)
 {
     if (ack < con->state.snd.una)
         return true; // ACK to an old segment, ignore
+    if (con->reset)
+        return false;
     
     Core_PushlockAcquire(&con->unacked_segments.lock, true);
     
     uint32_t nBytesACKed = (ack - ack_left);
+
+    if (con->state.cwnd < con->state.ssthresh)
+    {
+        // printf("cwnd < ssthresh, increase cwnd by %d bytes\n", OBOS_MIN(nBytesACKed, con->state.snd.smss));
+        con->state.cwnd += OBOS_MIN(nBytesACKed, con->state.snd.smss);
+    }
+    else if (con->state.cwnd)
+    {
+        uint32_t addend = con->state.snd.smss * con->state.snd.smss / con->state.cwnd;
+        // printf("cwnd >= ssthresh, increase cwnd by %d bytes\n", addend == 0 ? 1 : addend);
+        if (addend)
+            con->state.cwnd += addend;
+        else
+            con->state.cwnd += 1;
+    }
+    // printf("cwnd is now %d\n", con->state.cwnd);
     
     tcp_unacked_segment* seg = LIST_GET_HEAD(tcp_unacked_segment_list, &con->unacked_segments.list);
     while (nBytesACKed != 0 && seg)
     {
+        tcp_unacked_segment* const next = LIST_GET_NEXT(tcp_unacked_segment_list, &con->unacked_segments.list, seg);
         if (seg->segment.seq < ack_left)
+        {
+            seg = next;
             continue;
+        }
         if (seg->segment.seq >= ack)
             break;
         /*
@@ -1126,8 +1241,6 @@ bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t 
                 con->state.snd.una += nBytesACKed;
             nBytesACKed = 0;
         }
-
-        tcp_unacked_segment *next = LIST_GET_NEXT(tcp_unacked_segment_list, &con->unacked_segments.list, seg);
         
         if (!seg->nBytesUnACKed)
         {
@@ -1138,7 +1251,6 @@ bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t 
             
             Core_EventSet(&seg->evnt, false);
             LIST_REMOVE(tcp_unacked_segment_list, &con->unacked_segments.list, seg);
-            Core_CancelTimer(&seg->expiration_timer);
             OBOS_SharedPtrUnref(&seg->ptr);
 
             Core_PushlockRelease(&con->unacked_segments.lock, false);
@@ -1148,7 +1260,7 @@ bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t 
         seg = next;
         // Even if the remote has acknoledged more bytes, we don't know of any future segments,
         // so reset the connection
-        if (!seg && nBytesACKed > 0)
+        if ((!seg || !seg->sent) && nBytesACKed > 0)
         {
             if (con->state.state < TCP_STATE_ESTABLISHED)
             {
@@ -1227,8 +1339,7 @@ void Net_TCPRetransmitSegment(tcp_unacked_segment* seg)
             seg->con->src.port,
             IP_ADDRESS_ARGS(seg->con->src.addr),
             seg->con->dest.port,
-            IP_ADDRESS_ARGS(seg->con->dest.addr)
-        );
+            IP_ADDRESS_ARGS(seg->con->dest.addr));
         Core_EventSet(&seg->evnt, false);
         seg->expired = true;
         return;
@@ -1238,14 +1349,15 @@ void Net_TCPRetransmitSegment(tcp_unacked_segment* seg)
     {
         seg->sent = true;
         seg->segment.ack = seg->con->state.rcv.nxt;
+        seg->segment.seq = seg->con->state.snd.nxt;
+        seg->con->state.snd.nxt += seg->nBytesInFlight;
     }
 
-    OBOS_SharedPtrRef(seg->segment.payload);
+    if (seg->segment.payload)
+        OBOS_SharedPtrRef(seg->segment.payload);
     NetH_SendTCPSegment(seg->con->nic, nullptr, seg->con->ip_ent, seg->con->dest.addr, &seg->segment);
 
     OBOS_SharedPtrRef(&seg->ptr);
-    seg->expiration_timer.userdata = seg;
-    Core_TimerObjectInitialize(&seg->expiration_timer, TIMER_MODE_DEADLINE, seg->segment.expiration_ms * 1000);
     
     if (!seg->sent)
         seg->sent = true;
@@ -1260,10 +1372,9 @@ void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t siz
     // TODO: Urgent data?
     OBOS_UNUSED(oob);
 
-    OBOS_ASSERT(con->state.snd.wnd);
-
     // NetH_SendTCPSegment handles all queuing, we just need to segment the packet.
-    uint32_t window_bytes_until_close = con->state.snd.nxt - (con->state.snd.wnd + con->state.snd.una);
+    uint32_t usable_tx_window = con->state.snd.nxt - (con->state.snd.wnd + con->state.snd.una);
+    uint32_t usable_window = OBOS_MIN(usable_tx_window, con->state.cwnd);
     
     shared_ptr* payload = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(shared_ptr), nullptr);
     OBOS_SharedPtrConstructSz(payload, (void*)Allocate(OBOS_KernelAllocator, size, nullptr), size);
@@ -1274,15 +1385,19 @@ void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t siz
 
     uint32_t offset = 0;
     bool first_iter = true;
+    uint32_t previous_snd_nxt = con->state.snd.nxt;
     while (size != 0)
     {
         uint32_t nToTransfer = 0;
         if (first_iter)
-            nToTransfer = OBOS_MIN(size, window_bytes_until_close);
+            nToTransfer = OBOS_MIN(size, usable_window);
         else if (size <= con->state.snd.wnd)
             nToTransfer = size;
         else
             nToTransfer = con->state.snd.wnd;
+
+        if (nToTransfer > con->state.snd.smss)
+            nToTransfer = con->state.snd.smss;
 
         struct tcp_pseudo_hdr hdr = {};
         if (nToTransfer)
@@ -1298,13 +1413,14 @@ void Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t siz
             if (nToTransfer == size)
                 hdr.flags |= TCP_PSH;
             hdr.window = con->state.rcv.wnd;
-            hdr.seq = con->state.snd.nxt + offset;
+            hdr.seq = (con->state.snd.nxt == previous_snd_nxt) ? con->state.snd.nxt + offset : con->state.snd.nxt;
             hdr.ack = con->state.rcv.nxt;
+            // printf("transmission of %d bytes, sequence is %d\n", nToTransfer, hdr.seq-con->state.snd.iss);
             NetH_SendTCPSegment(con->nic, con, con->ip_ent, con->dest.addr, &hdr);
         }
         
-        offset += hdr.payload_size;
-        size -= hdr.payload_size;
+        offset += nToTransfer;
+        size -= nToTransfer;
         first_iter = false;
     }
     
@@ -1735,10 +1851,11 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
         uint16_t mss; 
         uint8_t sack_perm_kind; 
         uint8_t sack_perm_len;
-        uint8_t eol; 
-    } opt = {
+        uint8_t eol;
+        uint8_t pad; 
+    } OBOS_PACK opt = {
         .kind=TCP_OPTION_MSS, .len=4, .mss=host_to_be16(tcp_get_mss(s->connection)),
-        .sack_perm_kind=TCP_OPTION_SACK_PERM, .sack_perm_len=2
+        .sack_perm_kind=TCP_OPTION_SACK_PERM, .sack_perm_len=2, .eol = TCP_OPTION_EOL
     };
     syn.options = (void*)&opt;
     syn.option_list_size = sizeof(opt);
@@ -1855,7 +1972,7 @@ static void irp_on_event_set(irp* req)
     {
         if (req->evnt)
             Core_EventClear(req->evnt);
-        req->status = OBOS_STATUS_ABORTED;
+        req->status = OBOS_STATUS_CONNECTION_RESET;
         return;
     }
     size_t read_size = OBOS_MIN(req->blkCount, s->connection->user_recv_buffer.size - s->connection->user_recv_buffer.in_ptr);
@@ -1990,6 +2107,14 @@ obos_status tcp_finalize_irp(irp* req)
 static void free_trb(tcp_connection* con)
 {
     net_tables* iface = con->nic->net_tables;
+    Core_CancelTimer(&con->retransmission_timer);
+    for (tcp_unacked_segment *cur = con->unacked_segments.list.head; cur; )
+    {
+        tcp_unacked_segment* const next = cur->node.next;
+        Free(OBOS_KernelAllocator, cur, sizeof(*cur));
+        cur = next;
+    }
+    Core_CancelTimer(&con->time_wait);
     Core_PushlockAcquire(&iface->tcp_connections_lock, false);
     if (con->is_client)
         RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, con);
@@ -2057,23 +2182,43 @@ obos_status tcp_shutdown(socket_desc* desc, int how)
         case TCP_STATE_CLOSE_WAIT:
         {
             s->connection->time_wait.userdata = s;
-            // well apparently we're supposed to queue this but
-            // idk how tf to do that
-            // so we're not gonna :)
-            struct tcp_pseudo_hdr fin = {};
-            fin.ttl = s->connection->ttl;
-            fin.dest_port = s->connection->dest.port;
-            fin.src_port = s->connection->src.port;
-            fin.window = s->connection->state.rcv.wnd;
-            fin.seq = s->connection->state.snd.nxt++;
-            fin.ack = s->connection->state.rcv.nxt;
-            fin.flags = TCP_FIN|TCP_ACK;
             if (s->connection->state.state == TCP_STATE_CLOSE_WAIT)
                 Net_TCPChangeConnectionState(s->connection, TCP_STATE_LAST_ACK);
             else
                 Net_TCPChangeConnectionState(s->connection, TCP_STATE_FIN_WAIT1);
-            NetH_SendTCPSegment(s->connection->nic, s->connection, s->connection->ip_ent, s->connection->dest.addr, &fin);
-            s->connection->fin_segment = fin.unacked_seg;
+            Core_PushlockAcquire(&s->connection->unacked_segments.lock, false);
+            // Piggyback a FIN, if possible
+            if (s->connection->unacked_segments.list.nNodes > 0)
+            {
+                tcp_unacked_segment* target = LIST_GET_TAIL(tcp_unacked_segment_list, &s->connection->unacked_segments.list);
+                // Only piggyback it if it hasn't been sent
+                // This is done so that we do not lose our 
+                // FIN if the old packet is ACKed.
+                // It is also done since having two segments
+
+                if (!target->sent)
+                {
+                    target->segment.flags |= TCP_FIN;
+                    s->connection->fin_segment = target;
+                }
+            }
+            Core_PushlockRelease(&s->connection->unacked_segments.lock, false);
+
+            if (!s->connection->fin_segment)
+            {
+                struct tcp_pseudo_hdr fin = {};
+                fin.ttl = s->connection->ttl;
+                fin.dest_port = s->connection->dest.port;
+                fin.src_port = s->connection->src.port;
+                fin.window = s->connection->state.rcv.wnd;
+                fin.seq = s->connection->state.snd.nxt++;
+                fin.ack = s->connection->state.rcv.nxt;
+                fin.flags = TCP_FIN|TCP_ACK;
+    
+                NetH_SendTCPSegment(s->connection->nic, s->connection, s->connection->ip_ent, s->connection->dest.addr, &fin);
+                
+                s->connection->fin_segment = fin.unacked_seg;
+            }
             break;
         }
         case TCP_STATE_FIN_WAIT1:
