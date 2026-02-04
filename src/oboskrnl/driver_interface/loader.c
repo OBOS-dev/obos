@@ -163,12 +163,6 @@ OBOS_NO_UBSAN driver_id *Drv_LoadDriver(const void* file_, size_t szFile, obos_s
             *status = st;
         return nullptr;
     }
-    if (!header_.ftable.driver_cleanup_callback)
-    {
-        OBOS_Error("%s: Refusing to load a driver without a cleanup callback.\n", __func__);
-        if (status) *status = OBOS_STATUS_INVALID_HEADER;
-        return nullptr;
-    }
     for (driver_node* curr = Drv_LoadedDrivers.head; curr; )
     {
         if (strncmp(header_.driverName, curr->data->header.driverName, 64))
@@ -397,7 +391,10 @@ obos_status Drv_UnrefDriver(driver_id* driver)
             driver->main_thread->free(driver->main_thread);
         driver->main_thread = 0;
     }
-    driver->header.ftable.driver_cleanup_callback();
+    if (driver->header.ftable.driver_cleanup_callback)
+        driver->header.ftable.driver_cleanup_callback();
+    else
+        OBOS_Error("%s: memory leak! driver_cleanup_callback is nullptr!\n", __func__);
     for (driver_node* node = driver->dependencies.head; node; )
     {
         // node->data->refCnt--;
