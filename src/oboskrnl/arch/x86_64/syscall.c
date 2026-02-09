@@ -320,6 +320,7 @@ const char* status_to_string[] = {
     "OBOS_STATUS_CONNECTION_REFUSED",
     "OBOS_STATUS_SEEK_UNALLOWED",
     "OBOS_STATUS_NETWORK_UNREACHABLE",
+    "OBOS_STATUS_CONNECTION_RESET",
 };
 
 void Arch_LogSyscall(uintptr_t rdi, uintptr_t rsi, uintptr_t rdx, uintptr_t r8, uintptr_t r9, uint32_t eax)
