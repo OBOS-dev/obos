@@ -29,6 +29,7 @@ global Arch_SyscallTrapHandler
 ; Syscall number is in eax.
 Arch_SyscallTrapHandler:
     swapgs
+    cld
     
     mov r10, [Arch_KernelCR3]
     mov cr3, r10
