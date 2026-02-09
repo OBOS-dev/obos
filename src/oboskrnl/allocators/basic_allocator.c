@@ -89,7 +89,8 @@ static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum bl
 		// 								nullptr);
 		if (!ret)
 			return nullptr;
-		memzero(ret, size);
+		if ((void*)This == (void*)OBOS_NonPagedPoolAllocator)
+			memzero(ret, size);
 		*blockSource = BLOCK_SOURCE_VMA;
 		return ret;
 	}
@@ -173,7 +174,7 @@ OBOS_NO_KASAN irql lock(cache* c)
 }
 OBOS_NO_KASAN void unlock(cache* c, irql oldIrql)
 {
-	Core_SpinlockRelease(&c->lock, oldIrql);
+	Core_SpinlockReleaseNoDPCDispatch(&c->lock, oldIrql);
 }
 #else
 irql lock(cache* c)
