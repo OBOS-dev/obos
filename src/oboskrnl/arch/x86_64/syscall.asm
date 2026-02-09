@@ -30,6 +30,7 @@ global Arch_SyscallTrapHandler
 ; FIXME: Return OBOS_STATUS_UNIMPLEMENTED if eax > highest syscall number
 Arch_SyscallTrapHandler:
     swapgs
+    cld
     
     mov r10, [Arch_KernelCR3]
     mov cr3, r10
