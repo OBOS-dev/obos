@@ -192,7 +192,7 @@ PacketProcessSignature(ARPRequest, arp_header*)
     Core_PushlockRelease(&nic->net_tables->table_lock, true);
     if (!ent)
         ExitPacketHandler();
-    if (~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY)
+    if (obos_expect(~ent->ip_entry_flags & IP_ENTRY_ENABLE_ARP_REPLY, false))
         ExitPacketHandler();
     size_t real_size = sizeof(arp_header)+sizeof(ip_addr)*2+sizeof(mac_address)*2;
     arp_header* hdr = Allocate(OBOS_NonPagedPoolAllocator, real_size, nullptr);
@@ -221,11 +221,7 @@ PacketProcessSignature(ARP, ethernet2_header*)
         ExitPacketHandler();
     
     if (hdr->len_protocol_address != 4)
-    {
-        if (hdr->len_protocol_address == 16)
-            NetUnimplemented(hdr->len_protocol_address == 16 (IPv6));
         ExitPacketHandler();
-    }
 
     switch (be16_to_host(hdr->opcode))
     {
