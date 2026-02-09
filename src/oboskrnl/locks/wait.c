@@ -135,6 +135,7 @@ obos_status Core_WaitOnObjects(size_t nObjects, struct waitable_header** objs, s
         }
         nodes[i].obj = obj;
         nodes[i].node.data = curr;
+        nodes[i].node.free = nullptr;
         CoreH_ThreadListAppend(&obj->waiting, &nodes[i].node);
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
     }

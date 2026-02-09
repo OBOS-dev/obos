@@ -83,6 +83,26 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
 
     return OBOS_STATUS_SUCCESS;
 }
+__attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockReleaseNoDPCDispatch(spinlock* const lock, irql oldIrql)
+{
+#if OBOS_DEBUG
+    if (oldIrql & 0xf0 && oldIrql != IRQL_INVALID)
+    {
+        OBOS_ASSERT(!"funny stuff");
+        return OBOS_STATUS_INVALID_IRQL;
+    }
+#endif
+
+    atomic_flag_clear_explicit(&lock->val, memory_order_relaxed);
+
+#if OBOS_DEBUG
+    lock->caller = 0;
+#endif
+
+    Core_LowerIrqlNoDPCDispatch(oldIrql);
+
+    return OBOS_STATUS_SUCCESS;
+}
 
 /*
  * No.

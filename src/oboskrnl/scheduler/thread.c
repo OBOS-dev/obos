@@ -114,6 +114,7 @@ obos_status CoreH_ThreadBlock(thread* thr, bool canYield)
 	if (thr->status == THREAD_STATUS_BLOCKED)
 		return OBOS_STATUS_SUCCESS;
 	OBOS_ENSURE(thr->masterCPU->idleThread != thr && "Blocking an idle thread can be fatal.");
+	OBOS_ENSURE(!thr->masterCPU->running_dpc && "Blocking in a DPC is unallowed");
 	irql oldIrql2 = Core_SpinlockAcquire(&Core_SchedulerLock);
 	irql oldIrql = Core_SpinlockAcquire(&thr->masterCPU->schedulerLock);
 	thread_node* node = &thr->snode;

@@ -1607,19 +1607,16 @@ obos_status Sys_PSelect(size_t nFds, uint8_t* uread_set, uint8_t *uwrite_set, ui
         if (obos_is_error(status))
         {
             Core_CancelTimer(&tm);
-            CoreH_FreeDPC(&tm.handler_dpc, false);
             goto timeout;
         }
         if (tm.mode == TIMER_EXPIRED)
         {
             // Just In Case
             Core_CancelTimer(&tm);
-            CoreH_FreeDPC(&tm.handler_dpc, false);
             status = OBOS_STATUS_SUCCESS;
             goto timeout;
         }
         Core_CancelTimer(&tm);
-        CoreH_FreeDPC(&tm.handler_dpc, false);
         unsignaledIRPIndex = 0;
         Free(OBOS_NonPagedPoolAllocator, waitable_list, nWaitableObjects*sizeof(struct waitable_header*));
         goto again;
@@ -1841,19 +1838,16 @@ obos_status Sys_PPoll(struct pollfd* ufds, size_t nFds, const uintptr_t* utimeou
         if (obos_is_error(status))
         {
             Core_CancelTimer(&tm);
-            CoreH_FreeDPC(&tm.handler_dpc, false);
             goto out;
         }
         if (signaled == WAITABLE_OBJECT(tm_evnt))
         {
             Core_CancelTimer(&tm);
-            CoreH_FreeDPC(&tm.handler_dpc, false);
             status = OBOS_STATUS_SUCCESS;
             goto out;
         }
         Core_CancelTimer(&tm);
-        CoreH_FreeDPC(&tm.handler_dpc, false);
-
+        
         n_waitable_objects = 0;
         for (size_t i = 0; i < irp_count; i++)
             VfsH_IRPUnref(irp_list[i]);

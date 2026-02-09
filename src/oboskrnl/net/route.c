@@ -42,7 +42,11 @@ DefineNetFreeSharedPtr
 
 static void dispatcher(vnode* nic)
 {
-    OBOS_Log("Entered network packet dispatcher in thread %d.%d\n", Core_GetCurrentThread()->proc->pid, Core_GetCurrentThread()->tid);
+    OBOS_Log("Entered network packet dispatcher on thread %d\n", Core_GetCurrentThread()->tid);
+
+    while (!nic->net_tables)
+        Core_YieldForce(true);
+
     net_tables* tables = nic->net_tables;
     obos_status status = OBOS_STATUS_SUCCESS;
 

@@ -1,7 +1,7 @@
 /*
  * oboskrnl/locks/event.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -26,6 +26,7 @@ typedef volatile struct event {
 } event;
 
 #define EVENT_INITIALIZE(t) (event){ .hdr=WAITABLE_HEADER_INITIALIZE(false, true), .type=(t) }
+#define EVENT_INITIALIZE_SIGNALED(t) (event){ .hdr=WAITABLE_HEADER_INITIALIZE(true, true), .type=(t) }
 
 OBOS_EXPORT obos_status Core_EventPulse(event* event, bool boostWaitingThreadPriority);
 OBOS_EXPORT bool        Core_EventGetState(const event* event);

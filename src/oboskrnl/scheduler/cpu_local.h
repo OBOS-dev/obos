@@ -49,6 +49,8 @@ typedef struct cpu_local
 
 	tjec* tjec_state;
 	csprng* csprng_state;
+
+	bool running_dpc;
 } cpu_local;
 extern DRV_EXPORT cpu_local* Core_CpuInfo;
 extern DRV_EXPORT size_t Core_CpuCount;

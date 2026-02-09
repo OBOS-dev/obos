@@ -72,13 +72,18 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void Core_Lo
 __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN void CoreH_DispatchDPCs()
 {
 	// Run pending DPCs on the current CPU.
-	for (dpc* cur = LIST_GET_HEAD(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs); cur; )
+	cpu_local* cpu = CoreS_GetCPULocalPtr();
+	if (cpu->running_dpc)
+		return;
+	for (dpc* cur = LIST_GET_HEAD(dpc_queue, &cpu->dpcs); cur; )
 	{
-		dpc* next = LIST_GET_NEXT(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
-		LIST_REMOVE(dpc_queue, &CoreS_GetCPULocalPtr()->dpcs, cur);
+		dpc* next = LIST_GET_NEXT(dpc_queue, &cpu->dpcs, cur);
+		LIST_REMOVE(dpc_queue, &cpu->dpcs, cur);
 		cur->cpu = nullptr;
+		cpu->running_dpc = true;
 		if (cur->handler)
 			cur->handler(cur, cur->userdata);
+		cpu->running_dpc = false;
 		cur = next;
 	}
 }

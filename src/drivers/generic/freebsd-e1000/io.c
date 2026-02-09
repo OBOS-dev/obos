@@ -361,9 +361,10 @@ static void rx_dpc(dpc* d, void* udata)
 
     e1000_frame* current_frame = nullptr;
     size_t offset = 0;
-        
+    
     while (true)
     {
+        bool advance_idx = true;
         uint32_t length = 0;
         bool eop = false;
         if(dev->hw.mac.type >= e1000_82547)
@@ -400,8 +401,7 @@ static void rx_dpc(dpc* d, void* udata)
                 Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
                 current_frame = nullptr;
                 offset = 0;
-                ++dev->rx_idx;
-                continue;
+                goto cont;
             }
 
             if (nic->net_tables)
@@ -414,7 +414,11 @@ static void rx_dpc(dpc* d, void* udata)
                 current_frame->refs--;
                 if (!current_frame->refs)
                     Free(OBOS_NonPagedPoolAllocator, current_frame, sizeof(e1000_frame));
-    
+                
+                E1000_WRITE_REG(&dev->hw, E1000_RDT(0), dev->rx_idx % RX_QUEUE_SIZE);
+                ++dev->rx_idx;
+                advance_idx = false;
+                
                 Net_EthernetProcess(nic, 0, OBOS_SharedPtrCopy(buf), buf->obj, buf->szObj, nullptr);
             }
 
@@ -425,9 +429,13 @@ static void rx_dpc(dpc* d, void* udata)
         else
             offset += length;
 
-        ++dev->rx_idx;
+        cont:
+        if (advance_idx)
+        {
+            E1000_WRITE_REG(&dev->hw, E1000_RDT(0), dev->rx_idx % RX_QUEUE_SIZE);
+            ++dev->rx_idx;
+        }
     }
-    E1000_WRITE_REG(&dev->hw, E1000_RDT(0), ((dev->rx_idx-1) % RX_QUEUE_SIZE));
     if (nic->net_tables)
         Net_TCPFlushACKs(nic->net_tables);
     Core_EventSet(&dev->rx_evnt, false);

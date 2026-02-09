@@ -4,7 +4,6 @@
  * Copyright (c) 2024-2026 Omar Berrow
 */
 
-#include "locks/event.h"
 #include <int.h>
 #include <klog.h>
 #include <error.h>
@@ -14,6 +13,9 @@
 #include <irq/irql.h>
 #include <irq/irq.h>
 #include <irq/timer.h>
+#include <irq/dpc.h>
+
+#include <locks/event.h>
 
 #include <allocators/base.h>
 
@@ -30,7 +32,6 @@
 #include <scheduler/process.h>
 #include <scheduler/cpu_local.h>
 #include <scheduler/thread_context_info.h>
-#include <irq/dpc.h>
 
 bool Core_TimerInterfaceInitialized;
 irq* Core_TimerIRQ;
@@ -192,6 +193,7 @@ obos_status Core_CancelTimer(timer* timer)
     if (timer == timer_list.tail)
         timer_list.tail = timer->prev;
     timer_list.nNodes--;
+    CoreH_FreeDPC(&timer->handler_dpc, false);
     Core_SpinlockRelease(&timer_list.lock, oldIrql);
     timer->mode = TIMER_EXPIRED;
     return OBOS_STATUS_SUCCESS;
