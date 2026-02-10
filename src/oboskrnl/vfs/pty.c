@@ -212,7 +212,9 @@ obos_status Vfs_CreatePTMX()
     OBOS_Log("%s: Creating /dev/ptmx\n", __func__);
     Drv_RegisterVNode(vn, "ptmx");
     OBOS_Log("%s: Creating /dev/pts\n", __func__);
-    OBOS_ENSURE(obos_is_success(Vfs_CreateNode(Vfs_DevRoot, "pts", VNODE_TYPE_DIR, (file_perm){.mode=0755})));
+    obos_status status = Vfs_CreateNode(Vfs_DevRoot, "pts", VNODE_TYPE_DIR, (file_perm){.mode=0755});
+    if (status != OBOS_STATUS_ALREADY_INITIALIZED)
+        OBOS_ENSURE(obos_is_success(status));
     return OBOS_STATUS_SUCCESS;
 }
 
