@@ -464,7 +464,7 @@ obos_status Vfs_FdSeek(fd* desc, off_t off, whence_t whence)
         case SEEK_END:
             if ((off % blkSize) && (desc->flags & FD_FLAGS_UNCACHED))
                 return OBOS_STATUS_INVALID_ARGUMENT;
-            finalOff = (off_t)desc->vn->filesize - 1 + off;
+            finalOff = (off_t)desc->vn->filesize + off;
             break;
         case SEEK_CUR:
             if ((off % blkSize) && (desc->flags & FD_FLAGS_UNCACHED))
