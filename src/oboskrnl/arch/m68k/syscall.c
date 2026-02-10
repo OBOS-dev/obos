@@ -238,7 +238,7 @@ void *Sys_GetTCB()
 }
 handle Sys_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, handle vmm_context);
 
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
+uintptr_t OBOS_ArchSyscallTable[] = {
     (uintptr_t)Sys_SetTCB,
     (uintptr_t)Sys_GetTCB,
     (uintptr_t)Sys_ThreadContextCreateFork,

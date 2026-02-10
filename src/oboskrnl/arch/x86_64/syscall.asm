@@ -27,6 +27,7 @@ global Arch_SyscallTrapHandler
 ; Parameter registers (in order):
 ; rdi, rsi, rdx, r8, r9
 ; Syscall number is in eax.
+; FIXME: Return OBOS_STATUS_UNIMPLEMENTED if eax > highest syscall number
 Arch_SyscallTrapHandler:
     swapgs
     

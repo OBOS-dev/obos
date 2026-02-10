@@ -370,7 +370,7 @@ obos_status Sys_Suspend()
     return OBOS_Suspend();
 }
 
-uintptr_t OBOS_SyscallTable[SYSCALL_END-SYSCALL_BEGIN] = {
+uintptr_t OBOS_SyscallTable[] = {
     (uintptr_t)Core_ExitCurrentThread,
     (uintptr_t)Core_Yield,
     (uintptr_t)Sys_Reboot,

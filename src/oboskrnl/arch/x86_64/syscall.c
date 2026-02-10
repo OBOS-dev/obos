@@ -109,7 +109,7 @@ uint64_t SysS_QueryTSCFrequency()
     return UINT64_MAX;
 }
 
-uintptr_t OBOS_ArchSyscallTable[ARCH_SYSCALL_END-ARCH_SYSCALL_BEGIN] = {
+uintptr_t OBOS_ArchSyscallTable[] = {
     (uintptr_t)SysS_SetFSBase,
     (uintptr_t)SysS_ThreadContextCreateFork,
     (uintptr_t)SysS_ClockGet,
