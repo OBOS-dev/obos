@@ -73,7 +73,8 @@ bool probe(void* vn_)
     cache->blocks_per_group = ext_sb_blocks_per_group(sb);
     cache->inodes_per_group = ext_sb_inodes_per_group(sb);
     cache->inode_size = ext_sb_inode_size(sb);
-    cache->block_group_count = le32_to_host(cache->superblock.block_count) / cache->blocks_per_group;
+    uint32_t block_count = le32_to_host(cache->superblock.block_count);
+    cache->block_group_count = block_count / cache->blocks_per_group + !!(block_count % cache->blocks_per_group);
     cache->vn = vn;
     cache->inodes_per_block = cache->block_size/cache->inode_size;
     cache->inode_blocks_per_group = cache->inodes_per_group/cache->inodes_per_block;
