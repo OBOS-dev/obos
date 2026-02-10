@@ -475,6 +475,7 @@ PacketProcessSignature(TCP, ip_header*)
             resp.src_port = con->src.port;
             resp.flags = TCP_SYN|TCP_ACK;
             resp.window = con->state.rcv.wnd;
+            con->state.sack_perm = false;
             struct {
                 uint8_t kind; 
                 uint8_t len;
@@ -564,6 +565,7 @@ PacketProcessSignature(TCP, ip_header*)
                 resp.window = con->state.rcv.wnd;
                 resp.ack = con->state.rcv.nxt;
                 resp.flags = TCP_ACK | TCP_SYN;
+                con->state.sack_perm = false;
                 struct {
                     uint8_t kind; 
                     uint8_t len;
@@ -1107,7 +1109,7 @@ static void retransmission_timer_expired(void* userdata)
         if (rtxqn->seq_right == con->state.snd.nxt)
             flags |= con->tx_closed ? TCP_TX_CLOSE_TX : 0;
 
-        obos_status status = Net_TCPDoTransmissionAt(con, rtxqn->seq_left - con->state.snd.una, rtxqn->seq_right - con->state.snd.una, flags);
+        obos_status status = Net_TCPDoTransmissionAt(con, rtxqn->seq_left - con->state.snd.una, OBOS_MIN(rtxqn->seq_right, con->state.snd.nxt) - con->state.snd.una, flags);
         if (status == OBOS_STATUS_PIPE_CLOSED || status == OBOS_STATUS_CONNECTION_RESET)
         {
             Core_CancelTimer(&con->retransmission_timer);
@@ -1862,7 +1864,7 @@ obos_status tcp_connect(socket_desc* socket, struct sockaddr* saddr, size_t addr
         uint8_t pad; 
     } OBOS_PACK opt = {
         .kind=TCP_OPTION_MSS, .len=4, .mss=host_to_be16(tcp_get_mss(s->connection)),
-        .sack_perm_kind=TCP_OPTION_SACK_PERM, .sack_perm_len=2, .eol = TCP_OPTION_EOL
+        .sack_perm_kind=/* TCP_OPTION_SACK_PERM */ TCP_OPTION_NOP, .sack_perm_len=/*2*/ TCP_OPTION_NOP, .eol = TCP_OPTION_EOL
     };
     syn.options = (void*)&opt;
     syn.option_list_size = sizeof(opt);
