@@ -96,6 +96,7 @@ void Sys_ExitCurrentProcess(uint32_t exitCode)
 #define _SC_ARG_MAX 0
 #define _SC_CHILD_MAX 1
 #define _SC_CLK_TCK 2
+#define _SC_NGROUPS_MAX 3
 #define _SC_TZNAME_MAX 6
 #define _SC_OPEN_MAX 4
 #define _SC_PAGE_SIZE 30
@@ -117,6 +118,9 @@ obos_status Sys_SysConf(int num, long *ret_)
             break;
         case _SC_ARG_MAX:
             ret = OBOS_PAGE_SIZE;
+            break;
+        case _SC_NGROUPS_MAX:
+            ret = 32;
             break;
         case _SC_TZNAME_MAX:
             ret = 6;
