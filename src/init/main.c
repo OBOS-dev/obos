@@ -1,7 +1,7 @@
 /*
  * init/main.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
 */
 
 #include <unistd.h>
@@ -10,13 +10,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
-#include <string.h>
+#include <utmp.h>
+#include <utmpx.h>
 #include <strings.h>
+#include <string.h>
+#include <paths.h>
 #include <fcntl.h>
 #include <errno.h>
 
 #include <sys/wait.h>
 #include <sys/select.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include <obos/syscall.h>
 #include <obos/error.h>
@@ -54,6 +59,33 @@ void sigchld_handler(int num)
     (void)(num);
     if (!is_power_button_handler)
         printf("init: Child process died. Performing sigchld action \"%s\"\n", sigchld_action);
+
+    setutxent();
+
+    do {
+        struct utmpx dead_proc_entry = {};
+        struct timespec ts;
+        clock_gettime(0, &ts);
+    
+        dead_proc_entry.ut_tv.tv_sec = ts.tv_sec;
+        dead_proc_entry.ut_tv.tv_usec = ts.tv_nsec/1000;
+        dead_proc_entry.ut_type = DEAD_PROCESS;
+        dead_proc_entry.ut_pid = 1;
+        
+        char* tty_name = ttyname(STDIN_FILENO);
+        if (tty_name)
+        {
+            strncpy(dead_proc_entry.ut_line, tty_name + 5 /* remove /dev/ */, sizeof(dead_proc_entry.ut_line) - 1);
+            strncpy(dead_proc_entry.ut_id, tty_name + strlen(tty_name) - 4, sizeof(dead_proc_entry.ut_id) - 1);
+        }
+        
+        if (pututxline(&dead_proc_entry) == NULL)
+            perror("pututxline");
+        updwtmpx(_PATH_WTMP, &dead_proc_entry);
+    } while(0);
+
+    endutxent();
+
     sync();
     if (strcasecmp(sigchld_action, "shutdown") == 0)
         syscall0(Sys_Shutdown);
@@ -73,6 +105,9 @@ int main(int argc, char** argv)
 {
     if (getpid() != 1)
         return -1;
+    if (getuid() != 0)
+        return -1;
+
     const char* swap_file = NULL;
     char* handoff_process = NULL;
     int opt = 0;
@@ -128,6 +163,48 @@ int main(int argc, char** argv)
         return 1;
     }
     // if (strcasecmp(sigchld_action, "ignore") != 0)
+
+    struct timespec ts = {};
+    clock_gettime(0, &ts);
+    
+    setutxent();
+    do {
+        struct utmpx boot_entry = {};
+    
+        boot_entry.ut_tv.tv_sec = ts.tv_sec;
+        boot_entry.ut_tv.tv_usec = ts.tv_nsec/1000;
+        boot_entry.ut_type = BOOT_TIME;
+        boot_entry.ut_pid = 1;
+        memcpy(boot_entry.ut_line, "reboot", 6);
+        
+        if (pututxline(&boot_entry) == NULL)
+            perror("pututxline");
+        updwtmpx(_PATH_WTMP, &boot_entry);
+    } while(0);
+    do {
+        struct utmpx init_proc_entry = {};
+        struct timespec ts;
+    
+        clock_gettime(0, &ts);
+    
+        init_proc_entry.ut_tv.tv_sec = ts.tv_sec;
+        init_proc_entry.ut_tv.tv_usec = ts.tv_nsec/1000;
+        init_proc_entry.ut_type = INIT_PROCESS;
+        init_proc_entry.ut_pid = 1;
+
+        char* tty_name = ttyname(STDIN_FILENO);
+        if (tty_name)
+        {
+            strncpy(init_proc_entry.ut_line, tty_name + 5 /* remove /dev/ */, sizeof(init_proc_entry.ut_line) - 1);
+            strncpy(init_proc_entry.ut_id, tty_name + strlen(tty_name) - 4, sizeof(init_proc_entry.ut_id) - 1);
+        }
+        
+        if (pututxline(&init_proc_entry) == NULL)
+            perror("pututxline");
+        updwtmpx(_PATH_WTMP, &init_proc_entry);
+    } while(0);
+    endutxent();
+
     if (0)
         signal(SIGCHLD, sigchld_handler);
     if (swap_file)
