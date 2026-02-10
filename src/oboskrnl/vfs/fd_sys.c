@@ -132,7 +132,7 @@ obos_status Sys_FdOpenEx(handle desc, const char* upath, uint32_t oflags, uint32
         path[index] = 0;
         
         const char* dirname = path;
-        dirent* parent = VfsH_DirentLookup(dirname);
+        dirent* parent = VfsH_FollowLink(VfsH_DirentLookup(dirname));
         path[index] = ch;
         if (!parent)
         {
@@ -243,7 +243,7 @@ obos_status Sys_FdOpenAtEx(handle desc, handle ent, const char* uname, uint32_t 
         name[index] = 0;
         
         const char* dirname = name;
-        dirent* parent = VfsH_DirentLookupFrom(dirname, parent_dent);
+        dirent* parent = VfsH_FollowLink(VfsH_DirentLookupFrom(dirname, parent_dent));
         name[index] = ch;
         if (!parent)
         {
