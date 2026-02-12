@@ -786,9 +786,13 @@ static void poll_keyboard(struct screen_tty* data)
                             buffer[i] = number_to_secondary(scancode);
                         else
                             buffer[i] = '0' + (scancode-SCANCODE_0);
+                        if (buffer[i] == '^' && mod & CTRL)
+                            buffer[i] = 0x1e;
                         break;
                     case SCANCODE_FORWARD_SLASH:
                         buffer[i] = (mod & NUMPAD) ? '/' : ((mod & SHIFT) ? '?' : '/');
+                        if (mod & CTRL && buffer[i] == '/') buffer[i] = 0x1f;
+                        if (mod & CTRL && buffer[i] == '@') buffer[i] = 0x00;
                         break;
                     case SCANCODE_PLUS:
                         buffer[i] = '+';
@@ -806,10 +810,10 @@ static void poll_keyboard(struct screen_tty* data)
                         buffer[i] = (mod & NUMPAD) ? '.' : ((~mod & SHIFT) ? '.' : '>');
                         break;
                     case SCANCODE_SQUARE_BRACKET_LEFT:
-                        buffer[i] = (~mod & SHIFT) ? '[' : '{';
+                        buffer[i] = (~mod & SHIFT) ? (mod & CTRL) ? 0x1b : '[' : '{';
                         break;
                     case SCANCODE_SQUARE_BRACKET_RIGHT:
-                        buffer[i] = (~mod & SHIFT) ? ']' : '}';
+                        buffer[i] = (~mod & SHIFT) ? (mod & CTRL) ? 0x1d : ']' : '}';
                         break;
                     case SCANCODE_SEMICOLON:
                         buffer[i] = (~mod & SHIFT) ? ';' : ':';
@@ -830,13 +834,13 @@ static void poll_keyboard(struct screen_tty* data)
                         buffer[i] = (~mod & SHIFT) ? '\\' : '|';
                         break;
                     case SCANCODE_SPACE:
-                        buffer[i] = ' ';
+                        buffer[i] = ~mod & CTRL ? ' ' : 0x00;
                         break;
                     case SCANCODE_EQUAL:
                         buffer[i] = (mod & SHIFT) ? '+' : '=';
                         break;
                     case SCANCODE_DASH:
-                        buffer[i] = (mod & SHIFT) ? '_' :  '-';
+                        buffer[i] = (mod & SHIFT) ? ((mod & CTRL) ? 0x1f : '_') :  '-';
                         break;
                     case SCANCODE_BACKSPACE:
                         buffer[i] = '\177';
@@ -885,9 +889,18 @@ static void poll_keyboard(struct screen_tty* data)
                         nReady--;
                         break;
                 }
+                if (mod & ALT && buffer[i] != 0x1b)
+                {
+                    nReady += 1;
+                    i += 1;
+                    buffer = Vfs_Realloc(buffer, nReady);
+                    buffer[1] = buffer[0];
+                    buffer[0] = 0x1b;
+                }
                 i++;
             }
         }
+            
         if (nReady && !data->input_paused)
             data->data_ready(data->tty, buffer, nReady);
         Vfs_Free(buffer);
