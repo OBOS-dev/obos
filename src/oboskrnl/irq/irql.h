@@ -1,7 +1,7 @@
 /*
-	oboskrnl/irq/irql.h
-
-	Copyright (c) 2024 Omar Berrow
+ * oboskrnl/irq/irql.h
+ * 
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -46,6 +46,18 @@ enum
 #endif
 	IRQL_INVALID = 0xff,
 };
+
+extern irql Core_TempIrql;
+
+#define Core_GetIRQLVar()\
+({\
+	irql* res = nullptr;\
+	if (obos_expect(!!CoreS_GetCPULocalPtr(), true))\
+		res = &CoreS_GetCPULocalPtr()->currentIrql;\
+	else\
+		res = &Core_TempIrql;\
+	res;\
+})
 
 // Internal-use only pls
 void CoreH_DispatchDPCs();
