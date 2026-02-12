@@ -312,7 +312,6 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
     // this can be implied by doing '!rng->cow && rng->mapped_here'
     // rng->un.shared = reg ? ~flags & VMA_FLAGS_PRIVATE : false;
     rng->phys32 = (flags & VMA_FLAGS_32BITPHYS);
-    rng->ctx = ctx;
 
     if (file)
         rng->un.mapped_vn = file->vn;
@@ -538,7 +537,6 @@ obos_status Mm_VirtualMemoryFree(context* ctx, void* base_, size_t size)
                 RB_INSERT(page_tree, &ctx->pages, after);
             else
                 Free(Mm_Allocator, after, sizeof(*after));
-            rng->ctx = nullptr;
             Free(Mm_Allocator, rng, sizeof(*rng));
             rng = nullptr;
         }
@@ -800,7 +798,6 @@ void* Mm_MapViewOfUserMemory(context* const user_context, void* ubase_, void* kb
 
     page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->virt = kbase;
-    rng->ctx = &Mm_KernelContext;
     rng->phys32 = false;
     rng->hasGuardPage = false;
     rng->pageable = false;
@@ -940,7 +937,6 @@ void* Mm_QuickVMAllocate(size_t sz, bool non_pageable)
     uintptr_t base = (uintptr_t)blk;
 
     page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
-    rng->ctx = ctx;
     rng->size = sz;
     rng->virt = base;
     rng->prot.present = true;

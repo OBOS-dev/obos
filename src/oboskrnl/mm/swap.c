@@ -111,7 +111,7 @@ obos_status Mm_SwapOut(uintptr_t virt, context* ctx)
         Mm_MarkAsStandbyPhys(pg);
     return OBOS_STATUS_SUCCESS;
 }
-obos_status Mm_SwapIn(page_info* page, fault_type* type)
+obos_status Mm_SwapIn(context* ctx, page_info* page, fault_type* type)
 {
     if (!Mm_SwapProvider)
         return OBOS_STATUS_INVALID_INIT_PHASE;
@@ -126,7 +126,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         return OBOS_STATUS_UNPAGED_POOL;
     irql oldIrql = Mm_TakeSwapLock();
     page_info arch_pg_info = {.virt=page->virt};
-    MmS_QueryPageInfo(page->range->ctx->pt, arch_pg_info.virt, &arch_pg_info, nullptr);
+    MmS_QueryPageInfo(ctx->pt, arch_pg_info.virt, &arch_pg_info, nullptr);
     if (arch_pg_info.prot.is_swap_phys)
         goto down;
     struct page what = {.phys=page->phys};
@@ -152,7 +152,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
         //     OBOS_ASSERT(!"Funny business");
         node->pagedCount++;
         page->prot.present = true;
-        obos_status status = MmS_SetPageMapping(page->range->ctx->pt, page, node->phys, false);
+        obos_status status = MmS_SetPageMapping(ctx->pt, page, node->phys, false);
         // Free(Mm_Allocator, node, sizeof(*node));
         if (obos_expect(obos_is_error(status), false))
         {
@@ -221,7 +221,7 @@ obos_status Mm_SwapIn(page_info* page, fault_type* type)
     page->prot.is_swap_phys = false;
     page->phys = phys;
     alloc->phys->pagedCount++;
-    status = MmS_SetPageMapping(page->range->ctx->pt, page, phys, false);
+    status = MmS_SetPageMapping(ctx->pt, page, phys, false);
     if (obos_is_error(status))
     {
         Mm_FreePhysicalPages(phys, nPages);

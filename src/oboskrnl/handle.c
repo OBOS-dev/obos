@@ -1,7 +1,7 @@
 /*
  * oboskrnl/handle.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -13,6 +13,7 @@
 #include <scheduler/cpu_local.h>
 #include <scheduler/process.h>
 #include <scheduler/schedule.h>
+#include <scheduler/sched_sys.h>
 
 #include <irq/irql.h>
 
@@ -62,6 +63,7 @@ void OBOS_InitializeHandleTable(handle_table* table)
     table->lock = MUTEX_INITIALIZE();
     OBOS_ExpandHandleTable(table, 64);
 }
+
 handle_table* OBOS_CurrentHandleTable()
 {
     // can only access cpu local stuff at IRQL_DISPATCH
@@ -77,10 +79,12 @@ void OBOS_LockHandleTable(handle_table* table)
 {
     Core_MutexAcquire(&table->lock);
 }
+
 void OBOS_UnlockHandleTable(handle_table* table)
 {
     Core_MutexRelease(&table->lock);
 }
+
 #define in_range(ra,rb,x) (((x) >= (ra)) && ((x) < (rb)))
 handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type, bool ignoreType, obos_status* status)
 {
@@ -123,6 +127,7 @@ handle_desc* OBOS_HandleLookup(handle_table* table, handle hnd, handle_type type
         OBOS_ASSERT(table->arr[hnd].type == type);
     return &table->arr[hnd];
 }
+
 handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** const desc)
 {
     OBOS_ASSERT(table);
@@ -145,6 +150,7 @@ handle OBOS_HandleAllocate(handle_table* table, handle_type type, handle_desc** 
     hnd |= (type << HANDLE_TYPE_SHIFT);
     return hnd;
 }
+
 void OBOS_HandleFree(handle_table* table, handle_desc *curr)
 {
     curr->type = HANDLE_TYPE_INVALID;
@@ -224,6 +230,11 @@ void process_close(handle_desc* hnd)
         Free(OBOS_NonPagedPoolAllocator, hnd->un.process, sizeof(process));
     hnd->un.as_int = 0;
 }
+void thread_ctx_close(handle_desc* hnd)
+{
+    Free(OBOS_KernelAllocator, hnd->un.thread_ctx, sizeof(*hnd->un.thread_ctx));
+    hnd->un.as_int = 0;
+}
 void irp_close(handle_desc* hnd)
 {
     user_irp* req = hnd->un.irp;
@@ -236,6 +247,10 @@ void irp_close(handle_desc* hnd)
     hnd->un.as_int = 0;
 }
 extern void OBOS_ThreadHandleFree(handle_desc* hnd);
+void unimpl_close(handle_desc* hnd)
+{
+    OBOS_Warning("could not close handle of type %d\n", hnd->type);
+}
 
 void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     fd_close,
@@ -249,7 +264,7 @@ void(*OBOS_HandleCloseCallbacks[LAST_VALID_HANDLE_TYPE])(handle_desc *hnd) = {
     nullptr,
     nullptr,
     drv_close,
-    nullptr,
+    thread_ctx_close,
     irp_close,
 };
 

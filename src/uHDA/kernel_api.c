@@ -163,7 +163,6 @@ static void* map_registers(uintptr_t phys, size_t size, bool uc)
     page_range* rng = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
     rng->size = size;
     rng->virt = (uintptr_t)virt;
-    rng->ctx = &Mm_KernelContext;
     rng->prot.present = true;
     rng->prot.rw = true;
     rng->prot.ro = false;

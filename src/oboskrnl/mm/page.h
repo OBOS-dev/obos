@@ -138,11 +138,10 @@ OBOS_EXPORT extern size_t Mm_PhysicalMemoryUsage; // Current physical memory usa
 
 typedef struct page_range
 {
+    RB_ENTRY(page_range) rb_node;
     uintptr_t virt;
     size_t size;
     page_protection prot;
-    RB_ENTRY(page_range) rb_node;
-    struct context* ctx;
     bool pageable : 1;
     bool hasGuardPage : 1;
     bool can_fork : 1; // see madvise(MADV_DONTFORK)

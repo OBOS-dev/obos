@@ -120,7 +120,6 @@ static OBOS_NO_UBSAN bool register_pages(basicmm_region* region, void* udatablk)
             OBOS_ASSERT(udata->i < udata->nNodes);
             RB_INSERT(page_tree, &Mm_KernelContext.pages, reg);
             reg = &udata->buf[udata->i++];
-            reg->ctx = &Mm_KernelContext;
             reg->virt = addr;
             reg->prot = pg.prot;
             reg->pageable = pageable;

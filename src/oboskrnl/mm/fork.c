@@ -56,7 +56,6 @@ obos_status Mm_ForkContext(context* into, context* toFork)
              */
             page_range* clone = ZeroAllocate(Mm_Allocator, 1, sizeof(page_range), nullptr);
             memcpy(clone, curr, sizeof(*curr));
-            clone->ctx = into;
             memzero(&clone->rb_node, sizeof(clone->rb_node));
             RB_INSERT(page_tree, &into->pages, clone);
 

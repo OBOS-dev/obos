@@ -82,7 +82,7 @@ handle SysS_ThreadContextCreateFork(uintptr_t entry, uintptr_t stack_pointer, ha
     desc->un.thread_ctx = ctx;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     ctx->ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
-    ctx->canFree = true;
+    ctx->usable = true;
     ctx->lock = PUSHLOCK_INITIALIZE();
 
     ctx->ctx->cr3 = vmm_ctx->pt;

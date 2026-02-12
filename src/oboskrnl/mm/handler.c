@@ -36,7 +36,7 @@
 obos_status Mm_AgingPRA(context* ctx);
 obos_status Mm_AgingReferencePage(context* ctx, working_set_node* node);
 
-static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_type *type, page_info *info)
+static void map_file_region(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, fault_type *type, page_info *info)
 {
     if (!rng->prot.rw && ec & PF_EC_RW)
     {
@@ -57,7 +57,7 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         *type = ACCESS_FAULT;
         return;
     }
-    irql oldIrql = Core_SpinlockAcquire(&rng->ctx->lock);
+    irql oldIrql = Core_SpinlockAcquire(&ctx->lock);
     MmH_RefPage(phys);
     if (ec & PF_EC_RW)
         Mm_MarkAsDirtyPhys(phys);
@@ -72,9 +72,9 @@ static void map_file_region(page_range* rng, uintptr_t addr, uint32_t ec, fault_
         info->prot.rw = rng->prot.rw;
     
     phys->pagedCount++;
-    MmS_SetPageMapping(rng->ctx->pt, info, phys->phys, false);
-    MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
-    Core_SpinlockRelease(&rng->ctx->lock, oldIrql);
+    MmS_SetPageMapping(ctx->pt, info, phys->phys, false);
+    MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    Core_SpinlockRelease(&ctx->lock, oldIrql);
 }
 
 static bool sym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t ec, page** pg, page_info* info)
@@ -178,13 +178,13 @@ static bool asym_cow_cpy(context* ctx, page_range* rng, uintptr_t addr, uint32_t
     }
     done:
     MmS_SetPageMapping(ctx->pt, info, (*pg)->phys, false);
-    MmS_TLBShootdown(rng->ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
+    MmS_TLBShootdown(ctx->pt, info->virt, info->prot.huge_page ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
     info->range = rng;
     // if (ec & PF_EC_RW)
     //     Mm_MarkAsDirtyPhys(pg);
     // else
     //     Mm_MarkAsStandbyPhys(pg);
-    MmS_QueryPageInfo(rng->ctx->pt, info->virt, info, nullptr);
+    MmS_QueryPageInfo(ctx->pt, info->virt, info, nullptr);
     ref_page(ctx, info);
     return true;
 }
@@ -244,7 +244,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         handled = true;
         fault_type curr_type = SOFT_FAULT;
         if (~ec & PF_EC_PRESENT)
-            map_file_region(rng, addr, ec, &curr_type, &curr);
+            map_file_region(ctx, rng, addr, ec, &curr_type, &curr);
         else
             handled = false;
         if (curr_type > type && handled)
@@ -283,7 +283,7 @@ obos_status Mm_HandlePageFault(context* ctx, uintptr_t addr, uint32_t ec)
         fault_type curr_type = SOFT_FAULT;
         // for (volatile bool b = !rng->pageable; b; )
         //     ;
-        obos_status status = Mm_SwapIn(&curr, &curr_type);
+        obos_status status = Mm_SwapIn(ctx, &curr, &curr_type);
         if (curr_type > type)
             type = curr_type;
         if (obos_is_error(status))

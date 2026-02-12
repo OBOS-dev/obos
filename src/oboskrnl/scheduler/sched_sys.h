@@ -22,7 +22,7 @@ typedef struct thread_ctx_handle
     struct thread_context_info* ctx;
     pushlock lock;
     // If false, this thread context cannot be used in a new thread creation.
-    bool canFree;
+    bool usable;
 
     struct context* vmm_ctx;
 } thread_ctx_handle;

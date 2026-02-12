@@ -40,10 +40,6 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquireE
         while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
             OBOSS_SpinlockHint();
 
-#if OBOS_DEBUG
-    lock->caller = __builtin_return_address(0);
-#endif
-
     return oldIrql;
 }
 
@@ -52,14 +48,10 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN irql Core_SpinlockAcquire(
     irql oldIrql = IRQL_INVALID;
     if (obos_expect(Core_GetIrql() < IRQL_DISPATCH, false))
         oldIrql = Core_RaiseIrqlNoThread(IRQL_DISPATCH);
-    if (!atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
-       goto locked;
+    if (obos_expect(!atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel), true))
+       return oldIrql;
     while (atomic_flag_test_and_set_explicit(&lock->val, memory_order_acq_rel))
         OBOSS_SpinlockHint();
-    locked:
-#if OBOS_DEBUG
-    lock->caller = __builtin_return_address(0);
-#endif
     return oldIrql;
 }
 
@@ -74,10 +66,6 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN obos_status Core_SpinlockR
 #endif
 
     atomic_flag_clear_explicit(&lock->val, memory_order_relaxed);
-
-#if OBOS_DEBUG
-    lock->caller = 0;
-#endif
 
     Core_LowerIrqlNoThread(oldIrql);
 

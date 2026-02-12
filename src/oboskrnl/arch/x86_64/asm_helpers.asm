@@ -197,22 +197,8 @@ global CoreS_GetCPULocalPtr:function default
 extern Arch_cpu_local_curr_offset
 extern Arch_SMPInitialized
 CoreS_GetCPULocalPtr:
-	push rbp
-	mov rbp, rsp
-
 	mov rax, [Arch_cpu_local_curr_offset]
 	mov rax, [gs:rax]
-
-	cmp byte [Arch_SMPInitialized], 1
-	jne .done
-	cmp rax, 0
-	jne .done
-	mov rdi, 0xA50E7707 ; ASMERROR
-	mov dword [rdi], 0xDEADBEEF
-
-.done:
-
-	leave 
 	ret
 cli:
 	cli

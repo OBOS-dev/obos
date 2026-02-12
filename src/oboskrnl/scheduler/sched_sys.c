@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/sched_sys.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -62,7 +62,7 @@ handle Sys_ThreadContextCreate(uintptr_t entry, uintptr_t arg1, void* stack, siz
     desc->un.thread_ctx = ctx;
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
     ctx->ctx = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(thread_ctx), nullptr);
-    ctx->canFree = true;
+    ctx->usable = true;
     ctx->lock = PUSHLOCK_INITIALIZE();
     ctx->vmm_ctx = vmm_ctx;
 
@@ -219,7 +219,7 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         return HANDLE_INVALID;
     }
-    if (!ctx->un.thread_ctx->canFree)
+    if (!ctx->un.thread_ctx->usable)
     {
         OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
         return HANDLE_INVALID;
@@ -244,11 +244,10 @@ handle Sys_ThreadCreate(thread_priority priority, thread_affinity affinity, hand
     }
     thr->signal_info = OBOSH_AllocateSignalHeader();
 
-    if (ctx->un.thread_ctx->canFree)
+    if (ctx->un.thread_ctx->usable)
     {
         Core_PushlockAcquire(&ctx->un.thread_ctx->lock, false);
-        ctx->un.thread_ctx->canFree = false;
-        ctx->un.thread_ctx->ctx = &thr->context;
+        ctx->un.thread_ctx->usable = false;
         Core_PushlockRelease(&ctx->un.thread_ctx->lock, false);
     }
 
