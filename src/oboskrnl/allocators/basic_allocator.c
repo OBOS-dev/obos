@@ -102,7 +102,7 @@ static OBOS_NO_KASAN void* init_mmap(size_t size, basic_allocator* This, enum bl
 	return blk;
 }
 
-size_t init_pgsize() { return OBOS_PAGE_SIZE; }
+#define init_pgsize() OBOS_PAGE_SIZE
 
 static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block, size_t size)
 {
@@ -121,17 +121,17 @@ static OBOS_NO_KASAN void init_munmap(enum blockSource blockSource, void* block,
 		case BLOCK_SOURCE_PHYSICAL_MEMORY:
 		{
 			uintptr_t phys = 0;
-			#ifdef __x86_64__
+#ifdef __x86_64__
 			phys = Arch_UnmapFromHHDM(block);
-			#elif defined(__m68k__)
+#elif defined(__m68k__)
 			phys = Arch_UnmapFromHHDM(block);
-			#else
-			#	error Unknown architecture
-			#endif
+#else
+#	error Unknown architecture
+#endif
 			size_t nPages = size / OBOS_PAGE_SIZE;
 			if (size % OBOS_PAGE_SIZE)
 				nPages++;
-			memset(block, 0xcc, size);
+//			memset(block, 0xcc, size);
 			Mm_FreePhysicalPages(phys, nPages);
 			break;
 		}
@@ -192,7 +192,7 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 	size_t sz = 1 << (cache_index+4);
 	size_t sz_node = sz;
 	if (sz < init_pgsize())
-		sz = init_pgsize();
+		sz = init_pgsize()*8;
 	void* reg = init_mmap(sz, alloc, &alloc->blkSource);
 	if (!reg)
 		return 0;
@@ -201,31 +201,28 @@ static OBOS_NO_KASAN int allocate_region(basic_allocator* alloc, cache* c, size_
 #endif
 	
 	if (sz_node == sz)
-		append_node(c->free, (freelist_node*)reg);
+		append_node(c->clean, (freelist_node*)reg);
 	else
 	{
 		size_t nBlocks = (sz/sz_node);
 		for (size_t i = 0; i < nBlocks; i++)
 		{
 			freelist_node* node = (freelist_node*)((uintptr_t)reg + i*sz_node);
-			append_node(c->free, node);
+			append_node(c->clean, node);
 		}
 	}
 
 	return 1;
 }
 
-static volatile bool s_enable_alloc_logs = false;
-
-void* _Allocate(allocator_info* This_, size_t nBytes, obos_status* status, bool);
-OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
-{
-	void* blk = _Allocate(This_, nBytes, status, false);
-	if (s_enable_alloc_logs)
-		printf("kalloc alloc 0x%p %d 0x%p\n", blk, nBytes, __builtin_return_address(0));
-	return blk;
-}
-OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes, obos_status* status, bool log_alloc)
+// OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
+// {
+// 	void* blk = _Allocate(This_, nBytes, status, false);
+// 	// if (s_enable_alloc_logs)
+// 	// 	printf("kalloc alloc 0x%p %d 0x%p\n", blk, nBytes, __builtin_return_address(0));
+// 	return blk;
+// }
+static OBOS_NO_UBSAN OBOS_NO_KASAN void* DoAllocation(allocator_info* This_, size_t nBytes, obos_status* status, bool zero_out, OBOS_MAYBE_UNUSED void* return_address)
 {
 	basic_allocator* This = (basic_allocator*)This_;
 
@@ -247,7 +244,7 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 	OBOS_ASSERT(nBytes >= unrounded_nBytes);
 
 #if __SIZE_MAX__ > __UINT32_MAX__
-	if (obos_expect(nBytes > (4UL*1024*1024*1024), false))
+	if (obos_expect(nBytes > 0x100000000, false))
 	{
 		if (status) *status = OBOS_STATUS_INVALID_ARGUMENT;
 		return NULL; // invalid argument
@@ -255,11 +252,22 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 #endif
 
 	size_t cache_index = __builtin_ctzll(nBytes)-4;
-	volatile cache* c = &This->caches[cache_index];
+	cache* c = &This->caches[cache_index];
 
 	irql oldIrql = lock((cache*)c);
 
-	void* ret = c->free.tail;
+	const bool izero_out = zero_out;
+	freelist* list = &c->clean;
+	void* ret = c->clean.tail;
+	zero_out = false;
+
+	if (obos_expect(!ret, true))
+	{
+		ret = c->free.tail;
+		list = &c->free;
+		zero_out = izero_out;
+	}
+
 	if (obos_expect(!ret, false))
 	{
 		if (!allocate_region(This, (cache*)c, cache_index))
@@ -269,12 +277,12 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 			return NULL; // OOM
 		}
 
-		ret = c->free.tail;
+		ret = c->clean.tail;
+		list = &c->clean;
+		zero_out = false;
 	}
 
-	if ((c->free.tail)->next)
-		(c->free.tail)->next = nullptr;
-	remove_node(c->free, c->free.tail);
+	remove_node(*list, list->tail);
 
 	unlock((cache*)c, oldIrql);
 
@@ -288,18 +296,33 @@ OBOS_NO_UBSAN OBOS_NO_KASAN void* _Allocate(allocator_info* This_, size_t nBytes
 	nBytes -= sizeof(uintptr_t)*2;
 	unrounded_nBytes -= sizeof(uintptr_t)*2;
 	((uintptr_t*)ret)[0] = unrounded_nBytes;
-	((void**)ret)[1] = __builtin_return_address(0);
+	((void**)ret)[1] = return_address;
 	ret = (void*)((uintptr_t)ret + (sizeof(uintptr_t)*2));
 #endif
 
-	if (log_alloc && s_enable_alloc_logs)
-		printf("kalloc alloc 0x%p %d 0x%p\n", ret, nBytes, __builtin_return_address(0));
+	// if (log_alloc && s_enable_alloc_logs)
+	// 	printf("kalloc alloc 0x%p %d 0x%p\n", ret, nBytes, __builtin_return_address(0));
 
-#if !OBOS_KASAN_ENABLED
-	return ret;
-#else
-	return memzero(ret, nBytes);
+#if OBOS_KASAN_ENABLED
+	zero_out = true;
 #endif
+	if (zero_out)
+		return memzero(ret, nBytes);
+	freelist_node* node = ret;
+	node->next = nullptr;
+	node->prev = nullptr;
+	return ret;
+}
+
+#if OBOS_DEBUG_FREE_SIZE
+#	define get_return_address() __builtin_return_address(0)
+#else
+#	define get_return_address() nullptr
+#endif
+
+OBOS_NO_UBSAN OBOS_NO_KASAN void* Allocate(allocator_info* This_, size_t nBytes, obos_status* status)
+{
+	return DoAllocation(This_, nBytes, status, false, get_return_address());
 }
 OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t bytesPerObject, obos_status* status)
 {
@@ -308,18 +331,7 @@ OBOS_NO_KASAN void* ZeroAllocate(allocator_info* This, size_t nObjects, size_t b
 		set_status(status, OBOS_STATUS_INVALID_ARGUMENT);
 		return nullptr;
 	}
-	size_t size = bytesPerObject * nObjects;
-	void* blk = _Allocate(This, size, status, false);
-	if (blk)
-	{
-		if (s_enable_alloc_logs)
-			printf("kalloc alloc 0x%p %d 0x%p\n", blk, size, __builtin_return_address(0));
-#if OBOS_DEBUG_FREE_SIZE
-		((void**)((uintptr_t)blk - sizeof(uintptr_t)*2))[1] = __builtin_return_address(0);
-#endif
-		return memset(blk, 0, size);
-	}
-	return blk;
+	return DoAllocation(This, bytesPerObject * nObjects, status, true, get_return_address());
 }
 
 OBOS_NO_KASAN OBOS_NO_UBSAN void* Reallocate(allocator_info* This_, void* blk, size_t new_size, size_t old_size, obos_status* status)
@@ -406,8 +418,8 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 	else
 		nBytes = (size_t)1 << (64-__builtin_clzll(nBytes-1));
 
-	if (s_enable_alloc_logs)
-		printf("kalloc free 0x%p %d 0x%p\n", initial_blk, initial_nBytes, __builtin_return_address(0));
+	// if (s_enable_alloc_logs)
+	// 	printf("kalloc free 0x%p %d 0x%p\n", initial_blk, initial_nBytes, __builtin_return_address(0));
 
 #if __SIZE_MAX__ > __UINT32_MAX__
 	if (nBytes > (4UL*1024*1024*1024))
@@ -421,19 +433,21 @@ OBOS_NO_KASAN OBOS_NO_UBSAN obos_status Free(allocator_info* This_, void* blk, s
 
 	memzero(blk, sizeof(freelist_node));
 
-	if (obos_expect(nBytes >= init_pgsize(), false))
-		init_munmap(alloc->blkSource, blk, nBytes);
-	else
-	{
-		irql oldIrql = lock(c);
-		append_node(c->free, (freelist_node*)blk);
+	// if (obos_expect(nBytes >= init_pgsize(), false))
+	// {
+	// 	init_munmap(alloc->blkSource, blk, nBytes);
+	// 	return OBOS_STATUS_SUCCESS;
+	// }
+	
+	irql oldIrql = lock(c);
+	append_node(c->free, (freelist_node*)blk);
 #if OBOS_KASAN_ENABLED
-		memset(((freelist_node*)blk)+1, OBOS_ASANPoisonValues[ASAN_POISON_FREED], nBytes-sizeof(freelist_node));
+	memset(((freelist_node*)blk)+1, OBOS_ASANPoisonValues[ASAN_POISON_FREED], nBytes-sizeof(freelist_node));
 #elif OBOS_DEBUG
-		memset(((freelist_node*)blk)+1, 0xde, nBytes-sizeof(freelist_node));
+	memset(((freelist_node*)blk)+1, 0xde, nBytes-sizeof(freelist_node));
 #endif
-unlock(c, oldIrql);
-	}
+	unlock(c, oldIrql);
+
 	return OBOS_STATUS_SUCCESS;
 }
 

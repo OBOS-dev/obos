@@ -45,6 +45,7 @@ enum {
 
 typedef struct cache {
 	freelist free;
+	freelist clean;
 	spinlock lock;
 } cache;
 
