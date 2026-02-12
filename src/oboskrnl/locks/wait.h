@@ -17,7 +17,7 @@ struct waitable_header
 {
     thread_list waiting;
     spinlock lock;
-    bool signaled : 1;
+    atomic_bool signaled;
     bool use_signaled : 1;
     bool interrupted : 1;
 #if OBOS_DEBUG

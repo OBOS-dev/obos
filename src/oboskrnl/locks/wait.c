@@ -35,34 +35,37 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     assert_initialized();
     if (Core_GetIrql() > IRQL_DISPATCH)
         return OBOS_STATUS_INVALID_IRQL;
+    if (obj->signaled && obj->use_signaled)
+        return OBOS_STATUS_SUCCESS;
+
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     irql spinlockIrql = Core_SpinlockAcquire(&obj->lock);
-    if (obj->signaled && obj->use_signaled)
-    {
-        Core_SpinlockRelease(&obj->lock, spinlockIrql);
-        Core_LowerIrql(oldIrql);
-        return OBOS_STATUS_SUCCESS;
-    }
     thread* curr = Core_GetCurrentThread();
     // We're waiting on one object.
     curr->nWaiting = 1;
     memzero(&curr->lock_node, sizeof(curr->lock_node));
+    
     curr->lock_node.data = curr;
+    
     obos_status status = CoreH_ThreadListAppend(&obj->waiting, &curr->lock_node);
-    if (obos_is_error(status))
+    if (obos_expect(obos_is_error(status), false))
     {
         Core_SpinlockRelease(&obj->lock, spinlockIrql);
         Core_LowerIrql(oldIrql);
         return status;
     }
+    
     curr->waiting_objects.waitingObject = obj;
     curr->waiting_objects.is_array = false;
     curr->waiting_objects.free_array = nullptr;
     curr->waiting_objects.free_userdata = nullptr;
     curr->waiting_objects.nObjs = 1;
     Core_SpinlockRelease(&obj->lock, spinlockIrql);
+    
     CoreH_ThreadBlock(curr, true);
+    
     memzero(&curr->waiting_objects, sizeof(curr->waiting_objects));
+    
     if (obos_expect(curr->interrupted, false))
     {
         if (curr->signalInterrupted)
@@ -81,6 +84,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
         Core_Yield();
         return OBOS_STATUS_ABORTED;
     }
+    
     CoreH_ThreadListRemove(&obj->waiting, &curr->lock_node);
     curr->hdrSignaled = nullptr;
     curr->nWaiting = 0;
@@ -90,6 +94,7 @@ obos_status Core_WaitOnObject(struct waitable_header* obj)
     
     if (obos_expect(obj->interrupted, false))
         return OBOS_STATUS_ABORTED;
+    
     return OBOS_STATUS_SUCCESS;
 }
 
