@@ -37,7 +37,7 @@ __attribute__((no_instrument_function)) OBOS_NO_UBSAN OBOS_NO_KASAN irql Core_Ra
 // 	if (to == IRQL_DISPATCH)
 // 		CoreS_SetIRQL(to, *Core_GetIRQLVar());
 #endif
-	*Core_GetIRQLVar() = to;
+	*irqlv = to;
 	return oldIRQL;
 }
 #endif

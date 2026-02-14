@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd.h
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -39,6 +39,7 @@ enum
     FD_OFLAGS_CREATE = 16,
     FD_OFLAGS_EXECUTE = 32,
     FD_OFLAGS_NOCTTY = 64,
+    FD_OFLAGS_TRUNCATE = 128,
 };
 typedef struct fd
 {

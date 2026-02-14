@@ -142,6 +142,13 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         }
     }
 
+    if (oflags & FD_OFLAGS_TRUNCATE && desc->vn->vtype == VNODE_TYPE_REG && (desc->flags & FD_FLAGS_WRITE))
+    {
+        obos_status status = Vfs_TruncateFile(desc->vn, 0);
+        if (obos_is_error(status))
+            OBOS_Debug("%s: Vfs_TruncateFile returned %d!\n", __func__, status);
+    }
+
     down:
     desc->flags |= FD_FLAGS_OPEN;
     return OBOS_STATUS_SUCCESS;
@@ -302,6 +309,9 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
         if (!VfsH_LockMountpoint(point))
             return OBOS_STATUS_ABORTED;
 
+        size_t nToExpand = ((offset + nBytes) > desc->vn->filesize) ? (offset + nBytes) - desc->vn->filesize : 0;
+        desc->vn->filesize += nToExpand;
+
         size_t start = offset;
         size_t end = offset + nBytes;
         page* pg = nullptr;
@@ -312,7 +322,10 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
         
             void* ent = VfsH_PageCacheGetEntry(desc->vn, start, &pg);
             if (!ent)
-                return OBOS_STATUS_INVALID_OPERATION;
+            {
+                VfsH_UnlockMountpoint(point);
+                return OBOS_STATUS_INTERNAL_ERROR;
+            }
             MmH_RefPage(pg);
 
             memcpy(ent, buf, nBytes);
@@ -333,7 +346,10 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
             {
                 uint8_t* ent = VfsH_PageCacheGetEntry(desc->vn, curr, &pg);
                 if (!ent)
-                    return OBOS_STATUS_INVALID_OPERATION;
+                {
+                    VfsH_UnlockMountpoint(point);
+                    return OBOS_STATUS_INTERNAL_ERROR;
+                }
                 MmH_RefPage(pg);
                 size_t nToWrite = OBOS_PAGE_SIZE-((uintptr_t)ent % OBOS_PAGE_SIZE);
                 nToWrite = OBOS_MIN(nToWrite, nBytes-i);
@@ -357,8 +373,6 @@ obos_status Vfs_FdPWrite(fd* desc, const void* buf, size_t offset, size_t nBytes
         if (nWritten)
             *nWritten = nBytes;
     }
-    size_t nToExpand = ((offset + nBytes) > desc->vn->filesize) ? (offset + nBytes) - desc->vn->filesize : 0;
-    desc->vn->filesize += nToExpand;
     return status;
 }
 obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_t* nRead)
@@ -403,7 +417,10 @@ obos_status Vfs_FdPRead(fd* desc, void* buf, size_t offset, size_t nBytes, size_
             void* ent = VfsH_PageCacheGetEntry(desc->vn, start, &pg);
             MmH_RefPage(pg);
             if (!ent)
+            {
+                MmH_DerefPage(pg);
                 return OBOS_STATUS_INVALID_OPERATION;
+            }
 
             memcpy(buf, ent, nBytes);
             if (~pg->flags & PHYS_PAGE_DIRTY)

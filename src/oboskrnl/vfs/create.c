@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/create.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  */
 
 #include <int.h>
@@ -19,6 +19,8 @@
 #include <vfs/mount.h>
 #include <vfs/socket.h>
 #include <vfs/create.h>
+
+#include <mm/swap.h>
 
 #include <utils/string.h>
 #include <utils/list.h>
@@ -141,6 +143,54 @@ obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype
     VfsH_DirentAppendChild(parent, ent);
     LIST_APPEND(dirent_list, &parent_mnt->dirent_list, ent);
     ent->vnode->refs++;
+    return status;
+}
+
+obos_status Vfs_TruncateFile(vnode* vn, size_t new_size)
+{
+    if (!vn)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (vn->vtype != VNODE_TYPE_REG)
+        return OBOS_STATUS_INVALID_OPERATION;
+    if (new_size > vn->filesize)
+        return OBOS_STATUS_ACCESS_DENIED;
+    if (new_size == vn->filesize)
+        return OBOS_STATUS_SUCCESS;
+
+    driver_header* header = Vfs_GetVnodeDriver(vn);
+    // mount* point = Vfs_GetVnodeMount(vn);
+
+    if (!header)
+        return OBOS_STATUS_INVALID_OPERATION;
+
+    if (!header->ftable.trunc_file)
+        return OBOS_STATUS_UNIMPLEMENTED;
+
+    // if (!VfsH_LockMountpoint(point))
+    //     return OBOS_STATUS_ABORTED;
+
+    obos_status status = header->ftable.trunc_file(vn->desc, new_size);
+    if (obos_is_error(status))
+        goto failed;
+
+    // Nuke all valid pagecache entries with an offset >= new_size
+    page* ent = nullptr, *next = nullptr;
+    RB_FOREACH_SAFE(ent, pagecache_tree, &vn->cache, next)
+    {
+        if (ent->file_offset < new_size)
+            continue;
+        
+        ent->flags |= PHYS_PAGE_INVALID;
+        MmH_RemoveFromPagecache(ent);
+    }
+
+    vn->filesize = new_size;
+    
+    failed:
+
+    // if (!VfsH_UnlockMountpoint(point))
+    //     return OBOS_STATUS_ABORTED;
+
     return status;
 }
 

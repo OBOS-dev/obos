@@ -136,6 +136,22 @@ page* MmH_RefPage(page* buf)
 		buf->refcount++;
 	return buf;
 }
+
+void MmH_RemoveFromPagecache(page* buf)
+{
+	if (buf->backing_vn)
+	{
+		RB_REMOVE(pagecache_tree, &buf->backing_vn->cache, buf);
+		if (!(--buf->backing_vn->refs))
+		{
+			if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO || buf->backing_vn->vtype == VNODE_TYPE_SOCK)
+				if (!(buf->backing_vn->un.device->refs--))
+					Vfs_Free(buf->backing_vn->un.device);
+			Vfs_Free(buf->backing_vn);
+		}
+	}
+}
+
 void MmH_DerefPage(page* buf)
 {
 	if (!buf)
@@ -155,17 +171,9 @@ void MmH_DerefPage(page* buf)
 		Core_MutexAcquire(&Mm_PhysicalPagesLock);
 		RB_REMOVE(phys_page_tree, &Mm_PhysicalPages, buf);
 		Core_MutexRelease(&Mm_PhysicalPagesLock);
-		if (buf->backing_vn)
-		{
-			RB_REMOVE(pagecache_tree, &buf->backing_vn->cache, buf);
-			if (!(--buf->backing_vn->refs))
-			{
-				if (buf->backing_vn->vtype == VNODE_TYPE_CHR || buf->backing_vn->vtype == VNODE_TYPE_BLK || buf->backing_vn->vtype == VNODE_TYPE_FIFO || buf->backing_vn->vtype == VNODE_TYPE_SOCK)
-					if (!(buf->backing_vn->un.device->refs--))
-						Vfs_Free(buf->backing_vn->un.device);
-				Vfs_Free(buf->backing_vn);
-			}
-		}
+
+		MmH_RemoveFromPagecache(buf);
+		
 		Mm_PhysicalMemoryUsage -= ((buf->flags & PHYS_PAGE_HUGE_PAGE) ? OBOS_HUGE_PAGE_SIZE : OBOS_PAGE_SIZE);
 		Free(Mm_Allocator, buf, sizeof(*buf));
 	}

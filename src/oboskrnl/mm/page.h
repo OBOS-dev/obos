@@ -51,6 +51,7 @@ typedef enum phys_page_flags
     PHYS_PAGE_HUGE_PAGE = BIT(2),
     PHYS_PAGE_MMIO = BIT(3),
     PHYS_PAGE_LOCKED = BIT(4),
+    PHYS_PAGE_INVALID = BIT(5),
 } phys_page_flags;
 
 // TODO: Move this into an array for faster allocation and lookup?
@@ -121,6 +122,7 @@ inline static int pagecache_tree_cmp(struct page* lhs, struct page* rhs)
 }
 
 OBOS_EXPORT void MmH_DerefPage(page* buf);
+OBOS_EXPORT void MmH_RemoveFromPagecache(page* buf);
 #ifndef __clang__
 // NOTE: Adds a reference to the page.
 OBOS_EXPORT  __attribute__((malloc, malloc(MmH_DerefPage, 1))) page* MmH_PgAllocatePhysical(bool phys32, bool huge);

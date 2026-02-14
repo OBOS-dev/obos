@@ -30,6 +30,8 @@ obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype
 
 OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node);
 
+obos_status Vfs_TruncateFile(vnode* vn, size_t new_size);
+
 obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name);
 
 // Updates the file times of the vnode
