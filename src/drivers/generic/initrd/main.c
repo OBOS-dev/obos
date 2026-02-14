@@ -130,6 +130,7 @@ obos_status get_file_inode(dev_desc desc, uint32_t *out)
     *out = ino->ino;
     return OBOS_STATUS_SUCCESS;
 }
+OBOS_WEAK obos_status trunc_file(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */);
 OBOS_WEAK obos_status finalize_irp(void* /* irp* */ request_);
 
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
@@ -162,6 +163,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .list_dir = list_dir,
         .stat_fs_info = stat_fs_info,
         .symlink_set_path = symlink_set_path,
+        .trunc_file = trunc_file,
     },
     .driverName = INITRD_DRIVER_NAME,
     .version = 1,
@@ -409,6 +411,33 @@ OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** f
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status trunc_file(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */)
+{
+    initrd_inode* inode = (void*)desc;
+    if (!inode)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    OBOS_ASSERT(inode->filesize >= newsize);
+    if (inode->filesize < newsize)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (inode->filesize == newsize)
+        return OBOS_STATUS_SUCCESS;
+
+    size_t oldsize = inode->filesize;
+    inode->filesize = newsize;
+    if (inode->persistent)
+    {
+        char* new_data = Allocate(OBOS_NonPagedPoolAllocator, inode->filesize, nullptr);
+        memcpy(new_data, inode->data, inode->filesize);
+        inode->data = new_data;
+        inode->persistent = false;
+    }
+    else
+        inode->data = Reallocate(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize, oldsize, nullptr);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
 obos_status move_desc_to(dev_desc desc, dev_desc dnew_parent, const char* name)
 {
     initrd_inode* ino = (void*)desc;
@@ -581,6 +610,7 @@ OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, co
             *found = 0;
             return OBOS_STATUS_NOT_FOUND;
         }
+        OBOS_ENSURE(ino->parent == (parent == UINTPTR_MAX ? InitrdRoot : (initrd_inode*)parent));
         *found = (dev_desc)ino;
         return OBOS_STATUS_SUCCESS;
     }
