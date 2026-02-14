@@ -107,6 +107,7 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
 {
     if (!path)
         return nullptr;
+    // initrd_inode* const initial_root = root;
     size_t path_len = strlen(path);
     if (!path_len)
         return root;
@@ -123,22 +124,26 @@ initrd_inode* DirentLookupFrom(const char* path, initrd_inode* root)
     while(root)
     {
         initrd_inode* curr = root;
-        {
-            string name = {};
-            name.cap = 33;
-            name.ls = root->name;
-            name.len = strlen(root->name);
-            if (OBOS_CompareStringNC(&name, tok, tok_len))
-            {
-                // Match!
-                initrd_inode* what = 
-                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
-                if (what)
-                    return what;
-                root = curr->children.head;
-                continue;
-            }
-        }
+        
+        // {
+        //     string name = {};
+        //     name.cap = 33;
+        //     name.ls = root->name;
+        //     name.len = strlen(root->name);
+        //     if (OBOS_CompareStringNC(&name, tok, tok_len))
+        //     {
+        //         // Match!
+        //         initrd_inode* what = 
+        //             on_match(&curr, &root, &tok, &tok_len, &path, &path_len);
+        //         if (what == initial_root)
+        //             goto down;
+        //         if (what)
+        //             return what;
+        //         root = curr->children.head;
+        //         continue;
+        //     }
+        // }
+        // down:
 
         for (curr = root->children.head; curr;)
         {
