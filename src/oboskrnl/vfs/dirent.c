@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/dirent.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -20,6 +20,8 @@
 
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
+
+#include <mm/alloc.h>
 
 #include <utils/string.h>
 #include <utils/list.h>
@@ -741,14 +743,25 @@ obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status Sys_GetCWD(char* path, size_t len)
+obos_status Sys_GetCWD(char* upath, size_t len)
 {
     process* target = Core_GetCurrentThread()->proc;
-    if (!path)
+    if (!upath)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (len < strlen(target->cwd_str))
         return OBOS_STATUS_NO_SPACE;
-    memcpy_k_to_usr(path, target->cwd_str, strlen(target->cwd_str));
+    obos_status status = OBOS_STATUS_SUCCESS;
+    size_t cwd_len = strlen(target->cwd_str);
+    
+    char* path = Mm_MapViewOfUserMemory(Core_GetCurrentThread()->proc->ctx, upath, nullptr, cwd_len, 0, true, &status);
+    if (obos_is_error(status))
+        return status;
+
+    memcpy(path, target->cwd_str, cwd_len);
+    path[cwd_len] = 0;
+
+    Mm_VirtualMemoryFree(&Mm_KernelContext, path, cwd_len);
+    
     return OBOS_STATUS_SUCCESS;
 }
 
