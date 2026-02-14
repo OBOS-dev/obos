@@ -204,16 +204,16 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         down:
         if (!tok_len)
             return root;
-        if (OBOS_CompareStringNC(&root->name, tok, tok_len))
-        {
-            // Match!
-            dirent* what = 
-                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
-            root = curr->d_children.head;
-            if (what)
-                return what;
-            continue;
-        }
+        // if (OBOS_CompareStringNC(&root->name, tok, tok_len))
+        // {
+        //     // Match!
+        //     dirent* what = 
+        //         on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+        //     root = curr->d_children.head;
+        //     if (what)
+        //         return what;
+        //     continue;
+        // }
 
         for (curr = root->d_children.head; curr;)
         {
