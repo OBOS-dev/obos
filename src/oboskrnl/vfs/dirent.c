@@ -181,11 +181,11 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         }
         if (tok[0] == '.')
         {
-            if (tok[1] == '.')
+            if (tok[1] == '.' && tok_len == 2)
                 root = root->d_parent;
             else if (tok_len == 1)
                 OBOSS_SpinlockHint(); // this token is just a '.', so we need to ignore the next else if.
-            else if (tok[1] != 0)
+            else
                 goto down;
             const char *newtok = tok + str_search(tok, '/');
             tok = newtok;
@@ -204,16 +204,17 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         down:
         if (!tok_len)
             return root;
-        // if (OBOS_CompareStringNC(&root->name, tok, tok_len))
-        // {
-        //     // Match!
-        //     dirent* what = 
-        //         on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
-        //     root = curr->d_children.head;
-        //     if (what)
-        //         return what;
-        //     continue;
-        // }
+
+        if (root != root_par && OBOS_CompareStringNC(&root->name, tok, tok_len))
+        {
+            // Match!
+            dirent* what = 
+                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+            root = curr->d_children.head;
+            if (what)
+                return what;
+            continue;
+        }
 
         for (curr = root->d_children.head; curr;)
         {
@@ -226,6 +227,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
                     return what;
                 // else
                 //     return nullptr;
+                root = curr->d_children.head;
                 curr = curr->d_children.head ? curr->d_children.head : curr;
                 break;
             }
