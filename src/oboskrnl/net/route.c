@@ -23,6 +23,7 @@
 #include <net/icmp.h>
 #include <net/ip.h>
 #include <net/arp.h>
+#include <net/lo.h>
 
 #include <locks/pushlock.h>
 
@@ -178,6 +179,22 @@ obos_status NetH_AddressRoute(net_tables** interface, ip_table_entry** routing_e
         Core_PushlockAcquire(&curr_iface->table_lock, true);
         for (ip_table_entry* ent = LIST_GET_HEAD(ip_table, &curr_iface->table); ent; )
         {
+            if (ent->address.addr == destination.addr)
+            {
+                if (!Net_LoopbackDevice)
+                {
+                    *interface = curr_iface;
+                    *routing_entry = ent;
+                    *ttl = 64;
+                    Core_PushlockRelease(&curr_iface->table_lock, true);
+                    return OBOS_STATUS_NETWORK_UNREACHABLE;
+                }
+                *interface = Net_LoopbackDevice->net_tables;
+                *routing_entry = Net_LoopbackDevice->net_tables->table.head;
+                *ttl = 64;
+                Core_PushlockRelease(&curr_iface->table_lock, true);
+                return OBOS_STATUS_SUCCESS;
+            }
             if ((ent->address.addr & ent->subnet) == (destination.addr & ent->subnet))
             {
                 *interface = curr_iface;
