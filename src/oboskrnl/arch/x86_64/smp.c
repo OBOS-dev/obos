@@ -370,5 +370,5 @@ void CoreS_ForceYieldOnSyscallReturn()
 		.isShorthand=true,
 		.info.shorthand=LAPIC_DESTINATION_SHORTHAND_SELF
 	};
-    Arch_LAPICSendIPI(self, vector);    
+    Arch_LAPICSendIPI(self, vector);
 }

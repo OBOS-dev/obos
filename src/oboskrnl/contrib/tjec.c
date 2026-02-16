@@ -127,7 +127,6 @@ uint32_t tjec_memory_init(tjec_memory* mem, uint64_t flags)
     mem->flags     = flags;
     if (!mem->memory)
         return TJEC_ENOMEM;
-    memset(mem->memory, 0, memory_size);
 
     return TJEC_ENOERR;
 }
