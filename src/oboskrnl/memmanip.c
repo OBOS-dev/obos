@@ -1,7 +1,7 @@
 /*
     oboskrnl/memmanip.c
 
-    Copyright (c) 2024 Omar Berrow
+    Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
