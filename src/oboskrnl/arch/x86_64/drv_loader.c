@@ -522,13 +522,14 @@ void* DrvS_LoadRelocatableElf(driver_id* driver, const void* file, size_t szFile
     {
         if (phdr_table[i].p_type == PT_DYNAMIC)
             dynamic = &phdr_table[i];
-        if (phdr_table[i].p_type != PT_LOAD)
+        if (phdr_table[i].p_type != PT_LOAD && phdr_table[i].p_type != PT_DYNAMIC)
             continue;
         Elf64_Phdr* curr = &phdr_table[i];
         if (!end || curr->p_vaddr > (uintptr_t)end)
 			end = (void*)(curr->p_vaddr+curr->p_memsz);
     }
     szProgram = (size_t)end;
+    szProgram = (szProgram + 0xfff) & ~0xfff;
     void* base = Mm_VirtualMemoryAlloc(&Mm_KernelContext, nullptr, szProgram, 0, 0, nullptr, status);
     if (!base)
         return nullptr;
