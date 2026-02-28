@@ -1637,15 +1637,18 @@ static obos_status bind_interface(uint16_t port, net_tables* iface, tcp_port** o
 static void internal_listen_thread(void* udata)
 {
     tcp_socket* s = udata;
-    struct waitable_header** objs = ZeroAllocate(OBOS_NonPagedPoolAllocator, s->serv.bound_port_count+1, sizeof(struct waitable_header*), nullptr);
+
+    const size_t bound_port_count = s->serv.bound_port_count;
+
+    struct waitable_header** objs = ZeroAllocate(OBOS_NonPagedPoolAllocator, bound_port_count+1, sizeof(struct waitable_header*), nullptr);
     struct waitable_header* signaled = nullptr;
     objs[0] = WAITABLE_OBJECT(s->serv.kill_listen_thread);
-    for (size_t i = 1; i <= s->serv.bound_port_count; i++)
+    for (size_t i = 1; i <= bound_port_count; i++)
         objs[i] = WAITABLE_OBJECT(s->serv.bound_ports[i-1]->connection_event);
     while (1)
     {
         obos_status status = OBOS_STATUS_SUCCESS;
-        if (obos_is_error(status = Core_WaitOnObjects(s->serv.bound_port_count+1, objs, &signaled)))
+        if (obos_is_error(status = Core_WaitOnObjects(bound_port_count+1, objs, &signaled)))
         {
             NetError("Net: %s: Core_WaitOnObjects returned %d, aborting.\n", __func__, status);
             break;
@@ -1654,7 +1657,7 @@ static void internal_listen_thread(void* udata)
         if (signaled == objs[0])
             break;
         
-        for (size_t i = 0; i < s->serv.bound_port_count; i++)
+        for (size_t i = 0; i < bound_port_count; i++)
         {
             if (signaled == WAITABLE_OBJECT(s->serv.bound_ports[i]->connection_event))
             {
@@ -1663,11 +1666,12 @@ static void internal_listen_thread(void* udata)
                 break;
             }
         }
+        
         if (!s->serv.interrupted_port)
             continue;
         Core_EventSet(s->serv.listen_event, false);
     }
-    Free(OBOS_NonPagedPoolAllocator, objs, (s->serv.bound_port_count+1) * sizeof(struct waitable_header*));
+    Free(OBOS_NonPagedPoolAllocator, objs, (bound_port_count) * sizeof(struct waitable_header*));
     Core_ExitCurrentThread();
 }
 
