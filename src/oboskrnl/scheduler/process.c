@@ -92,6 +92,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->rgid = proc->parent->rgid;
 	proc->egid = proc->parent->egid;
 	proc->sgid = proc->parent->sgid;
+	proc->root = proc->parent->root;
 	proc->groups.nEntries = proc->parent->groups.nEntries;
 	proc->parent->session->refs++;
 	proc->session = proc->parent->session;
@@ -109,7 +110,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 
 	if (!proc->parent->cwd)
 	{
-		proc->cwd = Vfs_Root;
+		proc->cwd = Vfs_GetRoot();
 		proc->cwd_str = memcpy(Vfs_Malloc(2), "/", 2);
 	}
 	else

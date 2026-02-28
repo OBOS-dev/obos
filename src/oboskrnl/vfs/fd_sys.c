@@ -1036,7 +1036,7 @@ obos_status Sys_MkdirAt(handle ent, const char* uname, uint32_t mode)
 
     dirent* parent = !dent ? Core_GetCurrentThread()->proc->cwd : dent->un.dirent->parent;
     if (name[0] == '/')
-        parent = Vfs_Root;
+        parent = Vfs_GetRoot();
     size_t index = strrfind(name, '/');
     char* dirname = name;
     if (index != SIZE_MAX)
@@ -1932,7 +1932,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             size_t last_slash = strrfind(link, '/');
             char ch = link[last_slash];
             link[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_GetRoot() : parent);
             link[last_slash] = ch;
             link_name = link+last_slash+1;
         }
@@ -1947,7 +1947,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
             size_t last_slash = strrfind(link, '/');
             char ch = link[last_slash];
             link[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(link, *link == '/' ? Vfs_GetRoot() : parent);
             link[last_slash] = ch;
             link_name = link+last_slash+1;
         }
@@ -1956,7 +1956,7 @@ obos_status Sys_SymLinkAt(const char* utarget, handle dirfd, const char* ulink)
     }
 
     if (*link == '/')
-        parent = Vfs_Root;
+        parent = Vfs_GetRoot();
 
     if (!parent)
     {
@@ -2080,7 +2080,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
     }
 
     if (*target == '/')
-        ptarget = Vfs_Root;
+        ptarget = Vfs_GetRoot();
 
     dtarget = VfsH_DirentLookupFrom(target, ptarget);
     if (!dtarget)
@@ -2116,7 +2116,7 @@ obos_status Sys_LinkAt(handle olddirfd, const char *utarget, handle newdirfd, co
         plink = hnd->un.dirent->parent;
     }
     else
-        plink = *link == '/' ? Vfs_Root : Core_GetCurrentThread()->proc->cwd;
+        plink = *link == '/' ? Vfs_GetRoot() : Core_GetCurrentThread()->proc->cwd;
 
     char* linkname = nullptr;
 
@@ -2242,7 +2242,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
     }
 
     if (*target == '/')
-        ptarget = Vfs_Root;
+        ptarget = Vfs_GetRoot();
 
     dtarget = VfsH_DirentLookupFrom(target, ptarget);
     if (!dtarget)
@@ -2282,7 +2282,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         pnewname = Core_GetCurrentThread()->proc->cwd;
 
     if (*link == '/')
-        pnewname = Vfs_Root;
+        pnewname = Vfs_GetRoot();
 
     char* newfilename = nullptr;
 
@@ -2594,7 +2594,7 @@ obos_status Sys_UTimeNSAt(handle dirfd, const char *upathname, const struct time
     pathname = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
     OBOSH_ReadUserString(upathname, pathname, nullptr);
 
-    dirent* ent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+    dirent* ent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_GetRoot() : parent);
     
     Free(OBOS_KernelAllocator, pathname, sz_path+1);
 
@@ -3060,7 +3060,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
             size_t last_slash = strrfind(pathname, '/');
             char ch = pathname[last_slash];
             pathname[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_GetRoot() : parent);
             pathname[last_slash] = ch;
             name = pathname+last_slash+1;
         }
@@ -3075,7 +3075,7 @@ obos_status Sys_FChmodAt(handle dirfd, const char* upathname, int mode, int flag
             size_t last_slash = strrfind(pathname, '/');
             char ch = pathname[last_slash];
             pathname[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_GetRoot() : parent);
             pathname[last_slash] = ch;
             name = pathname+last_slash+1;
         }
@@ -3185,7 +3185,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
             size_t last_slash = strrfind(pathname, '/');
             char ch = pathname[last_slash];
             pathname[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_GetRoot() : parent);
             pathname[last_slash] = ch;
             name = pathname+last_slash+1;
         }
@@ -3200,7 +3200,7 @@ obos_status Sys_FChownAt(handle dirfd, const char *upathname, uid owner, gid gro
             size_t last_slash = strrfind(pathname, '/');
             char ch = pathname[last_slash];
             pathname[last_slash] = 0;
-            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_Root : parent);
+            parent = VfsH_DirentLookupFrom(pathname, *pathname == '/' ? Vfs_GetRoot() : parent);
             pathname[last_slash] = ch;
             name = pathname+last_slash+1;
         }

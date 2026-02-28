@@ -163,7 +163,7 @@ OBOS_STATIC_ASSERT(sizeof(driver_file_perm) == sizeof(file_perm), "Invalid sizes
 // }
 obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMountpoint)
 {
-    if (!Vfs_Root)
+    if (!Vfs_GetRoot())
         return OBOS_STATUS_INVALID_INIT_PHASE;
     if (!at_ || !fs_driver)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -275,7 +275,7 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
 {
     OBOS_UNUSED(unused);
     OBOS_UNUSED(userdata);
-    if (ent == Vfs_DevRoot || ent->d_parent == Vfs_DevRoot || ent == Vfs_Root)
+    if (ent == Vfs_DevRoot || ent->d_parent == Vfs_DevRoot || ent == Vfs_GetRoot())
         return; // Don't free this.
     bool vnode_freed = deref_vnode(ent->vnode);
     // if (ent->d_parent)
@@ -310,10 +310,10 @@ obos_status Vfs_Unmount(mount* what)
     what->root->d_children.nChildren = 0;
     foreach_dirent(what, stage_two, nullptr);
     LIST_REMOVE(mount_list, &Vfs_Mounted, what);
-    if (what->root == Vfs_Root)
+    if (what->root == Vfs_GetRoot())
     {
-        Vfs_Root->vnode->mount_point = nullptr;
-        Vfs_Root->vnode->un.mounted = nullptr;
+        Vfs_GetRoot()->vnode->mount_point = nullptr;
+        Vfs_GetRoot()->vnode->un.mounted = nullptr;
     }
     what->root->vnode->desc = what->old_root_desc;
     what->awaitingFree = true;

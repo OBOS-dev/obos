@@ -452,7 +452,7 @@ obos_status Vfs_CreateNamedPipe(file_perm perm, gid group_uid, uid owner_uid, di
 {
     if (!name)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!parent) parent = Vfs_Root;
+    if (!parent) parent = Vfs_GetRoot();
     if (VfsH_DirentLookupFrom(name, parent))
         return OBOS_STATUS_ALREADY_INITIALIZED;
     if (!pipesize)

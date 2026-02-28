@@ -352,7 +352,7 @@ static obos_status stream_bind(socket_desc* socket, struct sockaddr* addr, size_
     memcpy(&cpy_addr, addr, addrlen);
     char* name = cpy_addr.sun_path;
 
-    dirent* parent = *name == '/' ? Vfs_Root : Core_GetCurrentThread()->proc->cwd;
+    dirent* parent = *name == '/' ? Vfs_GetRoot() : Core_GetCurrentThread()->proc->cwd;
     size_t index = strrfind(name, '/');
     char* dirname = name;
     if (index != SIZE_MAX)
@@ -426,7 +426,7 @@ static obos_status stream_accept(socket_desc* socket, struct sockaddr* addr, siz
         {
             struct sockaddr_un* laddr = (void*)addr;
             laddr->sun_family = AF_UNIX;
-            char* bound_path = VfsH_DirentPath(scon->open->bound_ent, Vfs_Root);
+            char* bound_path = VfsH_DirentPath(scon->open->bound_ent, Vfs_GetRoot());
             size_t bound_path_len = bound_path ? 0 : strlen(bound_path);
             memcpy(laddr->sun_path, bound_path, OBOS_MIN(addr_max - sizeof(laddr->sun_family), bound_path_len+1));
             *addrlen = bound_path_len;
@@ -531,7 +531,7 @@ static obos_status stream_getpeername(socket_desc* socket, struct sockaddr* addr
     
     struct sockaddr_un* laddr = (void*)addr;
     laddr->sun_family = AF_UNIX;
-    char* bound_path = VfsH_DirentPath(peer, Vfs_Root);
+    char* bound_path = VfsH_DirentPath(peer, Vfs_GetRoot());
     size_t bound_path_len = bound_path ? 0 : strlen(bound_path);
     memcpy(laddr->sun_path, bound_path, OBOS_MIN(addr_max - sizeof(laddr->sun_family), bound_path_len+1));
     *addrlen = bound_path_len;
@@ -556,7 +556,7 @@ static obos_status stream_getsockname(socket_desc* socket, struct sockaddr* addr
     
     struct sockaddr_un* laddr = (void*)addr;
     laddr->sun_family = AF_UNIX;
-    char* bound_path = VfsH_DirentPath(socket->local_ent, Vfs_Root);
+    char* bound_path = VfsH_DirentPath(socket->local_ent, Vfs_GetRoot());
     size_t bound_path_len = bound_path ? 0 : strlen(bound_path);
     memcpy(laddr->sun_path, bound_path, OBOS_MIN(addr_max - sizeof(laddr->sun_family), bound_path_len+1));
     *addrlen = bound_path_len;

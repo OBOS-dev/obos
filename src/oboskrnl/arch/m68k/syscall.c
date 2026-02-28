@@ -172,6 +172,7 @@ const char *syscall_to_string[] = {
     "Sys_GetHDADevices",
     "Sys_SetSid",
     "Sys_GetSid",
+    "Sys_Chroot",
 };
 
 const char* status_to_string[] = {

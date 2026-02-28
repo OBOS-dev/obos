@@ -9,6 +9,7 @@
 #include <klog.h>
 #include <memmanip.h>
 #include <syscall.h>
+#include <perm.h>
 
 #include <vfs/dirent.h>
 #include <vfs/alloc.h>
@@ -144,6 +145,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         return nullptr;
     // for (volatile bool b = true; b;)
     //     ;
+    dirent* current_root = Vfs_GetRoot();
     if (!path)
         return nullptr;
     if (path[0] == 0)
@@ -182,7 +184,12 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         if (tok[0] == '.')
         {
             if (tok[1] == '.' && tok_len == 2)
+            {
                 root = root->d_parent;
+                // Ensure we haven't gone above the current root.
+                if (root == current_root->tree_info.parent)
+                    return nullptr;
+            }
             else if (tok_len == 1)
                 OBOSS_SpinlockHint(); // this token is just a '.', so we need to ignore the next else if.
             else
@@ -227,7 +234,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
                     return what;
                 // else
                 //     return nullptr;
-                root = curr->d_children.head;
+                root = curr;
                 curr = curr->d_children.head ? curr->d_children.head : curr;
                 break;
             }
@@ -349,6 +356,25 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
 
     Vfs_Free(path_mnt);
     Vfs_Free(currentPath);
+
+    // Ensure that this is a part of the root
+    // by looking to see if current_root is one 
+    // of its parents
+
+    if (current_root != Vfs_Root)
+    {
+        for (dirent* c = last; ; c = c->d_parent)
+        {
+            if (c == current_root)
+            {
+                last = nullptr;
+                break;
+            }
+            else
+                continue;
+        }
+    }
+
     return last;
 }
 
@@ -369,13 +395,13 @@ dirent* VfsH_DirentLookupWD(const char* path, dirent* wd)
 {
     dirent* begin = wd;
     if (!begin)
-        begin = Vfs_Root;
+        begin = Vfs_GetRoot();
     if (path[0] == 0)
         return begin;
     if (strcmp(path, "/"))
-        return Vfs_Root;
+        return Vfs_GetRoot();
     if (path[0] == '/')
-        begin = Vfs_Root;
+        begin = Vfs_GetRoot();
     return VfsH_DirentLookupFrom(path, begin);
 
 }
@@ -392,8 +418,11 @@ dirent* VfsH_FollowLink(dirent* ent)
 {
     if (!ent)
         return nullptr;
-    while (ent && ent->vnode->vtype == VNODE_TYPE_LNK)
-        ent = VfsH_DirentLookupWD(ent->vnode->un.linked, ent->d_parent ? ent->d_parent : Vfs_Root);
+    int link_count = 15;
+    while (--link_count >= 0 && ent && ent->vnode->vtype == VNODE_TYPE_LNK)
+        ent = VfsH_DirentLookupWD(ent->vnode->un.linked, ent->d_parent ? ent->d_parent : Vfs_GetRoot());
+    if (link_count < 0)
+        return nullptr;
     return ent;
 }
 
@@ -651,7 +680,7 @@ obos_status Vfs_ReadEntries(dirent* dent, void* buffer, size_t szBuf, dirent** l
 char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 {
     if (!relative_to)
-        relative_to = Vfs_Root;
+        relative_to = Vfs_GetRoot();
     if (!ent)
         return nullptr;
     
@@ -670,7 +699,7 @@ char* VfsH_DirentPath(dirent* ent, dirent* relative_to)
 
     size_t left = path_len;
     dirent* curr = ent;
-    while (left && (relative_to == Vfs_Root ? (!!curr) : (relative_to != curr)))
+    while (left && (relative_to == Vfs_GetRoot() ? (!!curr) : (relative_to != curr)))
     {
         memcpy(&path[left-OBOS_GetStringSize(&curr->name)], OBOS_GetStringCPtr(&curr->name), OBOS_GetStringSize(&curr->name));
 
@@ -701,7 +730,10 @@ char* VfsH_DirentPathKAlloc(dirent* ent, dirent* relative_to)
 
 static bool check_chdir_perms(dirent* ent)
 {
-    return Vfs_Access(ent->vnode, false, false, true) == OBOS_STATUS_SUCCESS;
+    if (obos_is_success(OBOS_CapabilityCheck("vfs/chdir", true)))
+        return Vfs_Access(ent->vnode, false, false, true) == OBOS_STATUS_SUCCESS;
+    else
+        return false;
 }
 
 obos_status VfsH_Chdir(void* target_, const char *path)
@@ -713,6 +745,9 @@ obos_status VfsH_Chdir(void* target_, const char *path)
     dirent* ent = VfsH_DirentLookup(path);
     if (!ent || !ent->vnode)
         return OBOS_STATUS_NOT_FOUND;
+    ent = VfsH_FollowLink(ent);
+    if (!ent || !ent->vnode)
+        return OBOS_STATUS_INVALID_ARGUMENT;
     if (ent->vnode->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
     
@@ -730,6 +765,9 @@ obos_status VfsH_ChdirEnt(void* /* struct process */ target_, dirent* ent)
 {
     process* target = target_;
     if (!ent || !ent->vnode || !target)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ent = VfsH_FollowLink(ent);
+    if (!ent || !ent->vnode)
         return OBOS_STATUS_INVALID_ARGUMENT;
     if (ent->vnode->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
@@ -796,6 +834,35 @@ obos_status Sys_ChdirEnt(handle desc)
     OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
 
     return VfsH_ChdirEnt(Core_GetCurrentThread()->proc, dent->un.dirent->curr);
+}
+
+obos_status Sys_Chroot(const char* upath)
+{
+    obos_status status = OBOS_CapabilityCheck("vfs/chroot", false);
+    if (obos_is_error(status))
+        return status;
+
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* ent = VfsH_DirentLookup(path);
+    if (!ent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+
+    Core_GetCurrentThread()->proc->root = ent;
+
+    fail:
+    Free(OBOS_KernelAllocator, path, sz_path+1);
+
+    return status;
 }
 
 driver_header* Vfs_GetVnodeDriver(vnode* vn)
@@ -917,4 +984,17 @@ obos_status Vfs_AccessAs(uid asUid, gid asGid, vnode* vn, bool read, bool write,
         else
             return OBOS_STATUS_SUCCESS;
     }
+}
+
+static dirent* get_chroot()
+{
+    return !Core_GetCurrentThread() ? nullptr : (Core_GetCurrentThread()->proc ? Core_GetCurrentThread()->proc->root : nullptr);
+}
+
+dirent* Vfs_GetRoot()
+{
+    dirent* chroot = get_chroot();
+    if (chroot)
+        return chroot;
+    return Vfs_Root;
 }

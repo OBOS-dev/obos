@@ -309,7 +309,7 @@ void OBOS_KernelInit()
                 OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find %s passed in pnp-module-path command line option.\n", modules_path);
         }
         else
-            target = Vfs_Root;
+            target = Vfs_GetRoot();
         Drv_PnpLoadDriversAt(target, true);
         
         if (!initrd_drv_module.address)

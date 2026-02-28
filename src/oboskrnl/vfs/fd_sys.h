@@ -347,6 +347,8 @@ obos_status Sys_ChdirEnt(handle ent);
 /// <returns>An obos_status.</returns>
 obos_status Sys_GetCWD(char* path, size_t len);
 
+obos_status Sys_Chroot(const char* path);
+
 /// <summary>
 /// Creates a symbolic link 'link' to 'target'
 /// </summary>

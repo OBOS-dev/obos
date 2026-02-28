@@ -59,6 +59,8 @@ typedef struct process
 	dirent* cwd;
 	const char* cwd_str;
 
+	dirent* root;
+
 	char* exec_file;
 	char* cmdline;
 

@@ -37,7 +37,7 @@ obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, fil
 obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype, file_perm mode, uid uid, gid gid)
 {
     if (!parent)
-        parent = Vfs_Root;
+        parent = Vfs_GetRoot();
     if (!name || !vtype || vtype >= VNODE_TYPE_BAD)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
