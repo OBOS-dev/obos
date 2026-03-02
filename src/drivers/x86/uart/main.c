@@ -32,6 +32,7 @@
 
 #include <vfs/vnode.h>
 #include <vfs/dirent.h>
+#include <vfs/tty.h>
 
 #include "serial_port.h"
 
@@ -293,6 +294,53 @@ obos_status ioctl_argp_size(uint32_t request, size_t* out)
     return status;
 }
 
+static void set_data_ready_cb(void* tty, void(*cb)(void* tty, const void* buf, size_t nBytesReady))
+{
+    struct tty* t = tty;
+    serial_port* port = t->interface.userdata;
+    port->data_ready = cb;
+    port->tty = t;
+}
+static obos_status write(void* tty, const char* buf, size_t szBuf)
+{
+    struct tty* t = tty;
+    serial_port* port = t->interface.userdata;
+    write_sync((dev_desc)port, buf, szBuf, 0, nullptr);
+    return OBOS_STATUS_SUCCESS;
+}
+
+static void on_termios_set(void* tty, void* new_termiosp, void* old_termios)
+{
+    OBOS_UNUSED(old_termios);   
+    struct tty* t = tty;
+    serial_port* port = t->interface.userdata;
+
+    struct termios* new_termios = new_termiosp;
+
+    // ibaud is ignored.
+
+    uint32_t baudRate = speed_t_to_baud_rate(new_termios->cflag & CBAUD);
+    data_bits dataBits = SEVEN_DATABITS;
+    stop_bits stopbits = ONE_STOPBIT;
+    parity_bit parityBit = PARITYBIT_NONE;
+   
+    switch (new_termios->cflag & CSIZE) {
+        case CS5: dataBits = FIVE_DATABITS; break;
+        case CS6: dataBits = SIX_DATABITS; break;
+        case CS7: dataBits = SEVEN_DATABITS; break;
+        case CS8: dataBits = EIGHT_DATABITS; break;
+        default: return;
+    }
+
+    if (new_termios->cflag & PARENB)
+        parityBit = !!(new_termios->cflag & PARODD) ? PARITYBIT_ODD : PARITYBIT_EVEN;
+
+    if (new_termios->cflag & CSTOPB)
+        stopbits = TWO_STOPBITS;
+
+    open_serial_connection(port, baudRate, dataBits, stopbits, parityBit);
+}
+
 OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     this_driver = this;
@@ -336,6 +384,15 @@ OBOS_PAGEABLE_FUNCTION driver_init_status OBOS_DriverEntry(driver_id* this)
         query_user_readable_name(vn->desc, &dev_name);
         OBOS_Debug("%*s: Registering serial port at %s%c%s\n", uacpi_strnlen(this_driver->header.driverName, 64), this_driver->header.driverName, OBOS_DEV_PREFIX, OBOS_DEV_PREFIX[sizeof(OBOS_DEV_PREFIX)-1] == '/' ? 0 : '/', dev_name);
         Drv_RegisterVNode(vn, dev_name);
+        tty_interface ttyi = {
+            .userdata = port,
+            .on_termios_set = on_termios_set,
+            .write = write,
+            .set_data_ready_cb = set_data_ready_cb,
+            .size.row=30,
+            .size.col=95,
+        };
+        Vfs_RegisterTTY(&ttyi, nullptr, TTY_SERIAL);
     }
     return (driver_init_status){.status=OBOS_STATUS_SUCCESS,.fatal=false,.context=nullptr};
 }

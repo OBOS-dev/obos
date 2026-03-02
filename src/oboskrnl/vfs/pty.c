@@ -379,7 +379,7 @@ static obos_status ptmx_reference_device(dev_desc* desc)
         printf("referencing PTS %p master, now at %d master refs, %d refs\n", master, master->master_refs, master->ptr.refs);
         tty_interface iface = Vfs_PTSInterface;
         iface.userdata = master;
-        return Vfs_RegisterTTY(&iface, &master->slave, true);
+        return Vfs_RegisterTTY(&iface, &master->slave, TTY_PSUEDO);
     }
 
     pty* master = (void*)(*desc);
@@ -401,16 +401,7 @@ static obos_status ptmx_unreference_device(dev_desc desc)
     master->master_refs--;
     printf("dereferencing PTS %p master, now at %d master refs, %d refs\n", master, master->master_refs, master->ptr.refs-1);
     if (!master->master_refs && master->ptr.refs > 1)
-    {
-        process* session_leader = master->slave->vnode->tty->session ? master->slave->vnode->tty->session->leader : nullptr;
-
-        if (!session_leader)
-            OBOS_KillProcessGroup(master->slave->vnode->tty->fg_job, SIGHUP);
-        else
-            OBOS_KillProcess(session_leader, SIGHUP);
-        master->slave->vnode->tty->hang = true;
-        Core_EventSet(&master->slave->vnode->tty->data_ready_evnt, false);
-    }
+        Vfs_TTYHangUp(master->slave->vnode->tty);
 
     OBOS_SharedPtrUnref(&master->ptr);
 

@@ -27,6 +27,7 @@ typedef struct tty_interface {
     obos_status(*write)(void* tty, const char* buf, size_t szBuf);
     // Drain output buffers, optional to implement.
     obos_status(*tcdrain)(void* tty);
+    void(*on_termios_set)(void* tty, void* new_termios, void* old_termios);
     void(*ref)(void* tty);
     void(*deref)(void* tty);
     struct {
@@ -91,6 +92,91 @@ typedef struct tty_interface {
 #define IMAXBEL 0020000
 #define IUTF8 0040000
 
+// cflag
+#define CBAUD 0010017
+#define CSIZE 0000060
+#define CS5 0000000
+#define CS6 0000020
+#define CS7 0000040
+#define CS8 0000060
+#define CSTOPB 0000100
+#define CREAD 0000200
+#define PARENB 0000400
+#define PARODD 0001000
+#define HUPCL 0002000
+#define CLOCAL 0004000
+
+// speed_t constants
+#define B0       0
+#define B50      1
+#define B75      2
+#define B110     3
+#define B134     4
+#define B150     5
+#define B200     6
+#define B300     7
+#define B600     8
+#define B1200    9
+#define B1800    10
+#define B2400    11
+#define B4800    12
+#define B9600    13
+#define B19200   14
+#define B38400   15
+#define B57600   0010001
+#define B115200  0010002
+#define B230400  0010003
+#define B460800  0010004
+#define B500000  0010005
+#define B576000  0010006
+#define B921600  0010007
+#define B1000000 0010010
+#define B1152000 0010011
+#define B1500000 0010012
+#define B2000000 0010013
+#define B2500000 0010014
+#define B3000000 0010015
+#define B3500000 0010016
+#define B4000000 0010017
+
+static inline uint32_t speed_t_to_baud_rate(uint16_t speed)
+{
+    switch (speed) {
+        case B0: return 0;
+        case B50: return 50;
+        case B75: return 75;
+        case B110: return 110;
+        case B134: return 134;
+        case B150: return 150;
+        case B200: return 200;
+        case B300: return 300;
+        case B600: return 600;
+        case B1200: return 1200;
+        case B1800: return 1800;
+        case B2400: return 2400;
+        case B4800: return 4800;
+        case B9600: return 9600;
+        case B19200: return 19200;
+        case B38400: return 38400;
+        case B57600: return 57600;
+        case B115200: return 115200;
+        case B230400: return 230400;
+        case B460800: return 460800;
+        case B500000: return 500000;
+        case B576000: return 576000;
+        case B921600: return 921600;
+        case B1000000: return 1000000;
+        case B1152000: return 1152000;
+        case B1500000: return 1500000;
+        case B2000000: return 2000000;
+        case B2500000: return 2500000;
+        case B3000000: return 3000000;
+        case B3500000: return 3500000;
+        case B4000000: return 4000000;
+        default: return UINT16_MAX;
+    }
+}
+
 struct termios
 {
     uint32_t iflag;
@@ -134,9 +220,16 @@ typedef struct tty {
 #define TTY_IOCTL_FLUSH 0x04
 #define TTY_IOCTL_DRAIN 0x05
 
+enum {
+    TTY_SCREEN,
+    TTY_SERIAL,
+    TTY_PSUEDO,
+};
+
 // Makes a copy of 'i' before creating the TTY.
-obos_status Vfs_RegisterTTY(const tty_interface* i, dirent** node, bool pty);
-obos_status Vfs_FreeTTY(tty* tty);
+OBOS_EXPORT obos_status Vfs_RegisterTTY(const tty_interface* i, dirent** node, int type);
+OBOS_EXPORT obos_status Vfs_FreeTTY(tty* tty);
+OBOS_EXPORT obos_status Vfs_TTYHangUp(tty* tty);
 
 obos_status VfsH_MakeScreenTTY(tty_interface* i, vnode* keyboard, text_renderer_state* conout, struct flanterm_context* fconout);
 

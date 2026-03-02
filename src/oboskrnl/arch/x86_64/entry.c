@@ -739,7 +739,7 @@ void OBOSS_MakeTTY()
     tty_interface i = {};
     VfsH_MakeScreenTTY(&i, ps2k1 ? ps2k1->vnode : nullptr, nullptr, OBOS_FlantermContext);
     dirent* tty = nullptr;
-    Vfs_RegisterTTY(&i, &tty, false);
+    Vfs_RegisterTTY(&i, &tty, TTY_SCREEN);
     process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
     ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
     

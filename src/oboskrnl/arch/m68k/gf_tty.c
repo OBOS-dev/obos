@@ -173,7 +173,7 @@ void OBOSS_MakeTTY()
     dev->command = CMD_INT_ENABLE;
 
     dirent* ent = nullptr;
-    Vfs_RegisterTTY(&tty_iface, &ent, false);
+    Vfs_RegisterTTY(&tty_iface, &ent, TTY_SERIAL);
     tty_iface_obj.tty = ent->vnode->data;
 
     Core_MakeSession(OBOS_KernelProcess, nullptr);

@@ -93,8 +93,16 @@ void flush_out_buffer(serial_port* port)
 const size_t irq_rate = 1;
 obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bits dataBits, stop_bits stopbits, parity_bit parityBit)
 {
-    if (!port || !baudRate)
+    if (!port)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (!baudRate)
+    {
+        // Disable FIFOs, clear FIFO buffers.
+        outb(port->port_base + FIFO_CTRL, 0b110);
+        outb(port->port_base + IRQ_ENABLE, 0);
+        port->opened = false;
+        return OBOS_STATUS_SUCCESS;
+    }
     uint16_t divisor = 115200 / baudRate;
     if (divisor == 0)
         return OBOS_STATUS_INTERNAL_ERROR;
@@ -122,7 +130,7 @@ obos_status open_serial_connection(serial_port* port, uint32_t baudRate, data_bi
     // Enter normal transmission mode.
     port->isFaulty = false;
     port->opened = true;
-    outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when four bytes are received, other flags */);
+    outb(port->port_base + FIFO_CTRL, 0x07 /* FIFO Enabled, IRQ when one byte is received, other flags */);
     outb(port->port_base + MODEM_CTRL, 0xF /* DTR+RTS+OUT2+OUT1*/);
     outb(port->port_base + IRQ_ENABLE, 1);
     Arch_IOAPICMaskIRQ(port->gsi, false);
@@ -155,6 +163,7 @@ void com_irq_handler(struct irq* i, interrupt_frame* frame, void* userdata, irql
     {
         char ch = inb(port->port_base+IO_BUFFER);
         append_to_buffer_char(&port->in_buffer, ch);
+        port->data_ready(port->tty, &ch, 1);
         if (ch == '\x03')
             received_break = true;
     }

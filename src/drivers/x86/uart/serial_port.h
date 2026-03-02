@@ -63,7 +63,7 @@ typedef enum stop_bits
 {
     ONE_STOPBIT,
     ONE_HALF_STOPBIT = 0b0100,
-    TWO_STOPBIT = 0b0100,
+    TWO_STOPBITS = 0b0100,
 } stop_bits;
 
 typedef struct serial_port
@@ -81,6 +81,9 @@ typedef struct serial_port
     buffer out_buffer;
 
     bool isFaulty;
+
+    void(*data_ready)(void* tty, const void* buf, size_t nBytesReady);
+    void* tty;
 
     dpc com_dpc;
 

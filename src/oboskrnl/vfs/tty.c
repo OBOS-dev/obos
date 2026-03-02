@@ -269,6 +269,8 @@ static obos_status tty_ioctl(dev_desc what, uint32_t request, void *argp)
     obos_status status = OBOS_STATUS_SUCCESS;
     switch (request) {
         case TTY_IOCTL_SETATTR:
+            if (tty->interface.on_termios_set)
+                tty->interface.on_termios_set(tty, argp, &tty->termios);
             memcpy(&tty->termios, argp, sizeof(struct termios));
             break;
         case TTY_IOCTL_GETATTR:
@@ -456,6 +458,7 @@ static obos_status tty_unreference_device(dev_desc desc)
 
 static size_t last_tty_index = 0;
 static size_t last_pty_index = 0;
+static size_t last_sty_index = 0;
 
 driver_id OBOS_TTYDriver = {
     .id = 0,
@@ -619,9 +622,8 @@ static void data_ready(void *tty_, const void *buf, size_t nBytesReady)
         Core_EventSet(&tty->data_ready_evnt, true);
 }
 
-obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty) 
+obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, int type)
 {
-    pty = !!pty;
     if (!i || !i->write)
         return OBOS_STATUS_INVALID_ARGUMENT;
     tty *tty = Vfs_Calloc(1, sizeof(struct tty));
@@ -646,22 +648,28 @@ obos_status Vfs_RegisterTTY(const tty_interface *i, dirent **onode, bool pty)
     vnode *vn = Drv_AllocateVNode(&OBOS_TTYDriver, (dev_desc)tty, 0, nullptr,
                                     VNODE_TYPE_CHR);
     vn->flags |= VFLAGS_IS_TTY;
-    if (pty)
-        vn->flags |= VFLAGS_PTS_LOCKED;
+    if (type == TTY_PSUEDO) vn->flags |= VFLAGS_PTS_LOCKED;
     vn->data = tty;
     vn->gid = 5; // tty
-    size_t index = pty ? last_pty_index++ : last_tty_index++;
-    size_t szName = snprintf(nullptr, 0, "%s%ld", pty ? "" : "tty", index);
+    
+    size_t index = 0;
+    const char* prefix = nullptr;
+    
+    if (type == TTY_SCREEN) { index = last_tty_index++; prefix = "tty"; }
+    else if (type == TTY_SERIAL) { index = last_sty_index++; prefix = "ttyS"; }
+    else if (type == TTY_PSUEDO) { index = last_pty_index++; prefix = ""; }
+    
+    size_t szName = snprintf(nullptr, 0, "%s%ld", prefix, index);
     char *name = nullptr;
-    snprintf((name = Vfs_Malloc(szName + 1)), szName + 1, "%s%ld", pty ? "" : "tty", index);
-    OBOS_Log("%s: Registering %s %s\n", __func__, pty ? "PTS" : "TTY", name);
-    dirent *node = Drv_RegisterVNodeEx(vn, name, pty ? REGISTER_VNODE_IS_PTY : 0);
-    if (pty)
+    snprintf((name = Vfs_Malloc(szName + 1)), szName + 1, "%s%ld", prefix, index);
+    OBOS_Log("%s: Registering %s %s\n", __func__, type == TTY_PSUEDO ? "PTS" : "TTY", name);
+    dirent *node = Drv_RegisterVNodeEx(vn, name, (type == TTY_PSUEDO) ? REGISTER_VNODE_IS_PTY : 0);
+    if (type == TTY_PSUEDO)
         OBOS_ENSURE(obos_is_success(VfsH_SetPTS((dev_desc)i->userdata, node, (int)index)));
 
     tty->ent = node;
     tty->vn = vn;
-    tty->pty = pty;
+    tty->pty = type == TTY_PSUEDO;
     if (onode)
         *onode = node;
     
@@ -690,6 +698,22 @@ obos_status Vfs_FreeTTY(tty* tty)
     CoreH_AbortWaitingThreads(WAITABLE_OBJECT(tty->data_ready_evnt));
     Vfs_Free(tty->input_buffer.buf);
     Vfs_Free(tty);   
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Vfs_TTYHangUp(tty* tty)
+{
+    if (!tty) return OBOS_STATUS_INVALID_ARGUMENT;
+
+    process* session_leader = tty->session ? tty->session->leader : nullptr;
+
+    if (!session_leader)
+        OBOS_KillProcessGroup(tty->fg_job, SIGHUP);
+    else
+        OBOS_KillProcess(session_leader, SIGHUP);
+    tty->hang = true;
+    Core_EventSet(&tty->data_ready_evnt, false);
+    
     return OBOS_STATUS_SUCCESS;
 }
 
