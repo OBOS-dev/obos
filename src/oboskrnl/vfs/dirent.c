@@ -361,18 +361,21 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     // by looking to see if current_root is one 
     // of its parents
 
+    if (!last)
+        return nullptr;
+
     if (current_root != Vfs_Root)
     {
+        bool res = false;
         for (dirent* c = last; ; c = c->d_parent)
         {
             if (c == current_root)
             {
-                last = nullptr;
+                res = true;
                 break;
             }
-            else
-                continue;
         }
+        if (!res) last = nullptr;
     }
 
     return last;
