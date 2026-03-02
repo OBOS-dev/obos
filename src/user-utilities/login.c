@@ -146,7 +146,7 @@ int do_waitpid(int child)
     return status;
 }
 
-int main()
+int main(int argc, char** argv)
 {
     if (geteuid() != 0)
     {
@@ -158,6 +158,32 @@ int main()
     signal(SIGTSTP, SIG_IGN);
 
     gethostname(g_hostname, sizeof(g_hostname));
+
+    if (argc == 2)
+    {
+        daemon(1, 0);
+        
+        int fd = open(argv[1], O_RDWR);
+        if (fd < 0)
+        {
+            perror("open");
+            return -1;
+        }
+        if (!isatty(fd))
+        {
+            fprintf(stderr, "%s is not a tty!\n", argv[1]);
+            return -1;
+        }
+
+        close(fd);
+        fd = open(argv[1], O_RDONLY);
+        dup2(fd, STDIN_FILENO);
+        close(fd);
+        fd = open(argv[1], O_WRONLY);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        close(fd);
+    }
 
     while (1)
     {
