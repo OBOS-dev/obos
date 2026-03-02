@@ -70,6 +70,7 @@ static iterate_decision ext_ino_foreach_indirect_block(ext_cache* cache,
                                            void* userdata,
                                            uint32_t *blocks, size_t *curr_index, bool *dirty)
 {
+    if (!blocks) return ITERATE_DECISION_STOP;
     size_t nEntriesPerBlock = cache->block_size / 4;
     size_t i = 0;
     for (; i < OBOS_MIN(ext_ino_max_block_index(cache, inode) - 12, nEntriesPerBlock); i++)
@@ -96,6 +97,7 @@ static iterate_decision ext_ino_foreach_doubly_indirect_block(ext_cache* cache,
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
+    if (!blocks) return ITERATE_DECISION_STOP;
     size_t nEntriesPerBlock = cache->block_size / 4, i = 0;
     size_t maxBlockIndexDouble = ext_ino_max_block_index(cache, inode) / nEntriesPerBlock;
     if (ext_ino_max_block_index(cache, inode) % nEntriesPerBlock)
@@ -130,6 +132,7 @@ static void ext_ino_foreach_triply_indirect_block(ext_cache* cache,
                                                   void* userdata,
                                                   uint32_t *blocks, size_t *curr_index)
 {
+    if (!blocks) return;
     size_t nEntriesPerBlock = cache->block_size / 4, i = 0;
     size_t maxBlockIndexTriple = ext_ino_max_block_index(cache, inode) / nEntriesPerBlock / nEntriesPerBlock;
     if ((ext_ino_max_block_index(cache, inode) / nEntriesPerBlock) % nEntriesPerBlock)
