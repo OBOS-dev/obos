@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/fd_sys.h
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
  */
 
 #pragma once
@@ -348,6 +348,11 @@ obos_status Sys_ChdirEnt(handle ent);
 obos_status Sys_GetCWD(char* path, size_t len);
 
 obos_status Sys_Chroot(const char* path);
+
+// Per-process property, inherited by children
+// on process start.
+// Default is OBOS_PERM_PREFIX
+obos_status Sys_ChangePermRoot(const char* path);
 
 /// <summary>
 /// Creates a symbolic link 'link' to 'target'

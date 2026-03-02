@@ -1,7 +1,7 @@
 /*
  * oboskrnl/scheduler/process.h
  * 
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -60,6 +60,7 @@ typedef struct process
 	const char* cwd_str;
 
 	dirent* root;
+	dirent* perm_root;
 
 	char* exec_file;
 	char* cmdline;

@@ -52,7 +52,7 @@
 
 obos_status Sys_PartProbeDrive(handle ent, bool check_checksum)
 {
-    obos_status status = OBOS_CapabilityCheck("fs/part-probe", false);
+    obos_status status = OBOS_CapabilityCheck("vfs/part-probe", false);
     if (obos_is_error(status))
         return status;
 
@@ -336,6 +336,7 @@ obos_status Sys_Shutdown()
             return OBOS_STATUS_ACCESS_DENIED;
         else
         {
+            OBOS_SetLogLevel(LOG_LEVEL_ERROR);
             OBOS_Error("%s: OBOS_CapabilityCheck returned %d! It is safe to forcefully shutdown your PC\nThis could be a bug, report it\n", __func__, status);
             return status;
         }

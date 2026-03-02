@@ -93,6 +93,7 @@ OBOS_PAGEABLE_FUNCTION obos_status Core_ProcessStart(process* proc, thread* main
 	proc->egid = proc->parent->egid;
 	proc->sgid = proc->parent->sgid;
 	proc->root = proc->parent->root;
+	proc->perm_root = proc->parent->perm_root;
 	proc->groups.nEntries = proc->parent->groups.nEntries;
 	proc->parent->session->refs++;
 	proc->session = proc->parent->session;

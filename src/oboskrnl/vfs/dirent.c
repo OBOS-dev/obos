@@ -868,6 +868,35 @@ obos_status Sys_Chroot(const char* upath)
     return status;
 }
 
+obos_status Sys_ChangePermRoot(const char* upath)
+{
+    obos_status status = OBOS_CapabilityCheck("change-perm-root", false);
+    if (obos_is_error(status))
+        return status;
+
+    char* path = nullptr;
+    size_t sz_path = 0;
+    status = OBOSH_ReadUserString(upath, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    path = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(upath, path, nullptr);
+
+    dirent* ent = VfsH_DirentLookup(path);
+    if (!ent)
+    {
+        status = OBOS_STATUS_NOT_FOUND;
+        goto fail;
+    }
+    
+    Core_GetCurrentThread()->proc->perm_root = ent;
+
+    fail:
+    Free(OBOS_KernelAllocator, path, sz_path+1);
+
+    return status;
+}
+
 driver_header* Vfs_GetVnodeDriver(vnode* vn)
 {
     if (vn->flags & (VFLAGS_EVENT_DEV|VFLAGS_DRIVER_DEAD))

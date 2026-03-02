@@ -1,7 +1,7 @@
 /*
  * oboskrnl/perm.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
  *
  * Syscall permission checking utilities
  */
@@ -16,6 +16,7 @@
 #include <scheduler/process.h>
 
 #include <vfs/dirent.h>
+#include <vfs/mount.h>
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
 #include <vfs/create.h>
@@ -35,14 +36,28 @@ void OBOS_CapabilityInitialize()
     // we chillin
 }
 
+#define get_proc_perm_root()\
+({\
+    !Core_GetCurrentThread() ? nullptr : (Core_GetCurrentThread()->proc ? Core_GetCurrentThread()->proc->perm_root : nullptr);\
+})
+
+#define get_perm_root()\
+({\
+    dirent* root = get_proc_perm_root();\
+    if (!root)\
+        root = Vfs_PermRoot;\
+    root;\
+})
+
 obos_status OBOS_CapabilityFetch(const char* id, capability* res, bool create)
 {
     if (!Vfs_PermRoot)
         return OBOS_STATUS_NOT_FOUND;
+    dirent* perm_root = get_perm_root();
     OBOS_ENSURE(res);
     OBOS_ENSURE(id);
     CHECK_ID(id);
-    dirent* ent = VfsH_DirentLookupFrom(id, Vfs_PermRoot);
+    dirent* ent = VfsH_DirentLookupFrom(id, perm_root);
     if (!ent)
     {
         if (!create)
@@ -52,6 +67,7 @@ obos_status OBOS_CapabilityFetch(const char* id, capability* res, bool create)
         def.allow_group = true;
         def.owner = ROOT_UID;
         def.group = ROOT_GID;
+        *res = def;
         return OBOS_CapabilitySet(id, &def, true);
     }
 
@@ -161,6 +177,7 @@ obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool over
     OBOS_ENSURE(id);
     OBOS_ENSURE(perm);
     capability tmp = {};
+    dirent* perm_root = get_perm_root();
     obos_status status = OBOS_CapabilityFetch(id, &tmp, false);
     switch (status) {
         case OBOS_STATUS_SUCCESS: 
@@ -174,7 +191,7 @@ obos_status OBOS_CapabilitySet(const char* id, const capability* perm, bool over
     // We need to create the file.
     dirent* parent = nullptr;
     const char* name = nullptr;
-    status = create_parents(id, Vfs_PermRoot, &parent, &name);
+    status = create_parents(id, perm_root, &parent, &name);
     if (obos_is_error(status))
         return status;
     OBOS_ENSURE(parent);
