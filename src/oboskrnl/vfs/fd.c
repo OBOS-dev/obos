@@ -138,6 +138,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
         if (proc && proc->session && !proc->session->controlling_tty && !desc->vn->tty->session)
         {
             proc->session->controlling_tty = desc->vn->tty;
+        	proc->session->controlling_tty->fg_job = proc->pgrp;
             desc->vn->tty->session = proc->session;
         }
     }
