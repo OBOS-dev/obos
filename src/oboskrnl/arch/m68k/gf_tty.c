@@ -1,12 +1,13 @@
 /*
  * oboskrnl/arch/m68k/gf_tty.c
  *
- * Copyright (c) 2025 Omar Berrow
+ * Copyright (c) 2025-2026 Omar Berrow
 */
 
-#include "error.h"
 #include <int.h>
 #include <klog.h>
+#include <error.h>
+#include <memmanip.h>
 
 #include <scheduler/process.h>
 #include <scheduler/thread.h>
@@ -145,6 +146,12 @@ static irq gf_tty_irq;
 
 void OBOSS_MakeTTY()
 {
+    // boot-tty is ignored.
+
+    char* boot_tty = OBOS_GetOPTS("boot-tty");
+    if (boot_tty) OBOS_Warning("boot-tty option is ignored for the m68k\n");
+    Free(OBOS_KernelAllocator, boot_tty, strlen(boot_tty)+1);
+
     gf_tty_info = *(BootDeviceBase*)(Arch_GetBootInfo(BootInfoType_GoldfishTtyBase)+1);
 
     tty_iface_obj.data_ready_thread = CoreH_ThreadAllocate(nullptr);

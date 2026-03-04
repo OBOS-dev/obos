@@ -1,7 +1,7 @@
 /*
  * oboskrnl/arch/x86_64/entry.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -22,6 +22,8 @@
 
 #include <vfs/tty.h>
 #include <vfs/dirent.h>
+#include <vfs/vnode.h>
+#include <vfs/mount.h>
 
 #include <scheduler/schedule.h>
 #include <scheduler/process.h>
@@ -735,14 +737,23 @@ void OBOSS_MakeTTY()
     session* session = nullptr;
     OBOS_ENSURE(obos_is_success(Core_MakeSession(Core_GetCurrentThread()->proc, &session)));
     
-    dirent* ps2k1 = VfsH_DirentLookup("/dev/ps2k1");
+    const char* boot_tty = OBOS_GetOPTS("boot-tty");
+    const char* tty0_keyboard = OBOS_GetOPTS("x86-tty0-keyboard");
+    if (!tty0_keyboard) tty0_keyboard = "ps2k1";
+    if (!boot_tty) boot_tty = "tty0";
+    
+    dirent* keyboard = VfsH_DirentLookupFrom(tty0_keyboard, Vfs_DevRoot);
     tty_interface i = {};
-    VfsH_MakeScreenTTY(&i, ps2k1 ? ps2k1->vnode : nullptr, nullptr, OBOS_FlantermContext);
-    dirent* tty = nullptr;
-    Vfs_RegisterTTY(&i, &tty, TTY_SCREEN);
+    VfsH_MakeScreenTTY(&i, keyboard ? keyboard->vnode : nullptr, nullptr, OBOS_FlantermContext);
+    Vfs_RegisterTTY(&i, nullptr, TTY_SCREEN);
+    dirent* tty = VfsH_DirentLookupFrom(boot_tty, Vfs_DevRoot);
+    if (!tty || !tty->vnode)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "Could not find %s specified in boot-tty option!\n", boot_tty);
+    if (~tty->vnode->flags & VFLAGS_IS_TTY)
+        OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s specified in boot-tty option is not a tty!\n", boot_tty);
+
     process_group* pgrp = Core_GetCurrentThread()->proc->pgrp;
     ((struct tty*)tty->vnode->desc)->fg_job = pgrp;
-    
     session->controlling_tty = (void*)tty->vnode->desc;
 }
 

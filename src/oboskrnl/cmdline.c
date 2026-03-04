@@ -48,6 +48,7 @@ static const char* const help_message =
 "--disable-libc-log: Disables the logs from the C library (see Sys_LibcLog) .\n"
 "--disable-syscall-error-log: Makes all syscall logs happen at DEBUG level.\n"
 "--disable-syscall-logs: Disables all syscall logs.\n"
+"--boot-tty=devspec: TTY to use on boot. Default is usually tty0\n"
 "--tjec-random-access: Makes the underlying TJEC memory accessing randomized.\n"
 "--tjec-max-memory-size=bytes: Specifies the maximum amount of memory TJEC is allowed to allocate.\n"
 "--tjec-no-fips: Tells TJEC to not over sample per block of bits generated.\n"
@@ -56,6 +57,7 @@ static const char* const help_message =
 "--tjec-max-hash-loop-bits=<1-8>: Specifies a maximum number of random additional hash iterations TJEC makes per block in 2^k, default k=3 or 8.\n"
 "--tjec-osr=<1-255>: Specifies the over sampling ratio for TJEC, in other words, how many blocks to collect per block generated.\n"
 "--x86-disable-tsc: (x86 only) Disables use of the TSC.\n"
+"--x86-tty0-keyboard=devspec: (x86 only) Device to use as the keyboard input to tty0. Default is ps2k1\n"
 "--help: Displays this help message.\n";
 
 struct cmd_allocation_header
