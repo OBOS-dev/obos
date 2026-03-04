@@ -209,9 +209,7 @@ typedef struct tcp_connection {
             uint32_t up;
             // receive initial receive sequence number
             uint32_t irs;
-            // last ack sequence
-            uint32_t las;
-
+            
             uint32_t fin_seq;
         } rcv;
 
@@ -231,6 +229,8 @@ typedef struct tcp_connection {
 
     timer time_wait;
 
+    uint8_t keep_alive_timeout;
+    bool keep_alive : 1;
     bool is_client : 1;
     bool accepted : 1;
     bool reset : 1;
@@ -262,6 +262,7 @@ enum {
 bool Net_TCPRemoteACKedSegment(tcp_connection* con, uint32_t ack_left, uint32_t ack);
 void Net_TCPChangeConnectionState(tcp_connection* con, int state);
 void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t size, uint32_t sequence, size_t *nPushed);
+void Net_TCPKeepAlive(tcp_connection* con);
 obos_status Net_TCPPushDataToRemote(tcp_connection* con, const void* buffer, size_t* size, bool oob);
 // Advances tx_buffer.out_ptr to new_out_ptr, sends the data in between,
 // possibly setting the FIN bit on the last segment if 'TCP_TX_CLOSE_TX' is set.

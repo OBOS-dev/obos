@@ -838,6 +838,22 @@ void Net_TCPQueueACK(tcp_connection* con)
     con->ack_pending = true;
 }
 
+void Net_TCPKeepAlive(tcp_connection* con)
+{
+    if (con->state.snd.nxt != con->state.snd.una)
+        return;
+    struct tcp_pseudo_hdr resp = {};
+    resp.src_port = con->src.port;
+    resp.dest_port = con->dest.port;
+    resp.ttl = con->ttl;
+    resp.seq = con->state.snd.nxt-1;
+    resp.ack = con->state.rcv.nxt;
+    resp.window = con->state.rcv.wnd;
+    resp.flags = TCP_ACK;
+    NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &resp);
+    con->ack_pending = false;
+}
+
 static void do_ack(tcp_connection* con)
 {
     if (!con->ack_pending)
@@ -847,7 +863,6 @@ static void do_ack(tcp_connection* con)
     resp.dest_port = con->dest.port;
     resp.ttl = con->ttl;
     resp.seq = con->state.snd.nxt;
-    con->state.rcv.las = con->state.rcv.nxt;
     resp.ack = con->state.rcv.nxt;
     resp.window = con->state.rcv.wnd;
     resp.flags = TCP_ACK;
