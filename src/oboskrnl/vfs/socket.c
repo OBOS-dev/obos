@@ -489,6 +489,7 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
                     OBOS_Warning("%s: Unrecognized sockopt %d:%d.\n", __func__, level, optname);
                     return OBOS_STATUS_INVALID_ARGUMENT;
             }
+            break;
         }
         case SOL_SOCKET:
         {
@@ -531,6 +532,7 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
             }
             return OBOS_STATUS_INVALID_ARGUMENT;
         }
+        break;
     }
     return OBOS_STATUS_SUCCESS;
 }
