@@ -435,6 +435,7 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
                 case SO_DOMAIN:
                 case SO_ACCEPTCONN:
                     return OBOS_STATUS_INVALID_ARGUMENT;
+                case SO_ERROR: return OBOS_STATUS_SUCCESS;
                 case SO_KEEPALIVE:
                     if (desc->protocol != IPPROTO_TCP)
                         break;
@@ -494,6 +495,7 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
         case SOL_SOCKET:
         {
             switch (optname) {
+                case SO_ERROR: return OBOS_STATUS_SUCCESS;
                 case SO_PROTOCOL:
                     if (*optlen < sizeof(int))
                         return OBOS_STATUS_INVALID_ARGUMENT;

@@ -56,6 +56,7 @@ struct sockaddr_un {
 #define SOL_IP IPPROTO_IP
 #define SOL_SOCKET 1
 
+#define SO_ERROR 4
 #define SO_KEEPALIVE 9
 #define SO_ACCEPTCONN 30
 #define SO_PROTOCOL 38
