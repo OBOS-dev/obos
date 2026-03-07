@@ -842,16 +842,83 @@ void Net_TCPKeepAlive(tcp_connection* con)
 {
     if (con->state.snd.nxt != con->state.snd.una)
         return;
-    struct tcp_pseudo_hdr resp = {};
-    resp.src_port = con->src.port;
-    resp.dest_port = con->dest.port;
-    resp.ttl = con->ttl;
-    resp.seq = con->state.snd.nxt-1;
-    resp.ack = con->state.rcv.nxt;
-    resp.window = con->state.rcv.wnd;
-    resp.flags = TCP_ACK;
-    NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &resp);
+    struct tcp_pseudo_hdr pckt = {};
+    pckt.src_port = con->src.port;
+    pckt.dest_port = con->dest.port;
+    pckt.ttl = con->ttl;
+    pckt.seq = con->state.snd.nxt-1;
+    pckt.ack = con->state.rcv.nxt;
+    pckt.window = con->state.rcv.wnd;
+    pckt.flags = TCP_ACK;
+    NetH_SendTCPSegment(con->nic, nullptr, con->ip_ent, con->dest.addr, &pckt);
     con->ack_pending = false;
+    con->keep_alives_sent++;
+    con->keep_alive_sequence = pckt.seq;
+}
+
+static void idle_check_handler(void* userdata)
+{
+    tcp_connection* const con = userdata;
+
+    timer_tick receive_delta_time_ticks = CoreS_GetTimerTick() - con->state.rcv.time;
+    uint64_t rcv_delta_time = CoreH_TickToNS(receive_delta_time_ticks, false) / 1000000;
+
+    if (con->state.snd.nxt == con->state.snd.una && rcv_delta_time >= 1000 /* one second */)
+        Net_TCPMarkIdle(con, true);
+}
+
+static void keep_alive_handler(void* userdata)
+{
+    tcp_connection* const con = userdata;
+
+    if (con->keep_alives_acked == con->keep_alive_count)
+    {
+        con->keep_alives_sent = 0;
+        con->keep_alives_acked = 0;
+    }
+
+    if ((con->keep_alives_sent - con->keep_alives_acked) >= con->keep_alive_count)
+    {
+        Net_TCPReset(con);
+        return;
+    }
+
+    Net_TCPKeepAlive(con);
+    con->keep_alive_sent_idle = true;
+
+    con->keep_alive_timer.userdata = con;
+    con->keep_alive_timer.handler = keep_alive_handler;
+    Core_TimerObjectInitialize(&con->keep_alive_timer, TIMER_MODE_DEADLINE, con->keep_alive_interval*1000000);
+}
+
+void Net_TCPMarkIdle(tcp_connection* con, bool is_idle)
+{
+    if (con->is_idle == is_idle)
+        return;
+
+    Core_CancelTimer(&con->keep_alive_timer);
+
+    timer_handler hnd = nullptr;
+    timer_mode mode = TIMER_EXPIRED;
+    timer_tick period = 0;
+    if (is_idle)
+    {
+        if (!con->keep_alive)
+            mode = TIMER_EXPIRED; // Do nothing if keep alive is disabled
+        else
+            mode = TIMER_MODE_DEADLINE;
+        period = con->keep_alive_idle * 1000000;
+        hnd = keep_alive_handler;
+    }
+    else
+    {
+        mode = TIMER_MODE_INTERVAL;
+        period = 1000000;
+        hnd = idle_check_handler;
+    }
+    con->keep_alive_timer.userdata = con;
+    con->keep_alive_timer.handler = hnd;
+    Core_TimerObjectInitialize(&con->keep_alive_timer, mode, period);
 }
 
 static void do_ack(tcp_connection* con)
@@ -891,7 +958,9 @@ void Net_TCPPushReceivedData(tcp_connection* con, const void* buffer, size_t sz,
     size_t offset = sequence - con->state.rcv.nxt;
     if (offset > con->recv_buffer.size)
         return;
-    
+
+    Net_TCPMarkIdle(con, false);
+        
     if (!con->rx_closed)
     {
         if ((sz+offset) >= con->recv_buffer.size)
@@ -1143,6 +1212,11 @@ static void proc_ack(tcp_connection* con, uint32_t ack_left, uint32_t ack_right,
     irql oldIrql = IRQL_INVALID;
     if (!unlocked)
         oldIrql = Core_SpinlockAcquire(&con->tx_buffer.rtxq_lock);
+    if ((ack_left-1) == con->keep_alive_sequence)
+    {
+        con->keep_alive_sequence = 0;
+        con->keep_alives_acked++;
+    }
 
     for (tcp_sequence_rng* rng = con->tx_buffer.rtxq.head; rng;)
     {
@@ -1324,6 +1398,8 @@ obos_status Net_TCPDoTransmissionAt(tcp_connection* con, uint32_t last_tx_ptr, u
 
     // Out-of-band ("urgent") data is unimplemented.
     if (oob) return OBOS_STATUS_UNIMPLEMENTED;
+
+    Net_TCPMarkIdle(con, false);
 
     if (!retransmission)
         OBOS_ASSERT(new_out_ptr >= con->tx_buffer.out_ptr);
@@ -2163,6 +2239,7 @@ static void free_trb(tcp_connection* con)
         Free(OBOS_NonPagedPoolAllocator, con->tx_buffer.buf, con->tx_buffer.cap);
     Core_CancelTimer(&con->retransmission_timer);
     Core_CancelTimer(&con->time_wait);
+    Core_CancelTimer(&con->keep_alive_timer);
     Core_PushlockAcquire(&iface->tcp_connections_lock, false);
     if (con->is_client)
         RB_REMOVE(tcp_connection_tree, &iface->tcp_outgoing_connections, con);
@@ -2228,6 +2305,7 @@ obos_status tcp_shutdown(socket_desc* desc, int how)
         case TCP_STATE_SYN_RECEIVED:
         case TCP_STATE_ESTABLISHED:
         case TCP_STATE_CLOSE_WAIT:
+            Net_TCPSetKeepalive(desc, false);
             return Net_TCPDoTransmission(s->connection, s->connection->tx_buffer.out_ptr, TCP_TX_CLOSE_TX);
         case TCP_STATE_FIN_WAIT1:
         case TCP_STATE_FIN_WAIT2:
@@ -2248,7 +2326,6 @@ obos_status Net_TCPSetKeepalive(socket_desc* desc, bool enable)
     tcp_socket* s = desc->protocol_data;
     if (s->is_server)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    s->connection->keep_alive = enable;
     if (enable)
     {
         if (!s->connection->keep_alive_count)
@@ -2257,7 +2334,34 @@ obos_status Net_TCPSetKeepalive(socket_desc* desc, bool enable)
             s->connection->keep_alive_interval = 75;
         if (!s->connection->keep_alive_idle)
             s->connection->keep_alive_idle = 7200;
+        if (!s->connection->keep_alive)
+        {
+            Core_CancelTimer(&s->connection->keep_alive_timer);
+            timer_handler hnd = nullptr;
+            timer_mode mode = TIMER_EXPIRED;
+            timer_tick period = 0;
+            if (s->connection->is_idle)
+            {
+                mode = TIMER_MODE_DEADLINE;
+                period = s->connection->keep_alive_idle * 1000000;
+                hnd = keep_alive_handler;
+            }
+            else
+            {
+                mode = TIMER_MODE_INTERVAL;
+                period = 1000000;
+                hnd = idle_check_handler;
+            }
+            s->connection->keep_alive_timer.userdata = s->connection;
+            s->connection->keep_alive_timer.handler = hnd;
+            Core_TimerObjectInitialize(&s->connection->keep_alive_timer, mode, period);
+        }
     }
+    else
+        Core_CancelTimer(&s->connection->keep_alive_timer);
+    s->connection->keep_alives_sent = 0;
+    s->connection->keep_alive = enable;
+    s->connection->keep_alive_sent_idle = false;
     // else, keep them at current values.
     return OBOS_STATUS_SUCCESS;
 }
@@ -2311,23 +2415,78 @@ obos_status tcp_setsockopt(socket_desc* desc, int optname, const void* optval, s
                 s->connection->keep_alive_count = *(int*)optval;
             break;
         case TCP_KEEPIDLE:
+        {
             if (optlen < sizeof(int))
                 return OBOS_STATUS_INVALID_ARGUMENT;
+
+            int old_intvl = s->connection->keep_alive_idle;
+
             if (!(*(int*)optval))
                 s->connection->keep_alive_idle = 7200;
             else
                 s->connection->keep_alive_idle = *(int*)optval;
+
+            if (old_intvl != s->connection->keep_alive_interval && !s->connection->keep_alive_sent_idle)
+            {
+                int restart_intvl = 0;
+
+                // Recompute the new interval for the keep alive timer.
+                timer_tick elapsed = CoreS_GetTimerTick() - s->connection->keep_alive_timer.lastTimeTicked;
+                timer_tick new_deadline = CoreH_TimeFrameToTick(s->connection->keep_alive_idle*1000000);
+                if (elapsed >= new_deadline)
+                    restart_intvl = 0;
+                else
+                    restart_intvl = CoreH_TickToNS(new_deadline-elapsed, false)/1000;
+
+                if (!restart_intvl)
+                    keep_alive_handler(s->connection);
+                else
+                {
+                    Core_CancelTimer(&s->connection->keep_alive_timer);
+                    s->connection->keep_alive_timer.handler = keep_alive_handler;
+                    Core_TimerObjectInitialize(&s->connection->keep_alive_timer, TIMER_MODE_INTERVAL, restart_intvl);
+                }
+            }
+
             break;
+        }
         case TCP_KEEPINTVL:
+        {
             if (optlen < sizeof(int))
                 return OBOS_STATUS_INVALID_ARGUMENT;
+
+            int old_intvl = s->connection->keep_alive_interval;
+
             if (!(*(int*)optval))
                 s->connection->keep_alive_interval = 75;
             else
                 s->connection->keep_alive_interval = *(int*)optval;
+            
+            if (old_intvl != s->connection->keep_alive_interval && s->connection->keep_alive_sent_idle)
+            {
+                int restart_intvl = 0;
+
+                // Recompute the new interval for the keep alive timer.
+                timer_tick elapsed = CoreS_GetTimerTick() - s->connection->keep_alive_timer.lastTimeTicked;
+                timer_tick new_deadline = CoreH_TimeFrameToTick(s->connection->keep_alive_interval*1000000);
+                if (elapsed >= new_deadline)
+                    restart_intvl = 0;
+                else
+                    restart_intvl = CoreH_TickToNS(new_deadline-elapsed, false) / 1000;
+
+                if (!restart_intvl)
+                    keep_alive_handler(s->connection);
+                else
+                {
+                    Core_CancelTimer(&s->connection->keep_alive_timer);
+                    s->connection->keep_alive_timer.handler = keep_alive_handler;
+                    Core_TimerObjectInitialize(&s->connection->keep_alive_timer, TIMER_MODE_INTERVAL, restart_intvl);
+                }
+            }
+
             break;
-        default:
-            return OBOS_STATUS_INVALID_ARGUMENT;
+        }
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -2353,5 +2512,7 @@ socket_ops Net_TCPSocketBackend = {
     .submit_irp = tcp_submit_irp,
     .finalize_irp = tcp_finalize_irp,
     .shutdown = tcp_shutdown,
-    .sockatmark = tcp_sockatmark
+    .sockatmark = tcp_sockatmark,
+    .setsockopt = tcp_setsockopt,
+    .getsockopt = tcp_getsockopt,
 };
