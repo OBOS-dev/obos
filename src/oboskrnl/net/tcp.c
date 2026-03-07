@@ -2241,6 +2241,97 @@ obos_status tcp_shutdown(socket_desc* desc, int how)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status Net_TCPSetKeepalive(socket_desc* desc, bool enable)
+{
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    s->connection->keep_alive = enable;
+    if (enable)
+    {
+        if (!s->connection->keep_alive_count)
+            s->connection->keep_alive_count = 9;
+        if (!s->connection->keep_alive_interval)
+            s->connection->keep_alive_interval = 75;
+        if (!s->connection->keep_alive_idle)
+            s->connection->keep_alive_idle = 7200;
+    }
+    // else, keep them at current values.
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_getsockopt(socket_desc* desc, int optname, void* optval, size_t *optlen)
+{
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (optname) {
+        case TCP_KEEPCNT:
+            if (*optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            *(int*)optval = s->connection->keep_alive_count;
+            *optlen = sizeof(int);
+            break;
+        case TCP_KEEPIDLE:
+            if (*optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            *(int*)optval = s->connection->keep_alive_idle;
+            *optlen = sizeof(int);
+            break;
+        case TCP_KEEPINTVL:
+            if (*optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            *(int*)optval = s->connection->keep_alive_interval;
+            *optlen = sizeof(int);
+            break;
+        default:
+            return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status tcp_setsockopt(socket_desc* desc, int optname, const void* optval, size_t optlen)
+{
+    if (!desc->protocol_data)
+        return OBOS_STATUS_UNINITIALIZED;
+    tcp_socket* s = desc->protocol_data;
+    if (s->is_server)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    switch (optname) {
+        case TCP_KEEPCNT:
+            if (optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            if (!(*(int*)optval))
+                s->connection->keep_alive_count = 9;
+            else
+                s->connection->keep_alive_count = *(int*)optval;
+            break;
+        case TCP_KEEPIDLE:
+            if (optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            if (!(*(int*)optval))
+                s->connection->keep_alive_idle = 7200;
+            else
+                s->connection->keep_alive_idle = *(int*)optval;
+            break;
+        case TCP_KEEPINTVL:
+            if (optlen < sizeof(int))
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            if (!(*(int*)optval))
+                s->connection->keep_alive_interval = 75;
+            else
+                s->connection->keep_alive_interval = *(int*)optval;
+            break;
+        default:
+            return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    return OBOS_STATUS_SUCCESS;
+}
+
 obos_status tcp_sockatmark(socket_desc* desc)
 {
     OBOS_UNUSED(desc);

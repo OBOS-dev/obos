@@ -364,6 +364,7 @@ obos_status Net_Accept(fd* socket, sockaddr* oaddr, size_t* addr_len, int flags,
             default: break;
         }
         make_fd(out, AF_INET, type, desc->ops->proto_type.protocol, new_desc);
+        desc->opts.accept = true;
     }
     else if (desc->ops->domain == AF_UNIX)
     {
@@ -407,21 +408,56 @@ obos_status Net_SetSockOpt(fd* socket, int level /* ignored */, int optname, con
     socket_desc* desc = (void*)socket->vn->desc;
     if (desc->ops->domain != AF_INET)
         return OBOS_STATUS_INVALID_ARGUMENT;
-    return OBOS_STATUS_SUCCESS;
-    switch (optname) {
-        case IP_TTL:
-            if (optlen < sizeof(uint8_t))
-                return OBOS_STATUS_INVALID_ARGUMENT;
-            desc->opts.ttl = *(uint8_t*)optval;
+    switch (level) {
+        case SOL_IP:
+        {
+            switch (optname) {
+                case IP_TTL:
+                    if (optlen < sizeof(uint8_t))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    desc->opts.ttl = *(uint8_t*)optval;
+                    break;
+                case IP_HDRINCL:
+                    if (optlen < sizeof(bool))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    desc->opts.hdrincl = *(bool*)optval;
+                    break;
+                default: 
+                    OBOS_Warning("Unrecognized sockopt %d:%d\n", level, optname);
+                    return OBOS_STATUS_INVALID_ARGUMENT;
+            }
             break;
-        case IP_HDRINCL:
-            if (optlen < sizeof(bool))
-                return OBOS_STATUS_INVALID_ARGUMENT;
-            desc->opts.hdrincl = *(bool*)optval;
+        }
+        case SOL_SOCKET:
+        {
+            switch (optname) {
+                case SO_PROTOCOL:
+                case SO_DOMAIN:
+                case SO_ACCEPTCONN:
+                    return OBOS_STATUS_INVALID_ARGUMENT;
+                case SO_KEEPALIVE:
+                    if (desc->protocol != IPPROTO_TCP)
+                        break;
+                    if (optlen < sizeof(bool))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    Net_TCPSetKeepalive(desc, *(bool*)optval);
+                    break;
+                default: 
+                    OBOS_Warning("Unrecognized sockopt %d:%d\n", level, optname);
+                    return OBOS_STATUS_INVALID_ARGUMENT;
+            }
             break;
-        default: 
-            OBOS_Warning("Unrecognized sockopt %d:%d\n", level, optname);
+        }
+        default:
+        {
+            if (desc->protocol == level)
+            {
+                if (desc->ops->setsockopt)
+                    return desc->ops->setsockopt(desc, optname, optval, optlen);
+                return OBOS_STATUS_UNIMPLEMENTED;
+            }
             return OBOS_STATUS_INVALID_ARGUMENT;
+        }
     }
     return OBOS_STATUS_SUCCESS;
 }
@@ -433,23 +469,68 @@ obos_status Net_GetSockOpt(fd* socket, int level /* ignored */, int optname, voi
     if (desc->ops->domain != AF_INET)
         return OBOS_STATUS_INVALID_ARGUMENT;
     memset(optval, 0, *optlen);
-    return OBOS_STATUS_SUCCESS;
-    switch (optname) {
-        case IP_TTL:
-            if (*optlen < sizeof(uint8_t))
-                return OBOS_STATUS_INVALID_ARGUMENT;
-            *(uint8_t*)optval = desc->opts.ttl;
-            *optlen = sizeof(uint8_t);
+    switch (level) {
+        case SOL_IP:
+        {
+            switch (optname) {
+                case IP_TTL:
+                    if (*optlen < sizeof(uint8_t))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(uint8_t*)optval = desc->opts.ttl;
+                    *optlen = sizeof(uint8_t);
+                    break;
+                case IP_HDRINCL:
+                    if (*optlen < sizeof(bool))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(bool*)optval = desc->opts.hdrincl;
+                    *optlen = sizeof(bool);
+                    break;
+                default: 
+                    OBOS_Warning("%s: Unrecognized sockopt %d:%d.\n", __func__, level, optname);
+                    return OBOS_STATUS_INVALID_ARGUMENT;
+            }
+        }
+        case SOL_SOCKET:
+        {
+            switch (optname) {
+                case SO_PROTOCOL:
+                    if (*optlen < sizeof(int))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(int*)optval = desc->protocol;
+                    return OBOS_STATUS_SUCCESS;
+                case SO_DOMAIN:
+                    if (*optlen < sizeof(int))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(int*)optval = desc->ops->domain;
+                    return OBOS_STATUS_SUCCESS;
+                case SO_ACCEPTCONN:
+                    if (desc->protocol != IPPROTO_TCP || *optlen < sizeof(bool))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(bool*)optval = desc->opts.accept;
+                    return OBOS_STATUS_SUCCESS;
+                case SO_KEEPALIVE:
+                    if (desc->protocol != IPPROTO_TCP)
+                        break;
+                    if (*optlen < sizeof(bool))
+                        return OBOS_STATUS_INVALID_ARGUMENT;
+                    *(bool*)optval = desc->opts.keepalive;
+                    break;
+                default: 
+                    OBOS_Warning("Unrecognized sockopt %d:%d\n", level, optname);
+                    return OBOS_STATUS_INVALID_ARGUMENT;
+            }
             break;
-        case IP_HDRINCL:
-            if (*optlen < sizeof(bool))
-                return OBOS_STATUS_INVALID_ARGUMENT;
-            *(bool*)optval = desc->opts.hdrincl;
-            *optlen = sizeof(bool);
-            break;
-        default: 
-            OBOS_Warning("%s: Unrecognized sockopt %d:%d.\n", __func__, level, optname);
+        }
+        default:
+        {
+            if (desc->protocol == level)
+            {
+                if (desc->ops->getsockopt)
+                    return desc->ops->getsockopt(desc, optname, optval, optlen);
+                return OBOS_STATUS_UNIMPLEMENTED;
+            }
             return OBOS_STATUS_INVALID_ARGUMENT;
+        }
     }
     return OBOS_STATUS_SUCCESS;
 }

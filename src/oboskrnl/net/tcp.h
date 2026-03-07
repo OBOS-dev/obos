@@ -225,11 +225,16 @@ typedef struct tcp_connection {
         bool sack_perm : 1;
         bool sack_failure : 1;
     } state;
+
     timer retransmission_timer;
+    timer keep_alive_timer;
 
     timer time_wait;
 
-    uint8_t keep_alive_timeout;
+    int keep_alive_interval;
+    int keep_alive_idle;
+    int keep_alive_count;
+    
     bool keep_alive : 1;
     bool is_client : 1;
     bool accepted : 1;
@@ -278,6 +283,8 @@ OBOS_EXPORT void Net_TCPFlushACKs(struct net_tables* nic);
 // or false to stop iteration.
 void Net_TCPProcessOptionList(void* userdata, tcp_header* hdr, bool(*cb)(void* userdata, struct tcp_option* opt, tcp_header* hdr));
 
+obos_status Net_TCPSetKeepalive(socket_desc* desc, bool enable);
+
 static inline int tcp_connection_cmp(tcp_connection* lhs, tcp_connection* rhs)
 {
     if (lhs->src.addr.addr < rhs->src.addr.addr) return -1;
@@ -321,5 +328,17 @@ RB_PROTOTYPE(tcp_port_tree, tcp_port, node, tcp_port_cmp);
 obos_status NetH_SendTCPSegment(vnode* nic, tcp_connection* con, void* ent /* ip_table_entry */, ip_addr dest, struct tcp_pseudo_hdr* dat);
 
 PacketProcessSignature(TCP, ip_header*);
+
+// TCP-specific socket options.
+
+#define TCP_NODELAY 1
+#define TCP_MAXSEG 2
+#define TCP_KEEPIDLE 4
+#define TCP_KEEPINTVL 5
+#define TCP_KEEPCNT 6
+#define TCP_DEFER_ACCEPT 9
+#define TCP_INFO 11
+#define TCP_CONGESTION 13
+#define TCP_FASTOPEN 23
 
 extern socket_ops Net_TCPSocketBackend;

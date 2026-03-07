@@ -53,6 +53,14 @@ struct sockaddr_un {
 #define SOCK_CLOEXEC   02000000
 #define SOCK_NONBLOCK  04000
 
+#define SOL_IP IPPROTO_IP
+#define SOL_SOCKET 1
+
+#define SO_KEEPALIVE 9
+#define SO_ACCEPTCONN 30
+#define SO_PROTOCOL 38
+#define SO_DOMAIN 39
+
 // All flags are defined in linux headers for abi compatibility in mlibc
 // If you need a flag, steal it from linux headers
 
@@ -104,7 +112,9 @@ typedef struct socket_desc {
     size_t refs;
 	struct {
 		uint8_t ttl;
-		bool hdrincl; 
+		bool hdrincl : 1; 
+		bool keepalive : 1; 
+		bool accept : 1; 
 	} opts;
 } socket_desc;
 
@@ -127,6 +137,9 @@ typedef struct socket_ops {
 	obos_status(*shutdown)(socket_desc* desc, int how);
 	// OBOS_STATUS_SUCCESS if at OOB data mark, otherwise OBOS_STATUS_RETRY
 	obos_status(*sockatmark)(socket_desc* desc);
+	// level is always == protocol.
+	obos_status(*getsockopt)(socket_desc* desc, int optname, void* optval, size_t *optlen);
+	obos_status(*setsockopt)(socket_desc* desc, int optname, const void* optval, size_t optlen);
 } socket_ops;
 
 obos_status NetH_AddSocketBackend(socket_ops* ops);
