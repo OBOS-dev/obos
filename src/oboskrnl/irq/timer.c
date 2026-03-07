@@ -143,7 +143,7 @@ obos_status Core_TimerObjectFree(timer* obj)
 }
 obos_status Core_TimerObjectInitialize(timer* obj, timer_mode mode, uint64_t us)
 {
-    if (!obj || !us || mode < TIMER_EXPIRED)
+    if (!obj || !us || mode <= TIMER_EXPIRED)
         return OBOS_STATUS_INVALID_ARGUMENT;
     irql oldIrql = Core_RaiseIrql(IRQL_DISPATCH);
     timer_tick ticks = CoreH_TimeFrameToTick(us);
@@ -183,15 +183,18 @@ obos_status Core_CancelTimer(timer* timer)
         return OBOS_STATUS_SUCCESS;
     irql oldIrql = Core_SpinlockAcquireExplicit(&timer_list.lock, IRQL_TIMER, false);
     // Remove the timer from the list.
-    if (timer->next)
-        timer->next->prev = timer->prev;
-    if (timer->prev)
-        timer->prev->next = timer->next;
     if (timer == timer_list.head)
         timer_list.head = timer->next;
     if (timer == timer_list.tail)
         timer_list.tail = timer->prev;
+    if (timer->prev)
+        timer->prev->next = timer->next;
+    if (timer->next)
+        timer->next->prev = timer->prev;
     timer_list.nNodes--;
+    timer->next = nullptr;
+    timer->prev = nullptr;
+    CoreH_FreeDPC(&timer->handler_dpc, false);
     Core_SpinlockRelease(&timer_list.lock, oldIrql);
     timer->mode = TIMER_EXPIRED;
     return OBOS_STATUS_SUCCESS;
