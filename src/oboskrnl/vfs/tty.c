@@ -772,7 +772,7 @@ static void poll_keyboard(struct screen_tty* data)
     keycode* keycode_buffer = &tmp_code;
     dev_desc desc = data->keyboard.vn->desc;
     driver_header* header = Vfs_GetVnodeDriver(data->keyboard.vn);
-    if (header->ftable.reference_device(&desc))
+    if (header->ftable.reference_device)
         OBOS_ENSURE(obos_is_success(header->ftable.reference_device(&desc)));
     while (1)
     {
@@ -784,7 +784,8 @@ static void poll_keyboard(struct screen_tty* data)
         req->op = IRP_READ;
         req->dryOp = false;
         req->status = OBOS_STATUS_SUCCESS;
-        VfsH_IRPSubmit(req, &desc);
+        if (obos_is_error(VfsH_IRPSubmit(req, &desc)))
+            break;
         VfsH_IRPWait(req);
         VfsH_IRPUnref(req);
         char* buffer = Vfs_Malloc(nReady);
@@ -929,6 +930,7 @@ static void poll_keyboard(struct screen_tty* data)
             data->data_ready(data->tty, buffer, nReady);
         Vfs_Free(buffer);
     }
+    Core_ExitCurrentThread();
 }
 
 static void screen_set_data_ready_cb(void* tty_, void(*cb)(void* tty, const void* buf, size_t nBytesReady))
