@@ -211,3 +211,53 @@ obos_status Drv_UpdatePCIIrq(irq* irq, pci_device* dev, pci_irq_handle* handle);
 #define ETHERNET_DEVICE_PREFIX "en"
 
 OBOS_EXPORT char* DrvH_MakePCIDeviceName(pci_device_location loc, const char* prefix);
+
+#if __x86_64__ || __x86__
+#   define MMIO_WRITE8(address, value)\
+    asm volatile ("movb %%al, (%0)"\
+                   ::"r"(address),"a"((uint8_t)(value))\
+                   :"memory")
+#   define MMIO_WRITE16(address, value)\
+    asm volatile ("movw %%ax, (%0)"\
+                   ::"r"(address),"a"((uint16_t)(value))\
+                   :"memory")
+#   define MMIO_WRITE32(address, value)\
+    asm volatile ("movl %%eax, (%0)"\
+                   ::"r"(address),"a"((uint32_t)(value))\
+                   :"memory")
+#if __x86_64__ 
+#      define MMIO_WRITE64(address, value)\
+    asm volatile ("movq %%rax, (%0)"\
+                   ::"r"(address),"a"((uint64_t)(value))\
+                   :"memory")
+#   endif /* __x86_64__ */
+#   define MMIO_READ8(address)\
+    ({\
+        uint8_t _result = 0;\
+        asm volatile ("movb %0, (%1)"\
+                   :"=a"(_result):"r"(address)\
+                   :"memory");\
+        (_result);\
+     })
+#   define MMIO_READ16(address)\
+    ({\
+        uint16_t _result = 0;\
+        asm volatile ("movw %0, (%1)"\
+                   :"=a"(_result):"r"(address)\
+                   :"memory"); (_result);\
+     })
+#   define MMIO_READ32(address)\
+    ({\
+        uint32_t _result = 0;\
+        asm volatile ("movl %0, (%1)"\
+                   :"=a"(_result):"r"(address)\
+                   :"memory"); (_result);\
+     })
+#   define MMIO_READ64(address)\
+    ({\
+        uint64_t _result = 0;\
+        asm volatile ("movq %0, (%1)"\
+                   :"=a"(_result):"r"(address)\
+                   :"memory"); (_result);\
+     })
+#endif /* __x86_64__ || __x86__ */
