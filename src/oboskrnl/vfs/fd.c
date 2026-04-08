@@ -145,7 +145,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
 
     if (oflags & FD_OFLAGS_TRUNCATE && desc->vn->vtype == VNODE_TYPE_REG && (desc->flags & FD_FLAGS_WRITE))
     {
-        obos_status status = Vfs_TruncateFile(desc->vn, 0);
+        obos_status status = Vfs_TruncateFile(desc->vn, 0, false);
         if (obos_is_error(status))
             OBOS_Debug("%s: Vfs_TruncateFile returned %d!\n", __func__, status);
     }

@@ -104,6 +104,37 @@ obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn)
     initrd_inode* ino = (void*)desc;
     if (!ino)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (ino->dead)
+        return OBOS_STATUS_INVALID_ARGUMENT; // confusing...
+    if (!ino->vnode)
+    {
+        ino->vnode = Vfs_Calloc(1, sizeof(vnode));
+        ino->vnode->desc = (uintptr_t)ino;
+        ino->vnode->filesize = ino->filesize;
+        ino->vnode->blkSize = 1;
+        ino->vnode->uid = 0;
+        ino->vnode->gid = 0;
+        ino->vnode->inode = ino->ino;
+        ino->vnode->perm = ino->perm;
+        if (ino->hdr)
+            ino->vnode->times.change = oct2bin(ino->hdr->last_mod, strnlen(ino->hdr->last_mod, 12));
+        ino->vnode->times.birth = ino->vnode->times.change;
+        ino->vnode->times.access = ino->vnode->times.change;
+        switch (ino->type) {
+            case FILE_TYPE_REGULAR_FILE:
+                ino->vnode->vtype = VNODE_TYPE_REG;
+                break;
+            case FILE_TYPE_DIRECTORY:
+                ino->vnode->vtype = VNODE_TYPE_DIR;
+                break;
+            case FILE_TYPE_SYMBOLIC_LINK:
+                ino->vnode->vtype = VNODE_TYPE_LNK;
+                ino->vnode->un.linked = ino->linked_path;
+                break;
+            default:
+                OBOS_UNREACHABLE;
+        }
+    }
     *vn_found = ino->vnode;
     return OBOS_STATUS_SUCCESS;
 }

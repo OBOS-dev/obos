@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/init.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -22,6 +22,7 @@
 #include <vfs/create.h>
 #include <vfs/socket.h>
 #include <vfs/tty.h>
+#include <vfs/tmpfs.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -109,7 +110,14 @@ void Vfs_Initialize()
         Vfs_DevRoot->vnode->perm = perm;
         return;
     }
-    Vfs_Mount("/", nullptr, &initrd_dev, &Vfs_Root->vnode->mount_point);
+    
+    vnode* fsd = nullptr;
+    Vfs_TmpFSCreate(&fsd, &initrd_dev.driver->header, nullptr);
+
+    vdev dev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=fsd->desc};
+
+    Vfs_Mount("/", fsd, &dev, &Vfs_Root->vnode->mount_point);
+
     Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!Vfs_DevRoot)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);

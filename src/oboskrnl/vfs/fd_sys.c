@@ -803,7 +803,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
     if (node->vnode->vtype == VNODE_TYPE_DIR && node->tree_info.children.nChildren)
         return OBOS_STATUS_IN_USE;
     
-    return Vfs_UnlinkNode(node);
+    return Vfs_UnlinkNode(node, false);
 }
 
 obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length)
@@ -2310,7 +2310,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
     
-    status = Vfs_RenameNode(dtarget, pnewname, newfilename);
+    status = Vfs_RenameNode(dtarget, pnewname, newfilename, false);
 
     Free(OBOS_KernelAllocator, link, sz_path+1);
 

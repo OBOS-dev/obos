@@ -54,7 +54,8 @@ enum
     VFLAGS_PTMX = 128,
     VFLAGS_PTS_LOCKED = 256,
     // The NIC will inject packets into the network stack
-    VFLAGS_NIC_PACKET_INJECT = 512,    
+    VFLAGS_NIC_PACKET_INJECT = 512,
+    VFLAGS_TMPFS_FILE_DEAD = 1024,
 };
 
 // basically a struct specinfo, but renamed.
@@ -82,6 +83,8 @@ typedef struct vnode
         struct tty* tty;
         struct net_tables* net_tables;
     };
+    dev_desc tmpfs_secondary_desc;
+    dirent* tmpfs_directory_entry; // only exists for directories
     uint32_t vtype;
     uint32_t flags;
     struct mount* mount_point;

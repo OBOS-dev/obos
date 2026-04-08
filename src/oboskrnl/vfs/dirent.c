@@ -65,11 +65,11 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
             return vn;
         }
     }
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     file_type type = 0;
     driver_file_perm perm = {};
     mountpoint->fs_driver->driver->header.ftable.get_file_perms(desc, &perm);
     mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     switch (type)
     {
         case FILE_TYPE_REGULAR_FILE:
@@ -88,6 +88,8 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     vn->mount_point = mountpoint;
     vn->desc = desc;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
+    if (mountpoint->fs_driver->driver->header.ftable.get_file_inode)
+        mountpoint->fs_driver->driver->header.ftable.get_file_inode(desc, &vn->inode);
     if (t)
         *t = type;
     return vn;
@@ -312,6 +314,8 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             new->vnode->refs++;
             if (curtype == FILE_TYPE_SYMBOLIC_LINK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
+            if (curtype == FILE_TYPE_DIRECTORY)
+                new_vn->tmpfs_directory_entry = new;
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new && last != new)
             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
@@ -461,6 +465,8 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
     if (parent->d_children.tail == what)
         parent->d_children.tail = what->d_prev_child;
     parent->d_children.nChildren--;
+    what->d_next_child = nullptr;
+    what->d_prev_child = nullptr;
     what->d_parent = nullptr; // we're now an orphan :(
     mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
     LIST_REMOVE(dirent_list, &point->dirent_list, what);
@@ -582,6 +588,8 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     OBOS_InitString(&new->name, name);
     new->vnode = vn;
     VfsH_DirentAppendChild(dent, new);
+    if (vn->vtype == VNODE_TYPE_DIR)
+        vn->tmpfs_directory_entry = new;
     LIST_APPEND(dirent_list, &point->dirent_list, new);
     return ITERATE_DECISION_CONTINUE;
 }

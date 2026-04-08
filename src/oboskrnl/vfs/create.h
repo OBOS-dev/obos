@@ -25,14 +25,16 @@
     (_status);\
 })
 
+// If bit 31 of vtype is set, then the filesystem driver is NOT notified of the file creation.
+
 obos_status Vfs_CreateNode(dirent* parent, const char* name, uint32_t vtype, file_perm mode);
 obos_status Vfs_CreateNodeOwner(dirent* parent, const char* name, uint32_t vtype, file_perm mode, uid uid, gid gid);
 
-OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node);
+OBOS_EXPORT obos_status Vfs_UnlinkNode(dirent* node, bool no_drv);
 
-obos_status Vfs_TruncateFile(vnode* vn, size_t new_size);
+obos_status Vfs_TruncateFile(vnode* vn, size_t new_size, bool no_drv);
 
-obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name);
+obos_status Vfs_RenameNode(dirent* node, dirent* newparent, const char* name, bool no_drv);
 
 // Updates the file times of the vnode
 // in the underlying filesystem.

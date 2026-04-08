@@ -85,7 +85,7 @@ void driver_cleanup_callback()
         Port* port = &Ports[i];
         if (!port->vn)
             continue;
-        Vfs_UnlinkNode(port->ent);
+        Vfs_UnlinkNode(port->ent, false);
         port->vn->flags |= VFLAGS_DRIVER_DEAD; 
     }
 }

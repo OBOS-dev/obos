@@ -565,6 +565,7 @@ obos_status NetH_AddSocketBackend(socket_ops* ops)
     if (!BACKEND_TABLE_HAS_DOMAIN(ops->domain))
     {
         OBOS_Warning("Attempted to add socket OPs for domain %d, while we do not support such a thing!\n", ops->domain);
+        OBOS_ASSERT(!"unimplemented");
         return OBOS_STATUS_INVALID_ARGUMENT;
     }
     if (Net_SocketBackendTable[ops->domain].sz < ops->proto_type.protocol)
