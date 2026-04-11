@@ -521,6 +521,7 @@ uintptr_t OBOS_SyscallTable[] = {
     (uintptr_t)Sys_SetSid,
     (uintptr_t)Sys_GetSid,
     (uintptr_t)Sys_Chroot,
+    (uintptr_t)Sys_OpenTmpFS,
 };
 
 // Arch syscall table is defined per-arch

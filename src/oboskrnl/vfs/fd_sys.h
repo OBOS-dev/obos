@@ -313,6 +313,14 @@ obos_status Sys_ReadEntries(handle dent, void* buffer, size_t szBuf, size_t* nRe
 // Internal use only
 void OBOS_OpenStandardFDs(struct handle_table* tbl);
 
+enum {
+    TMPFS_INITRD,
+    TMPFS_DEVFS,
+    TMPFS_NEW,
+    TMPFS_OVERLAY,
+};
+obos_status Sys_OpenTmpFS(handle fd, int type, int flags, handle overlay);
+
 /// <summary>
 /// Mounts a file system.
 /// </summary>
