@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/mount.c
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -31,6 +31,8 @@
 
 struct dirent* Vfs_Root;
 struct dirent* Vfs_DevRoot;
+vnode* Vfs_InitrdTmpfs;
+vnode* Vfs_Devfs;
 mount_list Vfs_Mounted;
 
 static size_t str_search(const char* str, char ch)
@@ -291,6 +293,7 @@ static void stage_two(mount* unused, dirent* ent, void* userdata)
     OBOS_FreeString(&ent->name);
     Vfs_Free(ent);
 }
+
 obos_status Vfs_Unmount(mount* what)
 {
     if (!what)
@@ -326,6 +329,7 @@ obos_status Vfs_Unmount(mount* what)
     }
     return OBOS_STATUS_SUCCESS;
 }
+
 obos_status Vfs_UnmountP(const char* at)
 {
     dirent* resolved = VfsH_DirentLookup(at);

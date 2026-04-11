@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/mount.h
  *
- * Copyright (c) 2024-2025 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #pragma once
@@ -31,9 +31,16 @@ typedef struct mount
     atomic_size_t nWaiting;
     bool awaitingFree;
 } mount;
+
 extern struct dirent* Vfs_Root;
-struct dirent* Vfs_GetRoot();
 extern struct dirent* Vfs_DevRoot;
+
+extern vnode* Vfs_InitrdTmpfs;
+extern vnode* Vfs_Devfs;
+
+// Gets the current process' root directory.
+struct dirent* Vfs_GetRoot();
+
 extern mount_list Vfs_Mounted;
 
 // returns true if the operation succeeded.

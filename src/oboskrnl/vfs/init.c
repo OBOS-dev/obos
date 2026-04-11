@@ -111,17 +111,22 @@ void Vfs_Initialize()
         return;
     }
     
-    vnode* fsd = nullptr;
-    Vfs_TmpFSCreate(&fsd, &initrd_dev.driver->header, nullptr);
+    Vfs_TmpFSCreate(&Vfs_InitrdTmpfs, &initrd_dev.driver->header, nullptr);
+    Vfs_TmpFSCreate(&Vfs_Devfs, nullptr, nullptr);
 
-    vdev dev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=fsd->desc};
+    vdev idev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=Vfs_InitrdTmpfs->desc};
+    vdev ddev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=Vfs_Devfs->desc};
 
-    Vfs_Mount("/", fsd, &dev, &Vfs_Root->vnode->mount_point);
-
+    Vfs_Mount("/", Vfs_InitrdTmpfs, &idev, &Vfs_Root->vnode->mount_point);
+    
     Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!Vfs_DevRoot)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    
+    Vfs_Mount(OBOS_DEV_PREFIX, Vfs_Devfs, &ddev, &Vfs_DevRoot->vnode->mount_point);
+    
     OBOS_CapabilityInitialize();
+
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid)+1);
     if (root_uuid)

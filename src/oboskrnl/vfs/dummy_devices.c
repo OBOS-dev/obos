@@ -24,6 +24,7 @@
 #include <vfs/vnode.h>
 #include <vfs/alloc.h>
 #include <vfs/mount.h>
+#include <vfs/tmpfs.h>
 
 #include <irq/timer.h>
 
@@ -477,8 +478,9 @@ static void init_desc(dev_desc desc)
         }
     }
 
-    dirent* parent = Vfs_DevRoot;
+    dirent* parent = ((tmpfs*)(Vfs_Devfs->data))->root;
     vn->mount_point = parent->vnode->mount_point;
+    Vfs_TmpFSMakeVnode((tmpfs*)(Vfs_Devfs->data), vn, ent);
     VfsH_DirentAppendChild(parent, ent);
 }
 

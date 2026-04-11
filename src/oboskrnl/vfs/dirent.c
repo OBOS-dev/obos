@@ -16,6 +16,7 @@
 #include <vfs/mount.h>
 #include <vfs/vnode.h>
 #include <vfs/limits.h>
+#include <vfs/tmpfs.h>
 
 #include <allocators/base.h>
 
@@ -37,7 +38,7 @@ static size_t str_search(const char* str, char ch)
         ;
     return ret;
 }
-static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
+static vnode* create_vnode(mount* mountpoint, dev_desc desc)
 {
     if (mountpoint->fs_driver->driver->header.ftable.vnode_search)
     {
@@ -47,21 +48,6 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
         {
             OBOS_ENSURE(vn);
             vn->mount_point = mountpoint;
-            if (t)
-            {
-                switch (vn->vtype) {
-                    case VNODE_TYPE_LNK:
-                        *t = FILE_TYPE_SYMBOLIC_LINK;
-                        break;
-                    case VNODE_TYPE_REG:
-                        *t = FILE_TYPE_REGULAR_FILE;
-                        break;
-                    case VNODE_TYPE_DIR:
-                        *t = FILE_TYPE_DIRECTORY;
-                        break;
-                    default: OBOS_UNREACHABLE;
-                }
-            }
             return vn;
         }
     }
@@ -90,8 +76,6 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     memcpy(&vn->perm, &perm, sizeof(file_perm));
     if (mountpoint->fs_driver->driver->header.ftable.get_file_inode)
         mountpoint->fs_driver->driver->header.ftable.get_file_inode(desc, &vn->inode);
-    if (t)
-        *t = type;
     return vn;
 }
 static dirent* on_match(dirent** const curr_, dirent** const root, const char** const tok, size_t* const tok_len, const char** const path, 
@@ -295,7 +279,6 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         if (!new)
         {
             dev_desc curdesc = 0;
-            file_type curtype = 0;
             obos_status status = fs_driver->driver->header.ftable.path_search(&curdesc, mountpoint->device, token, last->vnode->desc);
             if (obos_is_error(status))
             {
@@ -309,12 +292,12 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
             OBOS_InitStringLen(&new->name, token, tok_len);
             // mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+            vnode* new_vn = create_vnode(mountpoint, curdesc);
             new->vnode = new_vn;
             new->vnode->refs++;
-            if (curtype == FILE_TYPE_SYMBOLIC_LINK && !new_vn->un.linked)
+            if (new_vn->vtype == VNODE_TYPE_LNK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
-            if (curtype == FILE_TYPE_DIRECTORY)
+            if (new_vn->vtype == VNODE_TYPE_DIR)
                 new_vn->tmpfs_directory_entry = new;
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new && last != new)
@@ -485,8 +468,6 @@ static long get_current_time()
     return current_time;
 }
 
-static uint32_t devfs_inode = 3;
-
 vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev_p, uint32_t type)
 {
     static file_perm default_fileperm = {
@@ -515,14 +496,13 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->desc = desc;
     vn->filesize = filesize;
     vn->un.device = dev;
-    vn->inode = devfs_inode++;
     vn->perm = default_fileperm;
     vn->vtype = type;
     vn->gid = ROOT_GID;
     vn->uid = ROOT_UID;
     vn->times.access = get_current_time();
     vn->times.birth = vn->times.access;
-    vn->times.change = vn->times.access;
+    vn->times.change = vn->times.access;    
     if (dev_p)
         *dev_p = dev;
     return vn;    
@@ -536,7 +516,7 @@ dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int fl
 {
     if (!vn || !dev_name)
         return nullptr;
-    dirent* parent = Vfs_DevRoot;
+    dirent* parent = ((tmpfs*)Vfs_Devfs->data)->root;
     if (flags & REGISTER_VNODE_IS_PTY)
         parent = VfsH_DirentLookupFrom("pts", parent);
     if (!parent)
@@ -561,7 +541,10 @@ dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int fl
     ent->vnode->mount_point = point;
     OBOS_StringSetAllocator(&ent->name, Vfs_Allocator);
     OBOS_InitString(&ent->name, dev_name);
+
+    Vfs_TmpFSMakeVnode(((tmpfs*)Vfs_Devfs->data), vn, ent);
     VfsH_DirentAppendChild(parent, ent);
+    
     VfsH_UnlockMountpoint(point);
 
     return ent;
@@ -582,7 +565,7 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     }
 
     mount* point = Vfs_GetVnodeMount(dent->vnode);
-    vnode* vn = create_vnode(point, desc, nullptr);
+    vnode* vn = create_vnode(point, desc);
     dirent* new = Vfs_Calloc(1, sizeof(dirent));
     OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
     OBOS_InitString(&new->name, name);

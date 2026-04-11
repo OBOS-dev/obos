@@ -607,7 +607,6 @@ driver_id OBOS_TmpFSDriver = {
 obos_status Vfs_TmpFSCreate(vnode** tmpfso, driver_header* backend, void* backend_fs)
 {
     vnode* tmpfsv = Vfs_Calloc(1, sizeof(*tmpfsv));
-
     tmpfs* fs = nullptr;
     obos_status status = OBOS_STATUS_SUCCESS;
 
@@ -628,6 +627,9 @@ obos_status Vfs_TmpFSCreate(vnode** tmpfso, driver_header* backend, void* backen
 
 obos_status Vfs_TmpFSInitializeSpecial(tmpfs** out, driver_header* backend, void* backend_fs)
 {
+    if (!out)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    
     *out = Vfs_Calloc(1, sizeof(tmpfs));
     tmpfs* fs = *out;
     fs->next_unused_inode = 2;
@@ -649,6 +651,21 @@ obos_status Vfs_TmpFSInitializeSpecial(tmpfs** out, driver_header* backend, void
     fs->root->vnode->tmpfs_directory_entry = fs->root;
     fs->root->vnode->mount_point = nullptr;
     fs->root->vnode->perm = (file_perm){.mode=0777};
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status Vfs_TmpFSMakeVnode(tmpfs* fs, vnode* vn, dirent* ent)
+{
+    if (!fs || !vn || !ent)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    if (vn->vtype == VNODE_TYPE_DIR)
+    {
+        vn->data = ent;
+        vn->tmpfs_directory_entry = ent;
+    }
+    vn->inode = fs->next_unused_inode++;
 
     return OBOS_STATUS_SUCCESS;
 }
