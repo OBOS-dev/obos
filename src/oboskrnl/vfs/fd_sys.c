@@ -1166,6 +1166,49 @@ obos_status Sys_Mount(const char* uat, const char* uon)
     return status;
 }
 
+obos_status Sys_Mount2(const char* uat, handle on)
+{
+    char* at = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = nullptr;
+
+    if (!uat)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    status = OBOS_CapabilityCheck("fs/mount", false);
+    if (obos_is_error(status))
+        return status;
+
+    status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uat, at, nullptr);
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), on, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        goto done;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN || !fd->un.fd->vn)
+        goto done;
+
+    vdev dev = { .driver=detect_fs_driver(fd->un.fd->vn) };
+    if (!dev.driver)
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+    else
+        status = Vfs_Mount(at, fd->un.fd->vn, &dev, nullptr);
+
+    done:
+    Free(OBOS_KernelAllocator, at, sz_path+1);
+
+    return status;
+}
+
 obos_status Sys_Unmount(const char* uat)
 {
     obos_status status = OBOS_CapabilityCheck("fs/unmount", false);

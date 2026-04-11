@@ -329,6 +329,13 @@ obos_status Sys_OpenTmpFS(handle fd, int type, int flags, handle overlay);
 /// <returns>An obos_status.</returns>
 obos_status Sys_Mount(const char* at, const char* on);
 /// <summary>
+/// Mounts a file system.
+/// </summary>
+/// <param name="at">The root directory to mount on</param>
+/// <param name="on">The file system to mount</param>
+/// <returns>An obos_status.</returns>
+obos_status Sys_Mount2(const char* at, handle on);
+/// <summary>
 /// Unmounts a file system.
 /// </summary>
 /// <param name="at">The directory to unmount</param>
