@@ -1085,7 +1085,7 @@ void Net_TCPChangeConnectionState(tcp_connection* con, int state)
         con->time_wait.handler = free_tcp_socket;
         OBOS_ENSURE(obos_is_success(Core_TimerObjectInitialize(&con->time_wait, TIMER_MODE_DEADLINE, 60*1000*1000)));
     }
-    else if (state == TCP_STATE_CLOSED)
+    else if (state == TCP_STATE_CLOSED && con->socket_lost)
         free_trb(con);
 }
 
