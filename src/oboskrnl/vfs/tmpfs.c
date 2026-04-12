@@ -373,7 +373,8 @@ static obos_status get_file_type(dev_desc desc, file_type *type)
 static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
 {   
     OBOS_UNUSED(blkSize && blkCount);
-    dirent* const dent = userdata;
+    uintptr_t* fuserdata = userdata;
+    dirent* const dent = (void*)fuserdata[0];
     for (dirent* child = dent->d_children.head; child; )
     {
         if (OBOS_CompareStringC(&child->name, name))
@@ -382,8 +383,8 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
         child = child->d_next_child;
     }
 
-    mount* point = Vfs_GetVnodeMount(dent->vnode);
-    tmpfs* fs = point->device->data;
+    tmpfs* fs = (tmpfs*)fuserdata[1];
+    mount* point = (mount*)fuserdata[2];
     
     vnode* vn = Vfs_Calloc(1, sizeof(*vn));
 
@@ -393,9 +394,11 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     if (fs->backend->ftable.get_file_owner)
         fs->backend->ftable.get_file_owner(desc, &vn->uid, &vn->gid);
     
-    file_type type = 0;
-    fs->backend->ftable.get_file_perms(desc, &vn->perm);
-    fs->backend->ftable.get_file_type(desc, &type);
+    file_type type = -1;
+    if (fs->backend->ftable.get_file_perms)
+        fs->backend->ftable.get_file_perms(desc, &vn->perm);
+    if (fs->backend->ftable.get_file_type)
+        fs->backend->ftable.get_file_type(desc, &type);
     switch (type)
     {
         case FILE_TYPE_REGULAR_FILE:
@@ -409,7 +412,7 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
             fs->backend->ftable.get_linked_path(desc, &vn->un.linked);
             break;
         default:
-            OBOS_ASSERT(type);
+            OBOS_ENSURE(!"invalid type");
     }
     vn->mount_point = point;
     vn->desc = (dev_desc)vn;
@@ -442,8 +445,13 @@ obos_status list_dir(dev_desc dir, void* dev_vn, iterate_decision(*cb)(dev_desc 
         return OBOS_STATUS_NOT_FOUND;
 
     OBOS_ENSURE(vn->data);
-    if (fs->backend)
-        fs->backend->ftable.list_dir(vn->tmpfs_secondary_desc, fs->backend_fs, populate_cb, vn->data);
+    uintptr_t fuserdata[3] = {
+        (uintptr_t)vn->data,
+        (uintptr_t)fs,
+        (uintptr_t)vn->mount_point
+    };
+    if (fs->backend && vn->tmpfs_secondary_desc)
+        fs->backend->ftable.list_dir(vn->tmpfs_secondary_desc, fs->backend_fs, populate_cb, fuserdata);
 
     for (dirent* ent = ((dirent*)(vn->data))->d_children.head; ent; ent = ent->d_next_child)
     {
