@@ -103,7 +103,8 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
             return cur_thr->proc->session->controlling_tty->ent;
         }
 
-        if (!only_cache)
+        bool vnode_is_drv = curr->vnode && (curr->vnode->vtype == VNODE_TYPE_DIR || curr->vnode->vtype == VNODE_TYPE_REG || curr->vnode->vtype == VNODE_TYPE_LNK);
+        if (!only_cache && vnode_is_drv)
         {
             dev_desc desc = 0;
             driver_header* header = Vfs_GetVnodeDriver(curr->d_parent->vnode);
@@ -285,7 +286,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     size_t currentPathLen = 0;
     vdev* fs_driver = lastMount->fs_driver;
     mount* mountpoint = lastMount;
-    dirent* last = root_par;
+    dirent* last = Vfs_GetRoot() == root_par ? mountpoint->root : root_par;
     while (tok < (path_mnt+path_mnt_len))
     {
         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
