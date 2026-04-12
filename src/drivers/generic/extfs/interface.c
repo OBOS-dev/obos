@@ -290,6 +290,59 @@ obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status get_file_perms(dev_desc desc, driver_file_perm *perm)
+{
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd || !perm)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT; // uh oh :D
+    perm->mode = node->mode & 0777;
+    Free(EXT_Allocator, node, sizeof(*node));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status get_file_type(dev_desc desc, file_type *type)
+{
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd || !type)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT; // uh oh :D
+    if (ext_ino_test_type(node, EXT2_S_IFDIR))      *type = FILE_TYPE_DIRECTORY;
+    else if (ext_ino_test_type(node, EXT2_S_IFREG)) *type = FILE_TYPE_REGULAR_FILE;
+    else if (ext_ino_test_type(node, EXT2_S_IFLNK)) *type = FILE_TYPE_SYMBOLIC_LINK;
+    else
+    {
+        Free(EXT_Allocator, node, sizeof(*node));
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+    Free(EXT_Allocator, node, sizeof(*node));
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status get_file_owner(dev_desc desc, uid* uid, gid* gid)
+{
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT; // uh oh :D
+    if (uid) *uid = le16_to_host(node->uid);
+    if (gid) *gid = le16_to_host(node->gid);
+    Free(EXT_Allocator, node, sizeof(*node));
+    return OBOS_STATUS_SUCCESS;
+}
+
 static size_t str_search(const char* str, char ch)
 {
     size_t ret = strchr(str, ch);

@@ -100,6 +100,7 @@ OBOS_WEAK obos_status premove_file(void* vn, const char* path);
 OBOS_WEAK obos_status trunc_file(dev_desc desc, size_t newsize);
 OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid);
+OBOS_WEAK obos_status get_file_owner(dev_desc desc, uid* uid, gid* gid);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* vn, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
@@ -145,6 +146,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_file_perms = get_file_perms,
         .set_file_perms = set_file_perms,
         .set_file_owner = set_file_owner,
+        .get_file_owner = get_file_owner,
         .get_file_type = get_file_type,
         .get_file_inode = get_file_inode,
         .list_dir = list_dir,
