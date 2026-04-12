@@ -152,6 +152,8 @@ obos_status Sys_SysConf(int num, long *ret_)
 
 void Sys_SetKLogLevel(log_level level)
 {
+    if (OBOS_CapabilityCheck("misc/set-klog-level", false))
+        return;
     OBOS_SetLogLevel(level);
 }
 
