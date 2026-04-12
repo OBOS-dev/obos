@@ -1287,7 +1287,7 @@ obos_status Sys_OpenTmpFS(handle ufd, int type, OBOS_MAYBE_UNUSED int flags, han
             backend_fs = overlay_vn;
         }
 
-        status = Vfs_TmpFSCreate(&tmpfs_vn, &backend->header, backend_fs);
+        status = Vfs_TmpFSCreate(&tmpfs_vn, backend ? &backend->header : nullptr, backend_fs);
         if (obos_is_error(status))
             return status;
     }
