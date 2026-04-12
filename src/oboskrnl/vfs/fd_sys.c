@@ -39,6 +39,7 @@
 #include <vfs/irp.h>
 #include <vfs/create.h>
 #include <vfs/socket.h>
+#include <vfs/tmpfs.h>
 
 #include <locks/event.h>
 #include <locks/wait.h>
@@ -803,7 +804,7 @@ obos_status Sys_UnlinkAt(handle parent, const char* upath, int flags)
     if (node->vnode->vtype == VNODE_TYPE_DIR && node->tree_info.children.nChildren)
         return OBOS_STATUS_IN_USE;
     
-    return Vfs_UnlinkNode(node);
+    return Vfs_UnlinkNode(node, false);
 }
 
 obos_status Sys_ReadLinkAt(handle parent, const char *upath, void* ubuff, size_t max_size, size_t* length)
@@ -1112,6 +1113,8 @@ static driver_id* detect_fs_driver(vnode* vn)
 {
     if (vn->nPartitions == 1)
         return vn->partitions[0].fs_driver;
+    else if (vn->flags & VFLAGS_TMPFS)
+        return &OBOS_TmpFSDriver;
     else
         return nullptr;
 } 
@@ -1165,6 +1168,49 @@ obos_status Sys_Mount(const char* uat, const char* uon)
     return status;
 }
 
+obos_status Sys_Mount2(const char* uat, handle on)
+{
+    char* at = nullptr;
+    size_t sz_path = 0;
+    obos_status status = OBOS_STATUS_SUCCESS;
+    handle_desc* fd = nullptr;
+
+    if (!uat)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+
+    status = OBOS_CapabilityCheck("fs/mount", false);
+    if (obos_is_error(status))
+        return status;
+
+    status = OBOSH_ReadUserString(uat, nullptr, &sz_path);
+    if (obos_is_error(status))
+        return status;
+    at = ZeroAllocate(OBOS_KernelAllocator, sz_path+1, sizeof(char), nullptr);
+    OBOSH_ReadUserString(uat, at, nullptr);
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), on, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        goto done;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+    if (~fd->un.fd->flags & FD_FLAGS_OPEN || !fd->un.fd->vn)
+        goto done;
+
+    vdev dev = { .driver=detect_fs_driver(fd->un.fd->vn) };
+    if (!dev.driver)
+        status = OBOS_STATUS_INVALID_ARGUMENT;
+    else
+        status = Vfs_Mount(at, fd->un.fd->vn, &dev, nullptr);
+
+    done:
+    Free(OBOS_KernelAllocator, at, sz_path+1);
+
+    return status;
+}
+
 obos_status Sys_Unmount(const char* uat)
 {
     obos_status status = OBOS_CapabilityCheck("fs/unmount", false);
@@ -1186,6 +1232,69 @@ obos_status Sys_Unmount(const char* uat)
     return status;
 }
 
+obos_status Sys_OpenTmpFS(handle ufd, int type, OBOS_MAYBE_UNUSED int flags, handle uoverlay)
+{
+    obos_status status = OBOS_STATUS_SUCCESS;
+    vnode* tmpfs_vn = nullptr;
+    handle_desc* fd = nullptr;
+
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+    fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), ufd, HANDLE_TYPE_FD, false, &status);
+    if (!fd)
+    {
+        OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+        return status;
+    }
+    OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+    if (!fd->un.fd)
+        return OBOS_STATUS_UNINITIALIZED;
+    
+    if (fd->un.fd->flags & FD_FLAGS_OPEN)
+        return OBOS_STATUS_ALREADY_INITIALIZED;
+
+    switch (type) {
+        case TMPFS_INITRD: tmpfs_vn = Vfs_InitrdTmpfs; break;
+        case TMPFS_DEVFS: tmpfs_vn = Vfs_Devfs; break;
+        case TMPFS_NEW:
+        case TMPFS_OVERLAY: tmpfs_vn = nullptr; break;
+        default: return OBOS_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (!tmpfs_vn)
+    {
+        driver_id* backend = nullptr;
+        void* backend_fs = nullptr;
+
+        if (type == TMPFS_OVERLAY)
+        {
+            handle_desc* overlay = nullptr;
+            vnode* overlay_vn = nullptr;
+
+            OBOS_LockHandleTable(OBOS_CurrentHandleTable());
+            overlay = OBOS_HandleLookup(OBOS_CurrentHandleTable(), uoverlay, HANDLE_TYPE_FD, false, &status);
+            if (!overlay)
+            {
+                OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+                return status;
+            }
+            OBOS_UnlockHandleTable(OBOS_CurrentHandleTable());
+
+            overlay_vn = overlay->un.fd->vn;
+            backend = detect_fs_driver(overlay_vn);
+            if (!backend)
+                return OBOS_STATUS_INVALID_ARGUMENT;
+            backend_fs = overlay_vn;
+        }
+
+        status = Vfs_TmpFSCreate(&tmpfs_vn, backend ? &backend->header : nullptr, backend_fs);
+        if (obos_is_error(status))
+            return status;
+    }
+
+    return Vfs_FdOpenVnode(fd->un.fd, tmpfs_vn, FD_OFLAGS_READ|FD_OFLAGS_WRITE|FD_OFLAGS_UNCACHED);
+}
+
 obos_status Sys_IRPCreate(handle *ufile, size_t offset, size_t size, enum irp_op operation, void* buffer)
 {
     obos_status status = OBOS_STATUS_SUCCESS;
@@ -1205,6 +1314,7 @@ obos_status Sys_IRPCreate(handle *ufile, size_t offset, size_t size, enum irp_op
         return status;
 
     vnode* vn = nullptr;
+    OBOS_LockHandleTable(OBOS_CurrentHandleTable());
     handle_desc* fd = OBOS_HandleLookup(OBOS_CurrentHandleTable(), file, HANDLE_TYPE_FD, false, &status);
     if (!fd)
     {
@@ -2310,7 +2420,7 @@ obos_status Sys_RenameAt(handle olddirfd, const char *uoldname, handle newdirfd,
         return OBOS_STATUS_ALREADY_INITIALIZED;
     }
     
-    status = Vfs_RenameNode(dtarget, pnewname, newfilename);
+    status = Vfs_RenameNode(dtarget, pnewname, newfilename, false);
 
     Free(OBOS_KernelAllocator, link, sz_path+1);
 

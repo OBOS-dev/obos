@@ -206,7 +206,6 @@ void* Mm_VirtualMemoryAllocEx(context* ctx, void* base_, size_t size, prot_flags
         }
         if (!(file->flags & FD_FLAGS_WRITE) && !(flags & VMA_FLAGS_PRIVATE))
             prot |= OBOS_PROTECTION_READ_ONLY;
-        file->vn->nMappedRegions++;
         if (~prot & OBOS_PROTECTION_READ_ONLY)
             file->vn->nWriteableMappedRegions++;
     }

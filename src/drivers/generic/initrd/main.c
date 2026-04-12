@@ -53,32 +53,24 @@ OBOS_PAGEABLE_FUNCTION obos_status ioctl(dev_desc what, uint32_t request, void* 
 void driver_cleanup_callback()
 {}
 
-obos_status symlink_set_path(dev_desc desc, const char* to) { OBOS_UNUSED(desc && to); return OBOS_STATUS_SUCCESS; }
-
+OBOS_WEAK obos_status symlink_set_path(dev_desc desc, const char* to);
 OBOS_WEAK obos_status query_path(dev_desc desc, const char** path);
 OBOS_WEAK obos_status path_search(dev_desc* found, void*, const char* what, dev_desc parent);
 OBOS_WEAK obos_status get_linked_path(dev_desc desc, const char** found);
 OBOS_WEAK obos_status move_desc_to(dev_desc desc, dev_desc new_parent, const char* name);
 OBOS_WEAK obos_status mk_file(dev_desc* newDesc, dev_desc parent, void* vn, const char* name, file_type type, driver_file_perm perm);
 OBOS_WEAK obos_status remove_file(dev_desc desc);
-obos_status set_file_perms(dev_desc desc, driver_file_perm newperm)
-{
-    OBOS_UNUSED(desc);
-    OBOS_UNUSED(newperm);
-    return OBOS_STATUS_SUCCESS;
-}
+OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
-obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid)
-{
-    OBOS_UNUSED(desc && owner_uid && group_uid);
-    return OBOS_STATUS_SUCCESS;
-}
+OBOS_WEAK obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
-dev_desc irp_process_dryop(irp* req)
+obos_status irp_process_dryop(irp* req)
 {
+    if (req->op == IRP_WRITE) return OBOS_STATUS_READ_ONLY;
+
     dev_desc desc = req->desc;
     size_t blkCount = req->blkCount;
     size_t blkOffset = req->blkOffset;
@@ -104,6 +96,37 @@ obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn)
     initrd_inode* ino = (void*)desc;
     if (!ino)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (ino->dead)
+        return OBOS_STATUS_INVALID_ARGUMENT; // confusing...
+    if (!ino->vnode)
+    {
+        ino->vnode = Vfs_Calloc(1, sizeof(vnode));
+        ino->vnode->desc = (uintptr_t)ino;
+        ino->vnode->filesize = ino->filesize;
+        ino->vnode->blkSize = 1;
+        ino->vnode->uid = 0;
+        ino->vnode->gid = 0;
+        ino->vnode->inode = ino->ino;
+        ino->vnode->perm = ino->perm;
+        if (ino->hdr)
+            ino->vnode->times.change = oct2bin(ino->hdr->last_mod, strnlen(ino->hdr->last_mod, 12));
+        ino->vnode->times.birth = ino->vnode->times.change;
+        ino->vnode->times.access = ino->vnode->times.change;
+        switch (ino->type) {
+            case FILE_TYPE_REGULAR_FILE:
+                ino->vnode->vtype = VNODE_TYPE_REG;
+                break;
+            case FILE_TYPE_DIRECTORY:
+                ino->vnode->vtype = VNODE_TYPE_DIR;
+                break;
+            case FILE_TYPE_SYMBOLIC_LINK:
+                ino->vnode->vtype = VNODE_TYPE_LNK;
+                ino->vnode->un.linked = ino->linked_path;
+                break;
+            default:
+                OBOS_UNREACHABLE;
+        }
+    }
     *vn_found = ino->vnode;
     return OBOS_STATUS_SUCCESS;
 }
@@ -118,7 +141,7 @@ OBOS_WEAK obos_status submit_irp(void* /* irp* */ request_)
     else
         request->status = request->op == IRP_READ ? 
             read_sync(request->desc, request->buff, request->blkCount, request->blkOffset, &request->nBlkRead) :
-            write_sync(request->desc, request->cbuff, request->blkCount, request->blkOffset, &request->nBlkRead);
+            OBOS_STATUS_READ_ONLY;
     request->evnt = nullptr;
     return OBOS_STATUS_SUCCESS;
 }
@@ -294,6 +317,7 @@ initrd_inode* create_inode_boot(const ustar_hdr* hdr)
 
     return ino;
 }
+
 driver_init_status OBOS_DriverEntry(driver_id* this)
 {
     (void)this;
@@ -411,90 +435,6 @@ OBOS_PAGEABLE_FUNCTION obos_status get_linked_path(dev_desc desc, const char** f
     return OBOS_STATUS_SUCCESS;
 }
 
-obos_status trunc_file(dev_desc desc, size_t newsize /* note, newsize must be less than the filesize */)
-{
-    initrd_inode* inode = (void*)desc;
-    if (!inode)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-
-    OBOS_ASSERT(inode->filesize >= newsize);
-    if (inode->filesize < newsize)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (inode->filesize == newsize)
-        return OBOS_STATUS_SUCCESS;
-
-    size_t oldsize = inode->filesize;
-    inode->filesize = newsize;
-    if (inode->persistent)
-    {
-        char* new_data = Allocate(OBOS_NonPagedPoolAllocator, inode->filesize, nullptr);
-        memcpy(new_data, inode->data, inode->filesize);
-        inode->data = new_data;
-        inode->persistent = false;
-    }
-    else
-        inode->data = Reallocate(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize, oldsize, nullptr);
-
-    return OBOS_STATUS_SUCCESS;
-}
-
-obos_status move_desc_to(dev_desc desc, dev_desc dnew_parent, const char* name)
-{
-    initrd_inode* ino = (void*)desc;
-    initrd_inode* new_parent = (void*)dnew_parent;
-    if (dnew_parent == UINTPTR_MAX)
-        new_parent = InitrdRoot;
-    
-    if (!ino) return OBOS_STATUS_INVALID_ARGUMENT;
-
-    // FIXME: This does not handle persistent inodes.
-    // This is problematic because if the old name is accessed,
-    // then it will be recreated.
-    if (new_parent)
-    {
-        if (ino->next)
-            ino->next->prev = ino->prev;
-        if (ino->prev)
-            ino->prev->next = ino->next;
-        if (ino->parent->children.head)
-            ino->parent->children.head = ino->next;
-        if (ino->parent->children.tail)
-            ino->parent->children.tail = ino->prev;
-        ino->parent->children.nChildren--;
-        ino->parent = new_parent;
-        if (!ino->parent->children.head)
-            ino->parent->children.head = ino;
-        if (ino->parent->children.tail)
-            ino->parent->children.tail->next = ino;
-        ino->prev = ino->parent->children.tail;
-        ino->parent->children.tail = ino;
-        ino->parent->children.nChildren++;
-    }
-    if (name)
-    {
-        ino->name_len = 0;
-        Free(OBOS_KernelAllocator, ino->name, ino->name_size);
-        ino->name_size = ino->name_len = strlen(name) + 1;
-        ino->name_size++;
-        ino->name = memcpy(Allocate(OBOS_KernelAllocator, ino->name_size, nullptr), name, ino->name_len);
-        
-        ino->path_len = 0;
-        Free(OBOS_KernelAllocator, ino->path, ino->path_size);
-        ino->path_len = snprintf(nullptr, 0, "%.*s%c%s", 
-            ino->parent->path_len, ino->parent->path,
-            (ino->parent->path[ino->parent->path_len-1] == '/' ? '\0' : '/'),
-            ino->name);
-        ino->path_size = ino->path_len + 1;
-        ino->path = Allocate(OBOS_KernelAllocator, ino->path_size, nullptr);
-        snprintf(ino->path, ino->path_size, "%.*s%c%s", 
-            ino->parent->path_len, ino->parent->path,
-            (ino->parent->path[ino->parent->path_len-1] == '/' ? '\0' : '/'),
-            ino->name);
-    }
-
-    return OBOS_STATUS_SUCCESS;
-}
-
 static char* fullpath(dev_desc parent, const char* what)
 {
     char *ret = nullptr;
@@ -515,6 +455,7 @@ static char* fullpath(dev_desc parent, const char* what)
     OBOS_ENSURE(ret);
     return ret;
 }
+
 initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
 {
     if (!hdr)
@@ -597,6 +538,7 @@ initrd_inode* create_inode_with_parents(const char* path, const ustar_hdr* hdr)
 
     return ino;
 }
+
 OBOS_PAGEABLE_FUNCTION obos_status path_search(dev_desc* found, void* unused, const char* what, dev_desc parent)
 {
     OBOS_UNUSED(unused);
@@ -713,134 +655,38 @@ OBOS_PAGEABLE_FUNCTION obos_status list_dir(dev_desc dir_, void* unused, iterate
     return OBOS_STATUS_SUCCESS;
 }
 
-// static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
-// {
-//     OBOS_UNUSED(blkSize);
-//     OBOS_UNUSED(blkCount);
-//     OBOS_UNUSED(name);
+static iterate_decision cb(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name)
+{
+    OBOS_UNUSED(blkSize);
+    OBOS_UNUSED(blkCount);
+    OBOS_UNUSED(name);
 
-//     size_t* const fileCount = userdata;
-//     (*fileCount)++;
+    size_t* const fileCount = userdata;
+    (*fileCount)++;
 
-//     initrd_inode* ino = (void*)desc;
-//     if (ino->type == FILE_TYPE_DIRECTORY)
-//         list_dir(desc, nullptr, cb, userdata);
-//     return ITERATE_DECISION_CONTINUE;
-// }
+    initrd_inode* ino = (void*)desc;
+    if (ino->type == FILE_TYPE_DIRECTORY)
+        list_dir(desc, nullptr, cb, userdata);
+    return ITERATE_DECISION_CONTINUE;
+}
 
 obos_status stat_fs_info(void *vn, drv_fs_info *info)
 {
     OBOS_UNUSED(vn);
-    static size_t fileCount = 0;
-    // if (fileCount == SIZE_MAX)
-    // {
-    //     fileCount = 0;
-    //     list_dir(UINTPTR_MAX, vn, cb, &fileCount);
-    // }
+    static size_t fileCount = SIZE_MAX;
+    if (fileCount == SIZE_MAX)
+    {
+        fileCount = 0;
+        list_dir(UINTPTR_MAX, vn, cb, &fileCount);
+    }
     info->partBlockSize = 1;
     info->fsBlockSize = 1;
     info->availableFiles = SIZE_MAX;
     info->fileCount = fileCount;
     info->szFs = (Mm_TotalPhysicalPages - Mm_TotalPhysicalPagesUsed) * OBOS_PAGE_SIZE;
     info->freeBlocks = info->szFs;
-    info->flags = 0;
+    info->flags = FS_FLAGS_RDONLY;
     // TODO: Is there a proper value for this?
     info->nameMax = 100;
-    return OBOS_STATUS_SUCCESS;
-}
-
-obos_status mk_file(dev_desc* newDesc, dev_desc parent_desc, void* vn, const char* name, file_type type, driver_file_perm perm)
-{
-    OBOS_UNUSED(vn);
-    initrd_inode *parent = (initrd_inode*)parent_desc;
-    if (parent_desc == UINTPTR_MAX)
-        parent = InitrdRoot;
-    if (!parent_desc || !newDesc || !name)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-
-    initrd_inode *new = ZeroAllocate(OBOS_KernelAllocator, 1, sizeof(initrd_inode), nullptr);
-    new->name_size = new->name_len = strlen(name);
-    new->name_size++;
-    new->type = type;
-    new->perm = perm;
-    new->ino = CurrentInodeNumber++;
-    new->name = Allocate(OBOS_KernelAllocator, new->name_len+1, nullptr);
-    memcpy(new->name, name, new->name_len);
-    new->name[new->name_len] = 0;
-    new->path_len = parent->path_len + 1 + new->name_len;
-    new->path_size = new->path_len + 1;
-    new->path = Allocate(OBOS_KernelAllocator, new->path_len+1, nullptr);
-    memcpy(new->path, parent->path, parent->path_len);
-    new->path[parent->path_len] = '/';
-    memcpy(&new->path[parent->path_len+1], new->name, new->name_len);
-    new->path[new->path_len] = 0;
-    // printf("created new node: parent.path: %s, new.path: %s, new.name: %s\n", parent->path, new->path, new->name);
-
-    new->parent = parent;
-    if (!parent->children.head)
-        parent->children.head = new;
-    if (parent->children.tail)
-        parent->children.tail->next = new;
-    new->prev = parent->children.tail;
-    parent->children.tail = new;
-    parent->children.nChildren++;
-
-    *newDesc = (dev_desc)new;
-    return OBOS_STATUS_SUCCESS;
-}
-
-obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, size_t blkOffset, size_t* nBlkWritten)
-{
-    initrd_inode* inode = (void*)desc;
-    if (!inode || !buf)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (!blkCount)
-        return OBOS_STATUS_SUCCESS;
-    if (inode->type != FILE_TYPE_REGULAR_FILE)
-        return OBOS_STATUS_NOT_A_FILE;
-    size_t nToExpand = ((blkOffset + blkCount) > inode->filesize) ? (blkOffset + blkCount) - inode->filesize : 0;
-    inode->filesize += nToExpand;
-    if (inode->persistent)
-    {
-        char* new_data = Allocate(OBOS_NonPagedPoolAllocator, inode->filesize, nullptr);
-        memcpy(new_data, inode->data, inode->filesize);
-        inode->data = new_data;
-        inode->persistent = false;
-    }
-    else
-        inode->data = Reallocate(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize, inode->filesize-nToExpand, nullptr);
-    memcpy(inode->data+blkOffset, buf, blkCount);
-    if (nBlkWritten)
-        *nBlkWritten = blkCount;
-    return OBOS_STATUS_SUCCESS;
-}
-
-obos_status remove_file(dev_desc desc)
-{
-    initrd_inode* inode = (void*)desc;
-    if (!inode)
-        return OBOS_STATUS_INVALID_ARGUMENT;
-    if (inode->parent)
-    {
-        if (!inode->persistent)
-        {
-            if (inode->next)
-                inode->next->prev = inode->prev;
-            if (inode->prev)
-                inode->prev->next = inode->next;
-            if (!inode->prev)
-                inode->parent->children.head = inode->next;
-            if (!inode->next)
-                inode->parent->children.tail = inode->prev;
-            inode->parent->children.nChildren--;
-        }
-        else
-            inode->dead = true;
-    }
-    if (!inode->persistent)
-    {
-        Free(OBOS_NonPagedPoolAllocator, inode->data, inode->filesize);
-        Free(OBOS_KernelAllocator, inode, sizeof(*inode));
-    }
     return OBOS_STATUS_SUCCESS;
 }

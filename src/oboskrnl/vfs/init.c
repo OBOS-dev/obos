@@ -1,7 +1,7 @@
 /*
  * oboskrnl/vfs/init.c
  *
- * Copyright (c) 2024 Omar Berrow
+ * Copyright (c) 2024-2026 Omar Berrow
 */
 
 #include <int.h>
@@ -22,6 +22,7 @@
 #include <vfs/create.h>
 #include <vfs/socket.h>
 #include <vfs/tty.h>
+#include <vfs/tmpfs.h>
 
 #include <mm/alloc.h>
 #include <mm/context.h>
@@ -109,11 +110,23 @@ void Vfs_Initialize()
         Vfs_DevRoot->vnode->perm = perm;
         return;
     }
-    Vfs_Mount("/", nullptr, &initrd_dev, &Vfs_Root->vnode->mount_point);
+    
+    Vfs_TmpFSCreate(&Vfs_InitrdTmpfs, &initrd_dev.driver->header, nullptr);
+    Vfs_TmpFSCreate(&Vfs_Devfs, nullptr, nullptr);
+
+    vdev idev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=Vfs_InitrdTmpfs->desc};
+    vdev ddev = {.driver=&OBOS_TmpFSDriver,.data=nullptr,.desc=Vfs_Devfs->desc};
+
+    Vfs_Mount("/", Vfs_InitrdTmpfs, &idev, &Vfs_Root->vnode->mount_point);
+    
     Vfs_DevRoot = VfsH_DirentLookup(OBOS_DEV_PREFIX);
     if (!Vfs_DevRoot)
         OBOS_Panic(OBOS_PANIC_FATAL_ERROR, "%s: Could not find directory at OBOS_DEV_PREFIX (%s) specified at build time.\n", __func__, OBOS_DEV_PREFIX);
+    
+    Vfs_Mount(OBOS_DEV_PREFIX, Vfs_Devfs, &ddev, &Vfs_DevRoot->vnode->mount_point);
+    
     OBOS_CapabilityInitialize();
+
     if (root_partid)
         Free(OBOS_KernelAllocator, root_partid, strlen(root_partid)+1);
     if (root_uuid)
@@ -208,5 +221,6 @@ OBOS_PAGEABLE_FUNCTION void Vfs_FinalizeInitialization()
         vnode* dev_tty_vn = Drv_AllocateVNode(nullptr, 0, 0, nullptr, VNODE_TYPE_CHR);
         dirent* dev_tty = Drv_RegisterVNode(dev_tty_vn, "tty");
         dev_tty->flags |= DIRENT_REFERS_CTTY;
+        dev_tty_vn->flags |= VFLAGS_REFERS_CTTY;
     } while(0);
 }

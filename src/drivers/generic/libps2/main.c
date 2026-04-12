@@ -148,7 +148,7 @@ obos_status ioctl_argp_size(uint32_t request, size_t* res)
 
 static void cleanup_port_vn(ps2_port* port)
 {
-    Vfs_UnlinkNode(port->ent);
+    Vfs_UnlinkNode(port->ent, false);
     port->vn->flags |= VFLAGS_DRIVER_DEAD;
 }
 

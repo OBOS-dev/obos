@@ -173,6 +173,8 @@ const char *syscall_to_string[] = {
     "Sys_SetSid",
     "Sys_GetSid",
     "Sys_Chroot",
+    "Sys_OpenTmpFS",
+    "Sys_Mount2",
 };
 
 const char* status_to_string[] = {

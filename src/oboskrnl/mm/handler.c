@@ -115,6 +115,8 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     if (!ent)
     {
         ent = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_entry), nullptr);
+        if (!ent)
+            return OBOS_STATUS_NOT_ENOUGH_MEMORY;
         ent->info.virt = curr->virt;
         ent->info.prot = curr->prot;
         ent->info.range = rng;
@@ -122,6 +124,12 @@ static obos_status ref_page(context* ctx, const page_info *curr)
     }
     ent->refs++;
     working_set_node* node = ZeroAllocate(Mm_Allocator, 1, sizeof(working_set_node), nullptr);
+    if (!node)
+    {
+        if (allocated_ent)
+            Free(Mm_Allocator, ent, sizeof(*ent));
+        return OBOS_STATUS_NOT_ENOUGH_MEMORY;
+    }
     node->data = ent;
 #if defined(OBOS_PAGE_REPLACEMENT_AGING)
     status = Mm_AgingReferencePage(ctx, node);

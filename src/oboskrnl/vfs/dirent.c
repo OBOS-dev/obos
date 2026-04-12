@@ -16,6 +16,8 @@
 #include <vfs/mount.h>
 #include <vfs/vnode.h>
 #include <vfs/limits.h>
+#include <vfs/tmpfs.h>
+#include <vfs/create.h>
 
 #include <allocators/base.h>
 
@@ -37,7 +39,7 @@ static size_t str_search(const char* str, char ch)
         ;
     return ret;
 }
-static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
+static vnode* create_vnode(mount* mountpoint, dev_desc desc)
 {
     if (mountpoint->fs_driver->driver->header.ftable.vnode_search)
     {
@@ -47,29 +49,14 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
         {
             OBOS_ENSURE(vn);
             vn->mount_point = mountpoint;
-            if (t)
-            {
-                switch (vn->vtype) {
-                    case VNODE_TYPE_LNK:
-                        *t = FILE_TYPE_SYMBOLIC_LINK;
-                        break;
-                    case VNODE_TYPE_REG:
-                        *t = FILE_TYPE_REGULAR_FILE;
-                        break;
-                    case VNODE_TYPE_DIR:
-                        *t = FILE_TYPE_DIRECTORY;
-                        break;
-                    default: OBOS_UNREACHABLE;
-                }
-            }
             return vn;
         }
     }
+    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     file_type type = 0;
     driver_file_perm perm = {};
     mountpoint->fs_driver->driver->header.ftable.get_file_perms(desc, &perm);
     mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-    vnode* vn = Vfs_Calloc(1, sizeof(vnode));
     switch (type)
     {
         case FILE_TYPE_REGULAR_FILE:
@@ -88,12 +75,12 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc, file_type* t)
     vn->mount_point = mountpoint;
     vn->desc = desc;
     memcpy(&vn->perm, &perm, sizeof(file_perm));
-    if (t)
-        *t = type;
+    if (mountpoint->fs_driver->driver->header.ftable.get_file_inode)
+        mountpoint->fs_driver->driver->header.ftable.get_file_inode(desc, &vn->inode);
     return vn;
 }
 static dirent* on_match(dirent** const curr_, dirent** const root, const char** const tok, size_t* const tok_len, const char** const path, 
-                        size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount)
+                        size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount, bool only_cache)
 {
     dirent *curr = *curr_;
     *root = curr;
@@ -109,12 +96,32 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
                 currentPathLen--;
         }
         thread* cur_thr = Core_GetCurrentThread();
-        if (curr->flags & DIRENT_REFERS_CTTY)
+        if (curr->flags & DIRENT_REFERS_CTTY || (curr->vnode && curr->vnode->flags & VFLAGS_REFERS_CTTY))
         {
             if (!(cur_thr && cur_thr->proc && cur_thr->proc->session && cur_thr->proc->session->controlling_tty))
                 return nullptr;
             return cur_thr->proc->session->controlling_tty->ent;
         }
+
+        bool vnode_is_drv = curr->vnode && (curr->vnode->vtype == VNODE_TYPE_DIR || curr->vnode->vtype == VNODE_TYPE_REG || curr->vnode->vtype == VNODE_TYPE_LNK);
+        if (!only_cache && vnode_is_drv)
+        {
+            dev_desc desc = 0;
+            driver_header* header = Vfs_GetVnodeDriver(curr->d_parent->vnode);
+            mount* mountpoint = Vfs_GetVnodeMount(curr->d_parent->vnode);
+            if (!header || !header->ftable.path_search)
+                return curr;
+            obos_status status = header->ftable.path_search(&desc, mountpoint->device, OBOS_GetStringCPtr(&curr->name), curr->d_parent->vnode->desc);
+            if (obos_is_error(status))
+            {
+                VfsH_DirentRemoveChild(curr->d_parent, curr);
+                OBOS_FreeString(&curr->name);
+                Vfs_Free(curr);
+                *curr_ = nullptr;
+                return nullptr; // The file was deleted on another mountpoint.
+            }
+        }
+
         return curr;
     }
     if (!curr->d_children.nChildren)
@@ -216,7 +223,9 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         {
             // Match!
             dirent* what = 
-                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount, only_cache);
+            if (!curr)
+                return nullptr;
             root = curr->d_children.head;
             if (what)
                 return what;
@@ -229,7 +238,9 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             {
                 // Match!
                 dirent* what = 
-                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount, only_cache);
+                if (!curr)
+                    return nullptr;
                 if (what)
                     return what;
                 // else
@@ -275,7 +286,7 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
     size_t currentPathLen = 0;
     vdev* fs_driver = lastMount->fs_driver;
     mount* mountpoint = lastMount;
-    dirent* last = root_par;
+    dirent* last = Vfs_GetRoot() == root_par ? mountpoint->root : root_par;
     while (tok < (path_mnt+path_mnt_len))
     {
         char* token = Vfs_Calloc(tok_len + 1, sizeof(char));
@@ -293,7 +304,6 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         if (!new)
         {
             dev_desc curdesc = 0;
-            file_type curtype = 0;
             obos_status status = fs_driver->driver->header.ftable.path_search(&curdesc, mountpoint->device, token, last->vnode->desc);
             if (obos_is_error(status))
             {
@@ -307,10 +317,10 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
             OBOS_InitStringLen(&new->name, token, tok_len);
             // mountpoint->fs_driver->driver->header.ftable.get_file_type(desc, &type);
-            vnode* new_vn = create_vnode(mountpoint, curdesc, &curtype);
+            vnode* new_vn = create_vnode(mountpoint, curdesc);
             new->vnode = new_vn;
             new->vnode->refs++;
-            if (curtype == FILE_TYPE_SYMBOLIC_LINK && !new_vn->un.linked)
+            if (new_vn->vtype == VNODE_TYPE_LNK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new && last != new)
@@ -461,6 +471,8 @@ void VfsH_DirentRemoveChild(dirent* parent, dirent* what)
     if (parent->d_children.tail == what)
         parent->d_children.tail = what->d_prev_child;
     parent->d_children.nChildren--;
+    what->d_next_child = nullptr;
+    what->d_prev_child = nullptr;
     what->d_parent = nullptr; // we're now an orphan :(
     mount* const point = parent->vnode->mount_point ? parent->vnode->mount_point : parent->vnode->un.mounted;
     LIST_REMOVE(dirent_list, &point->dirent_list, what);
@@ -478,8 +490,6 @@ static long get_current_time()
 #endif
     return current_time;
 }
-
-static uint32_t devfs_inode = 3;
 
 vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** dev_p, uint32_t type)
 {
@@ -509,14 +519,13 @@ vnode* Drv_AllocateVNode(driver_id* drv, dev_desc desc, size_t filesize, vdev** 
     vn->desc = desc;
     vn->filesize = filesize;
     vn->un.device = dev;
-    vn->inode = devfs_inode++;
     vn->perm = default_fileperm;
     vn->vtype = type;
     vn->gid = ROOT_GID;
     vn->uid = ROOT_UID;
     vn->times.access = get_current_time();
     vn->times.birth = vn->times.access;
-    vn->times.change = vn->times.access;
+    vn->times.change = vn->times.access;    
     if (dev_p)
         *dev_p = dev;
     return vn;    
@@ -530,7 +539,7 @@ dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int fl
 {
     if (!vn || !dev_name)
         return nullptr;
-    dirent* parent = Vfs_DevRoot;
+    dirent* parent = ((tmpfs*)Vfs_Devfs->data)->root;
     if (flags & REGISTER_VNODE_IS_PTY)
         parent = VfsH_DirentLookupFrom("pts", parent);
     if (!parent)
@@ -555,7 +564,10 @@ dirent* Drv_RegisterVNodeEx(struct vnode* vn, const char* const dev_name, int fl
     ent->vnode->mount_point = point;
     OBOS_StringSetAllocator(&ent->name, Vfs_Allocator);
     OBOS_InitString(&ent->name, dev_name);
+
+    Vfs_TmpFSMakeVnode(((tmpfs*)Vfs_Devfs->data), vn, ent);
     VfsH_DirentAppendChild(parent, ent);
+    
     VfsH_UnlockMountpoint(point);
 
     return ent;
@@ -570,18 +582,22 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     for (dirent* child = dent->d_children.head; child; )
     {
         if (OBOS_CompareStringC(&child->name, name))
+        {
+            child->flags &= ~DIRENT_FREE;
             return ITERATE_DECISION_CONTINUE;
+        }
 
         child = child->d_next_child;
     }
 
     mount* point = Vfs_GetVnodeMount(dent->vnode);
-    vnode* vn = create_vnode(point, desc, nullptr);
+    vnode* vn = create_vnode(point, desc);
     dirent* new = Vfs_Calloc(1, sizeof(dirent));
     OBOS_StringSetAllocator(&new->name, Vfs_Allocator);
     OBOS_InitString(&new->name, name);
     new->vnode = vn;
     VfsH_DirentAppendChild(dent, new);
+
     LIST_APPEND(dirent_list, &point->dirent_list, new);
     return ITERATE_DECISION_CONTINUE;
 }
@@ -594,9 +610,20 @@ void Vfs_PopulateDirectory(dirent* dent)
         return;
     if (driver->ftable.list_dir)
     {
+        for (dirent* ent = dent->d_children.head; ent; ent = ent->d_next_child)
+            ent->flags |= DIRENT_FREE;
+
         obos_status status = driver->ftable.list_dir(dent->vnode->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : dent->vnode->desc, point->device, populate_cb, dent);
         if (obos_is_error(status))
             OBOS_Error("list_dir returned %d!\n", status);
+
+        for (dirent* ent = dent->d_children.head; ent; )
+        {
+            dirent* const next = ent->d_next_child;
+            if (ent->flags & DIRENT_FREE)
+                Vfs_UnlinkNode(ent, true);
+            ent = next;
+        }
     }
     else
         OBOS_Error("driver->ftable.list_dir == nullptr!\n");

@@ -119,7 +119,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     }
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
-    if (~desc->vn->flags & VFLAGS_EVENT_DEV)
+    if (~desc->vn->flags & VFLAGS_EVENT_DEV && ~desc->vn->flags & VFLAGS_TMPFS)
     {
         driver_header* driver = Vfs_GetVnodeDriver(vn);
         desc->desc = desc->vn->desc;
@@ -145,7 +145,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
 
     if (oflags & FD_OFLAGS_TRUNCATE && desc->vn->vtype == VNODE_TYPE_REG && (desc->flags & FD_FLAGS_WRITE))
     {
-        obos_status status = Vfs_TruncateFile(desc->vn, 0);
+        obos_status status = Vfs_TruncateFile(desc->vn, 0, false);
         if (obos_is_error(status))
             OBOS_Debug("%s: Vfs_TruncateFile returned %d!\n", __func__, status);
     }
