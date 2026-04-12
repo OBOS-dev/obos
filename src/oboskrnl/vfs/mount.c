@@ -321,6 +321,7 @@ obos_status Vfs_Unmount(mount* what)
     }
     what->root->vnode->desc = what->old_root_desc;
     what->awaitingFree = true;
+    what->fs_driver->driver->header.ftable.umount(what->device);
     if (!what->nWaiting)
         Vfs_Free(what);
     else // the last thread to be waken up will free the mount point.

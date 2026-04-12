@@ -121,6 +121,9 @@ obos_status get_file_inode(dev_desc desc, uint32_t *out)
     return OBOS_STATUS_SUCCESS;
 }
 
+OBOS_WEAK obos_status mountp(void* vnp, void* targetp);
+OBOS_WEAK obos_status umount(void* vnp);
+
 __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
     .magic = OBOS_DRIVER_MAGIC,
     .flags = DRIVER_HEADER_HAS_STANDARD_INTERFACES|DRIVER_HEADER_DIRENT_CB_PATHS,
@@ -157,7 +160,8 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .probe = probe,
         .phardlink_file = phardlink_file,
         .symlink_set_path = symlink_set_path,
-        .mount = nullptr,
+        .mount = mountp,
+        .umount = umount,
     },
     .driverName = "EXT Driver",
     .version = 1,

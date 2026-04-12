@@ -228,6 +228,7 @@ typedef struct driver_ftable
     // vn: vnode*
     // target: dirent*
     obos_status(*mount)(void* vn, void* target);
+    obos_status(*umount)(void* vn);
 
     // ----------- END FS FUNCTIONS ----------
     // ---------------------------------------

@@ -524,3 +524,48 @@ obos_status path_search(dev_desc* found, void* vn, const char* path, dev_desc pa
 
     return *found ? OBOS_STATUS_SUCCESS : OBOS_STATUS_NOT_FOUND;
 }
+
+obos_status mountp(void* vnp, void* targetp)
+{
+    vnode* vn = vnp;
+    OBOS_MAYBE_UNUSED dirent* target = targetp;
+
+    ext_cache* cache = nullptr;
+
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+    if (!cache)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+ 
+    cache->superblock.state = EXT_ERROR_FS;
+    ext_writeback_sb(cache);
+
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status umount(void* vnp)
+{
+    vnode* vn = vnp;
+
+    ext_cache* cache = nullptr;
+
+    for (ext_cache* curr = LIST_GET_HEAD(ext_cache_list, &EXT_CacheList); curr && !cache; )
+    {
+        if (curr->vn == vn)
+            cache = curr;
+
+        curr = LIST_GET_NEXT(ext_cache_list, &EXT_CacheList, curr);
+    }
+    if (!cache)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+ 
+    cache->superblock.state = EXT_VALID_FS;
+    ext_writeback_sb(cache);
+
+    return OBOS_STATUS_SUCCESS;
+}
