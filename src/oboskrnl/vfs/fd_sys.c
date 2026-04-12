@@ -1113,6 +1113,8 @@ static driver_id* detect_fs_driver(vnode* vn)
 {
     if (vn->nPartitions == 1)
         return vn->partitions[0].fs_driver;
+    else if (vn->flags & VFLAGS_TMPFS)
+        return &OBOS_TmpFSDriver;
     else
         return nullptr;
 } 
