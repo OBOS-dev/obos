@@ -425,8 +425,6 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     if (vn->vtype == VNODE_TYPE_DIR)
         vn->data = new;
     VfsH_DirentAppendChild(dent, new);
-    if (vn->vtype == VNODE_TYPE_DIR)
-        vn->tmpfs_directory_entry = new;
     vn->tmpfs_secondary_desc = desc;
     // LIST_APPEND(dirent_list, &point->dirent_list, new);
     return ITERATE_DECISION_CONTINUE;
@@ -464,7 +462,7 @@ obos_status list_dir(dev_desc dir, void* dev_vn, iterate_decision(*cb)(dev_desc 
     return OBOS_STATUS_SUCCESS;
 }
 
-static obos_status stat_fs_info(void *vn, drv_fs_info *info)
+static obos_status stat_fs_info(OBOS_MAYBE_UNUSED void *vn, drv_fs_info *info)
 {
     info->availableFiles = SIZE_MAX;
     info->fsBlockSize = 1;
@@ -684,7 +682,6 @@ obos_status Vfs_TmpFSInitializeSpecial(tmpfs** out, driver_header* backend, void
     fs->root->vnode->gid = 0;
     fs->root->vnode->uid = 0;
     fs->root->vnode->inode = fs->next_unused_inode++;
-    fs->root->vnode->tmpfs_directory_entry = fs->root;
     fs->root->vnode->mount_point = nullptr;
     fs->root->vnode->perm = (file_perm){.mode=0777};
 
@@ -697,10 +694,7 @@ obos_status Vfs_TmpFSMakeVnode(tmpfs* fs, vnode* vn, dirent* ent)
         return OBOS_STATUS_INVALID_ARGUMENT;
 
     if (vn->vtype == VNODE_TYPE_DIR)
-    {
         vn->data = ent;
-        vn->tmpfs_directory_entry = ent;
-    }
     vn->inode = fs->next_unused_inode++;
 
     return OBOS_STATUS_SUCCESS;

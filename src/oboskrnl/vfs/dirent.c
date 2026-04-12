@@ -321,8 +321,6 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             new->vnode->refs++;
             if (new_vn->vtype == VNODE_TYPE_LNK && !new_vn->un.linked)
                 mountpoint->fs_driver->driver->header.ftable.get_linked_path(new_vn->desc, &new_vn->un.linked);
-            if (new_vn->vtype == VNODE_TYPE_DIR)
-                new_vn->tmpfs_directory_entry = new;
         }
         if (!new->d_prev_child && !new->d_next_child && last->d_children.head != new && last != new)
             VfsH_DirentAppendChild(last ? last : mountpoint->root, new);
@@ -598,9 +596,6 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     OBOS_InitString(&new->name, name);
     new->vnode = vn;
     VfsH_DirentAppendChild(dent, new);
-    
-    if (vn->vtype == VNODE_TYPE_DIR)
-        vn->tmpfs_directory_entry = new;
 
     LIST_APPEND(dirent_list, &point->dirent_list, new);
     return ITERATE_DECISION_CONTINUE;

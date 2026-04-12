@@ -86,7 +86,6 @@ typedef struct vnode
         struct net_tables* net_tables;
     };
     dev_desc tmpfs_secondary_desc;
-    dirent* tmpfs_directory_entry; // only exists for directories
     uint32_t vtype;
     uint32_t flags;
     struct mount* mount_point;
@@ -104,7 +103,6 @@ typedef struct vnode
     gid gid; // the group's GID.
     dev_desc desc; // the cached device descriptor.
     fd_list opened;
-    size_t nMappedRegions;
     size_t nWriteableMappedRegions;
     struct partition* partitions;
     size_t nPartitions;
