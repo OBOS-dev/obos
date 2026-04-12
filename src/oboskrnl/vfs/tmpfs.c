@@ -8,6 +8,7 @@
 #include <error.h>
 #include <memmanip.h>
 #include <klog.h>
+#include <perm.h>
 
 #include <vfs/alloc.h>
 #include <vfs/dirent.h>
@@ -323,6 +324,7 @@ static obos_status remove_file(void* vn, const char* path)
     replacement_dirent->vnode = nullptr;
     OBOS_InitStringLen(&replacement_dirent->name, OBOS_GetStringCPtr(&ent->name), OBOS_GetStringSize(&ent->name));
 
+    ent->vnode->flags |= VFLAGS_TMPFS_FILE_DEAD;
     status = Vfs_UnlinkNode(ent, true);
 
     if (obos_is_error(status))
@@ -436,6 +438,8 @@ obos_status list_dir(dev_desc dir, void* dev_vn, iterate_decision(*cb)(dev_desc 
 
     if (vn->vtype != VNODE_TYPE_DIR)
         return OBOS_STATUS_INVALID_ARGUMENT;
+    if (vn->flags & VFLAGS_TMPFS_FILE_DEAD)
+        return OBOS_STATUS_NOT_FOUND;
 
     OBOS_ENSURE(vn->data);
     if (fs->backend)
@@ -609,6 +613,7 @@ obos_status Vfs_TmpFSCreate(vnode** tmpfso, driver_header* backend, void* backen
     vnode* tmpfsv = Vfs_Calloc(1, sizeof(*tmpfsv));
     tmpfs* fs = nullptr;
     obos_status status = OBOS_STATUS_SUCCESS;
+    capability cap = {};
 
     status = Vfs_TmpFSInitializeSpecial(&fs, backend, backend_fs);
     if (obos_is_error(status))
@@ -617,7 +622,30 @@ obos_status Vfs_TmpFSCreate(vnode** tmpfso, driver_header* backend, void* backen
     tmpfsv->data = fs;
     tmpfsv->blkSize = 1;
     tmpfsv->filesize = -1;
+    tmpfsv->flags |= VFLAGS_TMPFS;
     tmpfsv->vtype = VNODE_TYPE_BLK;
+    status = OBOS_CapabilityFetch("fs/tmpfs-perm", &cap, false);
+    if (status == OBOS_STATUS_NOT_FOUND)
+    {
+        cap.allow_user = true;
+        cap.allow_group = false;
+        cap.allow_other = false;
+        cap.owner = ROOT_UID;
+        cap.group = ROOT_GID;
+    }
+    else if (obos_is_error(status))
+    {
+        OBOS_Error("%s: OBOS_CapabilityFetch returned %d\n", __func__, status);
+        return OBOS_STATUS_INTERNAL_ERROR;
+    }
+    tmpfsv->perm.owner_read = cap.allow_user;
+    tmpfsv->perm.owner_write = cap.allow_user;
+    tmpfsv->perm.group_read = cap.allow_group;
+    tmpfsv->perm.group_write = cap.allow_group;
+    tmpfsv->perm.other_read = cap.allow_other;
+    tmpfsv->perm.other_write = cap.allow_other;
+    tmpfsv->uid = cap.owner;
+    tmpfsv->gid = cap.group;
     fs->obj = tmpfsv;
 
     *tmpfso = tmpfsv;

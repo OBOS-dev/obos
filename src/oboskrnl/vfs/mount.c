@@ -163,6 +163,7 @@ OBOS_STATIC_ASSERT(sizeof(driver_file_perm) == sizeof(file_perm), "Invalid sizes
 //         fs_driver->driver->header.ftable.list_dir(desc, (void*)udata[2], callback, udata);
 //     return ITERATE_DECISION_CONTINUE;
 // }
+
 obos_status Vfs_Mount(const char* at_, vnode* on, vdev* fs_driver, mount** pMountpoint)
 {
     if (!Vfs_GetRoot())
