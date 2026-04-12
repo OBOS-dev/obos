@@ -17,6 +17,7 @@
 #include <vfs/vnode.h>
 #include <vfs/limits.h>
 #include <vfs/tmpfs.h>
+#include <vfs/create.h>
 
 #include <allocators/base.h>
 
@@ -79,7 +80,7 @@ static vnode* create_vnode(mount* mountpoint, dev_desc desc)
     return vn;
 }
 static dirent* on_match(dirent** const curr_, dirent** const root, const char** const tok, size_t* const tok_len, const char** const path, 
-                        size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount)
+                        size_t* const path_len, size_t* const lastMountPoint, mount** const lastMount, bool only_cache)
 {
     dirent *curr = *curr_;
     *root = curr;
@@ -95,12 +96,31 @@ static dirent* on_match(dirent** const curr_, dirent** const root, const char** 
                 currentPathLen--;
         }
         thread* cur_thr = Core_GetCurrentThread();
-        if (curr->flags & DIRENT_REFERS_CTTY)
+        if (curr->flags & DIRENT_REFERS_CTTY || curr->vnode->flags & VFLAGS_REFERS_CTTY)
         {
             if (!(cur_thr && cur_thr->proc && cur_thr->proc->session && cur_thr->proc->session->controlling_tty))
                 return nullptr;
             return cur_thr->proc->session->controlling_tty->ent;
         }
+
+        if (!only_cache)
+        {
+            dev_desc desc = 0;
+            driver_header* header = Vfs_GetVnodeDriver(curr->d_parent->vnode);
+            mount* mountpoint = Vfs_GetVnodeMount(curr->d_parent->vnode);
+            if (!header || !header->ftable.path_search)
+                return curr;
+            obos_status status = header->ftable.path_search(&desc, mountpoint->device, OBOS_GetStringCPtr(&curr->name), curr->d_parent->vnode->desc);
+            if (obos_is_error(status))
+            {
+                VfsH_DirentRemoveChild(curr->d_parent, curr);
+                OBOS_FreeString(&curr->name);
+                Vfs_Free(curr);
+                *curr_ = nullptr;
+                return nullptr; // The file was deleted on another mountpoint.
+            }
+        }
+
         return curr;
     }
     if (!curr->d_children.nChildren)
@@ -202,7 +222,9 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
         {
             // Match!
             dirent* what = 
-                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+                on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount, only_cache);
+            if (!curr)
+                return nullptr;
             root = curr->d_children.head;
             if (what)
                 return what;
@@ -215,7 +237,9 @@ static dirent* lookup(const char* path, dirent* root_par, bool only_cache)
             {
                 // Match!
                 dirent* what = 
-                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount);
+                    on_match(&curr, &root, &tok, &tok_len, &path, &path_len, &lastMountPoint, &lastMount, only_cache);
+                if (!curr)
+                    return nullptr;
                 if (what)
                     return what;
                 // else
@@ -559,7 +583,10 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     for (dirent* child = dent->d_children.head; child; )
     {
         if (OBOS_CompareStringC(&child->name, name))
+        {
+            child->flags &= ~DIRENT_FREE;
             return ITERATE_DECISION_CONTINUE;
+        }
 
         child = child->d_next_child;
     }
@@ -571,8 +598,10 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
     OBOS_InitString(&new->name, name);
     new->vnode = vn;
     VfsH_DirentAppendChild(dent, new);
+    
     if (vn->vtype == VNODE_TYPE_DIR)
         vn->tmpfs_directory_entry = new;
+
     LIST_APPEND(dirent_list, &point->dirent_list, new);
     return ITERATE_DECISION_CONTINUE;
 }
@@ -585,9 +614,20 @@ void Vfs_PopulateDirectory(dirent* dent)
         return;
     if (driver->ftable.list_dir)
     {
+        for (dirent* ent = dent->d_children.head; ent; ent = ent->d_next_child)
+            ent->flags |= DIRENT_FREE;
+
         obos_status status = driver->ftable.list_dir(dent->vnode->flags & VFLAGS_MOUNTPOINT ? UINTPTR_MAX : dent->vnode->desc, point->device, populate_cb, dent);
         if (obos_is_error(status))
             OBOS_Error("list_dir returned %d!\n", status);
+
+        for (dirent* ent = dent->d_children.head; ent; )
+        {
+            dirent* const next = ent->d_next_child;
+            if (ent->flags & DIRENT_FREE)
+                Vfs_UnlinkNode(ent, true);
+            ent = next;
+        }
     }
     else
         OBOS_Error("driver->ftable.list_dir == nullptr!\n");

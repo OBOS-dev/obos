@@ -18,6 +18,7 @@ enum {
     // This dirent hard links to the controlling tty of the process
     DIRENT_REFERS_CTTY = BIT(0),
     DIRENT_TMPFS_FILE_MOVED = BIT(1),
+    DIRENT_FREE = BIT(2),
 };
 
 typedef LIST_HEAD(dirent_list, struct dirent) dirent_list;
