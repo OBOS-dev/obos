@@ -119,7 +119,7 @@ OBOS_EXPORT obos_status Vfs_FdOpenVnode(fd* const desc, void* vn, uint32_t oflag
     }
     desc->vn->refs++;
     LIST_APPEND(fd_list, &desc->vn->opened, desc);
-    if (~desc->vn->flags & VFLAGS_EVENT_DEV)
+    if (~desc->vn->flags & VFLAGS_EVENT_DEV && ~desc->vn->flags & VFLAGS_TMPFS)
     {
         driver_header* driver = Vfs_GetVnodeDriver(vn);
         desc->desc = desc->vn->desc;
