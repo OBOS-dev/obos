@@ -153,6 +153,8 @@ static obos_status path_searchd(dirent** found, void* vn, const char* what, dev_
                 OBOS_ASSERT(type);
         }
         new->mount_point = fs->root->vnode->mount_point;
+        if (fs->backend->ftable.get_file_times)
+            fs->backend->ftable.get_file_times(current_desc, &new->times);
         new->desc = (dev_desc)new;
         new->inode = fs->next_unused_inode++;
         new->tmpfs_secondary_desc = current_desc;
@@ -399,6 +401,8 @@ static iterate_decision populate_cb(dev_desc desc, size_t blkSize, size_t blkCou
         fs->backend->ftable.get_file_perms(desc, &vn->perm);
     if (fs->backend->ftable.get_file_type)
         fs->backend->ftable.get_file_type(desc, &type);
+    if (fs->backend->ftable.get_file_times)
+        fs->backend->ftable.get_file_times(desc, &vn->times);
     switch (type)
     {
         case FILE_TYPE_REGULAR_FILE:

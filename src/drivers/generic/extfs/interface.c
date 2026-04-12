@@ -163,6 +163,24 @@ obos_status set_file_times(dev_desc desc, void* times_)
     return OBOS_STATUS_SUCCESS;
 }
 
+obos_status get_file_times(dev_desc desc, void *ptimes)
+{
+    struct file_times* times = ptimes;
+    ext_inode_handle* hnd = (void*)desc;
+    if (!hnd || !times)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (desc == UINTPTR_MAX)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    ext_inode* node = ext_read_inode(hnd->cache, hnd->ino);
+    if (!node)
+        return OBOS_STATUS_INVALID_ARGUMENT; 
+    times->access = le32_to_host(node->access_time);
+    times->change = le32_to_host(node->modification_time);
+    times->birth = le32_to_host(node->creation_time);
+    Free(EXT_Allocator, node, sizeof(*node));
+    return OBOS_STATUS_SUCCESS;
+}
+
 static dev_desc get_desc(ext_cache* cache, uint32_t ino)
 {
     if (cache->inode_vnode_table[ino-1])

@@ -64,6 +64,7 @@ OBOS_WEAK obos_status set_file_perms(dev_desc desc, driver_file_perm newperm);
 OBOS_WEAK obos_status get_file_perms(dev_desc desc, driver_file_perm *perm);
 OBOS_WEAK obos_status set_file_owner(dev_desc desc, uid owner_uid, gid group_uid);
 OBOS_WEAK obos_status get_file_type(dev_desc desc, file_type *type);
+OBOS_WEAK obos_status get_file_times(dev_desc desc, void *times);
 OBOS_WEAK obos_status list_dir(dev_desc dir, void* unused, iterate_decision(*cb)(dev_desc desc, size_t blkSize, size_t blkCount, void* userdata, const char* name), void* userdata);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 
@@ -183,6 +184,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .set_file_owner = set_file_owner,
         .get_file_type = get_file_type,
         .get_file_inode = get_file_inode,
+        .get_file_times = get_file_times,
         .list_dir = list_dir,
         .stat_fs_info = stat_fs_info,
         .symlink_set_path = symlink_set_path,
@@ -688,5 +690,18 @@ obos_status stat_fs_info(void *vn, drv_fs_info *info)
     info->flags = FS_FLAGS_RDONLY;
     // TODO: Is there a proper value for this?
     info->nameMax = 100;
+    return OBOS_STATUS_SUCCESS;
+}
+
+obos_status get_file_times(dev_desc desc, void *ptimes)
+{
+    struct file_times* times = ptimes;
+    initrd_inode* ino = (void*)desc;
+    if (!ino)
+        return OBOS_STATUS_INVALID_ARGUMENT;
+    if (ino->hdr)
+        times->change = oct2bin(ino->hdr->last_mod, strnlen(ino->hdr->last_mod, 12));
+    times->birth = ino->vnode->times.change;
+    times->access = ino->vnode->times.change;
     return OBOS_STATUS_SUCCESS;
 }

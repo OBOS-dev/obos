@@ -205,13 +205,15 @@ typedef struct driver_ftable
     };
     obos_status(*symlink_set_path)(dev_desc desc, const char* to);
 
-    // times is of type 'struct file_times' defined in vfs/vnode.h
     obos_status(*get_file_perms)(dev_desc desc, driver_file_perm *perm);
     obos_status(*get_file_owner)(dev_desc desc, uid *owner_uid, gid *group_uid);
     obos_status(*get_file_type)(dev_desc desc, file_type *type);
     obos_status(*get_file_inode)(dev_desc desc, uint32_t *ino);
+    // times is of type 'struct file_times' defined in vfs/vnode.h
+    obos_status(*get_file_times)(dev_desc desc, void* times);
     
-    obos_status(*set_file_times)(dev_desc desc, void* times);
+    // times is of type 'struct file_times' defined in vfs/vnode.h
+    obos_status(*set_file_times)(dev_desc desc, const void* times);
     obos_status(*set_file_perms)(dev_desc desc, driver_file_perm newperm);
     // if an ID is -1, it means leave that field UNCHANGED
     obos_status(*set_file_owner)(dev_desc desc, uid owner_uid, gid group_uid);

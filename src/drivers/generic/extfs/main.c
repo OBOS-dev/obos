@@ -108,7 +108,8 @@ OBOS_WEAK bool probe(void* vn);
 OBOS_WEAK obos_status submit_irp(void* request);
 OBOS_WEAK obos_status finalize_irp(void* request);
 OBOS_WEAK obos_status ext_mount(void* vn, void* at);
-OBOS_WEAK obos_status set_file_times(dev_desc desc, void* times_);
+OBOS_WEAK obos_status set_file_times(dev_desc desc, const void* times_);
+OBOS_WEAK obos_status get_file_times(dev_desc desc, void *ptimes);
 OBOS_WEAK obos_status stat_fs_info(void *vn, drv_fs_info *info);
 OBOS_WEAK obos_status vnode_search(void** vn_found, dev_desc desc, void* dev_vn);
 obos_status get_file_inode(dev_desc desc, uint32_t *out)
@@ -140,6 +141,7 @@ __attribute__((section(OBOS_DRIVER_HEADER_SECTION))) driver_header drv_hdr = {
         .get_linked_path = get_linked_path,
         .pmove_desc_to = pmove_desc_to,
         .set_file_times = set_file_times,
+        .get_file_times = get_file_times,
         .pmk_file = pmk_file,
         .premove_file = premove_file,
         .trunc_file = trunc_file, // TODO: Implement
