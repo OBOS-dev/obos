@@ -42,20 +42,22 @@ enum
 };
 enum 
 {
-    VFLAGS_MOUNTPOINT = 1,
-    VFLAGS_IS_TTY = 2,
-    VFLAGS_PARTITION = 4,
-    VFLAGS_FB = 8,
+    VFLAGS_MOUNTPOINT = BIT(0),
+    VFLAGS_IS_TTY = BIT(1),
+    VFLAGS_PARTITION = BIT(2),
+    VFLAGS_FB = BIT(3),
     // A file that only provides events, and cannot be read/written.
-    VFLAGS_EVENT_DEV = 16,
+    VFLAGS_EVENT_DEV = BIT(4),
     // The driver implementing this vnode is DEAD and should NOT be used.
-    VFLAGS_DRIVER_DEAD = 32,
-    VFLAGS_NIC_NO_FCS = 64,
-    VFLAGS_PTMX = 128,
-    VFLAGS_PTS_LOCKED = 256,
+    VFLAGS_DRIVER_DEAD = BIT(5),
+    VFLAGS_NIC_NO_FCS = BIT(6),
+    VFLAGS_PTMX = BIT(7),
+    VFLAGS_PTS_LOCKED = BIT(8),
     // The NIC will inject packets into the network stack
-    VFLAGS_NIC_PACKET_INJECT = 512,
-    VFLAGS_TMPFS_FILE_DEAD = 1024,
+    VFLAGS_NIC_PACKET_INJECT = BIT(9),
+    VFLAGS_TMPFS_FILE_DEAD = BIT(10),
+    VFLAGS_TMPFS = BIT(11),
+    VFLAGS_REFERS_CTTY = BIT(12),
 };
 
 // basically a struct specinfo, but renamed.
