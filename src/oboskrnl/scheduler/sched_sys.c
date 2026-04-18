@@ -568,6 +568,8 @@ handle Sys_ProcessStart(handle mainThread, handle vmmContext, bool is_fork)
                     if (hnd->un.fd->flags & FD_FLAGS_NOEXEC)
                         oflags |= FD_OFLAGS_NOEXEC;
                     Vfs_FdOpenVnode(new_hnd->un.fd, hnd->un.fd->vn, oflags);
+                    if (hnd->un.fd->flags & FD_FLAGS_NOBLOCK)
+                        new_hnd->un.fd->flags |= FD_FLAGS_NOBLOCK;
                     break;
                 }
                 case HANDLE_TYPE_DIRENT:
