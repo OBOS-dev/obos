@@ -130,7 +130,7 @@ static obos_status read_sync(dev_desc desc, void* buf, size_t blkCount, size_t b
         blkCount = (pipe->ptr - pipe->in_ptr);
         Core_MutexRelease(&pipe->ptr_lock);
     }
-    pipe_read(pipe, buf, blkCount, nBlkRead, false);
+    pipe_read(pipe, buf, blkCount, &blkCount, false);
     
     // OBOS_Log("thread %d: ret from %s. blkCount=%d, pipe->ptr=%d, pipe->in_ptr=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, blkCount, pipe->ptr, pipe->in_ptr, pipe->size, pipe);
     
@@ -161,7 +161,7 @@ static obos_status write_sync(dev_desc desc, const void* buf, size_t blkCount, s
         return OBOS_STATUS_PIPE_CLOSED;
     }
 
-    if (pipe->size < blkCount)
+    if (blkCount > pipe->size)
     {
         // Non-atomic write.
         size_t written_count = 0, tmp = 0;
@@ -293,16 +293,19 @@ static obos_status unreference_device(dev_desc desc)
     pipe_desc* pipe = (void*)desc;
     //OBOS_Log("thread %d: enter %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs, pipe->offset, pipe->size, pipe);
     bool has_read_fd = false;
+    bool has_write_fd = false;
     for (fd* f = LIST_GET_HEAD(fd_list, &pipe->vn->opened); f; f = LIST_GET_NEXT(fd_list, &pipe->vn->opened, f))
     {
         if (f->flags & FD_FLAGS_READ)
-        {
             has_read_fd = true;
-            break;
-        }
+        if (f->flags & FD_FLAGS_WRITE)
+            has_write_fd = true;
+        if (has_write_fd && has_read_fd) break;
     }
     if (!has_read_fd)
         CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->empty_evnt));
+    if (!has_write_fd)
+        CoreH_AbortWaitingThreads(WAITABLE_OBJECT(pipe->data_evnt));
     //OBOS_Log("thread %d: ret from %s. refs=%d, pipe->offset=%d, pipe->size=%d, pipe=%p\n", Core_GetCurrentThread()->tid, __func__, pipe->refs-1, pipe->offset, pipe->size, pipe);
     if (!(--pipe->refs))
     {
@@ -418,9 +421,9 @@ pipe_desc* alloc_pipe_desc(size_t pipesize)
     pipe_desc* desc = Vfs_Calloc(1, sizeof(pipe_desc));
     desc->size = pipesize;
     desc->buf = Vfs_Malloc(pipesize);
-    desc->data_evnt = EVENT_INITIALIZE(EVENT_SYNC);
-    desc->empty_evnt = EVENT_INITIALIZE(EVENT_SYNC);
-    desc->write_evnt = EVENT_INITIALIZE(EVENT_SYNC);
+    desc->data_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    desc->empty_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
+    desc->write_evnt = EVENT_INITIALIZE(EVENT_NOTIFICATION);
     desc->buffer_lock = PUSHLOCK_INITIALIZE();
     desc->ptr_lock = MUTEX_INITIALIZE();
     Core_EventSet(&desc->empty_evnt, false);

@@ -564,6 +564,7 @@ obos_status Vfs_FdClose(fd* desc)
     Vfs_FdFlush(desc);
     driver_header* driver = Vfs_GetVnodeDriver(desc->vn);
     mount* point = Vfs_GetVnodeMount(desc->vn);
+    LIST_REMOVE(fd_list, &desc->vn->opened, desc);
     if (!driver)
         goto down_here;
     if (!VfsH_LockMountpoint(point))
@@ -571,12 +572,6 @@ obos_status Vfs_FdClose(fd* desc)
     if (driver->ftable.unreference_device && driver->ftable.reference_device)
         driver->ftable.unreference_device(desc->desc);
     down_here:
-    LIST_REMOVE(fd_list, &desc->vn->opened, desc);
-    if (vn->vtype == VNODE_TYPE_FIFO)
-    {
-        // pipe_desc* desc = (void*)vn->desc;
-        // Core_EventSet(&desc->evnt, true);
-    }
     vn->refs--;
     desc->flags &= ~FD_FLAGS_OPEN;
     
