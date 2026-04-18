@@ -121,6 +121,15 @@ static void free_user_string_vector(char** vec, size_t count)
     Free(OBOS_KernelAllocator, vec, (count+1) * sizeof(*vec));
 }
 
+bool isspace(char c)
+{
+    return  c == ' ' ||
+           c == '\t' ||
+           c == '\v' ||
+           c == '\f' ||
+           c == '\r';
+}
+
 obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
 {
     if (!OBOSS_HandControlTo)
@@ -215,6 +224,8 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
         size_t this_bufLen = szBuf-2;
         size_t len1 = strnchr(buf, '\n', this_bufLen);
         size_t len2 = strnchr(buf, ' ', this_bufLen);
+        if (buf[len2] != '\n')
+            len2 = SIZE_MAX;
         len_interpreter_path = OBOS_MIN(len1, len2);
         len_interpreter_path -= buf[len_interpreter_path-1] == '\n' || buf[len_interpreter_path-1] == ' ';
         if (!len_interpreter_path)
@@ -233,6 +244,11 @@ obos_status Sys_ExecVE(const char* upath, char* const* argv, char* const* envp)
             memcpy(interpreter_arg, arg, len_interpreter_arg);
             interpreter_arg[len_interpreter_arg] = 0;
         }
+        size_t wsof = 0;
+        while (isspace(*(buf+wsof)))
+            wsof++;
+        len_interpreter_path -= wsof;
+        buf += wsof;
         interpreter_path = Allocate(OBOS_KernelAllocator, len_interpreter_path+1, nullptr);
         memcpy(interpreter_path, buf, len_interpreter_path);
         interpreter_path[len_interpreter_path] = 0;
