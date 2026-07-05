@@ -7,7 +7,7 @@ if (OBOS_REFRESH_DEPENDENCIES)
 
 	FetchContent_Declare(uHDA
 		GIT_REPOSITORY https://github.com/uDrivers/uHDA.git
-		GIT_TAG main
+		GIT_TAG a631f3e7c794a7c8b55b3d54faa6636c224e26e6
 		SOURCE_DIR ${CMAKE_SOURCE_DIR}/dependencies/uHDA
 	)
 	FetchContent_MakeAvailable(uHDA)
