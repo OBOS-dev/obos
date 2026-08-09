@@ -350,11 +350,6 @@ void uacpi_kernel_log(enum uacpi_log_level level, const char* format, ...)
 {
     va_list list;
     va_start(list, format);
-    uacpi_kernel_vlog(level, format, list);
-    va_end(list);
-}
-void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_list list)
-{
     if (OBOS_GetLogLevel() == LOG_LEVEL_NONE)
         return;
     const char* prefix = "UNKNOWN";
@@ -388,6 +383,7 @@ void uacpi_kernel_vlog(enum uacpi_log_level level, const char* format, uacpi_va_
     printf("[uACPI][%s]: ", prefix);
     vprintf(format, list);
     OBOS_ResetColor();
+    va_end(list);
 }
 
 timer_tick CoreS_GetNativeTimerTick();
@@ -696,6 +692,13 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void)
         spinlock_hint();
     }
     return UACPI_STATUS_OK;
+}
+
+uacpi_interrupt_state uacpi_kernel_disable_interrupts() {
+    return Core_RaiseIrql(IRQL_MASKED);
+}
+void uacpi_kernel_restore_interrupts(uacpi_interrupt_state state) {
+    Core_LowerIrql(state);
 }
 
 #endif

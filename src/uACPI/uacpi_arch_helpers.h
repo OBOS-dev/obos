@@ -24,7 +24,7 @@
 #        define UACPI_THREAD_ID_NONE ((uacpi_thread_id)-1)
 #   endif
 
-typedef uint8_t uacpi_cpu_flags;
 typedef uintptr_t uacpi_thread_id;
+typedef uint8_t uacpi_interrupt_state, uacpi_cpu_flags;
 
 #endif
