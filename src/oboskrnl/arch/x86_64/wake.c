@@ -105,7 +105,7 @@ void OBOSS_SuspendSavePlatformState()
         uintptr_t index = 0;
         for (obos_pmem_map_entry* entry = MmS_GetFirstPMemMapEntry(&index); entry; )
         {
-            if (entry->type == ULTRA_MEMORY_TYPE_NVS)
+            if (entry->type == ULTRA_MEMORY_TYPE_ACPI_NVS)
                 saved_nvs_count++;
 
             entry = MmS_GetNextPMemMapEntry(entry, &index);
@@ -134,7 +134,7 @@ void OBOSS_SuspendSavePlatformState()
 #   else
         for (obos_pmem_map_entry* entry = MmS_GetFirstPMemMapEntry(&index); entry; )
         {
-            if (entry->type == ULTRA_MEMORY_TYPE_NVS)
+            if (entry->type == ULTRA_MEMORY_TYPE_ACPI_NVS)
             {
                 saved_nvs[nvs_index].region_address = Arch_MapToHHDM(entry->physical_address);
                 saved_nvs[nvs_index].size = entry->size;
